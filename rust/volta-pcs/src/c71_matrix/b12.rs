@@ -94,6 +94,15 @@ impl PrivateRng {
     }
     fn position(&self) -> u64 { (1 << 40)-self.remaining }
 
+    // Exact device prescan consumes the live stream once. Discard the host
+    // prefetch while keeping its already charged buffer for later fresh draws.
+    fn advance_to(&mut self, end: u64) -> Result<u64, String> {
+        let start = self.position();
+        if end < start || end > 1 << 40 { return Err("private coin advance outside live stream".into()); }
+        self.reader.set_position(end); self.remaining = (1 << 40) - end; self.cursor = 4096;
+        Ok(end - start)
+    }
+
     fn snapshot_at(&self, offset: u64) -> Result<Self, String> {
         if offset >= 1 << 40 { return Err("private coin offset exhausted".into()); }
         let mut reader = self.reader.clone();
@@ -459,6 +468,38 @@ mod tests {
         assert!(
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| split.next_u64())).is_err()
         );
+    }
+
+    #[test]
+    fn c71_b12_private_coins_advance_discards_prefetch_preserves_stream_and_cap() {
+        use rand_010::Rng;
+        let seed = [19; 32];
+        let mut hash = blake3::Hasher::new();
+        hash.update(b"volta-zk/c71/b12/private-coins/v1\0"); hash.update(&seed);
+        for end in [32u64, 63, 64, 4095, 4096, 4097, (1 << 40) - 17, 1 << 40] {
+            let mut rng = PrivateRng::from_seed(seed);
+            rng.fill_bytes(&mut [0; 32]);
+            assert_eq!(rng.position(), 32);
+            assert_eq!(rng.reader.position(), 4096);
+            assert_eq!(rng.advance_to(end).unwrap(), end - 32);
+            assert_eq!(rng.position(), end);
+            assert!(rng.buffer.is_some());
+            let mut reference = hash.finalize_xof(); reference.set_position(end);
+            let count = 17.min(((1u64 << 40) - end) as usize);
+            let mut actual = vec![0; count]; let mut expected = vec![0; count];
+            rng.fill_bytes(&mut actual); reference.fill(&mut expected);
+            assert_eq!(actual, expected);
+            let position = rng.position();
+            assert!(rng.advance_to(position - 1).is_err());
+            assert!(rng.advance_to((1 << 40) + 1).is_err());
+            assert_eq!(rng.position(), position);
+            if position == 1 << 40 {
+                assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| rng.next_u64())).is_err());
+            } else {
+                let mut expected = [0; 8]; reference.fill(&mut expected);
+                assert_eq!(rng.next_u64(), u64::from_le_bytes(expected));
+            }
+        }
     }
 
     #[test]

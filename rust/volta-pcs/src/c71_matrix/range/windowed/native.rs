@@ -286,6 +286,20 @@ pub(in crate::c71_matrix) struct WeightShape {
     pub first_coset: u32, pub first_column: u32, pub slots: u32,
 }
 const _: () = assert!(size_of::<WeightTile>() == 40 && size_of::<WeightShape>() == 40);
+#[derive(Clone, Copy)]
+#[repr(C)]
+pub(in crate::c71_matrix) struct SaltGeometry {
+    pub rows: u64, pub origin: u64, pub cosets: u32, pub cut: u32,
+}
+#[derive(Default)]
+#[repr(C)]
+struct SaltProgress {
+    cursor: u64, accepted: u64, logical_bytes: u64, physical_blocks: u64,
+    failed: u32, complete: u32,
+}
+const _: () = assert!(size_of::<SaltGeometry>() == 24 && size_of::<SaltProgress>() == 40);
+/// Proof-consumer capability, never a numeric source Buffer or public coin.
+pub(in crate::c71_matrix) struct PrivateSalts { id: u64, owner: Arc<()> }
 /// Opaque, non-cloneable resident allocation. Release through its runtime;
 /// dropping this descriptor alone does not release device capacity.
 pub(in crate::c71_matrix) struct Buffer {
@@ -372,6 +386,12 @@ api! {
     pcs_source_tile: unsafe extern "C" fn(Raw,u64,*const PcsSourceTile)->i32 => "c71_pcs_source_tile",
     pcs_source_finish: unsafe extern "C" fn(Raw,u64,u64,u64,u64,u64)->i32 => "c71_pcs_source_finish",
     pcs_full_leaves: unsafe extern "C" fn(Raw,u64,u64,u64,u64,u64,u64)->i32 => "c71_pcs_full_leaves",
+    salts_begin: unsafe extern "C" fn(Raw,*const u8,SaltGeometry,u32,u32,*mut u64)->i32 => "c71_pcs_salts_begin",
+    salts_prescan: unsafe extern "C" fn(Raw,u64,*mut SaltProgress)->i32 => "c71_pcs_salts_prescan",
+    salts_indices: unsafe extern "C" fn(Raw,u64,*mut u64,u64,*mut u64,u64)->i32 => "c71_pcs_salts_indices",
+    private_finish: unsafe extern "C" fn(Raw,u64,u64,u64,u32,u64,u64,*mut u64)->i32 => "c71_pcs_leaf_finish_private",
+    private_full: unsafe extern "C" fn(Raw,u64,u64,u64,u64,u32,u64,u64,*mut u64)->i32 => "c71_pcs_full_leaves_private",
+    salts_complete: unsafe extern "C" fn(Raw,u64,*mut u64,u64,*mut u64)->i32 => "c71_pcs_salts_complete",
 }
 pub(in crate::c71_matrix) struct Runtime {
     api: Api,
@@ -385,6 +405,84 @@ pub(in crate::c71_matrix) struct Runtime {
 unsafe impl Send for Runtime {}
 
 impl Runtime {
+    pub(in crate::c71_matrix) fn pcs_salts_prepare(&mut self, seed: &[u8; 32], geometry: SaltGeometry,
+        group: u32, starts: &mut [u64], offsets: &mut [u64]) -> Result<(u64, PrivateSalts), String> {
+        let result: Result<(u64, PrivateSalts), String> = (|| {
+            self.ready()?;
+            let target = geometry.rows.checked_mul(u64::from(geometry.cosets))
+                .and_then(|n| n.checked_mul(4)).ok_or("private PCS salt target overflow")?;
+            let capacity = target.clamp(8, 1 << 24).next_power_of_two() as u32;
+            let before = self.stats()?;
+            let mut phase = crate::c71_matrix::progress::Span::start("pcs_salts_prescan_gpu",
+                serde_json::json!({"rows": geometry.rows,"cosets": geometry.cosets,"cut": geometry.cut,
+                    "samples": target,"candidate_capacity": capacity}))?;
+            let mut id = 0;
+            let status = unsafe { (self.api.salts_begin)(self.raw, seed.as_ptr(), geometry, group, capacity, &mut id) };
+            self.check(status)?;
+            let private = PrivateSalts { id, owner: self.owner.clone() };
+            let mut progress = SaltProgress::default();
+            let mut chunks = 0u64;
+            let mut blocks = 0u64;
+            loop {
+                let status = unsafe { (self.api.salts_prescan)(self.raw, id, &mut progress) };
+                self.check(status)?;
+                chunks += 1; blocks += progress.physical_blocks;
+                phase.checkpoint(|| serde_json::json!({"completed_samples":progress.accepted,
+                    "logical_candidate_bytes":progress.logical_bytes,"computed_xof_blocks":blocks,
+                    "chunks":chunks,"native":self.stats().ok()}))?;
+                if progress.complete != 0 { break; }
+            }
+            let status = unsafe { (self.api.salts_indices)(self.raw, id, starts.as_mut_ptr(), starts.len() as u64,
+                offsets.as_mut_ptr(), offsets.len() as u64) };
+            self.check(status)?;
+            let after = self.stats()?;
+            phase.finish(serde_json::json!({"completed_samples":progress.accepted,
+                "logical_candidate_bytes":progress.logical_bytes,"computed_xof_blocks":blocks,"chunks":chunks,
+                "native_h2d_bytes":after.h2d_bytes-before.h2d_bytes,"native_d2h_bytes":after.d2h_bytes-before.d2h_bytes,
+                "native_launches":after.launches-before.launches,"native_fences":after.fences-before.fences,
+                "native":after}))?;
+            Ok((progress.cursor, private))
+        })();
+        if let Err(error) = &result { return self.abort(error.clone()); }
+        result
+    }
+    fn require_private(&mut self, salts: &PrivateSalts) -> Result<(), String> {
+        self.ready()?;
+        if !Arc::ptr_eq(&self.owner, &salts.owner) { return self.abort("private PCS capability belongs to another owner"); }
+        Ok(())
+    }
+    pub(in crate::c71_matrix) fn pcs_private_hash_finish(&mut self, salts: &PrivateSalts, ring: &Buffer,
+        states: &mut Buffer, group: usize, first: usize) -> Result<u64, String> {
+        self.require_private(salts)?; self.require_buffer(ring)?; self.require_buffer(states)?;
+        let Ok(group) = u32::try_from(group) else { return self.abort("private PCS group overflow"); };
+        let count = states.count.min(65536);
+        let mut completed = 0;
+        let status = unsafe { (self.api.private_finish)(self.raw, salts.id, ring.id, states.id, group,
+            first as u64, count as u64, &mut completed) };
+        self.check(status)?;
+        if first.checked_add(count) == Some(states.count) { states.kind = 11; }
+        Ok(completed)
+    }
+    pub(in crate::c71_matrix) fn pcs_private_full_hash_band(&mut self, salts: &PrivateSalts, values: &[Buffer; 2],
+        states: &mut Buffer, group: usize, first: usize) -> Result<u64, String> {
+        self.require_private(salts)?;
+        for input in [&values[0], &values[1], states] { self.require_buffer(input)?; }
+        let Ok(group) = u32::try_from(group) else { return self.abort("private PCS group overflow"); };
+        let count = states.count.min(65536);
+        let mut completed = 0;
+        let status = unsafe { (self.api.private_full)(self.raw, salts.id, values[0].id, values[1].id, states.id, group,
+            first as u64, count as u64, &mut completed) };
+        self.check(status)?;
+        if first.checked_add(count) == Some(states.count) { states.kind = 11; }
+        Ok(completed)
+    }
+    pub(in crate::c71_matrix) fn pcs_salts_complete(&mut self, salts: PrivateSalts, current: &mut [u64]) -> Result<u64, String> {
+        self.require_private(&salts)?;
+        let mut consumed = 0;
+        let status = unsafe { (self.api.salts_complete)(self.raw, salts.id, current.as_mut_ptr(), current.len() as u64, &mut consumed) };
+        self.check(status)?;
+        Ok(consumed)
+    }
     pub(in crate::c71_matrix) fn new(config: &Config) -> Result<Self, String> {
         if config.resident.is_some() {
             return Err("resident configuration cannot create a second native owner".into());
@@ -1651,6 +1749,248 @@ impl<'a, T: Word> Evaluator<'a, T> {
 #[cfg(test)]
 pub(in crate::c71_matrix) mod tests {
     use super::*;
+    fn salt_values(runtime: &mut Runtime, rows: usize, column: usize, count: usize, bias: u64) -> Buffer {
+        let values = runtime.pcs_words(rows * count).unwrap();
+        let words: Vec<_> = (0..rows * count).map(|i| ((column + i / rows) * 17) as u64 + bias).collect();
+        runtime.pcs_upload(&values, 0, &words).unwrap();
+        values
+    }
+    fn private_w_prefix(runtime: &mut Runtime, rows: usize, bias: u64) -> (Buffer, Buffer) {
+        let ring = runtime.pcs_words(8 * rows).unwrap();
+        let put = |runtime: &mut Runtime, column: usize, slots: usize| {
+            let words: Vec<_> = (0..4 * rows).map(|i| ((column + i / rows) * 17) as u64 + bias).collect();
+            runtime.pcs_upload(&ring, slots * rows, &words).unwrap();
+        };
+        put(runtime, 0, 0); put(runtime, 4, 4);
+        let state = runtime.pcs_hash_start(&ring).unwrap();
+        for first in (4..=116).step_by(8) {
+            put(runtime, first + 4, 0); runtime.pcs_hash_step(&ring, &state, first).unwrap();
+            if first < 116 { put(runtime, first + 8, 4); }
+        }
+        put(runtime, 124, 0);
+        (ring, state)
+    }
+    #[test]
+    fn c71_b12_native_private_salts_owner_exact_stream_hash_and_work() {
+        use std::time::Instant;
+        let mut fixture = fixture(512); fixture.config.arena_bytes = 16 << 20;
+        for (case, (rows, cosets, group, origin)) in [
+            (16usize, 32usize, 4usize, 7u64),
+            (4, 64, 32, 32),
+            (4096, 32, 32, 63),
+            (4, 32, 32, (1u64 << 40) - 8 * 4 * 4 * 32),
+        ].into_iter().enumerate() {
+            let mut runtime = Runtime::new(&fixture.config).unwrap();
+            let height = rows * cosets;
+            let seed = [case as u8 + 23; 32];
+            let mut hash = blake3::Hasher::new();
+            hash.update(b"volta-zk/c71/b12/private-coins/v1\0"); hash.update(&seed);
+            let mut reader = hash.finalize_xof(); reader.set_position(origin);
+            let mut expected_starts = vec![0; rows];
+            let mut expected_offsets = vec![0; height / cosets];
+            let mut expected_ends = vec![0; rows];
+            let mut samples = Vec::with_capacity(4 * height);
+            for leaf in 0..height {
+                if leaf % cosets == 0 { expected_starts[leaf / cosets] = reader.position(); }
+                if leaf % cosets == 0 { expected_offsets[leaf / cosets] = reader.position(); }
+                for _ in 0..4 {
+                    loop {
+                        let mut bytes = [0; 8]; reader.fill(&mut bytes);
+                        let candidate = u64::from_le_bytes(bytes);
+                        if candidate < 0xffffffff00000001 { samples.push(candidate); break; }
+                    }
+                }
+                if (leaf + 1) % cosets == 0 { expected_ends[leaf / cosets] = reader.position(); }
+            }
+            let mut starts = vec![0; rows]; let mut offsets = vec![0; height / cosets];
+            let geometry = SaltGeometry { rows: rows as u64, origin, cosets: cosets as u32, cut: cosets as u32 };
+            let prepared = Instant::now();
+            let (end, private) = runtime.pcs_salts_prepare(&seed, geometry, group as u32, &mut starts, &mut offsets).unwrap();
+            let prescan_s = prepared.elapsed().as_secs_f64();
+            assert_eq!(end, reader.position()); assert_eq!(starts, expected_starts); assert_eq!(offsets, expected_offsets);
+            let before = runtime.stats().unwrap();
+            let mut leaves = Vec::new(); let mut hash_fences = 0;
+            let hashed = Instant::now();
+            for g in 0..cosets / group {
+                let count = rows * group;
+                let mut states;
+                if group == 4 {
+                    let values = [salt_values(&mut runtime, count, 0, 64, case as u64),
+                        salt_values(&mut runtime, count, 64, 64, case as u64)];
+                    states = runtime.pcs_full_hash_begin(count).unwrap();
+                    let band_before = runtime.stats().unwrap();
+                    for first in (0..count).step_by(count.min(65536)) {
+                        let done = runtime.pcs_private_full_hash_band(&private, &values, &mut states, g, first).unwrap();
+                        assert_eq!(done == 0, g == 0 && first + count.min(65536) < count);
+                    }
+                    hash_fences += runtime.stats().unwrap().fences - band_before.fences;
+                    for v in values { runtime.release_buffer(v).unwrap(); }
+                } else {
+                    let (ring, state) = private_w_prefix(&mut runtime, count, case as u64);
+                    states = state;
+                    let band_before = runtime.stats().unwrap();
+                    for first in (0..count).step_by(count.min(65536)) {
+                        let done = runtime.pcs_private_hash_finish(&private, &ring, &mut states, g, first).unwrap();
+                        assert_eq!(done == 0, g == 0 && first + count.min(65536) < count);
+                    }
+                    hash_fences += runtime.stats().unwrap().fences - band_before.fences;
+                    runtime.release_buffer(ring).unwrap();
+                }
+                leaves.push(states);
+            }
+            let replay_bytes = runtime.pcs_salts_complete(private, &mut starts).unwrap();
+            assert_eq!(starts, expected_ends); assert_eq!(replay_bytes, end - origin);
+            assert_eq!(hash_fences, (cosets / group) as u64);
+            let hash_s = hashed.elapsed().as_secs_f64();
+            let mut prefix = blake3::Hasher::new(); prefix.update(b"volta-zk/c71/b12/merkle/leaf/v1\0");
+            for col in 0..128 { prefix.update(&(col * 17 + case as u64).to_le_bytes()); }
+            for (g, buffer) in leaves.into_iter().enumerate() {
+                let actual = runtime.pcs_digests(&buffer, 0, rows * group).unwrap();
+                for (local, digest) in actual.into_iter().enumerate() {
+                    let natural = (local % rows) * cosets + g * group + local / rows;
+                    let mut expected = prefix.clone();
+                    for value in &samples[4 * natural..4 * natural + 4] { expected.update(&value.to_le_bytes()); }
+                    assert_eq!(digest, *expected.finalize().as_bytes(), "case {case} group {g} leaf {local}");
+                }
+                runtime.release_buffer(buffer).unwrap();
+            }
+            let after = runtime.stats().unwrap();
+            assert_eq!(after.arena_bytes, 0);
+            println!("C71_PRIVATE_SALTS_OWNER {}", serde_json::json!({"case":case,"rows":rows,"cosets":cosets,
+                "group_cosets":group,"leaves":height,"candidate_bytes":replay_bytes,"prescan_host_s":prescan_s,
+                "hash_replay_host_s":hash_s,"hash_bands":(height/count_band(rows*group)),"hash_fences":hash_fences,
+                "native_peak_capacity_bytes":after.peak_capacity_bytes,"host_owner_bytes":after.host_owner_bytes,
+                "native_h2d_bytes_after_prescan":after.h2d_bytes-before.h2d_bytes,
+                "native_d2h_bytes_after_prescan":after.d2h_bytes-before.d2h_bytes,
+                "reference_samples_capacity_bytes":samples.capacity()*8,"host_indices_capacity_bytes":
+                    8*(starts.capacity()+offsets.capacity()+expected_starts.capacity()+expected_offsets.capacity()+expected_ends.capacity()),
+                "salt_band_uploads":0,"gpu_execution":false,"credit":false}));
+            runtime.close().unwrap();
+        }
+        fn count_band(rows: usize) -> usize { rows.min(65536) }
+    }
+
+    #[test]
+    fn c71_b12_native_private_salts_owner_rejections_and_fail_closed() {
+        let fixture = fixture(512); let injection = Injection::new(&fixture.config);
+        for fault in 0..24 {
+            let mut runtime = Runtime::new(&fixture.config).unwrap();
+            let mut starts = [0; 4]; let mut offsets = [0; 4];
+            let mut geometry = SaltGeometry { rows:4,origin:32,cosets:8,cut:8 };
+            if fault == 0 { geometry.rows=3; }
+            if fault == 1 { geometry.cosets=3; }
+            if fault == 2 { geometry.cut=4; }
+            if fault == 3 { geometry.origin=(1 << 40)-8; }
+            if (4..=7).contains(&fault) { injection.set([1,2,4,9][fault-4]); }
+            let prepared = runtime.pcs_salts_prepare(&[31;32], geometry, 4, &mut starts,
+                if fault == 8 { &mut offsets[..3] } else { &mut offsets });
+            let result = if fault <= 8 { prepared.map(|_| ()) } else {
+                let (_, private) = prepared.unwrap();
+                let values = [salt_values(&mut runtime, 16, 0, 64, 1), salt_values(&mut runtime, 16, 64, 64, 1)];
+                let mut states = runtime.pcs_full_hash_begin(16).unwrap();
+                match fault {
+                    9 => runtime.pcs_salts_prepare(&[31;32],geometry,4,&mut starts,&mut offsets).map(|_| ()),
+                    10 => runtime.pcs_salts_complete(private,&mut starts).map(|_| ()),
+                    11 => runtime.pcs_private_full_hash_band(&private,&values,&mut states,1,0).map(|_| ()),
+                    12 => runtime.pcs_private_full_hash_band(&private,&values,&mut states,0,1).map(|_| ()),
+                    13 => runtime.pcs_digests(&states,0,1).map(|_| ()),
+                    14..=16 => {
+                        let fake = Buffer { id:private.id,kind:if fault==14 {6} else {9},count:1,owner:runtime.owner.clone() };
+                        if fault==14 { runtime.download_words(&fake,0,&mut [0]).map(|_| ()) }
+                        else if fault==15 { runtime.pcs_upload(&fake,0,&[1]) }
+                        else { runtime.release_buffer(fake) }
+                    },
+                    17 => runtime.allocate_buffer(17,8).map(|_| ()),
+                    18 => {
+                        let mut other=Runtime::new(&fixture.config).unwrap();
+                        other.pcs_private_full_hash_band(&private,&values,&mut states,0,0).map(|_| ())
+                    },
+                    19 => {
+                        runtime.pcs_private_full_hash_band(&private,&values,&mut states,0,0).unwrap();
+                        runtime.pcs_private_full_hash_band(&private,&values,&mut states,0,0).map(|_| ())
+                    },
+                    20..=23 => {
+                        injection.set([1,2,3,9][fault-20]);
+                        runtime.pcs_private_full_hash_band(&private,&values,&mut states,0,0).map(|_| ())
+                    },
+                    _ => unreachable!(),
+                }
+            };
+            assert!(result.is_err(),"fault {fault}");
+            injection.set(0);
+            if fault != 18 {
+                assert!(runtime.pcs_words(1).is_err(),"ordinary retry accepted fault {fault}");
+                assert_eq!(runtime.stats().unwrap().stopped,1);
+            }
+            if fault==22 { assert!(runtime.close().is_err()); } else { runtime.close().unwrap(); }
+        }
+        println!("C71_PRIVATE_SALTS_FAILURE {{\"terminal_rejections\":24,\"generic_private_reads\":0,\"gpu_execution\":false,\"credit\":false}}");
+    }
+
+    #[test]
+    fn c71_b12_native_private_salts_owner_metadata_alias_and_stale_capability() {
+        let fixture = fixture(512);
+        let geometry = SaltGeometry { rows:4,origin:32,cosets:8,cut:8 };
+        for fault in 0..7 {
+            let mut runtime = Runtime::new(&fixture.config).unwrap();
+            let mut indices = [0u64; 8];
+            let mut consumed = 0;
+            let status = if fault < 3 {
+                let mut id = 0; let mut progress = SaltProgress::default();
+                let begin = unsafe { (runtime.api.salts_begin)(runtime.raw,[31u8;32].as_ptr(),geometry,4,128,&mut id) };
+                runtime.check(begin).unwrap();
+                let scan = unsafe { (runtime.api.salts_prescan)(runtime.raw,id,&mut progress) };
+                runtime.check(scan).unwrap(); assert_eq!(progress.complete,1);
+                let starts = match fault {
+                    1 => indices.as_mut_ptr().cast::<u8>().wrapping_add(1).cast(),
+                    2 => (usize::MAX - 7) as *mut u64,
+                    _ => indices.as_mut_ptr(),
+                };
+                let offsets = if fault==0 { indices.as_mut_ptr().wrapping_add(1) }
+                    else { indices.as_mut_ptr().wrapping_add(4) };
+                unsafe { (runtime.api.salts_indices)(runtime.raw,id,starts,4,offsets,4) }
+            } else {
+                let (starts, offsets) = indices.split_at_mut(4);
+                let (_, private) = runtime.pcs_salts_prepare(&[31;32],geometry,4,starts,offsets).unwrap();
+                let values = [salt_values(&mut runtime,16,0,64,1),salt_values(&mut runtime,16,64,64,1)];
+                for group in 0..2 {
+                    let mut states = runtime.pcs_full_hash_begin(16).unwrap();
+                    runtime.pcs_private_full_hash_band(&private,&values,&mut states,group,0).unwrap();
+                    runtime.release_buffer(states).unwrap();
+                }
+                let id = private.id;
+                if fault==6 {
+                    runtime.pcs_salts_complete(private,starts).unwrap();
+                    let (_, _fresh) = runtime.pcs_salts_prepare(&[32;32],geometry,4,starts,offsets).unwrap();
+                    assert_ne!(id,_fresh.id);
+                    unsafe { (runtime.api.salts_prescan)(runtime.raw,id,&mut SaltProgress::default()) }
+                } else {
+                    let current = match fault {
+                        4 => starts.as_mut_ptr().cast::<u8>().wrapping_add(1).cast(),
+                        5 => (usize::MAX - 7) as *mut u64,
+                        _ => starts.as_mut_ptr(),
+                    };
+                    let output = if fault==3 { starts.as_mut_ptr().wrapping_add(1) } else { &mut consumed };
+                    unsafe { (runtime.api.salts_complete)(runtime.raw,id,current,4,output) }
+                }
+            };
+            assert!(runtime.check(status).is_err(),"fault {fault}");
+            assert!(runtime.pcs_words(1).is_err()); assert_eq!(runtime.stats().unwrap().stopped,1);
+            runtime.close().unwrap();
+        }
+        println!("C71_PRIVATE_SALTS_METADATA_FAILURE {{\"terminal_rejections\":7,\"gpu_execution\":false,\"credit\":false}}");
+    }
+
+    #[test]
+    fn c71_b12_native_private_salts_owner_symbols_are_mandatory() {
+        for symbol in ["c71_pcs_salts_begin","c71_pcs_salts_prescan","c71_pcs_salts_indices",
+            "c71_pcs_leaf_finish_private","c71_pcs_full_leaves_private","c71_pcs_salts_complete"] {
+            let legacy = fixture_library(512,Some(symbol));
+            let error = Runtime::new(&legacy.config).err().unwrap();
+            assert!(error.contains(symbol),"{error}");
+        }
+    }
+
     #[test]
     fn c71_b12_native_source_pending_coverage_owner_and_failure() {
         let fixture = fixture(128);

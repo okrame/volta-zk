@@ -1,4 +1,4 @@
-// Single-thread-owned, explicit-device range workspace. No protocol state.
+// Single-thread-owned common workspace; private PCS state is consumer-bound.
 #include "c71_range_runtime.h"
 #include <cuda_runtime_api.h>
 #include <atomic>
@@ -39,6 +39,10 @@ cudaError_t c71_pcs_source_pad_launch(cudaStream_t,uint64_t*,const uint64_t*,con
     c71_pcs::SourceShape,unsigned,uint32_t*);
 cudaError_t c71_pcs_full_leaves_launch(cudaStream_t,const uint64_t*,const uint64_t*,const uint64_t*,
     c71_pcs::Hash32*,uint64_t,uint64_t,uint64_t,uint32_t*);
+cudaError_t c71_pcs_salts_prescan_launch(cudaStream_t,const c71_salts::Descriptor*,c71_salts::Chunk,c71_salts::Geometry,
+    uint8_t*,uint32_t*,uint32_t*,uint32_t*,uint64_t*,uint64_t*,c71_salts::Progress*,uint32_t*,unsigned*);
+cudaError_t c71_pcs_salts_replay_launch(cudaStream_t,const c71_salts::Descriptor*,uint64_t*,uint64_t,uint64_t,uint64_t,
+    uint64_t*,uint64_t*,uint32_t*);
 cudaError_t c71_lookup_launch(cudaStream_t,const int16_t*,const int16_t*,int16_t*,int64_t*,uint64_t,uint32_t*);
 cudaError_t c71_histogram_seal_launch(cudaStream_t,int64_t*,uint32_t*);
 cudaError_t c71_rope_launch(cudaStream_t,const int16_t*,const int32_t*,int64_t*,c71_nonlinear::Rope,uint32_t*);
@@ -74,13 +78,21 @@ struct C71RangeContext {
         c71_pcs::SourceShape shape{};
         uint64_t values[2]{}, low=0, high=0, histogram=0, bytes=0;
     } source;
+    // Proof consumer only; no private pointer/token reaches a numeric source.
+    struct {
+        c71_salts::Geometry geometry{};
+        c71_salts::Chunk chunk{};
+        uint64_t meta=0,scratch=0,current=0,offsets=0,band=0,end=0,completed_bytes=0;
+        uint32_t group_cosets=0,group=0,phase=0;
+        uint64_t first=0;
+    } salts;
 };
 namespace {
-constexpr uint64_t sizes[]={1,2,48,96,24,96,8,1,8,8,32,32,32,40,8,8,8};
+constexpr uint64_t sizes[]={1,2,48,96,24,96,8,1,8,8,32,32,32,40,8,8,8,1};
 constexpr uint64_t caps[]={uint64_t{1}<<31,uint64_t{1}<<27,uint64_t{1}<<24,
                           uint64_t{1}<<24,256*32*32,65536,uint64_t(c71_dense::max_m)*c71_dense::max_n,uint64_t{1}<<31,65535,
                           uint64_t{1}<<28,uint64_t{1}<<25,uint64_t{1}<<25,uint64_t{1}<<25,65536,uint64_t{1}<<25,
-                          uint64_t{1}<<28,256};
+                          uint64_t{1}<<28,256,uint64_t{1}<<28};
 std::atomic<uint64_t> next_handle{1};
 bool canonical(Fp3 a) { return a.c0<P && a.c1<P && a.c2<P; }
 bool power2(uint64_t n) { return n && !(n&(n-1)); }
@@ -182,9 +194,10 @@ extern "C" int c71_range_close(C71RangeContext* c,C71RangeStats* out) {
     if(c->account) c->account(-int64_t(sizeof(*c)));
     delete c; return error?-1:0;
 }
-extern "C" int c71_range_alloc(C71RangeContext* c,uint32_t kind,uint64_t count,uint64_t* out) {
+namespace {
+int allocate(C71RangeContext* c,uint32_t kind,uint64_t count,uint64_t* out) {
     if(!ready(c)) return -1;
-    if(!out || kind>C71_PCS_BYTE_COUNTS_PENDING || !count || count>caps[kind]) return fail(c,"range allocation shape");
+    if(!out || kind>C71_PCS_PRIVATE || !count || count>caps[kind]) return fail(c,"range allocation shape");
     const uint64_t capacity=(count*sizes[kind]+255)&~uint64_t{255};
     Buffer* slot=nullptr;
     for(auto& b:c->buffers) if(!b.id) { slot=&b; break; }
@@ -202,9 +215,15 @@ extern "C" int c71_range_alloc(C71RangeContext* c,uint32_t kind,uint64_t count,u
     *slot={id,allocation,capacity,count,0,kind}; *out=id;
     ++c->stats.allocations; recount(c); return 0;
 }
+}
+extern "C" int c71_range_alloc(C71RangeContext* c,uint32_t kind,uint64_t count,uint64_t* out) {
+    if(kind>C71_PCS_BYTE_COUNTS_PENDING) return fail(c,"private allocation requires PCS capability");
+    return allocate(c,kind,count,out);
+}
 extern "C" int c71_range_release(C71RangeContext* c,uint64_t id) {
     if(!ready(c)) return -1;
     auto* b=buffer(c,id); if(!b) return -1;
+    if(b->kind==C71_PCS_PRIVATE) return fail(c,"private release requires PCS capability");
     if(b->flag && c71_range_release(c,b->flag)) return -1;
     // Actual release, not a logical Vec-style truncation or a retained pool.
     // Fence even on the deferred test driver; a failure keeps capacity charged.
@@ -742,6 +761,7 @@ extern "C" int c71_pcs_nodes(C71RangeContext* c,uint64_t in,uint64_t out,uint64_
 }
 extern "C" int c71_pcs_read_digests(C71RangeContext* c,uint64_t in,uint64_t first,uint64_t count,void* out) {
     if(!ready(c)) return -1;
+    if(c->salts.phase) return fail(c,"PCS salts must complete before digest publication");
     auto* a=buffer(c,in);
     if(!full(a,C71_PCS_DIGEST) || !out || !count || count>(uint64_t{1}<<21) ||
        first>a->count || count>a->count-first) return fail(c,"PCS digest publication shape or state");
@@ -952,4 +972,201 @@ extern "C" int c71_pcs_full_leaves(C71RangeContext* c,uint64_t first,uint64_t se
     if(begin+count!=out->count) return 0;
     if(dense_complete(c,out->flag,out)) return -1;
     out->flag=0; out->kind=C71_PCS_DIGEST; return 0;
+}
+
+namespace {
+struct PrivateMeta {
+    c71_salts::Descriptor descriptor;
+    c71_salts::Progress progress{};
+    uint32_t failed=0;
+    uint64_t consumed=0;
+};
+static_assert(sizeof(PrivateMeta)==168);
+uint64_t aligned(uint64_t n) { return (n+255)&~uint64_t{255}; }
+struct SaltScratch {
+    uint64_t prefix,blocks,groups,bytes;
+    explicit SaltScratch(uint32_t capacity) {
+        const uint64_t n=uint64_t(capacity)/8+1;
+        prefix=aligned(n); blocks=prefix+aligned(4*n);
+        groups=blocks+aligned(4*((n+255)/256));
+        bytes=groups+aligned(4*((n+65535)/65536));
+    }
+};
+PrivateMeta* private_meta(C71RangeContext* c) {
+    return ptr<PrivateMeta>(c,buffer(c,c->salts.meta));
+}
+bool private_session(C71RangeContext* c,uint64_t session,uint32_t phase) {
+    if(!session || session!=c->salts.meta || c->salts.phase!=phase) {
+        fail(c,"private PCS capability or phase differs"); return false;
+    }
+    return true;
+}
+// Every caller has already fenced all uses. A failed free retains capacity
+// and ownership uncertainty, just as the common owner's other releases.
+int retire_private(C71RangeContext* c,uint64_t& id) {
+    if(!id) return 0;
+    auto* b=buffer(c,id);
+    if(!b || b->kind!=C71_PCS_PRIVATE) return fail(c,"private PCS retirement type");
+    if(checked(c,cudaFree(b->allocation))) { b->release_failed=true; return -1; }
+    if(c->account) c->account(-int64_t(b->capacity));
+    *b={}; id=0; ++c->stats.releases; recount(c); return 0;
+}
+bool private_band(C71RangeContext* c,uint64_t session,uint32_t group,uint64_t first,uint64_t count) {
+    const uint64_t rows=c->salts.geometry.rows*c->salts.group_cosets;
+    if(!private_session(c,session,3) || group!=c->salts.group || first!=c->salts.first ||
+       !count || count!=std::min(uint64_t{65536},rows) || first>rows || count>rows-first) {
+        fail(c,"private PCS group or band coverage"); return false;
+    }
+    return true;
+}
+int private_replay(C71RangeContext* c,Buffer* out,uint64_t first,uint64_t count) {
+    auto* m=private_meta(c);
+    return launched(c,c71_pcs_salts_replay_launch(c->stream,&m->descriptor,
+        ptr<uint64_t>(c,buffer(c,c->salts.current)),c->salts.geometry.rows,first,count,
+        ptr<uint64_t>(c,buffer(c,c->salts.band)),&m->consumed,ptr<uint32_t>(c,buffer(c,out->flag))));
+}
+int private_hash_complete(C71RangeContext* c,Buffer* out,uint64_t count,uint64_t* completed) {
+    c->salts.first+=count;
+    if(c->salts.first!=out->count) { *completed=c->salts.completed_bytes; return 0; }
+    uint64_t consumed=0;
+    if(checked(c,cudaMemcpyAsync(&consumed,&private_meta(c)->consumed,8,cudaMemcpyDeviceToHost,c->stream))) return -1;
+    c->stats.d2h_bytes+=8;
+    if(dense_complete(c,out->flag,out)) return -1;
+    const uint64_t total=c->salts.end-c->salts.geometry.origin;
+    const uint64_t minimum=uint64_t(c->salts.group+1)*out->count*32;
+    const bool last=c->salts.group+1==c->salts.geometry.cosets/c->salts.group_cosets;
+    if(consumed<=c->salts.completed_bytes || consumed<minimum || consumed>total || (last && consumed!=total))
+        return fail(c,"private PCS replay consumption differs");
+    out->flag=0; out->kind=C71_PCS_DIGEST;
+    c->salts.completed_bytes=consumed; ++c->salts.group; c->salts.first=0;
+    if(last) c->salts.phase=4;
+    *completed=consumed; return 0;
+}
+}
+
+extern "C" int c71_pcs_salts_begin(C71RangeContext* c,const uint8_t seed[32],c71_salts::Geometry g,
+    uint32_t group_cosets,uint32_t capacity,uint64_t* session) {
+    if(!ready(c)) return -1;
+    if(session) *session=0;
+    if(!session || !seed || c->salts.phase || !c71_salts::valid(g) || g.cut<g.cosets ||
+       (group_cosets!=4 && group_cosets!=32) || group_cosets>g.cosets || !c71_salts::valid_capacity(capacity))
+        return fail(c,"private PCS seed or geometry");
+    auto& s=c->salts;
+    s.phase=1; s.geometry=g; s.group_cosets=group_cosets;
+    s.chunk={g.origin,0,4*g.rows*g.cosets,0,capacity};
+    const SaltScratch layout(capacity);
+    if(allocate(c,C71_PCS_PRIVATE,sizeof(PrivateMeta),&s.meta) ||
+       allocate(c,C71_PCS_PRIVATE,layout.bytes,&s.scratch) ||
+       allocate(c,C71_PCS_PRIVATE,8*g.rows,&s.current) ||
+       allocate(c,C71_PCS_PRIVATE,8*g.rows*g.cosets/g.cut,&s.offsets)) return -1;
+    const PrivateMeta initial{c71_salts::descriptor(seed)};
+    if(checked(c,cudaMemcpyAsync(private_meta(c),&initial,sizeof(initial),cudaMemcpyHostToDevice,c->stream))) return -1;
+    c->stats.h2d_bytes+=sizeof(initial);
+    if(fence(c)) return -1;
+    *session=s.meta; return 0;
+}
+
+extern "C" int c71_pcs_salts_prescan(C71RangeContext* c,uint64_t session,c71_salts::Progress* output) {
+    if(!ready(c)) return -1;
+    if(!output || !private_session(c,session,1)) return fail(c,"private PCS prescan output or phase");
+    auto& s=c->salts;
+    s.chunk.candidates=uint32_t(std::min({uint64_t(s.chunk.capacity),s.chunk.target-s.chunk.accepted,
+        (c71_salts::CAP-s.chunk.cursor)/8}));
+    const auto chunk=s.chunk; const SaltScratch layout(chunk.capacity);
+    auto* scratch=ptr<uint8_t>(c,buffer(c,s.scratch)); auto* m=private_meta(c);
+    unsigned attempted=0;
+    const auto status=c71_pcs_salts_prescan_launch(c->stream,&m->descriptor,chunk,s.geometry,
+        scratch,reinterpret_cast<uint32_t*>(scratch+layout.prefix),reinterpret_cast<uint32_t*>(scratch+layout.blocks),
+        reinterpret_cast<uint32_t*>(scratch+layout.groups),ptr<uint64_t>(c,buffer(c,s.current)),
+        ptr<uint64_t>(c,buffer(c,s.offsets)),&m->progress,&m->failed,&attempted);
+    c->stats.launches+=attempted; if(checked(c,status)) return -1;
+    struct { c71_salts::Progress progress; uint32_t failed; } staged{};
+    if(checked(c,cudaMemcpyAsync(&staged,&m->progress,sizeof(c71_salts::Progress)+4,cudaMemcpyDeviceToHost,c->stream))) return -1;
+    c->stats.d2h_bytes+=sizeof(c71_salts::Progress)+4;
+    if(fence(c)) return -1;
+    const auto& p=staged.progress;
+    if(staged.failed || p.failed || p.complete>1 || p.cursor<chunk.cursor || p.cursor>c71_salts::CAP ||
+       p.cursor-chunk.cursor>8*uint64_t(chunk.candidates) || (p.cursor-s.geometry.origin)%8 ||
+       p.accepted<chunk.accepted || p.accepted>chunk.target || p.accepted-chunk.accepted>chunk.candidates ||
+       p.logical_bytes!=p.cursor-s.geometry.origin || p.physical_blocks!=c71_salts::physical_blocks(chunk) ||
+       p.complete!=(p.accepted==chunk.target) || (!p.complete && p.cursor!=chunk.cursor+8*uint64_t(chunk.candidates)))
+        return fail(c,"private PCS prescan rejection or inconsistent progress");
+    s.chunk.cursor=p.cursor; s.chunk.accepted=p.accepted;
+    if(p.complete) { s.end=p.cursor; s.phase=2; }
+    *output=p; return 0;
+}
+
+extern "C" int c71_pcs_salts_indices(C71RangeContext* c,uint64_t session,uint64_t* starts,uint64_t rows,
+    uint64_t* offsets,uint64_t count) {
+    if(!ready(c)) return -1;
+    uintptr_t starts_end=0,offsets_end=0;
+    if(!private_session(c,session,2) || !starts || !offsets || starts==offsets ||
+       rows!=c->salts.geometry.rows || count!=rows*c->salts.geometry.cosets/c->salts.geometry.cut ||
+       !c71_dense::span(starts,8*rows,starts_end) || !c71_dense::span(offsets,8*count,offsets_end) ||
+       reinterpret_cast<uintptr_t>(starts)%8 || reinterpret_cast<uintptr_t>(offsets)%8 ||
+       (reinterpret_cast<uintptr_t>(starts)<offsets_end && reinterpret_cast<uintptr_t>(offsets)<starts_end))
+        return fail(c,"private PCS indices shape or alias");
+    if(checked(c,cudaMemcpyAsync(starts,ptr<void>(c,buffer(c,c->salts.current)),8*rows,cudaMemcpyDeviceToHost,c->stream)) ||
+       checked(c,cudaMemcpyAsync(offsets,ptr<void>(c,buffer(c,c->salts.offsets)),8*count,cudaMemcpyDeviceToHost,c->stream))) return -1;
+    c->stats.d2h_bytes+=8*(rows+count);
+    if(fence(c)) return -1;
+    if(starts[0]!=c->salts.geometry.origin || offsets[0]!=starts[0]) return fail(c,"private PCS indices origin differs");
+    for(uint64_t i=0;i<rows;++i) if(starts[i]>=c->salts.end || (i && starts[i]<=starts[i-1]))
+        return fail(c,"private PCS row offsets differ");
+    for(uint64_t i=0;i<count;++i) if(offsets[i]>=c->salts.end || (i && offsets[i]<=offsets[i-1]))
+        return fail(c,"private PCS subtree offsets differ");
+    if(retire_private(c,c->salts.scratch) || retire_private(c,c->salts.offsets)) return -1;
+    if(allocate(c,C71_PCS_PRIVATE,32*std::min(uint64_t{65536},rows*c->salts.group_cosets),&c->salts.band)) return -1;
+    c->salts.phase=3; return 0;
+}
+
+extern "C" int c71_pcs_leaf_finish_private(C71RangeContext* c,uint64_t session,uint64_t ring,uint64_t states,
+    uint32_t group,uint64_t first,uint64_t count,uint64_t* completed) {
+    if(!ready(c)) return -1;
+    auto* a=buffer(c,ring); auto* b=buffer(c,states);
+    if(!completed || !private_band(c,session,group,first,count) || c->salts.group_cosets!=32 ||
+       !full(a,C71_PCS_BASE) || !full(b,C71_PCS_HASH_PENDING) || !b->flag ||
+       b->count!=32*c->salts.geometry.rows || a->count!=8*b->count || b->visits!=124+first)
+        return fail(c,"private PCS W leaf state or coverage");
+    if(private_replay(c,b,first,count) || launched(c,c71_pcs_hash_launch(c->stream,2,ptr<uint64_t>(c,a),
+        ptr<uint64_t>(c,buffer(c,c->salts.band)),ptr<c71_pcs::Hash32>(c,b),b->count,first,count,124,
+        ptr<uint32_t>(c,buffer(c,b->flag))))) return -1;
+    b->visits+=count; return private_hash_complete(c,b,count,completed);
+}
+
+extern "C" int c71_pcs_full_leaves_private(C71RangeContext* c,uint64_t session,uint64_t first_values,uint64_t second_values,
+    uint64_t states,uint32_t group,uint64_t first,uint64_t count,uint64_t* completed) {
+    if(!ready(c)) return -1;
+    auto* a=buffer(c,first_values); auto* b=buffer(c,second_values); auto* out=buffer(c,states);
+    if(!completed || !private_band(c,session,group,first,count) || c->salts.group_cosets!=4 ||
+       !full(a,C71_PCS_BASE) || !full(b,C71_PCS_BASE) || a==b || !out || out->kind!=C71_PCS_HASH_PENDING ||
+       out->count!=4*c->salts.geometry.rows || a->count!=64*out->count || b->count!=a->count || first!=out->visits ||
+       (first==0 ? (out->flag || out->initialized) : (!out->flag || out->initialized!=first)))
+        return fail(c,"private PCS A leaf state or coverage");
+    if(!first && dense_flag(c,&out->flag)) return -1;
+    if(private_replay(c,out,first,count) || launched(c,c71_pcs_full_leaves_launch(c->stream,ptr<uint64_t>(c,a),ptr<uint64_t>(c,b),
+        ptr<uint64_t>(c,buffer(c,c->salts.band)),ptr<c71_pcs::Hash32>(c,out),out->count,first,count,
+        ptr<uint32_t>(c,buffer(c,out->flag))))) return -1;
+    out->initialized+=count; out->visits+=count;
+    return private_hash_complete(c,out,count,completed);
+}
+
+extern "C" int c71_pcs_salts_complete(C71RangeContext* c,uint64_t session,uint64_t* current,uint64_t rows,uint64_t* consumed) {
+    if(!ready(c)) return -1;
+    uintptr_t current_end=0,consumed_end=0;
+    if(!private_session(c,session,4) || !current || !consumed || rows!=c->salts.geometry.rows ||
+       c->salts.completed_bytes!=c->salts.end-c->salts.geometry.origin ||
+       !c71_dense::span(current,8*rows,current_end) || !c71_dense::span(consumed,8,consumed_end) ||
+       reinterpret_cast<uintptr_t>(current)%8 || reinterpret_cast<uintptr_t>(consumed)%8 ||
+       (reinterpret_cast<uintptr_t>(current)<consumed_end && reinterpret_cast<uintptr_t>(consumed)<current_end))
+        return fail(c,"private PCS replay final coverage");
+    if(checked(c,cudaMemcpyAsync(current,ptr<void>(c,buffer(c,c->salts.current)),8*rows,cudaMemcpyDeviceToHost,c->stream))) return -1;
+    c->stats.d2h_bytes+=8*rows;
+    if(fence(c)) return -1;
+    if(current[rows-1]!=c->salts.end) return fail(c,"private PCS replay final cursor differs");
+    for(uint64_t i=0;i<rows;++i) if(current[i]>c->salts.end || current[i]<=c->salts.geometry.origin ||
+        (i && current[i]<=current[i-1]) || (current[i]-c->salts.geometry.origin)%8)
+        return fail(c,"private PCS replay row cursor differs");
+    if(retire_private(c,c->salts.band) || retire_private(c,c->salts.current) || retire_private(c,c->salts.meta)) return -1;
+    *consumed=c->salts.completed_bytes; c->salts={}; return 0;
 }

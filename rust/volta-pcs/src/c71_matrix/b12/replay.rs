@@ -700,8 +700,16 @@ impl Code {
             let code = Arc::new(self);
             let rowcode = code.clone();
             let mut histogram = [0u64; 256];
+            let prepare_owner = owner.clone();
             let (root, tree) = Tree::commit_resident_source(mmcs, code.height,
-                Arc::new(move |indices| rowcode.rows(indices)), |stream, current| {
+                Arc::new(move |indices| rowcode.rows(indices)), |rng, starts, offsets| {
+                    let mut runtime = prepare_owner.lock().map_err(|_| "native A owner poisoned")?;
+                    let geometry = device::SaltGeometry { rows: rows as u64, origin: rng.position(),
+                        cosets: cosets as u32, cut: cut as u32 };
+                    let (end, private) = runtime.pcs_salts_prepare(&rng.seed, geometry, 4, starts, offsets)?;
+                    Ok((rng.advance_to(end)?, private))
+                }, |_stream, current, private| {
+                let mut private = Some(private);
                 let mut runtime = owner.lock().map_err(|_| "native A owner poisoned")?;
                 let before = runtime.stats()?;
                 let pads = runtime.pcs_words(code.pads.len())?;
@@ -714,8 +722,6 @@ impl Code {
                 let frontier = runtime.pcs_frontier(rows, groups)?;
                 let group_rows = 4 * rows;
                 let band = 65536.min(group_rows);
-                let salt_buffer = runtime.pcs_words(4 * band)?;
-                let mut salt_words = vec![0; 4 * band];
                 let mut top = Vec::new();
                 let mut work = replay_tree::ReplayWork::default();
                 let mut source_visits = 0u64;
@@ -763,20 +769,15 @@ impl Code {
                     runtime.release_buffer(low)?; runtime.release_buffer(high)?;
                     let mut roots = runtime.pcs_full_hash_begin(group_rows)?;
                     for first in (0..group_rows).step_by(band) {
-                        for local in 0..band {
-                            let row = (first + local) % rows;
-                            let mut rng = stream.snapshot_at(current[row])?;
-                            for (col, value) in rng.salts4().into_iter().enumerate() {
-                                salt_words[col * band + local] = value.as_canonical_u64();
-                            }
-                            work.salt_candidate_bytes += rng.position() - current[row];
-                            current[row] = rng.position();
-                        }
-                        runtime.pcs_upload(&salt_buffer, 0, &salt_words)?;
-                        runtime.pcs_full_hash_band(&values, &salt_buffer, &mut roots, first)?;
+                        work.salt_candidate_bytes = runtime.pcs_private_full_hash_band(
+                            private.as_ref().unwrap(), &values, &mut roots, group, first)?;
                         phase.checkpoint(|| json!({"completed_groups": group,
-                            "completed_salt_leaves_in_group": first + band,
+                            "submitted_salt_leaves_in_group": first + band,
+                            "completed_salt_groups": group + usize::from(first + band == group_rows),
                             "salt_candidate_bytes": work.salt_candidate_bytes, "native": runtime.stats().ok()}))?;
+                    }
+                    if group + 1 == groups {
+                        work.salt_candidate_bytes = runtime.pcs_salts_complete(private.take().unwrap(), current)?;
                     }
                     for value in values { runtime.release_buffer(value)?; }
                     for _ in 0..2 {
@@ -809,7 +810,7 @@ impl Code {
                         "node_hashes": work.node_hashes, "native": runtime.stats().ok()}))?;
                 }
                 runtime.release_buffer(frontier)?; runtime.release_buffer(pads)?;
-                runtime.release_buffer(twiddles)?; runtime.release_buffer(salt_buffer)?;
+                runtime.release_buffer(twiddles)?;
                 let after = runtime.stats()?;
                 phase.finish(json!({"completed_groups": groups, "source_visits": source_visits,
                     "source_reconstructions": groups, "source_to_coset_contributions": source_visits * 4,
@@ -833,23 +834,32 @@ impl Code {
 
     fn commit_native_weights(self, mmcs: &HidingMmcs, native: NativeWeights)
         -> Result<(replay_tree::Commitment, ZkWhirReplayHandle), String> {
-        let mut runtime = native.runtime.lock().map_err(|_| "native W owner poisoned")?;
+        let owner = native.runtime.clone();
         let result = (|| {
             if !self.base() || self.width != 128 || self.live != native.weights.len() ||
                 !self.len.is_power_of_two() || self.scan.is_some() || self.window.is_some() {
-                return runtime.abort("native W original source or shape differs");
+                return Err("native W original source or shape differs".into());
             }
             let (rows, cut) = replay_tree::native_weight_geometry(self.height)?;
             let cosets = self.height / rows;
             let n = self.len / 128;
             let pad = self.pads.len() / 128;
             if n < rows || n / rows > 256 || pad == 0 || pad > 1536 || self.pads.len() != 128 * pad {
-                return runtime.abort("native W signed accumulation or pad bound differs");
+                return Err("native W signed accumulation or pad bound differs".into());
             }
             let code = Arc::new(self);
             let rowcode = code.clone();
+            let prepare_owner = owner.clone();
             let (root, tree) = Tree::commit_resident_weights(mmcs, code.height,
-                Arc::new(move |indices| rowcode.rows(indices)), |stream, current| {
+                Arc::new(move |indices| rowcode.rows(indices)), |rng, starts, offsets| {
+                    let mut runtime = prepare_owner.lock().map_err(|_| "native W owner poisoned")?;
+                    let geometry = device::SaltGeometry { rows: rows as u64, origin: rng.position(),
+                        cosets: cosets as u32, cut: cut as u32 };
+                    let (end, private) = runtime.pcs_salts_prepare(&rng.seed, geometry, 32, starts, offsets)?;
+                    Ok((rng.advance_to(end)?, private))
+                }, |_stream, current, private| {
+                let mut private = Some(private);
+                let mut runtime = owner.lock().map_err(|_| "native W owner poisoned")?;
                 let before = runtime.stats()?;
                 let tiles = runtime.pcs_weight_tiles(&native.weights, native.layout, &native.tiles)?;
                 let pads = runtime.pcs_words(code.pads.len())?;
@@ -864,8 +874,6 @@ impl Code {
                 let frontier = runtime.pcs_frontier(rows, groups)?;
                 let group_rows = 32 * rows;
                 let band = 65536.min(group_rows);
-                let salt_buffer = runtime.pcs_words(4 * band)?;
-                let mut salt_words = vec![0; 4 * band];
                 let mut top = Vec::new();
                 let mut work = replay_tree::ReplayWork::default();
                 let mut source_visits = 0u64;
@@ -897,19 +905,14 @@ impl Code {
                     fill(&mut runtime, 124, 0)?;
                     runtime.release_buffer(low)?; runtime.release_buffer(high)?;
                     for first in (0..group_rows).step_by(band) {
-                        for local in 0..band {
-                            let row = (first + local) % rows;
-                            let mut rng = stream.snapshot_at(current[row])?;
-                            for (col, value) in rng.salts4().into_iter().enumerate() {
-                                salt_words[col * band + local] = value.as_canonical_u64();
-                            }
-                            work.salt_candidate_bytes += rng.position() - current[row];
-                            current[row] = rng.position();
-                        }
-                        runtime.pcs_upload(&salt_buffer, 0, &salt_words)?;
-                        runtime.pcs_hash_finish(&ring, &salt_buffer, &mut roots, first)?;
-                        phase.checkpoint(|| json!({"completed_groups": group, "completed_salt_leaves_in_group": first + band,
+                        work.salt_candidate_bytes = runtime.pcs_private_hash_finish(
+                            private.as_ref().unwrap(), &ring, &mut roots, group, first)?;
+                        phase.checkpoint(|| json!({"completed_groups": group, "submitted_salt_leaves_in_group": first + band,
+                            "completed_salt_groups": group + usize::from(first + band == group_rows),
                             "salt_candidate_bytes": work.salt_candidate_bytes, "native": runtime.stats().ok()}))?;
+                    }
+                    if group + 1 == groups {
+                        work.salt_candidate_bytes = runtime.pcs_salts_complete(private.take().unwrap(), current)?;
                     }
                     runtime.release_buffer(ring)?; // Merkle outputs never overlap the ring
                     for _ in 0..5 {
@@ -943,7 +946,7 @@ impl Code {
                 }
                 runtime.release_buffer(frontier)?;
                 runtime.release_buffer(pads)?; runtime.release_buffer(twiddles)?;
-                runtime.release_buffer(tiles)?; runtime.release_buffer(salt_buffer)?;
+                runtime.release_buffer(tiles)?;
                 let after = runtime.stats()?;
                 if source_visits != code.live as u64 * groups as u64 {
                     return runtime.abort("resident W column coverage differs");
@@ -963,7 +966,9 @@ impl Code {
             })?;
             Ok((root, ZkWhirReplayHandle::new(Oracle { tree: Arc::new(tree), base: true, lease: None })))
         })();
-        if let Err(error) = &result { let _ = runtime.abort::<()>(error); }
+        if let Err(error) = &result {
+            if let Ok(mut runtime) = owner.lock() { let _ = runtime.abort::<()>(error); }
+        }
         result
     }
 }
@@ -2814,7 +2819,14 @@ mod tests {
         assert_eq!(end["event"]["work"]["equivalent_source_scans"], groups);
         let stats = owner.lock().unwrap().stats().unwrap();
         assert_eq!(stats.arena_bytes, 0);
-        assert_eq!(stats.d2h_bytes, (132 * groups + (2 * height / cut - 1) * 32) as u64);
+        let salts = events.iter().find(|r| r["event"]["phase"] == "pcs_salts_prescan_gpu"
+            && r["event"]["complete"] == true).unwrap();
+        assert_eq!(salts["event"]["work"]["native_h2d_bytes"], 168);
+        assert_eq!(salts["event"]["work"]["chunks"], 1);
+        // Flags/digests, one prescan result, start/subtree/end offsets,
+        // and one checked replay-consumption counter per completed group.
+        assert_eq!(stats.d2h_bytes,
+            (140 * groups + (2 * height / cut - 1) * 32 + 44 + 16 * rows + 8 * height / cut) as u64);
         let started = std::time::Instant::now();
         let reference = ReplayModel::new(Domain::Flat(15), [91; 32], [73; 32], get, live).unwrap();
         let reference_s = started.elapsed().as_secs_f64();
@@ -2949,10 +2961,14 @@ mod tests {
         assert_eq!(*model.byte_histogram.lock().unwrap(), Some(histogram));
         let stats = owner.lock().unwrap().stats().unwrap();
         assert_eq!(stats.arena_bytes, before.arena_bytes);
-        // Original words stay resident: only flags, one 256-bin histogram
-        // and the bounded digest cache leave the owner during this commit.
+        let salts = events.iter().find(|r| r["event"]["phase"] == "pcs_salts_prescan_gpu"
+            && r["event"]["complete"] == true).unwrap();
+        assert_eq!(salts["event"]["work"]["native_h2d_bytes"], 168);
+        assert_eq!(salts["event"]["work"]["chunks"], 1);
+        // Resident original words never leave the owner. Account flags,
+        // histogram, digest cache and all private sampler control transfers.
         assert_eq!(stats.d2h_bytes - before.d2h_bytes,
-            (8 * groups + 2048 + (2 * height / cut - 1) * 32) as u64);
+            (16 * groups + 2048 + (2 * height / cut - 1) * 32 + 44 + 16 * rows + 8 * height / cut) as u64);
         let started = std::time::Instant::now();
         let reference = ReplayModel::new_scanned(Domain::Flat(15), [91; 32], [73; 32],
             f.get, f.scan, f.window, f.bytes.len()).unwrap();
@@ -3126,16 +3142,24 @@ mod tests {
         let parts = json!({"ring": rows * 32 * 8 * 8, "cv": rows * 32 * 32,
             "low_powers": rows * 32 * 8, "high_powers": 257 * 32 * 8,
             "twiddles": rows * 8, "pads": 128 * 1536 * 8, "frontier": rows * 7 * 32,
-            "salt_band": 65536 * 4 * 8, "weight_and_hash_flags": 2 * 256,
+            "salt_band": 65536 * 4 * 8, "salt_row_cursors": rows * 8,
+            "salt_metadata": 256, "weight_and_hash_flags": 2 * 256,
             "tiles": (3156 * 40 + 255) & !255});
         let device = parts.as_object().unwrap().values().map(|v| v.as_u64().unwrap()).sum::<u64>();
-        assert_eq!(device, 3_736_793_344);
+        assert_eq!(device, 3_745_182_208);
+        // Prescan scratch/subtree indices retire before any field buffers.
+        let prescan = 10_519_552 + 256 + 2 * rows * 8;
+        assert!(prescan < device as usize);
         let named_host = 2 * rows * 8 + (2 * rows - 1) * 32 + 2 * 128 * 1536 * 8
-            + 65536 * 4 * 8 + 3156 * 40 + 37152;
+            + 3156 * 40 + 37288;
         let envelope = device + named_host as u64 + 785_789_696;
         assert!(envelope < crate::c71_matrix::census::PAYLOAD_LIMIT);
         println!("C71_NATIVE_W_RESOURCE_ENVELOPE {}", json!({"rows": rows, "cut": cut,
             "groups": 128, "device_parts": parts, "device_component_bytes": device,
+            "device_prescan_phase_bytes": prescan, "host_salt_band_bytes": 0,
+            "salt_h2d_bytes": 168, "salt_d2h_control_minimum_bytes": 44u64 * 1024 + 16 * rows as u64
+                + 8 * ((1u64 << 32) / cut as u64) + 8 * 128,
+            "prescan_minimum_chunks": 1024,
             "named_host_payload_bytes": named_host, "component_plus_device_replay_upper_bytes": envelope,
             "remaining_payload_for_other_host_owners_bytes": crate::c71_matrix::census::PAYLOAD_LIMIT - envelope,
             "scope": "geometry screen before other host owners; their actual capacities are charged by the joint counter",
@@ -3155,18 +3179,25 @@ mod tests {
         }
         assert!(replay_tree::native_source_geometry(512).is_err());
         let common = json!({"values":128 * 4 * rows * 8,"frontier":rows * groups.ilog2() as usize * 32,
-            "twiddles":rows * 8,"pads":128 * 1536 * 8,"salt_band":65536 * 4 * 8});
+            "twiddles":rows * 8,"pads":128 * 1536 * 8,"salt_band":65536 * 4 * 8,
+            "salt_row_cursors":rows * 8,"salt_metadata":256});
         let common_bytes = common.as_object().unwrap().values().map(|v| v.as_u64().unwrap()).sum::<u64>();
         let accumulation = common_bytes + (4 * rows * 8 + 129 * 4 * 8 + 256 * 8 + 256) as u64;
         let hashing = common_bytes + (4 * rows * 32 + 256) as u64;
+        let prescan = 10_519_552 + 256 + rows * 8 + ((1usize << 31) / cut) * 8;
+        assert!(prescan < accumulation as usize);
         let named_host = (2 * ((1usize << 31) / cut) - 1) * 32 + rows * 8
-            + ((1usize << 31) / cut) * 8 + 128 * 1536 * 8 + 65536 * 4 * 8 + 256 * 8 + 37152;
+            + ((1usize << 31) / cut) * 8 + 128 * 1536 * 8 + 256 * 8 + 37288;
         let envelope = accumulation.max(hashing) + 785_789_696 + named_host as u64;
         assert!(envelope < crate::c71_matrix::census::PAYLOAD_LIMIT);
         println!("C71_NATIVE_A_RESOURCE_ENVELOPE {}", json!({"rows":rows,"cut":cut,"groups":groups,
             "cosets_per_reconstruction":4,"columns_per_reconstruction":128,
             "common_device_parts":common,"device_accumulation_phase_bytes":accumulation,
             "device_hash_phase_bytes":hashing,"named_host_bytes":named_host,
+            "device_prescan_phase_bytes":prescan,"host_salt_band_bytes":0,"salt_h2d_bytes":168,
+            "salt_d2h_control_minimum_bytes":44u64 * 512 + 16 * rows as u64
+                + 8 * ((1u64 << 31) / cut as u64) + 8 * groups as u64,
+            "prescan_minimum_chunks":512,
             "component_plus_device_replay_upper_bytes":envelope,
             "remaining_payload_for_other_host_owners_bytes":crate::c71_matrix::census::PAYLOAD_LIMIT-envelope,
             "scope":"phase envelope before other host owners; no full pipeline/physical memory claim",

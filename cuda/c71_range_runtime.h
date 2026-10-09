@@ -9,12 +9,14 @@
 #include "c71_pcs_hash.cuh"
 #include "c71_pcs_weight.cuh"
 #include "c71_pcs_source.cuh"
+#include "c71_pcs_salts.cuh"
 
 struct C71RangeContext;
 using C71RangeAccount = int (*)(int64_t);
 enum C71RangeKind : uint32_t { C71_U8, C71_I16, C71_PAIR, C71_CHILDREN, C71_GRAM, C71_CUBIC, C71_I64, C71_BYTE_PENDING, C71_HISTOGRAM_PENDING,
     C71_PCS_BASE, C71_PCS_HASH_PENDING, C71_PCS_DIGEST, C71_PCS_FRONTIER_PENDING,
-    C71_PCS_WEIGHT_TILES, C71_PCS_POWERS, C71_PCS_SOURCE_PENDING, C71_PCS_BYTE_COUNTS_PENDING };
+    C71_PCS_WEIGHT_TILES, C71_PCS_POWERS, C71_PCS_SOURCE_PENDING, C71_PCS_BYTE_COUNTS_PENDING,
+    C71_PCS_PRIVATE };
 struct C71RangeStats {
     // ABI 4: actual live device reservations (released after fence), aligned
     // capacities and logical payload. create() sets a budget, not a slab.
@@ -132,4 +134,16 @@ int c71_pcs_full_leaves(C71RangeContext*,uint64_t first,uint64_t second,uint64_t
     uint64_t output,uint64_t first_row,uint64_t rows);
 // Bounded digest publication only; no base values or intermediate CV spill.
 int c71_pcs_read_digests(C71RangeContext*,uint64_t input,uint64_t first,uint64_t count,void* output);
+// Private coins are capability-bound, inaccessible to generic allocation,
+// upload/read/release or numerical producers. Only one session per owner.
+int c71_pcs_salts_begin(C71RangeContext*,const uint8_t seed[32],c71_salts::Geometry,
+    uint32_t group_cosets,uint32_t candidate_capacity,uint64_t* session);
+int c71_pcs_salts_prescan(C71RangeContext*,uint64_t session,c71_salts::Progress*);
+int c71_pcs_salts_indices(C71RangeContext*,uint64_t session,uint64_t* starts,uint64_t rows,
+    uint64_t* offsets,uint64_t count);
+int c71_pcs_leaf_finish_private(C71RangeContext*,uint64_t session,uint64_t ring,uint64_t states,
+    uint32_t group,uint64_t first,uint64_t count,uint64_t* completed_bytes);
+int c71_pcs_full_leaves_private(C71RangeContext*,uint64_t session,uint64_t first_values,uint64_t second_values,
+    uint64_t states,uint32_t group,uint64_t first,uint64_t count,uint64_t* completed_bytes);
+int c71_pcs_salts_complete(C71RangeContext*,uint64_t session,uint64_t* current,uint64_t rows,uint64_t* consumed);
 }

@@ -60,6 +60,43 @@ static int launch(cudaStream_t s,std::function<void()> operation) {
     ++launches; if(fail_launch) return 1;
     s->pending.push_back(std::move(operation)); return 0;
 }
+// Sequential oracle for deferred owner/lifetime tests. It does not emulate
+// the CUDA hierarchy; that scheduling still requires real kernel execution.
+extern "C" int c71_pcs_salts_prescan_launch(cudaStream_t stream,const c71_salts::Descriptor* d,
+    c71_salts::Chunk c,c71_salts::Geometry g,uint8_t*,uint32_t*,uint32_t*,uint32_t*,
+    uint64_t* starts,uint64_t* offsets,c71_salts::Progress* progress,uint32_t* failed,unsigned* attempted) {
+    *attempted=fail_launch?1:c.candidates?4:1;
+    return launch(stream,[=] {
+        uint64_t cursor=c.cursor,accepted=c.accepted;
+        starts[0]=offsets[0]=g.origin;
+        c71_salts::BlockCache cache;
+        for(uint32_t i=0;i<c.candidates && accepted<c.target;++i) {
+            uint64_t value=0;
+            if(!c71_salts::candidate(*d,cursor,cache,value)) { *failed=1; break; }
+            cursor+=8;
+            if(value>=c71_salts::MODULUS) continue;
+            ++accepted;
+            if(!(accepted%(4*g.cosets)) && accepted/(4*g.cosets)<g.rows)
+                starts[accepted/(4*g.cosets)]=cursor;
+            if(!(accepted%(4*g.cut)) && accepted/(4*g.cut)<g.rows*g.cosets/g.cut)
+                offsets[accepted/(4*g.cut)]=cursor;
+        }
+        if((accepted<c.target && c71_salts::CAP-cursor<8) || fail_dense) *failed=1;
+        *progress={cursor,accepted,cursor-g.origin,c71_salts::physical_blocks(c),*failed,uint32_t(accepted==c.target)};
+    });
+}
+extern "C" int c71_pcs_salts_replay_launch(cudaStream_t stream,const c71_salts::Descriptor* d,
+    uint64_t* current,uint64_t rows,uint64_t first,uint64_t count,uint64_t* salts,uint64_t* consumed,uint32_t* failed) {
+    return launch(stream,[=] {
+        for(uint64_t local=0;local<std::min(count,rows);++local) {
+            const uint64_t row=(first%rows+local)%rows;
+            uint64_t bytes=0;
+            if(!c71_salts::replay_row(*d,current[row],rows,first,count,row,salts,bytes)) *failed=1;
+            *consumed+=bytes;
+        }
+        if(fail_dense) *failed=1;
+    });
+}
 extern "C" int c71_pcs_hash_launch(cudaStream_t stream,unsigned operation,const uint64_t* ring,
     const uint64_t* salts,c71_pcs::Hash32* states,uint64_t rows,uint64_t first,uint64_t count,
     unsigned column,uint32_t* failed) {

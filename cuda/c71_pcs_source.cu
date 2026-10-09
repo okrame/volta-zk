@@ -10,7 +10,7 @@ __device__ void add_field(uint64_t* output,uint64_t value) {
     auto old=atomicCAS(target,0ULL,0ULL);
     for(;;) {
         const auto before=old;
-        old=atomicCAS(target,before,c71_range::fp_add(before,value));
+        old=atomicCAS(target,before,fp_add(before,value));
         if(old==before) return;
     }
 }
@@ -37,7 +37,7 @@ __global__ void tile(const void* input,unsigned kind,c71_pcs::SourceTile t,
             const uint64_t within=index%s.message_rows, row=within%s.rows, q=within/s.rows;
             uint64_t* output=(column<64?first:second)+uint64_t(column%64)*4*s.rows;
             for(unsigned lane=0;lane<4;++lane)
-                add_field(output+uint64_t(lane)*s.rows+row,c71_range::fp_mul(byte,high[q*4+lane]));
+                add_field(output+uint64_t(lane)*s.rows+row,fp_mul(byte,high[q*4+lane]));
             if(counts) atomicAdd(histogram+byte,1u);
         }
     }
@@ -54,7 +54,7 @@ __global__ void pad(uint64_t* values,const uint64_t* pads,const uint64_t* low,co
     const unsigned column=first_column+unsigned(i/(4*s.rows)), lane=unsigned((i/s.rows)%4);
     const uint64_t row=i%s.rows;
     for(uint64_t j=row;j<s.pad_rows;j+=s.rows)
-        if(pads[uint64_t(column)*s.pad_rows+j]>=c71_range::P) { atomicExch(failed,1); return; }
+        if(pads[uint64_t(column)*s.pad_rows+j]>=P) { atomicExch(failed,1); return; }
     values[i]=c71_pcs::padded(values[i],pads,low,high,s,column,row,lane);
 }
 __global__ void leaves(const uint64_t* first,const uint64_t* second,const uint64_t* salts,
@@ -77,7 +77,7 @@ __global__ void leaves(const uint64_t* first,const uint64_t* second,const uint64
 extern "C" cudaError_t c71_pcs_source_powers_launch(cudaStream_t stream,uint64_t* low,uint64_t* high,c71_pcs::SourceShape s) {
     if(!stream || !low || !high || low==high || !c71_pcs::valid(s)) return cudaErrorInvalidValue;
     const uint64_t count=std::max(4*s.rows,4*c71_pcs::high_rows(s));
-    const uint64_t omega=c71_pcs::power(7,(c71_range::P-1)/(s.rows*s.cosets));
+    const uint64_t omega=c71_pcs::power(7,(P-1)/(s.rows*s.cosets));
     powers<<<unsigned((count+255)/256),256,0,stream>>>(low,high,s,omega);
     return cudaGetLastError();
 }

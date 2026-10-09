@@ -31,6 +31,14 @@ quantificato, senza consumer accelerato selezionato.
 Il conto per fasi è nominato, `joint_admitted:false`; la
 [revisione locale dei lifetime](../c7.1-history/crypto-retirement-short-merkle-2026-10-09.md)
 conserva anche il timeout della prova composta.
+Il [conto locale tipato](../c7.1-history/crypto-capacity-close-2026-10-09.md) ha 653 fasi, massimo
+5.878.675.986 B e soli 26.904.046 B residui nel payload. Il manifest del
+trial deve vincolare capacità dei path/argv ≤4.096 B e identità
+Γ/layout/toolchain applicabili; non trasformare questa premessa in
+un'allocazione gratuita. Ricontare nuove modifiche prima del trial;
+misurare allowance, residenza fisica e margine congiunto sulla H100.
+La parità lineare ridotta passa; il test completo KV e la catena AES
+composta conservano timeout locali. Questi non sono risultati hardware.
 Accumulo W ordinario e QK/PV scalari rimangono default; le candidate Tensor/MMA
 sono confronti espliciti. Parità host e driver simulato non attribuiscono
 compilazione sm_90, parità CUDA, prestazioni o picco fisico H100.

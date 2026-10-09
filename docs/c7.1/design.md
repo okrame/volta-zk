@@ -152,15 +152,19 @@ target della risposta. Fattori, FFT dispari, range e producer restano costi
 separati; almeno 581 scan complete dell'A corrente precedono le richieste
 parziali e gli altri consumer.
 
-Il [conto per lifetime](../../benchmarks/results/c71-crypto-resource-inventory-local-2026-10-09-b19822b8a3fb.json)
-resta senza ammissione congiunta. Il massimo nominato è A3 accumulo,
-5.744.879.732 B, prima delle capacità aggiuntive. Sette classi hanno formule
-dei payload principali; restano metadati tipati, wire/decoder, forme prima
-dello shrink e wrapper/telemetria. Sono i prossimi controlli locali concreti,
-insieme alla scelta di una valutazione RMS meno costosa sugli stessi circuiti. La
-[revisione dei lifetime](../c7.1-history/crypto-retirement-short-merkle-2026-10-09.md)
-rilascia batch/prove dopo le rispettive chiusure; il test composto a tre
-risposte rimane incompleto al limite locale. Valutare TMA, fusioni e CUDA Graphs
+Il [conto tipato aggiornato](../../benchmarks/results/c71-crypto-capacity-local-2026-10-09-d4215fafd878.json) enumera 653 fasi e le 11
+classi di allocazione. Nessun subtotal modellato supera il payload di
+5.905.580.032 B; il massimo è la query S2 A3, 5.878.675.986 B,
+con 26.904.046 B residui. Rimane condizionato alle capacità dei path/argv
+≤4.096 B ed alle identità Γ/layout registrate; `joint_admitted:false`
+conserva il confine rispetto al picco fisico non misurato.
+Il [checkpoint capacità](../c7.1-history/crypto-capacity-close-2026-10-09.md) chiude i bound tipati di profili,
+wire/decoder, forme, telemetria, setup AES e compilatore RMS. Preflight
+pubblico prima di W/history e compattazione KV preservano byte/FS/MAC;
+le batch P/V appartengono a fasi successive, non simultanee.
+RMS resta da accelerare sugli stessi circuiti. La catena AES composta e
+un test KV completo rimangono incompleti a 60 s locali; non ereditano
+crediti dai componenti positivi. Valutare TMA, fusioni e CUDA Graphs
 su costi misurati. Il confronto W ordinario/Tensor e la selezione QK/PV
 richiedono compilazione, parità e misura GPU nella futura campagna.
 
@@ -213,6 +217,7 @@ locali sono `credit:false`, senza compilazione o esecuzione CUDA.
 | [Lifetime PCS e hash extension paired](../c7.1-history/crypto-retirement-short-merkle-2026-10-09.md) | Rilascio batch/prove, BLAKE3 pinned e regressione sali; hash S1 non selezionato, timeout composto conservato |
 | [S1 e query extension sul common owner](../c7.1-history/crypto-residual-query-2026-10-09.md) | Route canonica, parità WHIR D10 A/W e guard privati; query iniziali W ancora CPU, conto nominato non ammesso, nessuna compilazione/esecuzione CUDA |
 | [Query W, profilo del caller e audit di convergenza](../c7.1-history/crypto-local-convergence-2026-10-09.md) | 14 filtri Rust e tre test Python passano; RMS sul Γ ammesso quantificato parzialmente, timeout della catena AES conservato, quattro classi di capacità aperte |
+| [Capacità tipate e preflight originali](../c7.1-history/crypto-capacity-close-2026-10-09.md) | Parità lineare D10 esatta; 653 fasi con bound condizionati, picco fisico e accelerazione RMS ancora aperti |
 | [Regole operative](../c7.1-history/operating-rules-2026-10-08.md), [temporanei](../c7.1-history/temporary-memory-2026-10-04.md) | Ragioni delle decisioni; autorizzazioni correnti definite nel [runbook](runpod-tests.md#autorizzazione-e-limiti) |
 
 ## Contratto delle risorse

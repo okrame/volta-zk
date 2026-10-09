@@ -782,3 +782,12 @@ seconda arena o fallback. La riserva fisica di 256 MiB è un'ipotesi da
 verificare sulla H100, non un lemma o una misura. Bound di allocazione,
 subtotal analitici e test ridotti non provano completamento canonico,
 picco fisico o prestazioni. I lemmi congelati non cambiano.
+
+Il [preflight delle forme originali](../c7.1-history/crypto-capacity-close-2026-10-09.md) ripete prima di W e delle
+root A storiche gli stessi controlli pubblici del bind. Non legge valori,
+tag o chiavi, non emette record FS e non consuma correlazioni. Un rifiuto
+anticipato resta terminale nella riserva già bruciata. Compattazione dei
+vettori KV e trasferimento delle forme W conservano ordine, coefficienti,
+endpoint originali e byte; il test lineare completo confronta wire/FS/MAC.
+I bound tipati di memoria restano condizionati al manifest e distinti dal
+picco fisico: non scaricano le premesse formali o Seed6 sopra dichiarate.

@@ -1109,23 +1109,27 @@ di query, S1 e cache iniziali A1..A3; il
 [record del checkpoint](../../benchmarks/results/c71-crypto-residual-query-local-2026-10-09-9a5da712a258.json) lega il backend `s1-prepared`
 alle shape correnti di tutti gli stadi extension nativi. È uno screen
 nominato con `joint_admitted:false`, non un
-conto completo. Il [conto aggiornato](../../benchmarks/results/c71-crypto-resource-inventory-local-2026-10-09-b19822b8a3fb.json)
-enumera 460 fasi: A3 accumulo è 5.744.879.732 B, A3 hash 5.595.450.452 B;
-S2 A3 query publication, Writer incluso, è 5.642.161.460 B. I subtotal
-precedono le ulteriori capacità. Hash, W e consumer delle plane trattenute
-usano stato numerico persistente; replay e padding host esistono nelle
-scansioni originali A. Nessuna ricostruzione è aggiunta.
-Le 11 classi dell'inventario sono esplicite:
-layout/Arc/metadati e tabelle pubbliche, costruzione/conversioni/cache DFT
-dei fattori query, batch già aperti, PCG/VOLE/journal di entrambi i ruoli,
-prove/codec/framing e realloc, GKR/range/numerica fuori dall'envelope,
-EQ/PowerBlocks e bande di contrazione host, forme/endpoint/marshalling,
-metadata/flag/workspace degli altri consumer, temporanei finali bounded
-e nuove cache/pad del base case. Non sostituirle con uno
-slot fisso o un residuo gratuito. Sette classi hanno formule dei payload
-principali; restano quattro chiusure tipate: sei profili/metadati,
-body/decoder/proof, costruzione delle forme prima dello shrink/bind e
-wrapper/telemetria. Il
+conto completo. Il [conto tipato aggiornato](../../benchmarks/results/c71-crypto-capacity-local-2026-10-09-d4215fafd878.json) enumera 653 fasi.
+A3 accumulo è 5.834.526.966 B; il massimo query S2 A3 è
+5.878.675.986 B, lasciando 26.904.046 B al payload. Tutte le 11 classi
+hanno termini espliciti: profili/layout/Arc/tabelle, fattori query CPU,
+aperture già trattenute, AES/VOLE/journal, prove/codec/framing,
+GKR/range, EQ/PowerBlocks, forme originali, wrapper/telemetria,
+temporanei finali bounded e nuove maschere/pad del base case.
+Si contano sei profili reali Γ (49.103.484 B); le forme P/V sono
+alternative perché il certificato completo viene trasmesso dopo il
+ritorno del prover. Il costruttore KV compatta anche le forme storiche;
+la prevalidazione pubblica di entrambe le batch prima di W/history
+applica gli stessi cap/arity/alignment/span di `linear::bind`, senza FS
+né consumo di correlazioni. Gli upper dei costruttori prima di questa
+validazione restano senza clamp: superarvi MAX non prova un rifiuto reale.
+Setup MR19/guard/cGGM aggiunge un upper di 2.263.972 B oltre ai seed;
+compilazione/pruning RMS è al più 723.826.724 B, stato preparato
+457.659.280 B. I temporanei compiler muoiono prima di CompactFrames.
+Questi sono bound da sorgente su Γ/layout/toolchain fissati, non tempi.
+Restano la premessa path/argv ≤4.096 B del manifest e la misura fisica;
+`joint_admitted:false`. Nessuna ricostruzione A è aggiunta.
+Il
 [ledger eseguibile](../../scripts/c71_temporary_ledger.py) conserva il
 percorso legacy e la sua provenienza; i vecchi record non cambiano. Il
 [record dei lifetime](../../benchmarks/results/c71-crypto-retirement-local-2026-10-09-96b69ded52c1.json)

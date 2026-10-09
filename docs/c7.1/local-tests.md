@@ -63,7 +63,7 @@ test -d "$C71_LLD_DIR"
 timeout -k 5s 60s cargo rustc --offline --locked -j 1 -p volta-pcs \
   --features c71-seed6-reference --lib --profile test \
   --config profile.dev.package.volta-pcs.opt-level=0 \
-  --config profile.dev.package.volta-pcs.codegen-units=256 -- \
+  --config profile.dev.package.volta-pcs.codegen-units=128 -- \
   -Clink-arg=-fuse-ld=lld "-Clink-arg=-B$C71_LLD_DIR" -Clink-arg=-Wl,--threads=1
 cargo build --offline --locked -j 1 -p volta-pcs \
   --features c71-b12-pcs --example c71_calibration
@@ -73,7 +73,7 @@ cd "$C71_ROOT"
 ```
 
 Eseguire da `rust` per caricare `rust/.cargo/config.toml`: dipendenze O2,
-crate test O0, 256 codegen unit, un job, incremental disabilitato e
+crate test O0, 128 codegen unit, un job, incremental disabilitato e
 overflow checks conservati. `cargo rustc --lib --profile test` produce
 il binario unit-test e applica gli argomenti finali al solo crate scelto
 ([Cargo](https://doc.rust-lang.org/cargo/commands/cargo-rustc.html)).
@@ -622,3 +622,22 @@ la directory a [c71_temporary_ledger.py](../../scripts/c71_temporary_ledger.py).
 Il report include esplicitamente la riserva fisica non ancora misurata.
 Un run di record parte dal commit di implementazione pulito; i record
 precedenti, inclusi fallimenti e filtri vuoti, non vanno sovrascritti.
+
+Il [checkpoint capacità](../c7.1-history/crypto-capacity-close-2026-10-09.md) registra build O0/128 unit in
+56,98 s, un job e picco RSS aggregato 2.560.106.496 B, senza AS per la
+compilazione. I filtri nuovi, sempre separati AS 2 GiB/60 s, sono
+`c71_canonical_public_metadata_`,
+`c71_canonical_forms_constructor_capacity_public_upper_bounds`,
+`c71_wire_typed_heap_counts_option_vectors_and_moving_growth`,
+`c71_b12_linear_exact_record_capacity_preserves_bytes_and_transcript`,
+`c71_b12_linear_preflight_caps_and_compaction_preserve_originals` e
+`c71_canonical_original_batch_take_preserves_order_mac_and_rejects_mismatch`.
+La parità lineare nativa completa passa in 43,71 s dopo avere aggiornato
+solo l'arena della fixture a 2 MiB per i fattori residenti W. Fallimento
+precedente e correzione del record bind (identity u32, quattro byte)
+sono conservati. Il filtro
+`c71_b12_gemma_kv_original_macs_split_across_three_ranged_roots_with_fresh_rows`
+ha raggiunto 60 s: non ripeterlo sulla VM con un limite più alto.
+Il ledger `--backend s1-prepared` richiede anche i marker tipati
+CAPACITY, TELEMETRY, CLASS8_FORMS e CANONICAL_WIRE_HEAP, oltre alle
+ricevute di geometria/owner riusate: input e hash sono nel record.

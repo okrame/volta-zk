@@ -1318,7 +1318,7 @@ impl Code {
                     let ring = runtime.pcs_ring(rows)?;
                     let mut fill = |runtime: &mut device::Runtime, column: usize, slots| -> Result<(), String> {
                         shape.first_column = column as u32; shape.slots = slots;
-                        runtime.pcs_weight_columns(&tiles, &pads, &low, &high, &twiddles, &ring, shape)?;
+                        runtime.pcs_weight_columns_tensor(&tiles, &pads, &low, &high, &twiddles, &ring, shape)?;
                         let first = column * n;
                         source_visits += code.live.min(first + 4 * n).saturating_sub(first) as u64;
                         phase.checkpoint(|| json!({"completed_groups": group, "active_first_coset": 32 * group,

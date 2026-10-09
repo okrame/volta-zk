@@ -1,4 +1,4 @@
-// Candidate exact Tensor Core accumulation; NOT selected by the owner/runner.
+// Exact Tensor Core accumulation selected by the owner/runner.
 // Shares the original packed W, WeightShape, powers, pads and output ring.
 #pragma once
 #include "c71_pcs_weight.cuh"

@@ -1,4 +1,4 @@
-// Comparison candidate only. No allocation, owner/ABI selection, reset,
+// Exact accumulation selected by the runner. No allocation, owner reset,
 // host fence, field download, CPU fallback, RNG, transcript or MAC.
 #include <cuda_runtime.h>
 #include "c71_pcs_weight_tensor.cuh"
@@ -108,9 +108,9 @@ __global__ void accumulate(const int16_t* weights,const c71_pcs::WeightTile* til
 }
 }
 
-// SAME pointer/shape contract as c71_pcs_weight_launch. A future comparison
-// hook must use the existing owner's borrowed handles/stream and sticky flag,
-// validate capacities/public tiles and fence/check BEFORE publishing to hash.
+// SAME pointer/shape contract as c71_pcs_weight_launch. The owner uses borrowed
+// handles/stream and its sticky flag, validates capacities/public tiles and
+// fences/checks BEFORE publishing to hash.
 // The owner's existing finite FFT and terminal flag guard remain shared. This
 // launcher alone is not a new owner and does not certify pointer provenance.
 extern "C" cudaError_t c71_pcs_weight_tensor_launch(cudaStream_t stream,const int16_t* weights,

@@ -1127,7 +1127,7 @@ impl Runtime {
         let status = unsafe { (self.api.pcs_weight)(self.raw, tiles.id, pads.id, low.id, high.id, twiddles.id, ring.id, shape) };
         self.check(status)
     }
-    /// Explicit comparison only; the runner keeps ordinary accumulation.
+    /// Exact limb16 accumulation selected after H100 parity and timing.
     /// Same owner, source/powers, finite FFT and publication guard in C.
     pub(in crate::c71_matrix) fn pcs_weight_columns_tensor(&mut self, tiles: &Buffer, pads: &Buffer,
         low: &Buffer, high: &Buffer, twiddles: &Buffer, ring: &Buffer, shape: WeightShape) -> Result<(), String> {

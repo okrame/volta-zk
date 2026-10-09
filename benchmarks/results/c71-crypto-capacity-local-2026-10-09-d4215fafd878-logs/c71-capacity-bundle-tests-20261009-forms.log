@@ -1,0 +1,57 @@
+
+running 1 test
+test c71_matrix::gemma::native::canonical::forms_capacity_tests::c71_canonical_forms_constructor_capacity_public_upper_bounds ... C71_CLASS8_CONSTRUCTOR {"slot":0,"name":"public_affine","targets":1,"cube_upper":8688,"scalar_temporary_upper":16,"construction_payload_upper":15668968}
+C71_CLASS8_CONSTRUCTOR {"slot":0,"name":"public_argmax","targets":1,"cube_upper":56,"scalar_temporary_upper":16,"construction_payload_upper":131368}
+C71_CLASS8_CONSTRUCTOR {"slot":0,"name":"public_causal","targets":1,"cube_upper":23880,"scalar_temporary_upper":16,"construction_payload_upper":43014568}
+C71_CLASS8_CONSTRUCTOR {"slot":0,"name":"public_softmax_zero","targets":1,"cube_upper":151560,"scalar_temporary_upper":16,"construction_payload_upper":272838568}
+C71_CLASS8_CONSTRUCTOR {"slot":0,"name":"P0_A_pullback","targets":1545,"cube_upper":18958,"scalar_temporary_upper":15395,"construction_payload_upper":62170672}
+C71_CLASS8_CONSTRUCTOR {"slot":0,"name":"RMS_originals_and_joint","targets":1264,"cube_upper":183560,"scalar_temporary_upper":16,"construction_payload_upper":330711376}
+C71_CLASS8_CONSTRUCTOR {"slot":0,"name":"original_RNE","targets":410,"cube_upper":6160,"scalar_temporary_upper":16,"construction_payload_upper":11206912}
+C71_CLASS8_CONSTRUCTOR {"slot":0,"name":"whole_table_RNE","targets":964,"cube_upper":13005,"scalar_temporary_upper":16,"construction_payload_upper":23647576}
+C71_CLASS8_CONSTRUCTOR {"slot":0,"name":"GELU_lookup","targets":3,"cube_upper":32640,"scalar_temporary_upper":16,"construction_payload_upper":58783000}
+C71_CLASS8_CONSTRUCTOR {"slot":0,"name":"gate_up","targets":3,"cube_upper":34560,"scalar_temporary_upper":16,"construction_payload_upper":62239000}
+C71_CLASS8_CONSTRUCTOR {"slot":0,"name":"RoPE","targets":2,"cube_upper":5760,"scalar_temporary_upper":16,"construction_payload_upper":10398784}
+C71_CLASS8_CONSTRUCTOR {"slot":0,"name":"QK_PV_originals","targets":240,"cube_upper":1440,"scalar_temporary_upper":16,"construction_payload_upper":2674192}
+C71_CLASS8_CONSTRUCTOR {"slot":0,"name":"KV_current","targets":1,"cube_upper":1920,"scalar_temporary_upper":16,"construction_payload_upper":3486568}
+C71_CLASS8_CONSTRUCTOR {"slot":0,"name":"softcap_lookup","targets":3,"cube_upper":274,"scalar_temporary_upper":16,"construction_payload_upper":524200}
+C71_CLASS8_CONSTRUCTOR {"slot":0,"name":"softmax_originals","targets":5,"cube_upper":252480,"scalar_temporary_upper":16,"construction_payload_upper":454495432}
+C71_CLASS8_CONSTRUCTOR {"slot":0,"name":"A_range","targets":2,"cube_upper":35,"scalar_temporary_upper":16,"construction_payload_upper":93784}
+C71_CLASS8_FORMS {"slot":0,"W_targets":775,"A_targets":4446,"W_cube_upper":3642,"A_constructor_cube_upper":734976,"MAX_CUBES":524288,"retained_P_payload_upper":644914704,"retained_V_payload_upper":644663904,"constructor_payload_upper":454495432,"W_bind_record_payload_upper":3196031,"A_bind_record_payload_upper":446713699,"pending_original_payload_upper":6277646,"old_KV_unshrunk_payload_upper":512,"W_bind_extra_payload_upper":41980,"A_bind_extra_payload_upper":218188,"P_constructor_phase_payload_upper":1105688294,"P_W_bind_phase_payload_upper":648153227,"V_W_bind_phase_payload_upper":647902427,"P_A_bind_phase_payload_upper":904751535,"V_A_bind_phase_payload_upper":904538031,"credit":false,"physical_complete":false,"private_W_A_read":false}
+C71_CLASS8_CONSTRUCTOR {"slot":1,"name":"public_affine","targets":1,"cube_upper":8688,"scalar_temporary_upper":16,"construction_payload_upper":15668968}
+C71_CLASS8_CONSTRUCTOR {"slot":1,"name":"public_argmax","targets":1,"cube_upper":56,"scalar_temporary_upper":16,"construction_payload_upper":131368}
+C71_CLASS8_CONSTRUCTOR {"slot":1,"name":"public_causal","targets":1,"cube_upper":23160,"scalar_temporary_upper":16,"construction_payload_upper":41718568}
+C71_CLASS8_CONSTRUCTOR {"slot":1,"name":"public_softmax_zero","targets":1,"cube_upper":217440,"scalar_temporary_upper":16,"construction_payload_upper":391422568}
+C71_CLASS8_CONSTRUCTOR {"slot":1,"name":"P0_A_pullback","targets":1545,"cube_upper":18958,"scalar_temporary_upper":15395,"construction_payload_upper":62170672}
+C71_CLASS8_CONSTRUCTOR {"slot":1,"name":"RMS_originals_and_joint","targets":1264,"cube_upper":183560,"scalar_temporary_upper":16,"construction_payload_upper":330711376}
+C71_CLASS8_CONSTRUCTOR {"slot":1,"name":"original_RNE","targets":410,"cube_upper":6160,"scalar_temporary_upper":16,"construction_payload_upper":11206912}
+C71_CLASS8_CONSTRUCTOR {"slot":1,"name":"whole_table_RNE","targets":964,"cube_upper":13005,"scalar_temporary_upper":16,"construction_payload_upper":23647576}
+C71_CLASS8_CONSTRUCTOR {"slot":1,"name":"GELU_lookup","targets":3,"cube_upper":32640,"scalar_temporary_upper":16,"construction_payload_upper":58783000}
+C71_CLASS8_CONSTRUCTOR {"slot":1,"name":"gate_up","targets":3,"cube_upper":34560,"scalar_temporary_upper":16,"construction_payload_upper":62239000}
+C71_CLASS8_CONSTRUCTOR {"slot":1,"name":"RoPE","targets":2,"cube_upper":5760,"scalar_temporary_upper":16,"construction_payload_upper":10398784}
+C71_CLASS8_CONSTRUCTOR {"slot":1,"name":"QK_PV_originals","targets":240,"cube_upper":1440,"scalar_temporary_upper":16,"construction_payload_upper":2674192}
+C71_CLASS8_CONSTRUCTOR {"slot":1,"name":"KV_current","targets":1,"cube_upper":36000,"scalar_temporary_upper":16,"construction_payload_upper":64830568}
+C71_CLASS8_CONSTRUCTOR {"slot":1,"name":"softcap_lookup","targets":3,"cube_upper":274,"scalar_temporary_upper":16,"construction_payload_upper":524200}
+C71_CLASS8_CONSTRUCTOR {"slot":1,"name":"softmax_originals","targets":5,"cube_upper":354960,"scalar_temporary_upper":16,"construction_payload_upper":638959432}
+C71_CLASS8_CONSTRUCTOR {"slot":1,"name":"A_range","targets":2,"cube_upper":35,"scalar_temporary_upper":16,"construction_payload_upper":93784}
+C71_CLASS8_FORMS {"slot":1,"W_targets":775,"A_targets":4446,"W_cube_upper":3642,"A_constructor_cube_upper":936696,"MAX_CUBES":524288,"retained_P_payload_upper":820814544,"retained_V_payload_upper":820563744,"constructor_payload_upper":638959432,"W_bind_record_payload_upper":3196031,"A_bind_record_payload_upper":446713699,"pending_original_payload_upper":6277646,"old_KV_unshrunk_payload_upper":3349136,"W_bind_extra_payload_upper":41980,"A_bind_extra_payload_upper":218188,"P_constructor_phase_payload_upper":1469400758,"P_W_bind_phase_payload_upper":827401691,"V_W_bind_phase_payload_upper":827150891,"P_A_bind_phase_payload_upper":904751535,"V_A_bind_phase_payload_upper":904538031,"credit":false,"physical_complete":false,"private_W_A_read":false}
+C71_CLASS8_CONSTRUCTOR {"slot":2,"name":"public_affine","targets":1,"cube_upper":8688,"scalar_temporary_upper":16,"construction_payload_upper":15668968}
+C71_CLASS8_CONSTRUCTOR {"slot":2,"name":"public_argmax","targets":1,"cube_upper":56,"scalar_temporary_upper":16,"construction_payload_upper":131368}
+C71_CLASS8_CONSTRUCTOR {"slot":2,"name":"public_causal","targets":1,"cube_upper":26760,"scalar_temporary_upper":16,"construction_payload_upper":48198568}
+C71_CLASS8_CONSTRUCTOR {"slot":2,"name":"public_softmax_zero","targets":1,"cube_upper":233640,"scalar_temporary_upper":16,"construction_payload_upper":420582568}
+C71_CLASS8_CONSTRUCTOR {"slot":2,"name":"P0_A_pullback","targets":1545,"cube_upper":18958,"scalar_temporary_upper":15395,"construction_payload_upper":62170672}
+C71_CLASS8_CONSTRUCTOR {"slot":2,"name":"RMS_originals_and_joint","targets":1264,"cube_upper":183560,"scalar_temporary_upper":16,"construction_payload_upper":330711376}
+C71_CLASS8_CONSTRUCTOR {"slot":2,"name":"original_RNE","targets":410,"cube_upper":6160,"scalar_temporary_upper":16,"construction_payload_upper":11206912}
+C71_CLASS8_CONSTRUCTOR {"slot":2,"name":"whole_table_RNE","targets":964,"cube_upper":13005,"scalar_temporary_upper":16,"construction_payload_upper":23647576}
+C71_CLASS8_CONSTRUCTOR {"slot":2,"name":"GELU_lookup","targets":3,"cube_upper":32640,"scalar_temporary_upper":16,"construction_payload_upper":58783000}
+C71_CLASS8_CONSTRUCTOR {"slot":2,"name":"gate_up","targets":3,"cube_upper":34560,"scalar_temporary_upper":16,"construction_payload_upper":62239000}
+C71_CLASS8_CONSTRUCTOR {"slot":2,"name":"RoPE","targets":2,"cube_upper":5760,"scalar_temporary_upper":16,"construction_payload_upper":10398784}
+C71_CLASS8_CONSTRUCTOR {"slot":2,"name":"QK_PV_originals","targets":240,"cube_upper":1440,"scalar_temporary_upper":16,"construction_payload_upper":2674192}
+C71_CLASS8_CONSTRUCTOR {"slot":2,"name":"KV_current","targets":1,"cube_upper":18240,"scalar_temporary_upper":16,"construction_payload_upper":32862568}
+C71_CLASS8_CONSTRUCTOR {"slot":2,"name":"softcap_lookup","targets":3,"cube_upper":274,"scalar_temporary_upper":16,"construction_payload_upper":524200}
+C71_CLASS8_CONSTRUCTOR {"slot":2,"name":"softmax_originals","targets":5,"cube_upper":380160,"scalar_temporary_upper":16,"construction_payload_upper":684319432}
+C71_CLASS8_CONSTRUCTOR {"slot":2,"name":"A_range","targets":2,"cube_upper":35,"scalar_temporary_upper":16,"construction_payload_upper":93784}
+C71_CLASS8_FORMS {"slot":2,"W_targets":775,"A_targets":4446,"W_cube_upper":3642,"A_constructor_cube_upper":963936,"MAX_CUBES":524288,"retained_P_payload_upper":844567824,"retained_V_payload_upper":844317024,"constructor_payload_upper":684319432,"W_bind_record_payload_upper":3196031,"A_bind_record_payload_upper":446713699,"pending_original_payload_upper":6277646,"old_KV_unshrunk_payload_upper":66133280,"W_bind_extra_payload_upper":41980,"A_bind_extra_payload_upper":218188,"P_constructor_phase_payload_upper":1601298182,"P_W_bind_phase_payload_upper":913939115,"V_W_bind_phase_payload_upper":913688315,"P_A_bind_phase_payload_upper":904751535,"V_A_bind_phase_payload_upper":904538031,"credit":false,"physical_complete":false,"private_W_A_read":false}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 576 filtered out; finished in 9.01s
+

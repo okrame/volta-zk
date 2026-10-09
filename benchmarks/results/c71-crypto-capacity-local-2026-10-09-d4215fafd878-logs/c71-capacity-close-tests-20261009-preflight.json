@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-c199d592f6a2035a",
+    "c71_b12_linear_preflight_caps_and_compaction_preserve_originals",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk/rust",
+  "exit_code": 0,
+  "wall_s": 0.05158467870205641,
+  "max_rss_bytes": 42991616,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 0.038728,
+  "system_s": 0.011236999999999999,
+  "log": "/tmp/c71-capacity-close-tests-20261009/preflight.log"
+}

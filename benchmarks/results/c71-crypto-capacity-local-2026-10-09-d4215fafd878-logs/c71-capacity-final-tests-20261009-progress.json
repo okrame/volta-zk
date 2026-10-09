@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-c199d592f6a2035a",
+    "c71_progress_durable_prefix_no_overwrite_and_failure",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk/rust",
+  "exit_code": 0,
+  "wall_s": 0.004607236012816429,
+  "max_rss_bytes": 15478784,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 0.001254,
+  "system_s": 0.0030139999999999998,
+  "log": "/tmp/c71-capacity-final-tests-20261009/progress.log"
+}

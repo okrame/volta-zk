@@ -1,0 +1,537 @@
+diff --git a/rust/volta-pcs/src/c71_matrix/b12/replay.rs b/rust/volta-pcs/src/c71_matrix/b12/replay.rs
+--- a/rust/volta-pcs/src/c71_matrix/b12/replay.rs
++++ b/rust/volta-pcs/src/c71_matrix/b12/replay.rs
+@@ -169,6 +169,54 @@
+     inverse: Vec<Goldilocks>,
+     modulus: Vec<Goldilocks>,
+     factor_len: usize,
++}
++
++#[cfg(test)]
++pub(in crate::c71_matrix) fn public_metadata_descriptor_upper(weight_tile_capacity: usize) -> serde_json::Value {
++    use std::mem::{MaybeUninit,size_of};
++    use std::sync::atomic::AtomicU64;
++    fn arc<T>() -> usize {
++        let start=crate::c71_matrix::census::host_layout_bytes();
++        let value=Arc::new(MaybeUninit::<T>::uninit());
++        let bytes=(crate::c71_matrix::census::host_layout_bytes()-start) as usize;
++        drop(value);assert_eq!(crate::c71_matrix::census::host_layout_bytes(),start);bytes
++    }
++    let layouts=super::sourcewise::public_metadata_layouts();
++    // Finite descriptor pool: 4 installed originals + 13 main/source codes
++    // (11 rounds, base source, fresh main) + 23 carried + 23 fresh mask codes.
++    // mask_groups = 1+2*11. Predecessor payloads retire sequentially; this
++    // deliberately overcounts descriptors, not 63 concurrent roots/caches.
++    let models=4usize;
++    let codes=4+13+23+23;
++    let code_arc=arc::<Code>();let tree_arc=arc::<Tree>();
++    let original=models*size_of::<ReplayModel>();
++    let holders=models*(layouts[0]+layouts[1]+2*size_of::<Arc<AtomicU64>>());
++    let prefix=2*35*size_of::<E>();
++    // Each code/getter/lease uses at most six bounded prefixes and four
++    // closures. Capture payloads fit NativeView+prefix descriptor or Arc<Code>.
++    let captures=codes*(4*(16+layouts[2]+size_of::<Vec<E>>()+size_of::<usize>())
++        +6*prefix+layouts[3]+64*size_of::<Vec<[u8;32]>>());
++    // Only initial W has copied NativeWeights.tiles: stored model, initial
++    // code, Backend, original State holder and one in-construction clone.
++    let mappings=5*weight_tile_capacity*size_of::<device::WeightTile>();
++    let query=32*(4*size_of::<device::Buffer>()+size_of::<usize>())
++        +32*size_of::<QueryLevel>()+32*size_of::<Vec<u64>>();
++    let start=crate::c71_matrix::census::host_layout_bytes();
++    let configs=[Domain::Flat(35).config().unwrap(),Domain::Flat(34).config().unwrap(),
++        Domain::Flat(34).config().unwrap(),Domain::Flat(34).config().unwrap()];
++    let config_heap=(crate::c71_matrix::census::host_layout_bytes()-start) as usize;
++    drop(configs);assert_eq!(crate::c71_matrix::census::host_layout_bytes(),start);
++    let total=original+holders+codes*(code_arc+tree_arc)+captures+mappings+query+config_heap;
++    serde_json::json!({"model_count_upper":models,"code_tree_count_upper":codes,
++        "code_tree_pool_components":[4,13,23,23],"concurrent_numeric_payload_claim":false,
++        "code_arc_bytes":code_arc,"tree_arc_bytes":tree_arc,"native_holder_arc_bytes":layouts[0..2],
++        "original_descriptor_bytes_upper":original,"holder_descriptor_bytes_upper":holders,
++        "capture_prefix_top_level_descriptor_bytes_upper":captures,
++        "weight_tile_capacity":weight_tile_capacity,"weight_mapping_copy_count_upper":5,
++        "weight_mapping_heap_upper_bytes":mappings,"query_level_descriptor_heap_upper_bytes":query,
++        "public_config_heap_bytes":config_heap,"total_metadata_heap_upper_bytes":total,
++        "optional_rng_buffer_heap_upper_bytes":codes*4096,
++        "scope":"typed descriptors/captures only; numeric/Merkle/pads/Query factor payloads and XOF buffers are accounted separately; proof-local pieces absent during initial A commitment"})
+ }
+ impl QueryLevel {
+     fn len(&self) -> usize {
+diff --git a/rust/volta-pcs/src/c71_matrix/b12/sourcewise.rs b/rust/volta-pcs/src/c71_matrix/b12/sourcewise.rs
+--- a/rust/volta-pcs/src/c71_matrix/b12/sourcewise.rs
++++ b/rust/volta-pcs/src/c71_matrix/b12/sourcewise.rs
+@@ -365,6 +365,20 @@
+ pub(super) struct Lease {
+     stage: Arc<Retained>,
+     prefix: Vec<E>,
++}
++
++#[cfg(test)]
++pub(super) fn public_metadata_layouts() -> [usize; 4] {
++    use std::mem::{MaybeUninit, size_of};
++    fn arc<T>() -> usize {
++        let start = crate::c71_matrix::census::host_layout_bytes();
++        let value = Arc::new(MaybeUninit::<T>::uninit());
++        let bytes = (crate::c71_matrix::census::host_layout_bytes()-start) as usize;
++        drop(value);
++        assert_eq!(crate::c71_matrix::census::host_layout_bytes(),start);
++        bytes
++    }
++    [arc::<NativeOriginalStage>(),arc::<Retained>(),size_of::<NativeView>(),size_of::<Lease>()]
+ }
+ impl Lease {
+     pub(super) fn release(self) -> Result<(), String> {
+diff --git a/rust/volta-pcs/src/c71_matrix/census.rs b/rust/volta-pcs/src/c71_matrix/census.rs
+--- a/rust/volta-pcs/src/c71_matrix/census.rs
++++ b/rust/volta-pcs/src/c71_matrix/census.rs
+@@ -134,6 +134,24 @@
+         "denied_allocations": DENIED.load(Relaxed), "enforced": LIMIT.load(Relaxed) != 0,
+         "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+         "physical_runtime_allowance_verified": false})
++}
++
++// No JSON allocation while a public-only capacity fixture takes a delta.
++#[cfg(test)]
++pub(in crate::c71_matrix) fn host_layout_bytes() -> u64 {
++    LIVE.load(Relaxed)
++}
++
++#[cfg(test)]
++pub(in crate::c71_matrix) fn reset_host_layout_peak() -> u64 {
++    let live = LIVE.load(Relaxed);
++    PEAK.store(live, Relaxed);
++    live
++}
++
++#[cfg(test)]
++pub(in crate::c71_matrix) fn host_layout_peak_bytes() -> u64 {
++    PEAK.load(Relaxed)
+ }
+ 
+ fn allocated(size: usize) {
+diff --git a/rust/volta-pcs/src/c71_matrix/gemma/native/canonical.rs b/rust/volta-pcs/src/c71_matrix/gemma/native/canonical.rs
+--- a/rust/volta-pcs/src/c71_matrix/gemma/native/canonical.rs
++++ b/rust/volta-pcs/src/c71_matrix/gemma/native/canonical.rs
+@@ -71,13 +71,34 @@
+         weights: &[i32],
+         exponents: &BTreeMap<usize, i32>,
+     ) -> Result<Self, String> {
++        #[cfg(test)]
++        { Self::compile_inner(slot, weights, exponents, false) }
++        #[cfg(not(test))]
++        { Self::compile_inner(slot, weights, exponents) }
++    }
++
++    #[cfg(test)]
++    fn compile_capacity_only(slot: usize, weights: &[i32], exponents: &BTreeMap<usize, i32>) -> Result<Self, String> {
++        Self::compile_inner(slot, weights, exponents, true)
++    }
++
++    fn compile_inner(
++        slot: usize, weights: &[i32], exponents: &BTreeMap<usize, i32>,
++        #[cfg(test)] capacity_only: bool,
++    ) -> Result<Self, String> {
+         if slot >= 3 {
+             return Err("canonical fixed run has only three slots".into());
+         }
+         let plan = super::super::compile()?;
+         let (sources, output, softmax) = plan.softmax_sources_at(150 * slot)?;
+-        let recipes =
+-            profile::Recipes::compile(&plan, &sources, &output, &softmax, weights, exponents)?;
++        #[cfg(not(test))]
++        let recipes = profile::Recipes::compile(&plan, &sources, &output, &softmax, weights, exponents)?;
++        #[cfg(test)]
++        let recipes = if capacity_only {
++            profile::Recipes::compile_capacity_only(&plan, &sources, &output, &softmax, weights, exponents)?
++        } else {
++            profile::Recipes::compile(&plan, &sources, &output, &softmax, weights, exponents)?
++        };
+         let mut p = Self { plan, sources, output, softmax, recipes, steps: Vec::new() };
+         let rms = &p.sources.attention.rope.gate_up.gelu.rms;
+         let r = &p.recipes;
+diff --git a/rust/volta-pcs/src/c71_matrix/gemma/native/canonical_calibration_input.rs b/rust/volta-pcs/src/c71_matrix/gemma/native/canonical_calibration_input.rs
+--- a/rust/volta-pcs/src/c71_matrix/gemma/native/canonical_calibration_input.rs
++++ b/rust/volta-pcs/src/c71_matrix/gemma/native/canonical_calibration_input.rs
+@@ -312,6 +312,18 @@
+ }
+ 
+ pub(super) fn profiles_from_bytes(body: &[u8]) -> Result<Vec<Canonical>, String> {
++    #[cfg(test)]
++    { profiles_inner(body, false) }
++    #[cfg(not(test))]
++    { profiles_inner(body) }
++}
++
++#[cfg(test)]
++pub(super) fn profiles_capacity_only(body: &[u8]) -> Result<Vec<Canonical>, String> {
++    profiles_inner(body, true)
++}
++
++fn profiles_inner(body: &[u8], #[cfg(test)] capacity_only: bool) -> Result<Vec<Canonical>, String> {
+     if body.len() > 1_048_576 {
+         return Err("calibration candidate exceeds 1 MiB".into());
+     }
+@@ -331,9 +343,13 @@
+                 .ok_or("calibration W exponent missing".to_string())
+         })
+         .collect::<Result<Vec<_>, _>>()?;
+-    (0..3)
+-        .map(|slot| Canonical::compile(slot, &weights, &candidate.activation_exponents_by_source))
+-        .collect()
++    (0..3).map(|slot| {
++        #[cfg(test)]
++        if capacity_only {
++            return Canonical::compile_capacity_only(slot, &weights, &candidate.activation_exponents_by_source);
++        }
++        Canonical::compile(slot, &weights, &candidate.activation_exponents_by_source)
++    }).collect()
+ }
+ 
+ pub(super) struct Tables {
+diff --git a/rust/volta-pcs/src/c71_matrix/gemma/native/canonical_capacity.rs b/rust/volta-pcs/src/c71_matrix/gemma/native/canonical_capacity.rs
+new file mode 100644
+--- /dev/null
++++ b/rust/volta-pcs/src/c71_matrix/gemma/native/canonical_capacity.rs
+@@ -0,0 +1,189 @@
++//! Public-only capacity census. No witness, weights, device, PCG or admission.
++use super::*;
++use std::mem::{size_of, MaybeUninit};
++
++fn heap<T>(make: impl FnOnce() -> T) -> (T, usize) {
++    let start = kernel::census::host_layout_bytes();
++    let value = make();
++    (value, (kernel::census::host_layout_bytes() - start) as usize)
++}
++
++fn arc_bytes<T>() -> usize {
++    let start = kernel::census::host_layout_bytes();
++    let (value, bytes) = heap(|| Arc::new(MaybeUninit::<T>::uninit()));
++    assert!(bytes >= size_of::<T>() + 2 * size_of::<usize>());
++    drop(value);
++    assert_eq!(kernel::census::host_layout_bytes(), start);
++    bytes
++}
++
++// Rust BTree nodes have two layouts. At the first root split, the newly
++// allocated leaf+branch is an upper for either node, including alignment.
++fn node_bytes<K: Ord + Copy, V>(keys: [K; 12]) -> usize {
++    let start = kernel::census::host_layout_bytes();
++    let mut tree = BTreeMap::<K, MaybeUninit<V>>::new();
++    tree.insert(keys[0], MaybeUninit::uninit());
++    let leaf = kernel::census::host_layout_bytes() - start;
++    for key in &keys[1..11] { tree.insert(*key, MaybeUninit::uninit()); }
++    assert_eq!(kernel::census::host_layout_bytes() - start, leaf);
++    tree.insert(keys[11], MaybeUninit::uninit());
++    let split = kernel::census::host_layout_bytes() - start - leaf;
++    assert!(split > leaf, "pinned std BTree root split changed");
++    drop(tree);
++    assert_eq!(kernel::census::host_layout_bytes(), start);
++    split as usize
++}
++
++fn nodes(count: usize) -> usize {
++    // Every nonempty node owns a key; allow an empty root and one unfinished
++    // split per level while inserting. This also covers deletion/root collapse.
++    count + 1 + if count == 0 { 0 } else { count.ilog2() as usize + 2 }
++}
++
++fn producer_metadata(profile: &Canonical) -> serde_json::Value {
++    let sources = &profile.bytes().scalar.layout.sources;
++    let count = sources.len();
++    let kv: BTreeSet<_> = profile.sources.attention.layers.iter().flat_map(|l| [l.k,l.v]).collect();
++    let cuts = profile.checkpoint_ids().unwrap().len();
++    let mut ports = 0;
++    let mut max_inputs = 0;
++    let mut max_outputs = 0;
++    let mut histogram_count = 0;
++    let mut histogram_seen = 0;
++    for (step, producer) in profile.steps.iter().enumerate() {
++        let (input, output) = profile.ports(producer);
++        ports += input.len();
++        max_inputs = max_inputs.max(input.len()).max(input_keys(profile, step, 0).unwrap().len());
++        max_outputs = max_outputs.max(output.len());
++        if let Some((_, output, _)) = profile.native_lookup_sources(step) {
++            histogram_count += 1;
++            histogram_seen += sources[output].rows;
++        }
++    }
++    assert_eq!((count, profile.steps.len(), cuts, histogram_count), (3471,2328,61,121));
++    assert!(sources.iter().all(|s| s.rows <= 8192));
++    assert!(max_inputs <= 32 && max_outputs <= 6 && kv.len() <= 120);
++    let key = core::array::from_fn(|i| i);
++    let row_node = node_bytes::<usize,Rows>(key);
++    let live_node = node_bytes::<(usize,usize),Rows>(core::array::from_fn(|i| (i,0)));
++    let tail_node = node_bytes::<usize,Tail>(key);
++    let histogram_node = node_bytes::<usize,Histogram>(key);
++    let seen_node = node_bytes::<usize,Vec<bool>>(key);
++    let bitmap_node = node_bytes::<usize,Vec<u64>>(key);
++    let scalar_node = node_bytes::<usize,usize>(key);
++    let set_node = node_bytes::<usize,()>(key);
++    let seen = sources.iter().map(|s| s.rows).sum::<usize>();
++    let bitmap = sources.iter().map(|s| s.rows.div_ceil(64)*8).sum::<usize>();
++    // Three promoted/accepted entries, one current generation. The additional
++    // KV map exists during build/replay before it is moved or retired.
++    let persistent = 3*nodes(kv.len())*tail_node + nodes(cuts)*row_node
++        + nodes(histogram_count)*row_node + 4*size_of::<Entry>()
++        + 3*size_of::<Arc<Canonical>>() + 2*60*size_of::<usize>();
++    // A common-owner slot is required for each unique Engine.live Rows. Source
++    // maps/bitmaps use actual full-source counts, not a small fixture's frontier.
++    let replay = nodes(512)*live_node + nodes(histogram_count)*histogram_node
++        + histogram_seen + nodes(kv.len())*tail_node
++        + nodes(count)*seen_node + seen + nodes(count)*bitmap_node + bitmap
++        + 6*nodes(count.max(profile.steps.len()))*set_node
++        + nodes(cuts)*scalar_node
++        + count*(size_of::<usize>()+size_of::<Option<usize>>())
++        + profile.steps.len()*size_of::<Vec<usize>>() + 4*count*size_of::<usize>()
++        + 2*(count+ports)*size_of::<usize>()
++        + 512*size_of::<(usize,usize)>()
++        + 2*max_inputs*size_of::<(usize,usize)>()
++        + max_inputs*size_of::<&Rows>() + 2*max_outputs*size_of::<Rows>();
++    serde_json::json!({"old_tokens":profile.sources.attention.rope.old,"source_count":count,
++        "source_rows_sum":seen,"source_bitmap_bytes":bitmap,"producer_steps":profile.steps.len(),
++        "ports_input_count":ports,"kv_source_count":kv.len(),"checkpoint_sources":cuts,
++        "histogram_sources":histogram_count,"histogram_seen_bytes":histogram_seen,
++        "node_upper_bytes":{"rows":row_node,"live_rows":live_node,"tails":tail_node,
++            "histograms":histogram_node,"seen":seen_node,"bitmap":bitmap_node,
++            "scalar":scalar_node,"set":set_node},
++        "persistent_descriptor_heap_upper_bytes":persistent,
++        "producer_descriptor_heap_upper_bytes":replay,
++        "scope":"typed node/Vec upper; bitmap plus scanner may coexist; no numeric/device payload or row cache"})
++}
++
++#[test]
++fn c71_canonical_public_metadata_capacity_pinned_no_private_inputs() {
++    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
++    let candidate = root.join("artifact/c7.1-pod/pilot-complete-20261007T133500Z/pilot-fp64-full/candidate.json");
++    let admission = root.join("artifact/c7.1-pod/gamma-admission-20261007T155133Z/admission.json");
++    let body = std::fs::read(&candidate).unwrap();
++    assert!(body.len() <= 1<<20);
++    let receipt: serde_json::Value = serde_json::from_slice(&std::fs::read(admission).unwrap()).unwrap();
++    assert_eq!(receipt["gamma_admitted"], true);
++    assert!(receipt["evidence"].as_array().unwrap().iter().any(|v|
++        v["path"].as_str()==Some("artifact/c7.1-pod/pilot-complete-20261007T133500Z/pilot-fp64-full/candidate.json")
++        && v["sha256"].as_str()==Some("8965d0c3dc170e41b304982b90409b0362e93de4d029b08bba3716ab64dbf95e")));
++    let start = kernel::census::reset_host_layout_peak();
++    let first: Vec<_> = calibration_input::profiles_capacity_only(&body).unwrap().into_iter().map(Arc::new).collect();
++    let first_bytes = kernel::census::host_layout_bytes()-start;
++    let second: Vec<_> = calibration_input::profiles_capacity_only(&body).unwrap().into_iter().map(Arc::new).collect();
++    let six_bytes = kernel::census::host_layout_bytes()-start;
++    let build_peak = kernel::census::host_layout_peak_bytes()-start;
++    assert_eq!(six_bytes,2*first_bytes);
++    let mut metadata = Vec::with_capacity(3);
++    for slot in 0..3 {
++        let p = &first[slot];
++        assert_eq!(p.sources.attention.rope.old,150*slot);
++        assert_eq!(p.recipes.digest,second[slot].recipes.digest);
++        assert_eq!(blake3::Hash::from_bytes(p.recipes.digest).to_hex().as_str(),
++            "d96b9350cfe9e47acda8cebaf02b895de66d55c525fa2c4463f20022dc3c1014");
++        metadata.push(producer_metadata(p));
++    }
++    // from_bytes uses fixed-size exact iterators only: values cannot change
++    // capacities. Zero public bytes exercise that allocation path, no table
++    // certification or alternative Gamma admission is claimed.
++    let table_body = vec![0; calibration_input::Tables::BYTES];
++    let table_start = kernel::census::host_layout_bytes();
++    let table_p = Arc::new(calibration_input::Tables::from_bytes(&table_body).unwrap());
++    let table_v = calibration_input::Tables::from_bytes(&table_body).unwrap();
++    let table_heap = (kernel::census::host_layout_bytes()-table_start) as usize;
++    let declared = table_p.capacity_bytes()+table_v.capacity_bytes();
++    assert_eq!(table_heap,declared+2*size_of::<usize>()-size_of::<calibration_input::Tables>());
++    let table_metadata = table_heap-2*calibration_input::Tables::BYTES;
++    let public_table_views = 6*120*size_of::<kernel::lookup::Table<'static>>();
++    let (_gammas,gamma_heap) = heap(|| [
++        gamma(&Domain::Flat(35).config().unwrap()),gamma(&Domain::Flat(34).config().unwrap()),
++        gamma(&Domain::Flat(35).config().unwrap()),gamma(&Domain::Flat(34).config().unwrap())]);
++    let session_arc = arc_bytes::<Session>();
++    let runtime_arc = arc_bytes::<Mutex<Runtime>>();
++    let prepared_arc = arc_bytes::<Prepared>();
++    let buffer_arc = arc_bytes::<Buffer>();
++    let fs_arc = arc_bytes::<Mutex<kernel::FsState>>();
++    let fixed = session_arc+runtime_arc+3*prepared_arc+512*buffer_arc+arc_bytes::<()>()
++        + arc_bytes::<Vec<i16>>() + arc_bytes::<super::super::ordered::Cache>() + 3*262144*8 + 18*4096 + 20*size_of::<String>() + 4*fs_arc;
++    // Tree::open has at most 512 pruned subtrees. Only typed map nodes are
++    // additional here; batch_indices and Vec<triple> payload belong to class 3.
++    let path_node=node_bytes::<usize,Vec<(usize,usize,usize)>>(core::array::from_fn(|i|i));
++    let path_nodes=nodes(512)*path_node;
++    let weight_tiles=first[0].plan.pcs_weight_tiles();
++    let pcs = kernel::b12::replay::public_metadata_descriptor_upper(weight_tiles.capacity());
++    let before_drop=kernel::census::host_layout_bytes();
++    drop((first,second));
++    let retired_profiles=before_drop-kernel::census::host_layout_bytes();
++    assert_eq!(retired_profiles,six_bytes);
++    println!("C71_PUBLIC_METADATA_CAPACITY {}",serde_json::json!({
++        "schema":"volta-c71-public-metadata-capacity-v1","credit":false,"admission":false,
++        "private_inputs":false,"gpu_execution":false,"rms_temporary_validation_skipped":true,
++        "candidate_blake3":blake3::hash(&body).to_hex().to_string(),
++        "recipe_digest":"d96b9350cfe9e47acda8cebaf02b895de66d55c525fa2c4463f20022dc3c1014",
++        "live_profile_slots":[[0,150,300],[0,150,300]],"profile_count":6,
++        "three_profile_actual_heap_bytes":first_bytes,"six_profile_actual_heap_bytes":six_bytes,
++        "profile_build_metadata_only_heap_peak_bytes":build_peak,"retired_profile_actual_heap_bytes":retired_profiles,"producer_metadata":metadata,
++        "table_heap_actual_shape_bytes":table_heap,"table_payload_bytes":2*calibration_input::Tables::BYTES,
++        "table_metadata_actual_shape_bytes":table_metadata,"borrowed_table_view_heap_upper_bytes":public_table_views,
++        "public_gamma_encoding_heap_bytes":gamma_heap,"table_capacity_value_independent":true,
++        "public_value_sizeof_bytes":size_of::<super::super::state::Public<'static>>(),
++        "typed_arc_bytes":{"session":session_arc,"runtime":runtime_arc,"prepared":prepared_arc,
++            "buffer":buffer_arc,"fs":fs_arc},"fixed_and_row_cache_heap_upper_bytes":fixed,
++        "row_cache_heap_upper_bytes_already_named":3*262144*8,
++        "fixed_descriptor_heap_upper_bytes":fixed-3*262144*8,
++        "paths_upper_bytes":18*4096,
++        "paths_bound_requires_run_manifest_argv_and_path_cap":4096,
++        "pruned_path_btree_node_heap_upper_bytes":path_nodes,"pruned_path_subtree_count_upper":512,
++        "pcs_metadata":pcs,
++        "measurement":"global requested-layout delta includes nested Vec/String/BTree/Arc; input/output JSON excluded",
++        "exclusions":"numeric/device/root/pad payloads are elsewhere; no full joint fit or physical peak claim"}));
++}
+diff --git a/rust/volta-pcs/src/c71_matrix/gemma/native/canonical_device.rs b/rust/volta-pcs/src/c71_matrix/gemma/native/canonical_device.rs
+--- a/rust/volta-pcs/src/c71_matrix/gemma/native/canonical_device.rs
++++ b/rust/volta-pcs/src/c71_matrix/gemma/native/canonical_device.rs
+@@ -1,6 +1,10 @@
+ use super::*;
+ use kernel::range::windowed::native::{Config, Stats};
+ use std::sync::{Mutex, MutexGuard};
++
++#[cfg(test)]
++#[path = "canonical_capacity.rs"]
++mod capacity_tests;
+ 
+ pub(in crate::c71_matrix) struct Session {
+     runtime: Arc<Mutex<Runtime>>,
+diff --git a/rust/volta-pcs/src/c71_matrix/gemma/native/canonical_metrics.rs b/rust/volta-pcs/src/c71_matrix/gemma/native/canonical_metrics.rs
+--- a/rust/volta-pcs/src/c71_matrix/gemma/native/canonical_metrics.rs
++++ b/rust/volta-pcs/src/c71_matrix/gemma/native/canonical_metrics.rs
+@@ -248,6 +248,63 @@
+     use super::*;
+ 
+     #[test]
++    fn c71_canonical_public_metadata_telemetry_bounded_schema() {
++        use std::mem::{size_of, MaybeUninit};
++        use crate::c71_matrix::census::host_layout_bytes;
++        let start = host_layout_bytes();
++        let mut map = std::collections::BTreeMap::<String, MaybeUninit<serde_json::Value>>::new();
++        // Empty keys have the same typed node layout and no String allocation.
++        // Unique lengths distinguish them; subtract their exact payload.
++        for i in 0..11 { map.insert("x".repeat(i), MaybeUninit::uninit()); }
++        let leaf = host_layout_bytes()-start-(0..11).sum::<u64>();
++        map.insert("x".repeat(11), MaybeUninit::uninit());
++        let node = (host_layout_bytes()-start-(0..12).sum::<u64>()-leaf) as usize;
++        assert!(node > leaf as usize);
++        drop(map);
++        assert_eq!(host_layout_bytes(),start);
++        let stats = serde_json::to_value(super::super::kernel::range::windowed::native::Stats::default()).unwrap();
++        let joint = crate::c71_matrix::census::simultaneous();
++        assert_eq!(stats.as_object().unwrap().len(),19);
++        assert_eq!(joint.as_object().unwrap().len(),13);
++        let native = include_str!("canonical_device.rs");
++        let body = native.split("\"sample_available\": true").nth(1).unwrap().split("})").next().unwrap();
++        let pieces: Vec<_> = body.split('"').collect();
++        assert_eq!(1+pieces.iter().enumerate().filter(|(i,_)|i%2==1)
++            .filter(|(i,_)|pieces[i+1].trim_start().starts_with(':')).count(),12);
++        // Every diagnostic String is a fixed literal <=512 bytes, or a Linux
++        // u64 RSS/HWM line <=33 bytes. Paths are outside these JSON snapshots.
++        assert!(native.lines().find(|l|l.contains("named payloads are subsets")).unwrap().len()<512);
++        let record = |members:usize, objects:usize, slots:usize, strings:usize| {
++            let depth = members.ilog2() as usize+2;
++            (members+objects*(1+depth))*node + members*64 + strings*512
++                + 2*slots*size_of::<serde_json::Value>()
++        };
++        // sample=3 root+13 joint+12 native+19 Stats fields; two memory strings.
++        let sample = record(47,4,2,4);
++        let phase = record(9+2*47,9,4,10);
++        // Max resource: weight/current/two prior model census objects <=17
++        // fields each; phase/slot/time/values/sample and three values keys.
++        let resource = record(5+3+4*17+47,10,4,10);
++        let progress = record(160,20,16,24);
++        let stored = 44*phase+6*resource+64*size_of::<serde_json::Value>()
++            +8*size_of::<serde_json::Value>()+8*size_of::<(&str,Option<usize>,Traffic)>();
++        // 14 fixed phases plus 10 per response; seven live nesting scopes;
++        // three public-distribution/setup/install and three response channels.
++        let crypto = stored+7*sample+3*progress+12*(16+size_of::<AtomicU64>())+size_of::<Measurements>();
++        let report = 4*stored+3*progress+6*sample;
++        println!("C71_PUBLIC_METADATA_TELEMETRY {}",serde_json::json!({
++            "schema":"volta-c71-public-metadata-telemetry-v1","credit":false,"admission":false,
++            "phase_count_upper":44,"resource_count_upper":6,"channel_count_upper":6,
++            "active_phase_count_upper":7,"json_node_upper_bytes":node,
++            "sample_heap_upper_bytes":sample,"phase_record_heap_upper_bytes":phase,
++            "resource_record_heap_upper_bytes":resource,"progress_heap_upper_bytes":progress,
++            "crypto_live_metadata_heap_upper_bytes":crypto,
++            "after_cleanup_report_metadata_heap_upper_bytes":report,
++            "source":"canonical_runner/canonical_state call sites; current sample/Stats/Session JSON schema",
++            "scope":"allocator payload upper; report clones occur after native cleanup; durable progress does not retain records"}));
++    }
++
++    #[test]
+     fn c71_canonical_metrics_nested_failure_and_partial_io() {
+         let m = Measurements::new();
+         let whole = m.phase("prover", Some(1), "response_total");
+diff --git a/rust/volta-pcs/src/c71_matrix/gemma/profile.rs b/rust/volta-pcs/src/c71_matrix/gemma/profile.rs
+--- a/rust/volta-pcs/src/c71_matrix/gemma/profile.rs
++++ b/rust/volta-pcs/src/c71_matrix/gemma/profile.rs
+@@ -31,6 +31,20 @@
+ }
+ 
+ impl Recipes {
++    fn validate_rms(programs: BTreeSet<(usize, [i32; 3], bool)>) -> Result<(), String> {
++        for (d, [ex, ew, ey], weighted) in programs {
++            let p = crate::c71_matrix::rms::compile(d, ex, ew, ey, weighted)?;
++            if p.levels.len() > 128
++                || p.ports > 98
++                || p.levels.iter().any(|l| l.len() > 16384)
++                || p.levels.iter().map(Vec::len).sum::<usize>() > 2_000_000
++            {
++                return Err("Gemma RMS profile exceeds the composed public envelope".into());
++            }
++        }
++        Ok(())
++    }
++
+     /// Complete canonical row reservation, before any live FS or witness IO.
+     /// Every operator's actual verifier/prover still must run before acceptance.
+     pub fn required(
+@@ -208,6 +222,27 @@
+         weights: &[i32],
+         exponents: &BTreeMap<usize, i32>,
+     ) -> Result<Self, String> {
++        #[cfg(test)]
++        { Self::compile_inner(plan, s, o, sm, weights, exponents, false) }
++        #[cfg(not(test))]
++        { Self::compile_inner(plan, s, o, sm, weights, exponents) }
++    }
++
++    // Admission already validates these temporary RMS circuits. This fixture
++    // shares every retained constructor and cannot be selected in production.
++    #[cfg(test)]
++    pub(super) fn compile_capacity_only(
++        plan: &Plan, s: &residual::Sources, o: &output::Output, sm: &softmax::Softmax,
++        weights: &[i32], exponents: &BTreeMap<usize, i32>,
++    ) -> Result<Self, String> {
++        Self::compile_inner(plan, s, o, sm, weights, exponents, true)
++    }
++
++    fn compile_inner(
++        plan: &Plan, s: &residual::Sources, o: &output::Output, sm: &softmax::Softmax,
++        weights: &[i32], exponents: &BTreeMap<usize, i32>,
++        #[cfg(test)] capacity_only: bool,
++    ) -> Result<Self, String> {
+         let a = &s.attention;
+         let rope = &a.rope;
+         let gu = &rope.gate_up;
+@@ -296,16 +331,10 @@
+             parameters.push(p);
+             programs.insert((n.columns, p, n.cohort.is_some()));
+         }
+-        for (d, [ex, ew, ey], weighted) in programs {
+-            let p = crate::c71_matrix::rms::compile(d, ex, ew, ey, weighted)?;
+-            if p.levels.len() > 128
+-                || p.ports > 98
+-                || p.levels.iter().any(|l| l.len() > 16384)
+-                || p.levels.iter().map(Vec::len).sum::<usize>() > 2_000_000
+-            {
+-                return Err("Gemma RMS profile exceeds the composed public envelope".into());
+-            }
+-        }
++        #[cfg(test)]
++        if !capacity_only { Self::validate_rms(programs)?; }
++        #[cfg(not(test))]
++        Self::validate_rms(programs)?;
+         let mut gelu = Vec::new();
+         let mut gate_up = Vec::new();
+         for (v, p) in g.gelu.iter().zip(&gu.products) {

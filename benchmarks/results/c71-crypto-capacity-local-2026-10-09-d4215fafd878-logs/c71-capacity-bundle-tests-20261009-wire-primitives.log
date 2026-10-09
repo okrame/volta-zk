@@ -1,0 +1,7 @@
+
+running 1 test
+test c71_matrix::wire::heap_tests::c71_wire_typed_heap_counts_option_vectors_and_moving_growth ... C71_WIRE_HEAP_PRIMITIVES {"option_vec_inline_bytes":24,"retained_heap_bytes":288,"shape_heap_upper_bytes":624,"decoder_moving_peak_upper_bytes":840,"credit":false}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 576 filtered out; finished in 0.00s
+

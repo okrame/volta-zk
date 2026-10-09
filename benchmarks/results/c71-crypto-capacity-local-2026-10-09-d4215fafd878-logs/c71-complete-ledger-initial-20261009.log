@@ -1,0 +1,9 @@
+Traceback (most recent call last):
+  File "/home/okrame/projects/volta-zk/scripts/c71_temporary_ledger.py", line 906, in <module>
+    print(json.dumps(ledger(args.logs, args.backend, args.query_record, args.linear_record, args.lifetime_record), indent=2, sort_keys=True))
+                     ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/okrame/projects/volta-zk/scripts/c71_temporary_ledger.py", line 895, in ledger
+    return ledger_native(directory, query_record, linear_record, backend == 's1-prepared', lifetime_record)
+  File "/home/okrame/projects/volta-zk/scripts/c71_temporary_ledger.py", line 326, in ledger_native
+    raise ValueError('missing current native geometry and joint reduced evidence')
+ValueError: missing current native geometry and joint reduced evidence

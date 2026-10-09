@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-c199d592f6a2035a",
+    "c71_canonical_public_metadata_",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 5.849203402176499,
+  "max_rss_bytes": 141758464,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 5.787974,
+  "system_s": 0.059985,
+  "log": "/tmp/c71-capacity-bundle-tests-20261009/metadata.log"
+}

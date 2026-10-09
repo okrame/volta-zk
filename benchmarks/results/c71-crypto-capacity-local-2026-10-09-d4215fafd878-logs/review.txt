@@ -1,0 +1,35 @@
+Candidate scope: shared existing form shape/cap validation, early canonical P/V calls,
+common completed KV compaction, matching class8 lifetime markers. No FS/protocol change
+on successful inputs, no new MAC/coin/correlation and no original source scan.
+
+Existing guard extraction: target cardinality/MAX_TARGETS/MAX_CUBES, arity, alignment,
+checked cube endpoint. bits>=usize::BITS rejects invalid helper dimensions before shift.
+Canonical calls run after ranges+census, before W close / reader.raw(133), while W/A
+forms are complete and immutable. This permits an A cap through W/history, never an
+implicit cap before constructor completion. Rejection can happen earlier; the complete
+one-time reservation was already burned by the wrapper and errors remain terminal.
+
+KV Statement::forms completes each root form, validates its existing cube cap, then
+compacts point/form capacities. The same constructor serves P/V. Auth x/m, Key k,
+bias, coefficients, offsets, points, order and FS messages are untouched. Current form
+receives an idempotent second compaction from Batch::add; no extra source pass.
+
+Class8 keeps full UNCLAMPED preconstructor bounds; new validated W/A retained fields
+are separate. OldKV compacted bound is C_old*(56+34*24)+(2*old_roots+4)*(24+48).
+P/V batches are separate lifetimes as established by the whole-certificate transport.
+Constructor moving reallocations are still charged before KV compaction.
+
+Required local filters (root serializes; none run here):
+ c71_b12_linear_preflight_caps_and_compaction_preserve_originals
+ c71_b12_linear_exact_record_capacity_preserves_bytes_and_transcript
+ c71_canonical_original_batch_take_preserves_order_mac_and_rejects_mismatch
+ c71_canonical_forms_constructor_capacity_public_upper_bounds
+ Existing native/sourcewise linear full-wire original-MAC and three-root KV parity.
+New cap fixture allocates about28MiB of Cube descriptors; no W/A/private values or
+D34/D35 polynomial/domain array. A complete pinned canonical body remains untested
+locally because its existing RMS workload is not a bounded fixture.
+
+Correction provenance: earlier bind formula counted Domain::identity as8 bytes, but
+its actual type is u32/4bytes. Test on c00e98b failed2842vs2838; root corrected5bc0cd4.
+This candidate starts from5bc0cd4575c63493222f54e22dc942ab6ae2c081 and does not alter
+that exact-length fix. No earlier formula or review is represented as exact evidence.

@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-c199d592f6a2035a",
+    "c71_canonical_original_batch_take_preserves_order_mac_and_rejects_mismatch",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 0.0036885258741676807,
+  "max_rss_bytes": 12726272,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 0.003362,
+  "system_s": 0.0,
+  "log": "/tmp/c71-capacity-bundle-tests-20261009/batch-take.log"
+}

@@ -1,0 +1,270 @@
+--- a/rust/volta-pcs/src/c71_matrix/gemma/bytes/kv.rs
++++ b/rust/volta-pcs/src/c71_matrix/gemma/bytes/kv.rs
+@@ -212,6 +212,9 @@
+             if form.len() > crate::c71_matrix::linear::MAX_CUBES {
+                 return Err("KV source form exceeds cube cap".into());
+             }
++            // These complete forms may remain live through W and several
++            // historical root closures, outside Batch::add.
++            crate::c71_matrix::linear::compact_form(&mut form);
+             result.push((form, bias));
+             offset += s.tokens;
+         }
+--- a/rust/volta-pcs/src/c71_matrix/gemma/native/canonical_forms_capacity.rs
++++ b/rust/volta-pcs/src/c71_matrix/gemma/native/canonical_forms_capacity.rs
+@@ -207,9 +207,10 @@
+         let retained = |c, d, t, target| {
+             c * (cube + d * fp3) + (2 * t + 4) * (size_of::<Vec<Cube>>() + target)
+         };
+-        // Old accepted A openings bypass Batch::add and keep their construction
+-        // capacities until each separate old-root PCS closes. They overlap W
+-        // and current A claims, including W bind; old+new roots are not ranges.
++        // Complete KV forms are compacted by the shared Statement::forms
++        // before retention, including old accepted roots outside Batch::add.
++        // They overlap W/current A until each historical root PCS closes.
++        // Constructor old+new allocations remain charged separately above.
+         let mut old_cubes = 0;
+         for previous in 0..slot {
+             let prior = Canonical::compile(previous, &[0; 772], &exponents).unwrap();
+@@ -220,7 +221,7 @@
+                 }
+             }
+         }
+-        let old_openings = (2 * old_cubes + 4) * cube + old_cubes * 68 * fp3
++        let old_openings = old_cubes * (cube + 34 * fp3)
+             + (2 * slot + 4) * (size_of::<Vec<Cube>>() + size_of::<Auth>());
+         let kv_current = records.iter().find(|r| r.name == "KV_current").unwrap().cubes;
+         constructor_max = constructor_max.max(construction(kv_current + old_cubes, 1, 34, slot + 1));
+@@ -229,6 +230,14 @@
+             + retained(kept_a, 34, targets, size_of::<Auth>());
+         let retained_v = retained(kept_w, 35, 775, size_of::<Key>())
+             + retained(kept_a, 34, targets, size_of::<Key>());
++        // New shared read-only preflight runs after every range claim and
++        // before W/history. Above remains the UNCLAMPED constructor bound.
++        let validated_w = kept_w.min(linear::MAX_CUBES);
++        let validated_a = kept_a.min(linear::MAX_CUBES);
++        let validated_w_p = retained(validated_w, 35, 775, size_of::<Auth>());
++        let validated_w_v = retained(validated_w, 35, 775, size_of::<Key>());
++        let validated_a_p = retained(validated_a, 34, targets, size_of::<Auth>());
++        let validated_a_v = retained(validated_a, 34, targets, size_of::<Key>());
+         let attempt = AttemptContext { session: [1; 32], capacity: [2; 32], slot: slot as u8,
+             predecessor: [0; 32], nonce: [3; 32] };
+         let record = |d, c, t| {
+@@ -255,7 +264,7 @@
+         // returned lambda coefficients may be allocated before that Vec drops.
+         let w_bind_extra = 2 * gamma(&Domain::Flat(35).config().unwrap()).len() + 130 + (2 * 775 + 4) * fp3;
+         let a_bind_extra = 2 * gamma(&Domain::Flat(34).config().unwrap()).len() + 130 + (2 * targets + 4) * fp3;
+-        println!("C71_CLASS8_FORMS {{\"slot\":{slot},\"W_targets\":775,\"A_targets\":{targets},\"W_cube_upper\":{w_cubes},\"A_constructor_cube_upper\":{a_upper},\"MAX_CUBES\":{},\"retained_P_payload_upper\":{retained_p},\"retained_V_payload_upper\":{retained_v},\"constructor_payload_upper\":{constructor_max},\"W_bind_record_payload_upper\":{w_record},\"A_bind_record_payload_upper\":{a_record},\"pending_original_payload_upper\":{pending_upper},\"old_KV_unshrunk_payload_upper\":{old_openings},\"W_bind_extra_payload_upper\":{w_bind_extra},\"A_bind_extra_payload_upper\":{a_bind_extra},\"P_constructor_phase_payload_upper\":{},\"P_W_bind_phase_payload_upper\":{},\"V_W_bind_phase_payload_upper\":{},\"P_A_bind_phase_payload_upper\":{},\"V_A_bind_phase_payload_upper\":{},\"credit\":false,\"physical_complete\":false,\"private_W_A_read\":false}}", linear::MAX_CUBES,
+-            retained_p + old_openings + pending_upper + constructor_max, retained_p + old_openings + w_record + w_bind_extra, retained_v + old_openings + w_record + w_bind_extra, retained(kept_a.min(linear::MAX_CUBES), 34, targets, size_of::<Auth>()) + a_record + a_bind_extra, retained(kept_a.min(linear::MAX_CUBES), 34, targets, size_of::<Key>()) + a_record + a_bind_extra);
+-    }
+-}
++        println!("C71_CLASS8_FORMS {{\"slot\":{slot},\"W_targets\":775,\"A_targets\":{targets},\"W_cube_upper\":{w_cubes},\"A_constructor_cube_upper\":{a_upper},\"MAX_CUBES\":{},\"retained_P_payload_upper\":{retained_p},\"retained_V_payload_upper\":{retained_v},\"constructor_payload_upper\":{constructor_max},\"W_bind_record_payload_upper\":{w_record},\"A_bind_record_payload_upper\":{a_record},\"pending_original_payload_upper\":{pending_upper},\"old_KV_compacted_payload_upper\":{old_openings},\"old_KV_compacted\":true,\"current_batch_preflight_cap_through_W_and_history\":true,\"preconstructor_bounds_unclamped\":true,\"validated_retained_W_P_payload_upper\":{validated_w_p},\"validated_retained_W_V_payload_upper\":{validated_w_v},\"validated_retained_A_P_payload_upper\":{validated_a_p},\"validated_retained_A_V_payload_upper\":{validated_a_v},\"P_V_batch_overlap\":false,\"W_bind_extra_payload_upper\":{w_bind_extra},\"A_bind_extra_payload_upper\":{a_bind_extra},\"P_constructor_phase_payload_upper\":{},\"P_W_bind_phase_payload_upper\":{},\"V_W_bind_phase_payload_upper\":{},\"P_A_bind_phase_payload_upper\":{},\"V_A_bind_phase_payload_upper\":{},\"credit\":false,\"physical_complete\":false,\"private_W_A_read\":false}}", linear::MAX_CUBES,
++            retained_p + old_openings + pending_upper + constructor_max, validated_w_p + validated_a_p + old_openings + w_record + w_bind_extra, validated_w_v + validated_a_v + old_openings + w_record + w_bind_extra, validated_a_p + a_record + a_bind_extra, validated_a_v + a_record + a_bind_extra);
++    }
++}
+--- a/rust/volta-pcs/src/c71_matrix/gemma/native/canonical_prove.rs
++++ b/rust/volta-pcs/src/c71_matrix/gemma/native/canonical_prove.rs
+@@ -254,6 +254,11 @@
+         if bw.targets.len() != 775 || ba.targets.len() != 4446 || openings.len() != previous.len() {
+             return Err("canonical original endpoint closure census differs".into());
+         }
++        // Both batches are complete and immutable from here. Enforce the
++        // existing bind caps before W/history while current A remains live.
++        // This read-only check neither records a frame nor consumes a row.
++        linear::validate_forms(35, &bw.forms, bw.targets.len())?;
++        linear::validate_forms(34, &ba.forms, ba.targets.len())?;
+         let (proof, _) =
+             weights.close(s.attempt, self.plan.layout_digest, &bw.forms, &bw.targets, fs, rows)?;
+         wire.raw(
+--- a/rust/volta-pcs/src/c71_matrix/gemma/native/canonical_verify.rs
++++ b/rust/volta-pcs/src/c71_matrix/gemma/native/canonical_verify.rs
+@@ -249,6 +249,11 @@
+         {
+             return Err("canonical original endpoint closure census differs".into());
+         }
++        // Both batches are complete and immutable from here. Enforce the
++        // existing bind caps before W/history while current A remains live.
++        // This read-only check neither records a frame nor consumes a row.
++        linear::validate_forms(35, &bw.forms, bw.targets.len())?;
++        linear::validate_forms(34, &ba.forms, ba.targets.len())?;
+         let (body, frame) = reader.raw(133)?;
+         let proof = codec::decode_linear(Domain::Flat(35), body).map_err(|e| e.to_string())?;
+         linear::verify(
+--- a/rust/volta-pcs/src/c71_matrix/gemma/native/protocol.rs
++++ b/rust/volta-pcs/src/c71_matrix/gemma/native/protocol.rs
+@@ -33,10 +33,7 @@
+     pub(super) fn add(&mut self, mut form: Vec<Cube>, target: T) {
+         // Claims survive GKR through PCS. Release construction slack now,
+         // including every point, without changing the ordered original form.
+-        for cube in &mut form {
+-            cube.point.shrink_to_fit();
+-        }
+-        form.shrink_to_fit();
++        kernel::linear::compact_form(&mut form);
+         self.forms.push(form);
+         self.targets.push(target);
+     }
+--- a/rust/volta-pcs/src/c71_matrix/linear.rs
++++ b/rust/volta-pcs/src/c71_matrix/linear.rs
+@@ -55,6 +55,40 @@
+         }
+     }
+     Ok(size)
++}
++
++/// Read-only shape validation. Canonical callers check both accumulated
++/// batches before W and historical A closures; bind repeats the same checks.
++/// No message, challenge, value or MAC is consumed or altered here.
++pub(super) fn validate_forms(
++    bits: usize, forms: &[Vec<Cube>], count: usize,
++) -> Result<(), String> {
++    if bits >= usize::BITS as usize
++        || forms.is_empty()
++        || forms.len() > MAX_TARGETS
++        || count != forms.len()
++        || forms.iter().map(Vec::len).sum::<usize>() > MAX_CUBES
++    {
++        return Err("B12 linear batch shape, layout or attempt mismatch".into());
++    }
++    for cube in forms.iter().flatten() {
++        if cube.point.len() > bits {
++            return Err("B12 linear cube arity exceeds root domain".into());
++        }
++        let size = 1usize << cube.point.len();
++        if cube.offset % size != 0
++            || cube.offset.checked_add(size).is_none_or(|end| end > 1usize << bits)
++        {
++            return Err("B12 linear cube is unaligned or outside root domain".into());
++        }
++    }
++    Ok(())
++}
++
++/// Drop public construction slack without changing the ordered form.
++pub(super) fn compact_form(form: &mut Vec<Cube>) {
++    for cube in &mut *form { cube.point.shrink_to_fit(); }
++    form.shrink_to_fit();
+ }
+ 
+ /// Bind the public forms after the caller's target-correction messages and
+@@ -75,24 +109,10 @@
+     if root.num_roots() != 1
+         || !attempt.valid()
+         || layout == [0; 32]
+-        || forms.is_empty()
+-        || forms.len() > MAX_TARGETS
+-        || count != forms.len()
+-        || forms.iter().map(Vec::len).sum::<usize>() > MAX_CUBES
+     {
+         return Err("B12 linear batch shape, layout or attempt mismatch".into());
+     }
+-    for cube in forms.iter().flatten() {
+-        if cube.point.len() > bits {
+-            return Err("B12 linear cube arity exceeds root domain".into());
+-        }
+-        let size = 1usize << cube.point.len();
+-        if cube.offset % size != 0
+-            || cube.offset.checked_add(size).is_none_or(|end| end > 1usize << bits)
+-        {
+-            return Err("B12 linear cube is unaligned or outside root domain".into());
+-        }
+-    }
++    validate_forms(bits, forms, count)?;
+     let profile = gamma(&config);
+     let context = attempt.encode();
+     let length = linear_record_length(profile.len(), context.len(), forms)?;
+@@ -1136,7 +1156,12 @@
+     }
+     fn linear_full_wire_parity(native: bool) {
+         use std::sync::Arc;
+-        let native_fixture=native.then(||device::tests::fixture(512));
++        let native_fixture=native.then(|| {
++            let mut fixture=device::tests::fixture(512);
++            // The selected resident query also retains public factor spectra.
++            fixture.config.arena_bytes=2<<20;
++            fixture
++        });
+         let bits = 10;
+         let weights: Vec<_> =
+             (0..1usize << bits).map(|i| ((i * 29 + i * i * 3) % 251) as i16 - 125).collect();
+@@ -1653,6 +1678,9 @@
+             assert_eq!(linear_record_length(gamma(&config).len(),attempt.encode().len(),&forms).unwrap(),reference.len());
+             let mut exact=Fs::new(b"exact linear record capacity",100000);
+             let mut old=Fs::new(b"exact linear record capacity",100000);
++            let untouched = (exact.digest(), exact.requests());
++            validate_forms(bits, &forms, forms.len()).unwrap();
++            assert_eq!((exact.digest(), exact.requests()), untouched);
+             let (_,coefficients)=bind(domain,&root,attempt,[5;32],&forms,forms.len(),&mut exact).unwrap();
+             old.set_phase(0x300);old.record(0x30,&reference);let lambda=old.fp3();
+             let mut power=Fp3::ONE;
+@@ -1666,3 +1694,70 @@
+         }
+     }
+ }
++
++#[cfg(test)]
++mod early_validation_tests {
++    use super::*;
++
++    fn record(forms: &[Vec<Cube>]) -> Vec<u8> {
++        let mut bytes = Vec::new();
++        for form in forms {
++            bytes.extend((form.len() as u32).to_le_bytes());
++            for c in form {
++                bytes.extend((c.offset as u64).to_le_bytes());
++                bytes.extend((c.point.len() as u32).to_le_bytes());
++                bytes.extend(c.coefficient.to_bytes());
++                for x in &c.point { bytes.extend(x.to_bytes()); }
++            }
++        }
++        bytes
++    }
++
++    #[test]
++    fn c71_b12_linear_preflight_caps_and_compaction_preserve_originals() {
++        let mut point = Vec::with_capacity(71);
++        point.extend([signed(2), signed(3)]);
++        let mut form = Vec::with_capacity(17);
++        form.push(Cube { offset: 4, point, coefficient: signed(-9) });
++        form.push(Cube { offset: 15, point: Vec::new(), coefficient: Fp3::ZERO });
++        let mut forms = vec![form, Vec::new()];
++        let ordered = record(&forms);
++        let targets = [Auth::new(signed(19), signed(23)), Auth::ZERO];
++        let keys = [Key::new(signed(29)), Key::ZERO];
++        let mut fs = Fs::new(b"read-only original batch preflight", 100);
++        let before = (fs.digest(), fs.requests());
++        for bits in [10usize, 34, 35] {
++            validate_forms(bits, &forms, targets.len()).unwrap();
++            validate_forms(bits, &forms, keys.len()).unwrap();
++            assert_eq!(record(&forms), ordered);
++            assert_eq!((fs.digest(), fs.requests()), before);
++            for f in &mut forms { compact_form(f); }
++            assert_eq!(record(&forms), ordered);
++            for f in &forms {
++                assert_eq!(f.capacity(), f.len());
++                for c in f { assert_eq!(c.point.capacity(), c.point.len()); }
++            }
++            // Read-only validation and compaction leave target values/tags/keys.
++            assert_eq!((targets[0].x, targets[0].m, keys[0].k), (signed(19), signed(23), signed(29)));
++            for (offset, arity) in [(1, 2), (1usize << bits, 0), (usize::MAX, 0), (0, bits + 1)] {
++                let invalid = vec![vec![Cube { offset, point: vec![Fp3::ONE; arity], coefficient: Fp3::ZERO }]];
++                assert!(validate_forms(bits, &invalid, 1).is_err());
++                assert!(bind(Domain::Flat(bits), &C61Commitment::new(vec![[1;32]]),
++                    AttemptContext { session:[1;32], capacity:[2;32], slot:0,
++                        predecessor:[0;32], nonce:[3;32] }, [4;32], &invalid, 1, &mut fs).is_err());
++                assert_eq!((fs.digest(), fs.requests()), before);
++            }
++        }
++        assert!(validate_forms(35, &forms, 1).is_err());
++        assert!(validate_forms(35, &[], 0).is_err());
++        assert!(validate_forms(usize::BITS as usize, &forms, 2).is_err());
++        assert!(validate_forms(35, &vec![Vec::new(); MAX_TARGETS + 1], MAX_TARGETS + 1).is_err());
++        // ~28 MiB typed metadata, no D34/D35 value array or private source.
++        let mut cubes = vec![Cube { offset:0, point:Vec::new(), coefficient:Fp3::ZERO }; MAX_CUBES + 1];
++        assert!(validate_forms(34, std::slice::from_ref(&cubes), 1).is_err());
++        cubes.truncate(MAX_CUBES);
++        validate_forms(34, std::slice::from_ref(&cubes), 1).unwrap();
++        validate_forms(35, std::slice::from_ref(&cubes), 1).unwrap();
++        assert_eq!((fs.digest(), fs.requests()), before);
++    }
++}

@@ -1,0 +1,114 @@
+C7.1 real AES setup heap/layout closure — 2026-10-09
+Read-only source analysis; no build, test, provider or hardware operation.
+This closes the specific MR19/guard/cGGM heap premise, not physical admission,
+setup timing, full-run success, security proof assumptions or unrelated classes.
+
+Selected flow, not a reduced-fixture inference
+--------------------------------------------
+Canonical runner selects Geometry::new(675,19,11) explicitly at
+rust/volta-pcs/src/c71_matrix/gemma/native/canonical_runner.rs:313 and :354.
+It passes that geometry to the actual prover/verifier setup at :436 and :482.
+B=675, H=19. Geometry::contexts computes main n=B*(H+7)+3=17553 and inverse
+n=3B=2025 (rust/volta-pcg/src/c71_seed6/setup.rs:256). sender/receiver invoke
+opposite-role real AES setups at :307-308/:367-368, then the same guard, cGGM,
+F_EQ and expand promotion at :313-357/:373-432. MR19.ot_count=384 is selected by
+rust/volta-pcg/src/c71_seed6.rs:23-26, independent of legacy OTS576.
+
+Capacity/growth premises
+------------------------
+These are requested Vec allocation payload bytes on the pinned 64-bit target,
+not allocator usable-size, inline Vec descriptors, compiler stack or driver RAM.
+Zeroizing adds erasure/ownership, not a second Vec allocation. All listed Vecs
+use explicit with_capacity(final_count), vec![...;final_count], exact copies,
+or collect from the exact-size chunks_exact(...).map(...) iterator. Successful
+fixed loops fill at most that count; they do not trigger moving reallocations.
+The guard/cGGM/equality formula sums all listed possible allocation capacities,
+even when some occur sequentially; it deliberately overcounts their true peak.
+Paths are moved with mem::take, not copied; roots/keys move into final expand.
+No per-leaf array, full tree, EA domain reservoir or test transcript Tape is
+allocated by this selected setup. Session transport is UnixStream, not Vec IO.
+The existing main/inverse seed-array upper152*(17553+2025)+624 and the separately
+closed Audit Vec1792 B/common+full-context Vec2880 B are NOT added again below.
+Small receive buffers use recv's fixed validated size (bootstrap.rs:421-431).
+Handshake context moving growth is already covered by the separate2880 B bound.
+
+Native types and MR19 bound
+--------------------------
+Pinned dependencies: rust/Cargo.lock:996 p5210.13.3, :1062 primeorder0.13.6.
+Local primary dependency sources under
+/home/okrame/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/:
+ p521-0.13.3/src/arithmetic/field/p521_64.rs:31: field=[u64;9], 72 B;
+ p521-0.13.3/src/arithmetic/field.rs:56: FieldElement wraps that array;
+ p521-0.13.3/src/arithmetic/scalar/p521_scalar_64.rs:35: scalar=[u64;9],72 B;
+ p521-0.13.3/src/arithmetic/scalar.rs:75: Scalar wraps that array;
+ primeorder-0.13.6/src/projective.rs:37: Point has3 field elements,216 B.
+Point scalar multiplication uses a fixed [Point;16] stack table at projective.rs:
+106-147. The allocating batch_normalize(Vec) implementation is not called by
+MR19 fixed/variable scalar multiplication or point encode/decode.
+
+Let t=384, P=216, S=72, encoded point=67 B (bootstrap.rs:28).
+Sender max Vec bodies =max[t*(134+2P), t*(2P+64+134+64)]
+                      =t*694=266496 B.
+Receiver max Vec bodies =max[t*(S+1+134),t*(S+1+134+2P),
+                             t*(S+1+2P+64+32)]
+                        =t*639=245376 B.
+Both-role conservative simultaneous upper=511872 B.
+Anchors: bootstrap.rs:652-659 receive+decode/drop; :660-688 seed/response/cipher;
+:719-751 scalar/choice/request; :753-763 response+decode/drop; :764-770 cipher
+and retained seed. Native Point/Scalar temporaries themselves are stack arrays.
+Replace the old384*(64+32+2*133)=139008 B partial term with511872 B. 133 was not
+the selected encoded count: the actual two67-byte points require134 bytes/OT.
+This MR19 upper also conservatively covers returned MR19 seeds during COPE;
+it does not include the separately counted seed correlation arrays.
+
+Both-role COPE current correction buffers=2*(384*8)=6144 B, replacing3072 B:
+P correction Vec real.rs:247 and V raw Vec real.rs:372 can coexist. The raw
+K6 correlation arrays/compression overlap remain in the existing seed upper.
+
+Guard/cGGM/F_EQ/promotion auxiliary capacities
+--------------------------------------------
+All following numbers count BOTH roles unless a single-role owner is stated.
+ B=675,H=19,C=B*(H+1)=13500.
+ equality reserved tail copies:168B=113400
+   real.rs:154-156 and :196-198, setup.rs:313/:373 (32+24 bytes*3B).
+ retained guard correction Vecs:16C=216000
+   guard.rs:257; setup.rs:315-316 exact collect.
+ guard correction wire send+receive:16C=216000
+   setup.rs:314 and :385; both dropped before cGGM.
+ path/alpha Vec moved through receiver:8B=5400
+   setup.rs:374 and :405; cggm.rs:167.
+ initial beta Vec plus final promoted beta Vec:16B=10800
+   setup.rs:375-384 and expand.rs:227 (sequential, conservatively summed).
+ sender root pairs:48B=32400 (cggm.rs:100; moved at expand.rs:107).
+ cGGM send+receive wire:48BH=615600 (cggm.rs:101,setup.rs:404).
+ per-block cGGM scratch:72H=1368
+   sender sums24H at cggm.rs:123; receiver known48H at :184.
+ receiver sibling/key Vec:24C=324000 (cggm.rs:177).
+ split values:48B=32400 (cggm.rs:240/:281).
+ split send+receive wire:48B=32400 (cggm.rs:280,setup.rs:343).
+ F_EQ local correction wire:48B=32400 (equality.rs:193).
+ F_EQ peer receive wire:48B=32400 (equality.rs:97-103).
+ F_EQ decoded peer words:48B=32400 (equality.rs:203).
+ F_EQ sampled coefficient Vec:48B=32400 (equality.rs:126/:239).
+ final receiver prefix tags:24B=16200 (expand.rs:228).
+ two role hash-input Vecs:2*98=196
+   c71_ea_lpn.rs:11/:130, H_TAG length22 plus76 bytes.
+ small receives:2*96=192, conservative for fixed <=96-byte check/coin/guard/
+   equality frame payloads; no per-row or attacker-selected receive capacity.
+
+Guard triples are lazy iterators (guard.rs:160/:215), consumed by scalar-only
+product_batch at c7_fp3.rs:106-133. coins::Coefficients is an inline SHAKE reader
+(coins.rs:108); each draw uses stack tape192 B (:145), no coefficient-domain
+Vec. cggm_h's98 B input is destroyed on return before walk recurses, so its
+heap is counted once per role, not per recursion depth. cGGM walk recursion
+is stack state, not heap. Roots/keys retained after promotion are included
+above for the setup phase; later steady PCG phases use their already counted
+idle roots/key payload instead, never adding this setup-only union again.
+
+Summing these possible capacities gives:
+ G=B*(104H+608)+72H+388=1745956 B.
+Complete replacement auxiliary subtotal:
+ MR19 + COPE current rows + G =511872+6144+1745956=2263972 B.
+Add this finite setup-only subtotal to the existing seed-array upper, Audit1792
+and contexts2880 exactly once. Remove the class4 missing MR19/guard/cGGM premise;
+keep physical allowance verification and unrelated unclosed premises explicit.

@@ -1,0 +1,202 @@
+C7.1 pinned RMS compiler/pruning capacity close — 2026-10-09
+Status: SOURCE_ONLY_FINITE_UPPER. No compiler, test, canonical reconstruction,
+hardware call, or allocation census was executed by this author. This text
+freezes the formulas communicated to root. It does not claim a complete joint
+memory admission, CUDA execution, H100 performance, or protocol achievement.
+
+Scope and premises
+------------------
+The selected RMS prepare path calls rms::compile(...), which selects pw <= 32,
+rounding width <= 128, and square_statistic=false. The separate compile_ratio
+square-statistic path is outside this bound. Columns <= 5376 and checked u128
+coefficient arithmetic are enforced by the existing Integer/rounding-width
+constructors. Private numeric values do not affect this upper bound.
+
+Pinned public metadata: norms <= 421, distinct programs = 159, final admitted
+public-program inner Vec capacities = 457,616,928 B. The latter is the existing
+final-program capacity receipt, not a measurement of the transient compiler.
+Root's matching RMS/profile receipt is the premise for applying that pinned
+number. Reference: artifact/c7.1-pod/ledger-20261007T150200Z/
+ledger-attention.json, programs=159 and
+public_program_inner_vec_capacity_bytes=457616928; recipe digest
+d96b9350cfe9e47acda8cebaf02b895de66d55c525fa2c4463f20022dc3c1014.
+
+The byte arithmetic is requested allocation/layout capacity on the pinned
+64-bit Rust build, not RSS, allocator-resident pages, or allocator overhead.
+Circuit=112 B, Gate=24 B, usize=8 B, Op/usize/usize tuple=24 B.
+The root capacity marker supplies conservative BTreeSet node upper 304 B and
+BTreeMap node upper 832 B. prepare's map has K=(usize,i32,i32,i32,bool), padded
+to 24 B, V=usize 8 B; its K/V layout matches the 32-byte map-node bound used by
+the metadata marker. No new standalone arbitrary allocation allowance is used.
+
+Source anchors and fate of descriptors
+-------------------------------------
+rust/volta-pcs/src/c71_matrix/rms.rs:
+  Op/Gate/Circuit/Builder declarations: lines 11-38.
+  gate(): 41-62; shared.insert, gates.push, depths.push execute sequentially.
+  all/prefix/add/sum/multiply/compare/le/magnitude/threshold: 84-213.
+  layered(): 214-297; needed, stack, last, births, expires, active,
+    previous/following and current layer allocation are local temporaries.
+    It checks sum of layer rows <= 2,000,000 before births/active/layers.
+    Circuit retains levels only; raw_gates is a scalar count. Builder gates,
+    depths and shared map are dropped when layered returns, not retained in
+    Circuit. The consumed empty DFS stack retains its allocation until return.
+  compile(): 419 onward, selects rounding_circuit(...,false).
+  rounding_width(): 444-464; rounding_circuit(): 467-527.
+rust/volta-pcs/src/c71_matrix/gemma/rms/caller.rs:
+  prepare(): 189-230; indices, keys, profile created at 205-208;
+    keys.into_iter().map(kernel::compile).collect::<Result<Vec<_>,_>>() at
+    222-225. The keys allocation can remain live in IntoIter during compile.
+    Ok((programs,profile,count)) at 230 returns programs and profile only.
+    indices and consumed keys are dropped on prepare return.
+  prove(): prepare at 381; CompactFrames::build at 414-415; programs are
+    borrowed by GKR statement at 421. Builder/prune/indices/keys have already
+    dropped before CompactFrames allocation. Returned profile remains live
+    as the per-norm program mapping during the RMS prove/verify call.
+  verifier prepare is analogous; canonical P/V batch lifetimes are separate.
+rust/volta-pcs/src/c71_matrix/rms/gkr.rs:
+  program_inner_capacity_bytes(): 412-423.
+  Later program geometry validation at 131-151 checks height <=128; that check
+    cannot be used to bound the earlier compiler, so this proof uses H<=N.
+  Selected prove_sourcewise calls prove_impl(...,true,None) at 1503-1510;
+    the alternate pattern HashMap branch is not selected.
+
+Raw gate-call bound, before pruning validation
+--------------------------------------------
+K(n) = sum_{d=1,2,4,...<n}(n-d)
+Prefix(n)=3*K(n)
+Add(n)=3*n-1+Prefix(n)
+Compare(n)=4*n+Prefix(n)
+Le(n)=Compare(n)+1
+Sum(r,n) <= max(0,r-2)*(5*n-3)+Add(n), for r>=2
+Mul(m,r,n) <= m*r+max(0,r-2)*(5*n-3)+Add(n), m>=r
+Square(m,n) <= m*(m-1)/2+max(0,m-1)*(5*n-3)+Add(n)
+
+Each carry-save triad reduces row count by one. Constant simplification,
+deduplication and zero filtering only decrease gate calls; their benefit is
+not needed. Square deliberately allows m+1 rows. At n=128, Prefix=2307,
+Add=2690, Compare=2819. Worst pw=32 and width=128 component gate calls:
+  pmag: 515
+  pg Le32: 516
+  sg Le47 plus And: 847
+  pmag square32,width64: 11,477
+  numerator multiply128x64,width128: 50,376
+  denominator multiply128x47,width128: 37,371
+  denominator Add128: 2,690
+  ymag: 211
+  m inverses/all: 31
+  output inverses/all/not: 32
+  sign xor/not/or: 5
+  two odd Add17: 424
+  two thresholds [Square17,34+Mul128,34,128]: 61,516
+  two Compare128: 5,638
+  even/ties/lo/hi/between: 6
+  zero_bound Le128: 2,820
+  bound mux: 3
+  valid all5: 4
+  TOTAL N <= 174,482.
+Ports P<=98; wires M=N+P<=174,580; raw depth H<=N. New gate parents
+already exist, therefore each raw gate increases maximum depth by at most one.
+
+Shared HashMap bound verified against the installed standard-library source
+-------------------------------------------------------------------------
+Installed std Cargo.toml:
+/home/okrame/.rustup/toolchains/stable-aarch64-unknown-linux-gnu/lib/rustlib/
+src/rust/library/std/Cargo.toml:23 selects hashbrown 0.16.1, rustc-dep-of-std.
+std collections/hash/map.rs uses hashbrown::hash_map as base. Installed std
+Cargo.lock records hashbrown 0.16.1 checksum
+841d1cc9bed7f9236f321df977030373f4a4163ae1a7dbfe1a51a2c1a51d9100.
+Matching source under /home/okrame/.cargo/registry/src/
+index.crates.io-1949cf8c6b5b557f/hashbrown-0.16.1/src/raw/mod.rs:
+  capacity_to_buckets(): 105-164, 7/8 load and power-of-two buckets.
+  TableLayout: 195-237; controls follow buckets, plus Group::WIDTH.
+  control/group/{neon,sse2,lsx,generic}.rs: Group::WIDTH <=16.
+Bucket T=(key,value) is 32 B, alignment8. Thus max buckets
+B=(N*8/7).next_power_of_two()=262,144, allocation <=33*B+16.
+  stable table: 8,650,768 B
+  previous half-size table while resizing: 4,325,392 B
+  old+new resize: 12,976,160 B.
+Gate insertion, gate Vec growth and depth Vec growth are sequential: at most
+one of these moving old/new allocations exists at once.
+
+Finite compiler component bounds (bytes)
+---------------------------------------
+Builder stable:
+  gates Vec: 2*N*24                              8,375,136
+  depths Vec: 2*M*8                              2,793,280
+  shared map: 33*262144+16                       8,650,768
+  subtotal                                     19,819,184
+
+Early helper/Builder append peak:
+  extra moving allocation max(N*24,M*8,hash_old)  4,325,392
+  two old/new row sets: 4*128*128*8                 524,288
+  row outer Vecs: 4*128*24                          12,288
+  <=32 standalone/helper word Vecs:32*2*128*8       65,536
+  peak                                         24,746,688
+This early peak precedes and is dominated by the prune upper below.
+
+Prune peak:
+  Builder stable                               19,819,184
+  needed Vec<bool>: M                              174,580
+  retained DFS Vec: 2*(2*N+1)*8                   5,583,440
+  last+old previous+new following: 3*M*8         4,189,920
+  births/expires outer Vecs: 48*(H+2)            8,375,232
+  inner usize Vec growth: 64*(2*N+P)            22,339,968
+  active Set: (M+1+ilog2(M)+2)*304              53,078,400
+  retained layer Gate Vecs: 2*2000000*24        96,000,000
+  retained outer levels Vec: 2*H*24              8,375,136
+  one current layer moving old Vec:2000000*24   48,000,000
+  enclosing rounding/helper word Vecs              65,536
+  TOTAL                                       266,001,396
+
+Inner usize Vec capacity <=2*max(len,4)*8<=64*len for each nonempty Vec;
+birth entry lengths sum<=N and expire entry lengths sum<=M. The transient
+inner reallocation extra<=8*M occurs before active/layer construction and is
+dominated by the later peak. Outer levels reallocation old extra<=H*24 is
+sequential with layer reallocation and less than the charged 48,000,000.
+DFS growth occurs before last/births/active/layer allocations and is likewise
+dominated by the later bound. The <=32 word Vec envelope includes the live
+enclosing rounding vectors and helper scopes; each length<=128 and capacity
+<=2*128. These vectors may remain live during layered(self).
+
+Prepare caller overlap and integrated compiler upper
+----------------------------------------------------
+Already compiled/final public program inner capacities       457,616,928
+Current compiler/prune upper                                 266,001,396
+Result<Vec<Circuit>> moving growth:3*159*112                        53,424
+indices Map:(159+1+ilog2(159)+2)*832=169*832                       140,608
+consumed keys Vec:2*159*24                                          7,632
+profile Vec:2*421*8                                                6,736
+CALLER subtotal                                                   208,400
+FULL PREPARE/COMPILER UPPER                                    723,826,724
+
+This deliberately double-counts the current final program: the aggregate
+final inner capacity also encloses all previously compiled programs while
+the current layered output is independently included in the prune bound.
+It is safe and does not require compiling all 159 programs for this audit.
+
+Steady prepared RMS lifetime
+---------------------------
+  program inner capacities                                457,616,928
+  outer programs capacity <=2*159*112                           35,616
+  returned per-norm profile capacity <=2*421*8                    6,736
+  steady prepared subtotal                                457,659,280
+The 17,808 B old descriptor term was only logical len159*112, not a capacity
+upper; replace it with 35,616 B. Retain profile 6,736 B separately. Do not carry
+indices 140,608 B, keys7,632 B, Builder/pruning266,001,396 B into steady GKR.
+CompactFrames checkpoint 2,023,511,878 B can overlap these steady prepared
+programs/profile only; it is allocated after prepare has returned and cannot
+overlap the compiler/pruning peak. Other independently live common, proof,
+PCG and correlation allocations remain for root's joint ledger integration.
+
+Closed assumptions / remaining limits
+------------------------------------
+Closed source-only: selected branch gate-call count; retained Builder and
+pruning Vec growth; installed std HashMap layout/growth; prepare's descriptor
+lifetime and old/new outer Vec overlap. Finite even before later height128
+validation because H<=N. No unresolved compiler allocation class is left in
+this selected pinned RMS path under the stated pinned final-program/layout
+premises. No runtime peak measurement or allocator-RSS inference was made.
+Root still owns validation of the complete simultaneous memory ledger and
+the clean source/receipt mapping. No new test, run, source edit or scope is
+required by this frozen text artifact.

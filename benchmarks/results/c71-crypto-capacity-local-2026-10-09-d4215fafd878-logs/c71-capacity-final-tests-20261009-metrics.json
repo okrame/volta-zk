@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-c199d592f6a2035a",
+    "c71_canonical_metrics_nested_failure_and_partial_io",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk/rust",
+  "exit_code": 0,
+  "wall_s": 0.004479694180190563,
+  "max_rss_bytes": 15409152,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 0.0028049999999999998,
+  "system_s": 0.001218,
+  "log": "/tmp/c71-capacity-final-tests-20261009/metrics.log"
+}

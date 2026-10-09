@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-c199d592f6a2035a",
+    "c71_b12_gemma_kv_original_macs_split_across_three_ranged_roots_with_fresh_rows",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk/rust",
+  "exit_code": 124,
+  "wall_s": 60.010160229634494,
+  "max_rss_bytes": 82239488,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 59.886019,
+  "system_s": 0.108181,
+  "log": "/tmp/c71-capacity-close-tests-20261009/kv.log"
+}

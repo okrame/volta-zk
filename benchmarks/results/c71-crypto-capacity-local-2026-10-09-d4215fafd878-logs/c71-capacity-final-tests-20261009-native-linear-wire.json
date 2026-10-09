@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-c199d592f6a2035a",
+    "c71_b12_native_linear_full_wire_fs_point_and_original_mac",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk/rust",
+  "exit_code": 101,
+  "wall_s": 26.847083433065563,
+  "max_rss_bytes": 328097792,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 26.514188,
+  "system_s": 0.308423,
+  "log": "/tmp/c71-capacity-final-tests-20261009/native-linear-wire.log"
+}

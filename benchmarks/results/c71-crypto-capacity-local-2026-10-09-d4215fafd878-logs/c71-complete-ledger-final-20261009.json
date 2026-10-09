@@ -1,0 +1,25 @@
+{
+  "command": [
+    "python3",
+    "scripts/c71_temporary_ledger.py",
+    "/tmp/c71-complete-ledger-final-input-20261009",
+    "--backend",
+    "s1-prepared",
+    "--query-record",
+    "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6.json",
+    "--linear-record",
+    "benchmarks/results/c71-crypto-linear-local-2026-10-09-31280382f681.json",
+    "--lifetime-record",
+    "benchmarks/results/c71-crypto-retirement-local-2026-10-09-96b69ded52c1.json"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 0.0563608780503273,
+  "max_rss_bytes": 18665472,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 0.052039999999999996,
+  "system_s": 0.0039169999999999995,
+  "log": "/tmp/c71-complete-ledger-final-20261009.log"
+}

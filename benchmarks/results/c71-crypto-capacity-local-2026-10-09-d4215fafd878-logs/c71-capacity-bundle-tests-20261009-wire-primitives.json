@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-c199d592f6a2035a",
+    "c71_wire_typed_heap_counts_option_vectors_and_moving_growth",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 0.008245809003710747,
+  "max_rss_bytes": 12115968,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 0.0016769999999999999,
+  "system_s": 0.005325,
+  "log": "/tmp/c71-capacity-bundle-tests-20261009/wire-primitives.log"
+}

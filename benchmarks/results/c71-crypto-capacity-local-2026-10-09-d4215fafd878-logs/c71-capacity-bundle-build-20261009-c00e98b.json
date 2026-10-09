@@ -1,0 +1,81 @@
+{
+  "command": [
+    "cargo",
+    "rustc",
+    "--offline",
+    "--locked",
+    "-j1",
+    "-p",
+    "volta-pcs",
+    "--features",
+    "c71-seed6-reference",
+    "--lib",
+    "--profile",
+    "test",
+    "--config",
+    "profile.dev.package.volta-pcs.opt-level=0",
+    "--config",
+    "profile.dev.package.volta-pcs.codegen-units=256",
+    "--",
+    "-Clink-arg=-fuse-ld=lld",
+    "-Clink-arg=-B/home/okrame/.rustup/toolchains/stable-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/bin/gcc-ld",
+    "-Clink-arg=-Wl,--threads=1"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk/rust",
+  "exit_code": 124,
+  "wall_s": 60.04588943393901,
+  "max_rss_bytes": 53051392,
+  "sampled_aggregate_live_rss_peak_bytes": 2619809792,
+  "sampled_processes": {
+    "5": {
+      "name": "timeout",
+      "max_rss_bytes": 1576960,
+      "cpu_ticks": 0,
+      "first_seen_s": 0.0010798419825732708,
+      "last_seen_s": 60.04574718279764
+    },
+    "6": {
+      "name": "cargo",
+      "max_rss_bytes": 53051392,
+      "cpu_ticks": 16,
+      "first_seen_s": 0.1026680450886488,
+      "last_seen_s": 59.94446839019656
+    },
+    "13": {
+      "name": "rustc",
+      "max_rss_bytes": 2565181440,
+      "cpu_ticks": 5843,
+      "first_seen_s": 0.20366478292271495,
+      "last_seen_s": 59.94455447420478
+    },
+    "275": {
+      "name": "cc",
+      "max_rss_bytes": 2248704,
+      "cpu_ticks": 1,
+      "first_seen_s": 58.61921570217237,
+      "last_seen_s": 59.94462068192661
+    },
+    "276": {
+      "name": "collect2",
+      "max_rss_bytes": 1568768,
+      "cpu_ticks": 0,
+      "first_seen_s": 58.61928374506533,
+      "last_seen_s": 59.944690682925284
+    },
+    "277": {
+      "name": "rust-lld",
+      "max_rss_bytes": 595709952,
+      "cpu_ticks": 139,
+      "first_seen_s": 58.619360037148,
+      "last_seen_s": 59.9447648501955
+    }
+  },
+  "sample_interval_s": 0.1,
+  "clock_ticks_per_s": 100,
+  "deadline_s": 60,
+  "workers": 1,
+  "as_limit_mib": null,
+  "user_s": 0.051189,
+  "system_s": 0.12311799999999999,
+  "log": "/tmp/c71-capacity-bundle-build-20261009-c00e98b.log"
+}

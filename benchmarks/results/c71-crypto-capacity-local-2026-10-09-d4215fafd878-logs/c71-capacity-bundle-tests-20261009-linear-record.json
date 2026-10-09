@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-c199d592f6a2035a",
+    "c71_b12_linear_exact_record_capacity_preserves_bytes_and_transcript",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 101,
+  "wall_s": 0.003866235725581646,
+  "max_rss_bytes": 15962112,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 0.0035619999999999996,
+  "system_s": 0.0,
+  "log": "/tmp/c71-capacity-bundle-tests-20261009/linear-record.log"
+}

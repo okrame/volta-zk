@@ -46,7 +46,7 @@ pub(super) fn linear_record_length(
     let add = |a: usize, b: usize| a.checked_add(b).ok_or_else(|| "linear record length overflow".to_string());
     let mut size = add(LINEAR_RECORD_DOMAIN.len(), profile_len)?;
     size = add(size, attempt_len)?;
-    size = add(size, 8 + 32 + 32 + 4)?;
+    size = add(size, std::mem::size_of::<u32>() + 32 + 32 + 4)?;
     for form in forms {
         size = add(size, 4)?;
         for cube in form {

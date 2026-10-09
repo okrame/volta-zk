@@ -1656,7 +1656,7 @@ mod record_capacity_tests {
             let (_,coefficients)=bind(domain,&root,attempt,[5;32],&forms,forms.len(),&mut exact).unwrap();
             old.set_phase(0x300);old.record(0x30,&reference);let lambda=old.fp3();
             let mut power=Fp3::ONE;
-            let expected:Vec<_>=(0..forms.len()).map(|_| {let value=power;power*=lambda;value}).collect();
+            let expected:Vec<_>=(0..forms.len()).map(|_| {let value=power;power=power*lambda;value}).collect();
             assert_eq!(coefficients,expected);assert_eq!(exact.digest(),old.digest());assert_eq!(exact.requests(),old.requests());
             let malformed = vec![vec![Cube { offset: 0, point: vec![Fp3::ONE; bits + 1], coefficient: Fp3::ONE }]];
             let before = (exact.digest(), exact.requests());

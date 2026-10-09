@@ -199,6 +199,22 @@ impl Response {
 
 fn packed(path: &Path, cells: usize) -> Result<(Arc<Vec<i16>>, String), String> {
     super::super::calibration::read_packed_observed(path, cells, |words| {
+        #[cfg(target_os = "linux")]
+        {
+            unsafe extern "C" {
+                fn getpagesize() -> i32;
+                fn madvise(address: *mut std::ffi::c_void, length: usize, advice: i32) -> i32;
+            }
+            let page = unsafe { getpagesize() } as usize;
+            if !page.is_power_of_two() { return Err("invalid host page size".into()); }
+            let address = words.as_ptr() as usize;
+            let first = (address + page - 1) & !(page - 1);
+            let end = (address + words.capacity() * 2) & !(page - 1);
+            // Full owned pages only, before touch: reduce smaps page walks and mmap contention.
+            if first < end && unsafe { madvise(first as *mut _, end - first, 14 /* MADV_HUGEPAGE */) } != 0 {
+                return Err(format!("packed W hugepage advice: {}", std::io::Error::last_os_error()));
+            }
+        }
         kernel::progress::resident_w("host", "live", (words.capacity() * 2) as u64,
             Some(words.as_ptr() as u64))
     })
@@ -783,6 +799,12 @@ mod tests {
         file.write_all(&[0, 128]).unwrap();
         assert!(packed(&path, 3).is_err());
         drop(file);
+        let input = vec![1u8; 2 << 20];
+        std::fs::write(&path, &input).unwrap();
+        let (words, digest) = packed(&path, input.len() / 2).unwrap();
+        assert_eq!(words.len(), input.len() / 2);
+        assert!(words.iter().all(|&word| word == 257));
+        assert_eq!(digest, blake3::hash(&input).to_hex().to_string());
         std::fs::remove_file(path).unwrap();
     }
 }

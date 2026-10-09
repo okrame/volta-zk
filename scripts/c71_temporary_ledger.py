@@ -411,9 +411,13 @@ def ledger_native(directory, query_record, linear_record, proposed_s1=False, lif
         add(f'native_initial_A{caches}_accumulate', dict(base, **{f'A_{key}': value for key, value in parts.items()},
             A_accumulation_additional=a['device_accumulation_phase_bytes']-named),
             'W plus A1..current cache/pads; one replay envelope including persistent; no original proof batches yet.')
-        add(f'native_initial_A{caches}_hash', dict(base, **{f'A_{key}': value for key, value in parts.items()},
+        hash_base = dict(base, device_persistent_or_single_replay_envelope=persistent)
+        add(f'native_initial_A{caches}_hash', dict(hash_base, **{f'A_{key}': value for key, value in parts.items()},
             A_hash_additional=a['device_hash_phase_bytes']-named),
-            'Low/high powers retired before full hash output; values retire before first node output.')
+            'The complete canonical scan releases all live producer rows, KV replay copies, duplicate histograms '
+            'and public-padding outputs before return. source_finish fences and retires its flag; histogram and '
+            'low/high powers retire before full hash output. Only numeric persistent state remains. '
+            'Values retire before first node output; host/profile/PCG capacities remain separate additional classes.')
         add(f'native_initial_A{caches}_query_evaluate', dict(common(caches, proof=True),
             **{f'query_device_{key}': value for key, value in q['canonical_query_device_breakdown'].items()},
             gather_flag=q['additional_original_gather_flag_aligned_bytes'],

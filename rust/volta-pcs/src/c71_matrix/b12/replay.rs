@@ -69,9 +69,14 @@ pub(in crate::c71_matrix) type ByteWindow =
 pub(in crate::c71_matrix) type NativeByteWindow =
     Arc<dyn Fn(&mut device::Runtime, usize, usize) -> Result<device::Buffer, String> + Send + Sync>;
 #[derive(Clone)]
-struct NativeQuery {
-    runtime: Arc<Mutex<device::Runtime>>,
-    read: NativeByteWindow,
+enum NativeQuery {
+    Bytes { runtime: Arc<Mutex<device::Runtime>>, read: NativeByteWindow },
+    Weights(NativeWeights),
+}
+impl NativeQuery {
+    fn runtime(&self) -> &Arc<Mutex<device::Runtime>> {
+        match self { Self::Bytes {runtime,..}=>runtime, Self::Weights(w)=>&w.runtime }
+    }
 }
 const QUERY_BYTE_WINDOW: usize = 1 << 28;
 fn limbs(x: &E) -> &[Goldilocks] {
@@ -760,7 +765,7 @@ impl Code {
     fn rows_native(&self, indices: &[usize], native: &NativeQuery) -> Result<DenseMatrix<Goldilocks>,String> {
         struct Level { degree: usize, inverse: device::Buffer, modulus: device::Buffer,
             forward: device::Buffer, backward: device::Buffer }
-        let mut runtime=native.runtime.lock().map_err(|_| "native query owner poisoned")?;
+        let mut runtime=native.runtime().lock().map_err(|_| "native query owner poisoned")?;
         let result: Result<DenseMatrix<Goldilocks>,String>=(|| {
             if !self.base() || !self.len.is_power_of_two() || !self.width.is_power_of_two() || self.width>128 ||
                 self.len%self.width!=0 || !self.height.is_power_of_two() || self.height>1usize<<32 ||
@@ -772,14 +777,24 @@ impl Code {
             if indices.is_empty() { return Ok(DenseMatrix::new(Vec::new(),self.width)); }
             let n=self.len/self.width;
             let pad_rows=self.pads.len()/self.width;
-            if !n.is_power_of_two() || n>1<<27 || pad_rows==0 || pad_rows>1536 || n+pad_rows>self.height {
+            if !n.is_power_of_two() || n>(if matches!(native,NativeQuery::Weights(_)) {1<<28} else {1<<27}) || pad_rows==0 || pad_rows>1536 || n+pad_rows>self.height {
                 return Err("native initial query message or pad bound differs".into());
+            }
+            if let NativeQuery::Weights(w)=native {
+                if self.live!=w.weights.len() {return Err("native W query live source differs".into());}
             }
             let cap=indices.len().next_power_of_two();
             let before=runtime.stats()?;
+            let tiles=match native {NativeQuery::Weights(w)=>Some(runtime.pcs_weight_tiles(&w.weights,w.layout,&w.tiles)?),
+                NativeQuery::Bytes {..}=>None};
+            let load=|runtime:&mut device::Runtime, bytes:Option<&device::Buffer>, pads:&device::Buffer,
+                low:&device::Buffer,block:device::PcsQueryBlock| {
+                if let Some(tiles)=&tiles {runtime.pcs_query_weight_low(tiles,pads,low,block)}
+                else {runtime.pcs_query_low(bytes,pads,low,block)}
+            };
             let mut phase=Span::start("pcs_query_remainders",json!({"height":self.height,
                 "query_rows":indices.len(),"columns":self.width,"base":true,
-                "original_byte_windows":true,"resident":true}))?;
+                "original_byte_windows":tiles.is_none(),"original_packed_weights":tiles.is_some(),"resident":true}))?;
             let root=Goldilocks::two_adic_generator(self.height.ilog2() as usize);
             let mut points: Vec<_>=indices.iter().map(|&i|root.exp_u64(i as u64)).collect();
             points.resize(cap,Goldilocks::ZERO);
@@ -826,7 +841,7 @@ impl Code {
             let mut pad=runtime.pcs_words(cap)?;
             let window_len=(2*n).min(QUERY_BYTE_WINDOW);
             let mut window=None;
-            let mut window_first=usize::MAX;
+            let mut window_first=if tiles.is_some() {0} else {usize::MAX};
             let mut windows=0u64;
             let mut original_bytes=0u64;
             let mut root_blocks=0u64;
@@ -843,10 +858,10 @@ impl Code {
                 let block=device::PcsQueryBlock { first:0,source_rows:0,message_rows:n as u64,active:0,
                     byte_first:(column*n) as u64,window_first:0,pad_first:(column*pad_rows) as u64,
                     pad_rows:pad_rows as u64,pad_only:0 };
-                runtime.pcs_query_low(None,&pads,&remainders[0],block)?;
+                runtime.pcs_query_low(None,&pads,&remainders[0],device::PcsQueryBlock {message_rows:1,..block})?;
                 let mut current=0;
                 for b in (0..source_rows.div_ceil(cap)).rev() {
-                    if b*cap<active {
+                    if tiles.is_none() && b*cap<active {
                         let first=column*n+b*cap;
                         let start=first/window_len*window_len;
                         let end=column*n+((b+1)*cap).min(active);
@@ -854,12 +869,13 @@ impl Code {
                         if window_first!=start {
                             if let Some(previous)=window.take() { runtime.release_buffer(previous)?; }
                             let count=window_len.min(self.live-start);
-                            window=Some((native.read)(&mut runtime,start,count)?);
+                            let NativeQuery::Bytes {read,..}=native else {return Err("W query cannot request original byte windows".into());};
+                            window=Some(read(&mut runtime,start,count)?);
                             window_first=start;
                             windows+=1; original_bytes+=count as u64;
                         }
                     }
-                    runtime.pcs_query_low(window.as_ref(),&pads,&low,device::PcsQueryBlock {
+                    load(&mut runtime,window.as_ref(),&pads,&low,device::PcsQueryBlock {
                         first:(b*cap) as u64,source_rows:source_rows as u64,active:active as u64,
                         window_first:window_first as u64,..block })?;
                     runtime.pcs_query_remainder(&remainders[current],&low,&root_level.inverse,&root_level.modulus,
@@ -868,12 +884,12 @@ impl Code {
                 }
                 if split {
                     if pad_rows<=cap {
-                        runtime.pcs_query_low(None,&pads,&pad,device::PcsQueryBlock {
+                        load(&mut runtime,None,&pads,&pad,device::PcsQueryBlock {
                             source_rows:pad_rows as u64,pad_only:1,..block })?;
                     } else {
-                        runtime.pcs_query_low(None,&pads,&pad,block)?;
+                        runtime.pcs_query_low(None,&pads,&pad,device::PcsQueryBlock {message_rows:1,..block})?;
                         for b in (0..pad_rows.div_ceil(cap)).rev() {
-                            runtime.pcs_query_low(None,&pads,&low,device::PcsQueryBlock {
+                            load(&mut runtime,None,&pads,&low,device::PcsQueryBlock {
                                 first:(b*cap) as u64,source_rows:pad_rows as u64,pad_only:1,..block })?;
                             runtime.pcs_query_remainder(&pad,&low,&root_level.inverse,&root_level.modulus,
                                 &root_level.forward,&root_level.backward,&work,&scratch,&remainders[1-current],cap,false)?;
@@ -897,7 +913,8 @@ impl Code {
                 }
                 phase.checkpoint(|| json!({"completed_columns":column+1,"total_columns":self.width,
                     "original_windows":windows,"original_window_bytes":original_bytes,
-                    "root_blocks":root_blocks,"pad_blocks":pad_blocks,"native":runtime.stats().ok()}))?;
+                    "root_blocks":root_blocks,"pad_blocks":pad_blocks,
+                "original_weight_reads":if matches!(native,NativeQuery::Weights(_)) {self.live as u64} else {0},"native":runtime.stats().ok()}))?;
             }
             if let Some(window)=window { runtime.release_buffer(window)?; }
             for level in levels {
@@ -906,6 +923,7 @@ impl Code {
             if let Some(shift)=shift { runtime.release_buffer(shift)?; }
             for buffer in [pads,work,scratch,low,pad] { runtime.release_buffer(buffer)?; }
             for buffer in remainders { runtime.release_buffer(buffer)?; }
+            if let Some(tiles)=tiles {runtime.release_buffer(tiles)?;}
             let after=runtime.stats()?;
             if after.arena_bytes!=before.arena_bytes { return Err("native query leaked common owner capacity".into()); }
             phase.finish(json!({"completed_columns":self.width,"output_base_cells":values.len(),
@@ -1059,7 +1077,7 @@ impl Code {
                 self.pads.len() != 128 * pad {
                 return Err("native A accumulation or pad bound differs".into());
             }
-            self.native_query=Some(NativeQuery { runtime: owner.clone(), read: native.window.clone() });
+            self.native_query=Some(NativeQuery::Bytes { runtime: owner.clone(), read: native.window.clone() });
             let code = Arc::new(self);
             let rowcode = code.clone();
             let mut histogram = [0u64; 256];
@@ -1195,7 +1213,7 @@ impl Code {
         result
     }
 
-    fn commit_native_weights(self, mmcs: &HidingMmcs, native: NativeWeights)
+    fn commit_native_weights(mut self, mmcs: &HidingMmcs, native: NativeWeights)
         -> Result<(replay_tree::Commitment, ZkWhirReplayHandle), String> {
         let owner = native.runtime.clone();
         let result = (|| {
@@ -1210,6 +1228,7 @@ impl Code {
             if n < rows || n / rows > 256 || pad == 0 || pad > 1536 || self.pads.len() != 128 * pad {
                 return Err("native W signed accumulation or pad bound differs".into());
             }
+            self.native_query=Some(NativeQuery::Weights(native.clone()));
             let code = Arc::new(self);
             let rowcode = code.clone();
             let prepare_owner = owner.clone();
@@ -3299,7 +3318,7 @@ mod tests {
         let cpu_requests=Arc::new(Mutex::new(Vec::new()));
         let gpu_requests=Arc::new(Mutex::new(Vec::new()));
         let log=gpu_requests.clone(); let resident=f.native.window.clone();
-        let native=NativeQuery { runtime:owner.clone(),read:Arc::new(move |runtime,first,count| {
+        let native=NativeQuery::Bytes { runtime:owner.clone(),read:Arc::new(move |runtime,first,count| {
             log.lock().unwrap().push((first,count)); resident(runtime,first,count)
         }) };
         let mut cases=0;
@@ -3376,6 +3395,57 @@ mod tests {
     }
 
     #[test]
+    fn c71_b12_native_weight_query_horner_signed_pads_duplicates_and_accounting() {
+        let mut fixture=device::tests::fixture(512);fixture.config.arena_bytes=16<<20;
+        let (original,source,_scans,owner)=super::super::sourcewise::tests::native_fixture_original(&fixture.config,10,false);
+        let NativeOriginal::Weights(native)=original else {panic!("W query fixture differs");};
+        let _budget=crate::c71_matrix::census::Budget::new(&native.weights).unwrap();
+        let live=native.weights.len();let source=Arc::new(source);let mut cases=0;
+        for (n,pad_rows) in [(128usize,6usize),(512,137),(512,1536)] {
+            let width=1024/n;let height=(16*n).max((n+pad_rows).next_power_of_two());
+            let root=Goldilocks::two_adic_generator(height.ilog2() as usize);
+            let pads:Arc<[Goldilocks]>=(0..width*pad_rows).map(|i|match i%3 {
+                0=>Goldilocks::ZERO,1=>-Goldilocks::ONE,_=>Goldilocks::new(i as u64+1000)}).collect();
+            let code=Code {get:Arc::new(|_|panic!("native W query used scalar source")),scan:None,
+                window:Some(Arc::new(|_,_|panic!("native W query used host window"))),
+                native_query:Some(NativeQuery::Weights(native.clone())),native_residual:None,
+                len:1024,live:live,width,height,pads:Pads::Base(pads.clone())};
+            for count in [0usize,1,3,9,65,257] {
+                let indices:Vec<_>=(0..count).map(|i|match i%5 {
+                    0=>0,1=>height-1,2=>17,_=>(i*67+3)%height}).rev().collect();
+                let expected:Vec<_>=indices.iter().flat_map(|&index| {
+                    let point=root.exp_u64(index as u64);let pads=&pads;let source=&source;
+                    (0..width).map(move |column|(0..n+pad_rows).rev().fold(Goldilocks::ZERO,|sum,j| {
+                        sum*point+if j>=n {pads[column*pad_rows+j-n]}
+                        else if column*n+j<live {source[column*n+j]}
+                        else {Goldilocks::ZERO}
+                    }))
+                }).collect();
+                let before=owner.lock().unwrap().stats().unwrap();
+                let start=std::time::Instant::now();let actual=code.rows(&indices).unwrap();
+                let elapsed=start.elapsed().as_secs_f64();let after=owner.lock().unwrap().stats().unwrap();
+                assert_eq!(actual.values,expected,"W n{n}/pad{pad_rows}/q{count}");
+                assert_eq!(after.arena_bytes,before.arena_bytes);
+                assert_eq!(after.d2h_bytes-before.d2h_bytes,(width*count*8) as u64,"only final matrix values");
+                let cap=count.max(1).next_power_of_two();
+                let factor_bytes=32*cap*(cap.ilog2() as usize+1);
+                let shift_bytes=if live<1024 && n>cap {16*cap} else {0};
+                let tiles_bytes=native.tiles.len()*size_of::<device::WeightTile>();
+                assert_eq!(after.h2d_bytes-before.h2d_bytes,
+                    if count==0 {0} else {(factor_bytes+shift_bytes+width*pad_rows*8+tiles_bytes) as u64},"no W payload upload");
+                if count==65 || count==257 {println!("C71_NATIVE_WEIGHT_QUERY_LOCAL {}",json!({"n":n,
+                    "pad_rows":pad_rows,"live":live,"columns":width,"query_rows":count,
+                    "host_fixture_s":elapsed,"h2d":after.h2d_bytes-before.h2d_bytes,
+                    "d2h":after.d2h_bytes-before.d2h_bytes,"d2d":after.d2d_bytes-before.d2d_bytes,
+                    "launches":after.launches-before.launches,"fences":after.fences-before.fences,
+                    "native":after,"host_returned_payload":width*count*8,"gpu_execution":false,"credit":false}));}
+                cases+=1;
+            }
+        }
+        assert_eq!(cases,18);owner.lock().unwrap().close().unwrap();
+    }
+
+    #[test]
     fn c71_b12_native_query_reader_failure_without_host_fallback() {
         let mut fixture=device::tests::fixture(512); fixture.config.arena_bytes=8<<20;
         let weights=Arc::new(Vec::new());
@@ -3395,7 +3465,7 @@ mod tests {
             });
             let code=Code { get:Arc::new(|_|panic!("query scalar fallback")),scan:None,
                 window:Some(Arc::new(|_,_|panic!("query host window fallback"))),
-                native_query:Some(NativeQuery {runtime:owner.clone(),read:reader}),native_residual:None,
+                native_query:Some(NativeQuery::Bytes {runtime:owner.clone(),read:reader}),native_residual:None,
                 len:1024,live:1024,width:8,height:2048,pads:Pads::Base(vec![Goldilocks::ONE;48].into()) };
             assert!(code.rows(&[17,0,17]).is_err(),"reader fault {fault}");
             let stats=owner.lock().unwrap().stats().unwrap();
@@ -3416,7 +3486,7 @@ mod tests {
         let values=(0..1024).map(|i|Goldilocks::from_u8(f.bytes[i])).collect();
         let requests=Arc::new(Mutex::new(Vec::new()));
         let log=requests.clone(); let read=f.native.window.clone();
-        compare_source_with_query(10,get,values,None,None,None,false,Some(NativeQuery {
+        compare_source_with_query(10,get,values,None,None,None,false,Some(NativeQuery::Bytes {
             runtime:owner.clone(),read:Arc::new(move |runtime,first,count| {
                 log.lock().unwrap().push((first,count)); read(runtime,first,count)
             }),
@@ -3894,6 +3964,17 @@ mod tests {
                 runtime.release_buffer(h).unwrap();
             }
             let accumulated_s = started.elapsed().as_secs_f64();
+            // Match the canonical caller's lifetime: producer originals and
+            // histogram were retired above; source_finish retired its flag.
+            // Powers must retire before allocating hash states.
+            runtime.release_buffer(low).unwrap();
+            runtime.release_buffer(high).unwrap();
+            let align = |n: usize| n.div_ceil(256) * 256;
+            let before_hash = runtime.stats().unwrap();
+            let retained_pcs = 2 * align(256 * rows * 8)
+                + align(pads.len() * 8) + align(rows * 8);
+            assert_eq!(before_hash.live_capacity_bytes, retained_pcs as u64);
+            assert_eq!(before_hash.arena_bytes, retained_pcs as u64);
             let group_rows = 4 * rows;
             let band = 8.min(group_rows);
             let salt_buffer = runtime.pcs_words(4 * band).unwrap();
@@ -3923,12 +4004,15 @@ mod tests {
                 }).collect();
                 assert_eq!(runtime.pcs_digests(&roots, 0, expected.len()).unwrap(), expected);
             }
-            for buffer in [roots, low, high, twiddles, pad_buffer, salt_buffer] { runtime.release_buffer(buffer).unwrap(); }
+            for buffer in [roots, twiddles, pad_buffer, salt_buffer] { runtime.release_buffer(buffer).unwrap(); }
             assert_eq!(runtime.stats().unwrap().live_capacity_bytes, 0);
             println!("C71_PCS_SOURCE_COMPONENT {}", json!({"message_rows":n,"coset_rows":rows,"pad_rows":pad,
                 "first_coset":first_coset,"original_bytes":code.live,"cosets_per_reconstruction":4,"reconstructions":1,
                 "tiles":tiles,"reference_accumulation_fft_s":reference_s,"native_host_accumulation_fft_s":accumulated_s,
                 "native_capacity_peak_bytes":after.peak_capacity_bytes,"source_d2h_bytes":0,
+                "before_hash_owner_capacity_bytes":before_hash.live_capacity_bytes,
+                "before_hash_retained_PCS_capacity_bytes":retained_pcs,
+                "source_and_power_temporaries_retired_before_hash":true,
                 "histogram_d2h_bytes":if first_coset==0 {2048}else{0},"d2h_flag_bytes":8,
                 "native_owner_host_bytes":after.host_owner_bytes,"gpu_execution":false,"credit":false,
                 "resource_census":crate::c71_matrix::census::simultaneous()}));
@@ -4311,7 +4395,7 @@ mod tests {
         let get:Getter=Arc::new(move |i| {count.fetch_add(1,Ordering::Relaxed);E::from(data[i])});
         let started=std::time::Instant::now();
         compare_source_with_query(10,get,values,None,None,None,false,
-            Some(NativeQuery {runtime:owner.clone(),read:Arc::new(move |runtime,first,count| {
+            Some(NativeQuery::Bytes {runtime:owner.clone(),read:Arc::new(move |runtime,first,count| {
                 log.lock().unwrap().push((first,count));reader(runtime,first,count)
             })}),Some(original));
         let stats=owner.lock().unwrap().stats().unwrap();assert_eq!(stats.stopped,0);
@@ -4337,10 +4421,12 @@ mod tests {
         let (original,values,_scans,owner)=super::super::sourcewise::tests::native_fixture_original(&fixture.config,10,false);
         let data=Arc::new(values.clone());let get:Getter=Arc::new(move |i|E::from(data[i]));
         let started=std::time::Instant::now();
-        compare_source_with_query(10,get,values,None,None,None,false,None,Some(original));
+        let NativeOriginal::Weights(weights)=&original else {panic!("W query fixture differs");};
+        compare_source_with_query(10,get,values,None,None,None,false,
+            Some(NativeQuery::Weights(weights.clone())),Some(original));
         let stats=owner.lock().unwrap().stats().unwrap();assert_eq!(stats.stopped,0);assert_eq!(stats.arena_bytes,0);
         println!("C71_NATIVE_RESIDUAL_QUERY_W_CHAIN {}",json!({"credit":false,"gpu_execution":false,"dimension":10,
-            "seconds":started.elapsed().as_secs_f64(),"initial_commitment_and_queries":"unchanged CPU reference",
+            "seconds":started.elapsed().as_secs_f64(),"initial_commitment":"CPU reference","initial_queries":"resident sealed W",
             "residual_state_and_extension_queries":"native owner","full_weight_retention":false,"native":stats}));
         owner.lock().unwrap().close().unwrap();
     }

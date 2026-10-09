@@ -87,4 +87,21 @@ def test_native_range_owner_with_deferred_fake_driver(tmp_path):
         "standalone_byte_count_proves_uniqueness": False,
         "gpu_execution": False, "credit": False,
     }
+    expected_components["C71_PCS_QUERY_W_INITIAL_OWNER"] = {
+        "column_cases": 160, "query_rows": 896, "root_blocks": 0,
+        "original_visits": 640, "W_scans_per_batch": 1,
+        "loader_launches_per_block": 1, "loader_extra_temp_bytes": 0,
+        "block_input_transfer_bytes": 0, "fences_per_column": 1,
+        "D35_sparse_geometry": True, "None_zero_unchanged": True,
+        "gpu_execution": False, "credit": False,
+    }
+    # Count comes from the public source_rows/capacity loop, not an FFT claim.
+    expected_components["C71_PCS_QUERY_W_INITIAL_OWNER"]["root_blocks"] = sum(
+        8 * ((n + 3 + cap - 1) // cap)
+        for cap in (1, 2, 4, 8, 16) for n in (4, 8, 16, 64)
+    )
+    expected_components["C71_PCS_QUERY_W_INITIAL_FAILURE"] = {
+        "terminal_rejections": 34, "input_d2h_bytes": 0,
+        "unavailable_GPU_fail_closed": True, "gpu_execution": False, "credit": False,
+    }
     assert reports == expected_components

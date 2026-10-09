@@ -1431,6 +1431,11 @@ mod tests {
             Ok(())
         }).unwrap();
         let after_pcs = session.stats().unwrap();
+        // A complete scan owns no producer rows, replay KV copies or
+        // duplicate histograms after returning to the PCS hash consumer.
+        // This is a lifetime assertion, not a pinned arena-peak admission.
+        assert_eq!(after_pcs.arena_bytes, before_pcs.arena_bytes);
+        assert_eq!(after_pcs.live_capacity_bytes, before_pcs.live_capacity_bytes);
         assert_eq!(resident_bytes, (150 * columns * (6 + 2)) as u64);
         assert!(resident_tiles > 0);
         assert_eq!(after_pcs.h2d_bytes, before_pcs.h2d_bytes);
@@ -1445,6 +1450,9 @@ mod tests {
             "d2h_flag_bytes":pcs_d2h, "source_h2d_bytes":0,
             "launches":after_pcs.launches-before_pcs.launches,
             "native_peak_capacity_bytes":after_pcs.peak_capacity_bytes,
+            "producer_capacity_before_scan":before_pcs.live_capacity_bytes,
+            "producer_capacity_after_scan":after_pcs.live_capacity_bytes,
+            "producer_temporaries_retired_before_PCS_hash":true,
             "gpu_execution":false, "credit":false
         }));
         let mut observed = 0;

@@ -507,6 +507,7 @@ api! {
     transform: unsafe extern "C" fn(Raw,u64,u64,u64,u32,u32,u32)->i32 => "c71_pcs_transform",
     pcs_words_read: unsafe extern "C" fn(Raw,u64,u64,u64,*mut u64)->i32 => "c71_pcs_read_words",
     query_low: unsafe extern "C" fn(Raw,u64,u64,u64,PcsQueryBlock)->i32 => "c71_pcs_query_low",
+    query_weight_low: unsafe extern "C" fn(Raw,u64,u64,u64,PcsQueryBlock)->i32 => "c71_pcs_query_weight_low",
     query_remainder: unsafe extern "C" fn(Raw,u64,u64,u64,u64,u64,u64,u64,u64,u64,u64,u32)->i32 => "c71_pcs_query_remainder",
     query_shift: unsafe extern "C" fn(Raw,u64,u64,u64,u64,u64,u64,u64,u64)->i32 => "c71_pcs_query_shift",
     query_add: unsafe extern "C" fn(Raw,u64,u64)->i32 => "c71_pcs_query_add",
@@ -1073,6 +1074,12 @@ impl Runtime {
         low: &Buffer, block: PcsQueryBlock) -> Result<(),String> {
         for b in bytes.into_iter().chain([pads,low]) { self.require_buffer(b)?; }
         let status=unsafe { (self.api.query_low)(self.raw,bytes.map_or(0,|b|b.id),pads.id,low.id,block) };
+        self.check(status)
+    }
+    pub(in crate::c71_matrix) fn pcs_query_weight_low(&mut self, tiles: &Buffer, pads: &Buffer,
+        low: &Buffer, block: PcsQueryBlock) -> Result<(),String> {
+        for b in [tiles,pads,low] {self.require_buffer(b)?;}
+        let status=unsafe {(self.api.query_weight_low)(self.raw,tiles.id,pads.id,low.id,block)};
         self.check(status)
     }
     pub(in crate::c71_matrix) fn pcs_query_remainder(&mut self, high: &Buffer, low: &Buffer,
@@ -2559,6 +2566,13 @@ pub(in crate::c71_matrix) mod tests {
             let legacy=fixture_library(512,Some(symbol));
             let error=Runtime::new(&legacy.config).err().unwrap(); assert!(error.contains(symbol),"{error}");
         }
+    }
+
+    #[test]
+    fn c71_b12_native_weight_query_symbol_is_mandatory() {
+        let legacy=fixture_library(512,Some("c71_pcs_query_weight_low"));
+        let error=Runtime::new(&legacy.config).err().unwrap();
+        assert!(error.contains("c71_pcs_query_weight_low"),"{error}");
     }
 
     #[test]

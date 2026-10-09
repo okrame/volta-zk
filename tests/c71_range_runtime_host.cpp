@@ -555,6 +555,36 @@ extern "C" int c71_pcs_query_low_launch(cudaStream_t stream,const uint8_t* bytes
         }
     });
 }
+static uint64_t initial_query_weight_reads=0;
+extern "C" int c71_pcs_query_weight_low_launch(cudaStream_t stream,const int16_t* weights,
+    const c71_pcs::WeightTile* tiles,uint64_t tile_count,uint64_t live,const uint64_t* pads,
+    uint64_t pad_count,uint64_t* output,uint64_t capacity,c71_pcs::QueryBlock shape) {
+    (void)pad_count;
+    // Deferred driver only: independent linear tile search and signed mapping.
+    // The pure fixture separately checks the shared binary-search helper.
+    return launch(stream,[=] {
+        for(uint64_t i=0;i<capacity;++i) {
+            const uint64_t j=shape.first+i;uint64_t value=0;
+            if(j<shape.source_rows) {
+                if(shape.pad_only)value=pads[shape.pad_first+j];
+                else if(j<shape.active) {
+                    const uint64_t index=shape.byte_first+j;
+                    if(index<live) {
+                        uint64_t address=UINT64_MAX;
+                        for(uint64_t t=0;t<tile_count;++t) if(index>=tiles[t].first && index-tiles[t].first<tiles[t].count) {
+                            const auto& tile=tiles[t];const uint64_t local=index-tile.first;
+                            address=tile.packed_first+(local/tile.columns)*tile.packed_stride+local%tile.columns;break;
+                        }
+                        assert(address<live && weights[address]!=INT16_MIN);
+                        const int32_t original=weights[address];
+                        value=original<0?P-uint64_t(-original):uint64_t(original);++initial_query_weight_reads;
+                    }
+                } else if(j>=shape.message_rows)value=pads[shape.pad_first+j-shape.message_rows];
+            }
+            output[i]=value;
+        }
+    });
+}
 extern "C" int c71_pcs_query_remainder_launch(cudaStream_t stream,const uint64_t* high,const uint64_t* low,
     const uint64_t* inverse,const uint64_t* modulus,const uint64_t* forward,const uint64_t* backward,
     uint64_t* work,uint64_t* scratch,uint64_t* output,uint64_t degree,uint64_t count,unsigned children,
@@ -2109,6 +2139,173 @@ void trusted_source_partition_checks() {
 
 }
 
+
+namespace initial_weight_query_test {
+using residual_query_test::words;
+using residual_query_test::factors;
+using residual_query_test::workspace;
+using residual_query_test::release_work;
+using residual_query_test::release_factors;
+uint64_t field(int16_t value) {
+    const int32_t signed_value=value;
+    return signed_value<0 ? P-uint64_t(-signed_value) : uint64_t(signed_value);
+}
+uint64_t horner(const std::vector<uint64_t>& original,const std::vector<uint64_t>& pads,
+    unsigned n,unsigned column,unsigned pad_rows,uint64_t point) {
+    uint64_t value=0;
+    for(unsigned row=pad_rows;row-->0;)
+        value=residual_oracle::add(residual_oracle::mul(value,point),pads[column*pad_rows+row]);
+    for(unsigned row=n;row-->0;) {
+        const uint64_t index=uint64_t(column)*n+row;
+        value=residual_oracle::add(residual_oracle::mul(value,point),index<original.size()?original[index]:0);
+    }
+    return value;
+}
+void positive() {
+    auto* c=create();
+    const int16_t weights[]={0,1,-1,32767,-32767,2,-2,3,4,-4,7,-7,11,-11,13,-13,
+        17,-17,19,-19,23,-23,29,-29,31,-31,37,-37,41,-41,43,-43};
+    assert(!c71_dense_weights_begin(c,32));assert(!c71_dense_weights_upload(c,0,weights,32));assert(!c71_dense_weights_seal(c));
+    const auto tiles=alloc(c,C71_PCS_WEIGHT_TILES,2);
+    const c71_pcs::WeightTile mapping[]={{0,16,0,4,2},{16,16,2,4,2}};
+    assert(!c71_pcs_tiles_upload(c,tiles,mapping,2));
+    std::vector<uint64_t> original(32),pads(8*3);
+    // Independent public tile decoding, rather than the production binary search.
+    for(unsigned i=0;i<32;++i)original[i]=field(weights[i<16?i/2*4+i%2:(i-16)/2*4+2+(i-16)%2]);
+    for(unsigned i=0;i<pads.size();++i)pads[i]=i%4==0?0:i%4==1?1:i%4==2?P-1:17+i;
+    const auto pad_id=words(c,pads);
+    unsigned cases=0;uint64_t rows=0,blocks=0,visits=0;
+    for(unsigned capacity:{1u,2u,4u,8u,16u}) {
+        const unsigned count=capacity>2?capacity-1:capacity;
+        std::vector<uint64_t> points(capacity);
+        for(unsigned i=0;i<count;++i)points[i]=i%4==0?0:i%4==1?1:i%4==2?P-1:7;
+        const auto levels=factors(c,points);auto w=workspace(c,capacity);
+        const auto zero=words(c,std::vector<uint64_t>(capacity));
+        for(unsigned n:{4u,8u,16u,64u}) {
+            const auto first_visit=initial_query_weight_reads;
+            for(unsigned column=0;column<8;++column) {
+                const auto before=stats(c);bool first=true;
+                const uint64_t left=32>uint64_t(column)*n?32-uint64_t(column)*n:0;
+                const uint64_t active=std::min(left,uint64_t(n));
+                for(uint64_t b=(n+3+capacity-1)/capacity;b-->0;) {
+                    const c71_pcs::QueryBlock geometry{b*capacity,n+3,n,active,uint64_t(column)*n,0,uint64_t(column)*3,3,0};
+                    assert(!c71_pcs_query_weight_low(c,tiles,pad_id,w.current[1],geometry));
+                    const auto& root=levels.front();
+                    assert(!c71_pcs_query_remainder(c,first?zero:w.current[0],w.current[1],root.inverse,root.modulus,
+                        root.forward,root.backward,w.work,w.scratch,w.spare,capacity,0));
+                    std::swap(w.current[0],w.spare);first=false;++blocks;
+                }
+                for(size_t level=1;level<levels.size();++level) {
+                    const auto& f=levels[level];
+                    assert(!c71_pcs_query_remainder(c,w.current[0],w.current[0],f.inverse,f.modulus,
+                        f.forward,f.backward,w.work,w.scratch,w.spare,f.degree,1));
+                    std::swap(w.current[0],w.spare);
+                }
+                const auto queued=stats(c);
+                assert(queued.fences==before.fences && queued.d2h_bytes==before.d2h_bytes && queued.h2d_bytes==before.h2d_bytes);
+                assert(queued.arena_bytes==before.arena_bytes && queued.host_owner_bytes==before.host_owner_bytes);
+                std::vector<uint64_t> actual(count,0x12345678);
+                assert(!c71_pcs_read_words(c,w.current[0],0,count,actual.data()));
+                for(unsigned i=0;i<count;++i)assert(actual[i]==horner(original,pads,n,column,3,points[i]));
+                assert(stats(c).fences-before.fences==1 && stats(c).d2h_bytes-before.d2h_bytes==8*count);
+                ++cases;rows+=count;
+            }
+            assert(initial_query_weight_reads-first_visit==32);visits+=32;
+        }
+        assert(!c71_range_release(c,zero));release_work(c,w);release_factors(c,levels);
+    }
+    // Full D35 public domain geometry is checked without allocating or looping
+    // over that domain: only its last pad block and a public zero column.
+    const auto low=alloc(c,C71_PCS_BASE,8);const auto before=stats(c);const auto reads=initial_query_weight_reads;
+    const uint64_t n=uint64_t{1}<<28;
+    assert(!c71_pcs_query_weight_low(c,tiles,pad_id,low,{n,n+3,n,32,0,0,0,3,0}));
+    uint64_t output[8]{};assert(!c71_pcs_read_words(c,low,0,8,output));
+    for(unsigned i=0;i<8;++i)assert(output[i]==(i<3?pads[i]:0));
+    assert(!c71_pcs_query_weight_low(c,tiles,pad_id,low,{0,n+3,n,0,7*n,0,21,3,0}));
+    assert(!c71_pcs_read_words(c,low,0,8,output));for(auto value:output)assert(!value);
+    assert(!c71_pcs_query_weight_low(c,tiles,pad_id,low,{0,3,n,0,0,0,0,3,1}));
+    assert(!c71_pcs_read_words(c,low,0,8,output));
+    for(unsigned i=0;i<8;++i)assert(output[i]==(i<3?pads[i]:0));
+    assert(initial_query_weight_reads==reads && stats(c).h2d_bytes==before.h2d_bytes);
+    // Existing byte/None-zero loader remains a distinct legal initializer.
+    assert(!c71_pcs_query_low(c,0,pad_id,low,{0,0,4,0,0,0,0,3,0}));
+    assert(!c71_pcs_read_words(c,low,0,8,output));for(auto value:output)assert(!value);
+    assert(!c71_range_release(c,low));assert(!c71_range_release(c,pad_id));assert(!c71_range_release(c,tiles));close(c);
+    std::printf("C71_PCS_QUERY_W_INITIAL_OWNER {\"column_cases\":%u,\"query_rows\":%llu,\"root_blocks\":%llu,\"original_visits\":%llu,\"W_scans_per_batch\":1,\"loader_launches_per_block\":1,\"loader_extra_temp_bytes\":0,\"block_input_transfer_bytes\":0,\"fences_per_column\":1,\"D35_sparse_geometry\":true,\"None_zero_unchanged\":true,\"gpu_execution\":false,\"credit\":false}\n",
+        cases,(unsigned long long)rows,(unsigned long long)blocks,(unsigned long long)visits);
+}
+void negative() {
+    constexpr unsigned faults=33;
+    for(unsigned fault=0;fault<faults;++fault) {
+        auto* c=create();uint64_t tiles=alloc(c,C71_PCS_WEIGHT_TILES,1);
+        const int16_t weights[]={0,1,-1,32767,-32767,2,-2,3};
+        if(fault!=0 && fault!=32) {
+            assert(!c71_dense_weights_begin(c,8));assert(!c71_dense_weights_upload(c,0,weights,8));
+            if(fault!=1) {
+                assert(!c71_dense_weights_seal(c));const c71_pcs::WeightTile mapping{0,8,0,2,2};
+                assert(!c71_pcs_tiles_upload(c,tiles,&mapping,1));
+            }
+        }
+        uint64_t pads=words(c,{0,1,P-1,3,5,7,11,13,17,19,23,29});
+        uint64_t low=alloc(c,C71_PCS_BASE,2);
+        c71_pcs::QueryBlock geometry{0,7,4,4,0,0,0,3,0};
+        switch(fault) {
+        case 2: tiles=words(c,{0,1});break;
+        case 3: tiles=alloc(c,C71_PCS_WEIGHT_TILES,1);break;
+        case 4: assert(!c71_range_release(c,tiles));break;
+        case 5: { auto* other=create();tiles=alloc(other,C71_PCS_WEIGHT_TILES,1);close(other);break; }
+        case 6: pads=alloc(c,C71_U8,12);break;
+        case 7: pads=alloc(c,C71_PCS_BASE,12);break;
+        case 8: pads=words(c,{0,1});low=pads;break;
+        case 9: low=alloc(c,C71_U8,2);break;
+        case 10: low=alloc(c,C71_PCS_BASE,3);break;
+        case 11: geometry.message_rows=0;break;
+        case 12: geometry.message_rows=3;break;
+        case 13: geometry.message_rows=uint64_t{1}<<29;break;
+        case 14: geometry.active=5;break;
+        case 15: geometry.active=0;break;
+        case 16: geometry.window_first=1;break;
+        case 17: geometry.byte_first=1;break;
+        case 18: geometry.byte_first=128*4;geometry.active=0;geometry.pad_first=128*3;break;
+        case 19: geometry.pad_first=1;break;
+        case 20: geometry.pad_rows=0;break;
+        case 21: geometry.pad_rows=1537;break;
+        case 22: pads=words(c,{0,1});break;
+        case 23: geometry.source_rows=5;break;
+        case 24: geometry.pad_only=2;break;
+        case 25: geometry.pad_only=1;geometry.source_rows=3;break;
+        case 26: geometry.pad_only=1;geometry.active=0;geometry.source_rows=4;break;
+        case 27: geometry.first=1;break;
+        case 28: geometry.first=8;break;
+        case 29: {
+            const auto packet=residual_test::lookup({{0,0,0},{0,0,0},{7,11,13}});
+            const std::vector<c71_pcs_residual::E> extension_pads(12,{3,5,7});
+            (void)residual_query_test::query_begin(c,{8,7,4,packet.shape},packet,extension_pads,2,0);break;
+        }
+        default:break;
+        }
+        if(fault==32)assert(!c71_dense_weights_begin(c,8));
+        const auto before=stats(c);const auto calls=launches;int status=0;
+        if(fault==30)fail_launch=true;
+        if(fault==31) { const auto bad=alloc(c,C71_PCS_BASE,1);const uint64_t noncanonical=P;status=c71_pcs_words_upload(c,bad,0,&noncanonical,1); }
+        else if(fault==32) { const int16_t marker=INT16_MIN;status=c71_dense_weights_upload(c,0,&marker,1); }
+        else status=c71_pcs_query_weight_low(c,tiles,pads,low,geometry);
+        fail_launch=false;
+        assert(status && stats(c).stopped && *c71_range_error(c));
+        const unsigned attempted=fault==30?1:0;
+        assert(stats(c).launches-before.launches==attempted && launches-calls==attempted);
+        assert(stats(c).d2h_bytes==before.d2h_bytes && stats(c).h2d_bytes==before.h2d_bytes);
+        assert(c71_pcs_query_weight_low(c,tiles,pads,low,geometry));
+        assert(launches-calls==attempted);close(c);
+    }
+    // GPU unavailability is terminal; no fake host computation is selected.
+    C71RangeContext* unavailable=nullptr;assert(c71_range_create(1,262144,256,nullptr,&unavailable) && unavailable);
+    assert(c71_pcs_query_weight_low(unavailable,0,0,0,{}));
+    C71RangeStats final{};assert(c71_range_close(unavailable,&final) && final.cleanup_failed && !final.arena_bytes);
+    std::printf("C71_PCS_QUERY_W_INITIAL_FAILURE {\"terminal_rejections\":%u,\"input_d2h_bytes\":0,\"unavailable_GPU_fail_closed\":true,\"gpu_execution\":false,\"credit\":false}\n",faults+1);
+}
+}
+
 int main() {
     // Original P3 66e2906 Goldilocks generator, including canonical 2^32.
     uint64_t two_adic_root=0x185629dcda58878cULL;
@@ -2224,6 +2421,8 @@ int main() {
     residual_query_test::negative();
     residual_query_test::weight_launch_failures();
     residual_query_test::trusted_source_partition_checks();
+    initial_weight_query_test::positive();
+    initial_weight_query_test::negative();
     assert(allocations==frees);
     std::puts("C71_RANGE_OWNER_HOST {\"rejections\":13,\"dense_rejections\":23,\"byte_rejections\":19,\"pointwise_rejections\":14,\"embedding_rejections\":17,\"dense_batches\":2,\"dense_row_views\":1,\"max_arena_bytes\":262144,\"gpu_execution\":false,\"credit\":false}");
 }

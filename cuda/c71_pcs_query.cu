@@ -25,6 +25,12 @@ __global__ void load_low(const uint8_t* bytes,const uint64_t* pads,uint64_t* low
     }
     low[i]=value;
 }
+__global__ void load_weight_low(const int16_t* weights,const c71_pcs::WeightTile* tiles,
+    uint64_t tile_count,uint64_t live,const uint64_t* pads,uint64_t* low,
+    uint64_t count,c71_pcs::QueryBlock shape) {
+    const uint64_t i=uint64_t(blockIdx.x)*blockDim.x+threadIdx.x;
+    if(i<count) low[i]=c71_pcs::query_weight_low_at(weights,tiles,tile_count,live,pads,shape,shape.first+i);
+}
 __global__ void tiny_remainders(const uint64_t* high,const uint64_t* low,const uint64_t* spectrum,
     uint64_t* output,uint64_t degree,uint64_t batch,bool children) {
     const uint64_t task=uint64_t(blockIdx.x)*blockDim.x+threadIdx.x;
@@ -113,6 +119,16 @@ extern "C" cudaError_t c71_pcs_query_low_launch(cudaStream_t stream,const uint8_
     if(!stream || !pads || !output || !count || count>(uint64_t{1}<<20) ||
        (!shape.pad_only && shape.first<shape.active && !bytes)) return cudaErrorInvalidValue;
     load_low<<<unsigned((count+255)/256),256,0,stream>>>(bytes,pads,output,count,shape);
+    return cudaGetLastError();
+}
+extern "C" cudaError_t c71_pcs_query_weight_low_launch(cudaStream_t stream,const int16_t* weights,
+    const c71_pcs::WeightTile* tiles,uint64_t tile_count,uint64_t live,const uint64_t* pads,
+    uint64_t pad_count,uint64_t* output,uint64_t capacity,c71_pcs::QueryBlock shape) {
+    if(!stream || !weights || !tiles || !tile_count || tile_count>65536 || !pads || !output ||
+       static_cast<const void*>(weights)==static_cast<const void*>(output) ||
+       static_cast<const void*>(tiles)==static_cast<const void*>(output) || pads==output ||
+       !c71_pcs::valid_query_weight_low(shape,capacity,live,pad_count)) return cudaErrorInvalidValue;
+    load_weight_low<<<unsigned((capacity+255)/256),256,0,stream>>>(weights,tiles,tile_count,live,pads,output,capacity,shape);
     return cudaGetLastError();
 }
 extern "C" cudaError_t c71_pcs_query_remainder_launch(cudaStream_t stream,const uint64_t* high,const uint64_t* low,

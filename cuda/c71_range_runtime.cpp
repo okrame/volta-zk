@@ -37,6 +37,8 @@ cudaError_t c71_pcs_twiddles_launch(cudaStream_t,uint64_t*,unsigned);
 cudaError_t c71_pcs_transform_twiddles_launch(cudaStream_t,uint64_t*,unsigned,unsigned);
 cudaError_t c71_pcs_transform_launch(cudaStream_t,uint64_t*,uint64_t*,const uint64_t*,unsigned,unsigned,unsigned,unsigned*);
 cudaError_t c71_pcs_query_low_launch(cudaStream_t,const uint8_t*,const uint64_t*,uint64_t*,uint64_t,c71_pcs::QueryBlock);
+cudaError_t c71_pcs_query_weight_low_launch(cudaStream_t,const int16_t*,const c71_pcs::WeightTile*,uint64_t,uint64_t,
+    const uint64_t*,uint64_t,uint64_t*,uint64_t,c71_pcs::QueryBlock);
 cudaError_t c71_pcs_query_remainder_launch(cudaStream_t,const uint64_t*,const uint64_t*,const uint64_t*,const uint64_t*,
     const uint64_t*,const uint64_t*,uint64_t*,uint64_t*,uint64_t*,uint64_t,uint64_t,unsigned,unsigned*,uint64_t*);
 cudaError_t c71_pcs_query_shift_launch(cudaStream_t,const uint64_t*,const uint64_t*,const uint64_t*,const uint64_t*,
@@ -983,6 +985,19 @@ extern "C" int c71_pcs_query_low(C71RangeContext* c,uint64_t bytes,uint64_t pads
     if(launched(c,c71_pcs_query_low_launch(c->stream,b?ptr<uint8_t>(c,b):nullptr,
         ptr<uint64_t>(c,p),ptr<uint64_t>(c,l),l->count,s))) return -1;
     l->initialized=l->count; return 0;
+}
+extern "C" int c71_pcs_query_weight_low(C71RangeContext* c,uint64_t tiles,uint64_t pads,uint64_t low,c71_pcs::QueryBlock s) {
+    if(!ready(c)) return -1;
+    if(c->residual_query.phase) return fail(c,"PCS E query keeps inputs and workspaces private");
+    auto* t=buffer(c,tiles); auto* p=buffer(c,pads); auto* l=buffer(c,low);
+    if(!c->stats.weights_sealed || !c->weights || !full(t,C71_PCS_WEIGHT_TILES) ||
+       t->visits!=c->stats.weights_bytes/2 || !full(p,C71_PCS_BASE) ||
+       !l || l->kind!=C71_PCS_BASE || p==l ||
+       !c71_pcs::valid_query_weight_low(s,l->count,t->visits,p->count))
+        return fail(c,"PCS query original W geometry, sealed mapping, pads or type");
+    if(launched(c,c71_pcs_query_weight_low_launch(c->stream,c->weights,ptr<c71_pcs::WeightTile>(c,t),t->count,t->visits,
+        ptr<uint64_t>(c,p),p->count,ptr<uint64_t>(c,l),l->count,s))) return -1;
+    l->initialized=l->count; return 0; // The existing final read fences this stream.
 }
 extern "C" int c71_pcs_query_remainder(C71RangeContext* c,uint64_t high,uint64_t low,uint64_t inverse,uint64_t modulus,
     uint64_t forward,uint64_t backward,uint64_t work,uint64_t scratch,uint64_t output,uint64_t degree,uint32_t children) {

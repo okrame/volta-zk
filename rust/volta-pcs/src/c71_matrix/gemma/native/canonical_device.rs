@@ -899,9 +899,19 @@ impl Prepared {
 
     pub(in crate::c71_matrix) fn source_pcs(self: &Arc<Self>) -> kernel::b12::replay::NativeSource {
         let prepared = self.clone();
+        let reader = self.clone();
         kernel::b12::replay::NativeSource {
             runtime: self.session.runtime.clone(),
             live: self.session.profiles[self.slot].bytes().live,
+            window: Arc::new(move |runtime, first, count| {
+                if count==0 || count>(1<<28).min(reader.session.limit) ||
+                    first.checked_add(count).is_none_or(|end| end>reader.session.profiles[reader.slot].bytes().live) {
+                    return runtime.abort("native PCS original query window outside live prefix");
+                }
+                // Match the host reader's one aligned gather, including its
+                // minimum layout quantum and padded final window capacity.
+                reader.window_native(runtime,0,0,first,count.max(128).next_power_of_two())
+            }),
             scan: Arc::new(move |emit| prepared.scan_pcs_original(emit)),
         }
     }

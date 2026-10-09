@@ -169,6 +169,91 @@ extern "C" int c71_pcs_transform_launch(cudaStream_t stream,uint64_t* values,uin
         }
     });
 }
+static void query_fft(std::vector<uint64_t>& values,const uint64_t* twiddles,bool inverse) {
+    c71_fft::fft_radix2(values,twiddles[1]);
+    if(inverse) {
+        const auto scale=c71_pcs::power(values.size(),P-2);
+        for(auto& value:values) value=fp_mul(value,scale);
+    }
+}
+static unsigned query_transform_launches(uint64_t degree,unsigned batch) {
+    unsigned log=0; while((uint64_t{1}<<log)<2*degree) ++log;
+    return (log==1?1:5+(log%2))*((batch+32766)/32767)+unsigned(log%2 && log>1);
+}
+extern "C" int c71_pcs_query_low_launch(cudaStream_t stream,const uint8_t* bytes,const uint64_t* pads,
+    uint64_t* output,uint64_t count,c71_pcs::QueryBlock s) {
+    return launch(stream,[=] {
+        for(uint64_t i=0;i<count;++i) {
+            const auto j=s.first+i; uint64_t value=0;
+            if(j<s.source_rows) {
+                if(s.pad_only) value=pads[s.pad_first+j];
+                else if(j<s.active) value=bytes[s.byte_first+j-s.window_first];
+                else if(j>=s.message_rows) value=pads[s.pad_first+j-s.message_rows];
+            }
+            output[i]=value;
+        }
+    });
+}
+extern "C" int c71_pcs_query_remainder_launch(cudaStream_t stream,const uint64_t* high,const uint64_t* low,
+    const uint64_t* inverse,const uint64_t* modulus,const uint64_t* forward,const uint64_t* backward,
+    uint64_t* work,uint64_t* scratch,uint64_t* output,uint64_t degree,uint64_t count,unsigned children,
+    unsigned* attempted,uint64_t* copied) {
+    (void)work; (void)scratch;
+    if(fail_launch) { ++*attempted; return launch(stream,[]{}); }
+    *attempted+=degree<=8 ? 1 : 5+4*query_transform_launches(degree,unsigned(count/degree));
+    unsigned log=0; while((uint64_t{1}<<log)<2*degree) ++log;
+    if(degree>8 && log%2) *copied+=4*2*count*8;
+    return launch(stream,[=] {
+        for(uint64_t task=0;task<count/degree;++task) {
+            const auto high_first=children ? (task/2)*2*degree+degree : 0;
+            const auto low_first=children ? (task/2)*2*degree : 0;
+            const auto* mod=modulus+task*2*degree;
+            if(degree<=8) {
+                std::vector<uint64_t> polynomial(mod,mod+2*degree);
+                query_fft(polynomial,backward,true);
+                std::vector<uint64_t> current(low+low_first,low+low_first+degree);
+                current.insert(current.end(),high+high_first,high+high_first+degree);
+                for(uint64_t j=2*degree;j-->degree;) {
+                    const auto quotient=current[j];
+                    for(uint64_t k=0;k<degree;++k) current[j-degree+k]=fp_sub(current[j-degree+k],fp_mul(quotient,polynomial[k]));
+                }
+                std::copy(current.begin(),current.begin()+degree,output+task*degree);
+            } else {
+                std::vector<uint64_t> quotient(2*degree);
+                for(uint64_t j=0;j<degree;++j) quotient[j]=high[high_first+degree-1-j];
+                query_fft(quotient,forward,false);
+                for(uint64_t j=0;j<2*degree;++j) quotient[j]=fp_mul(quotient[j],inverse[task*2*degree+j]);
+                query_fft(quotient,backward,true);
+                std::reverse(quotient.begin(),quotient.begin()+degree);
+                std::fill(quotient.begin()+degree,quotient.end(),0);
+                query_fft(quotient,forward,false);
+                for(uint64_t j=0;j<2*degree;++j) quotient[j]=fp_mul(quotient[j],mod[j]);
+                query_fft(quotient,backward,true);
+                for(uint64_t j=0;j<degree;++j) output[task*degree+j]=fp_sub(low[low_first+j],quotient[j]);
+            }
+        }
+    });
+}
+extern "C" int c71_pcs_query_shift_launch(cudaStream_t stream,const uint64_t* values,const uint64_t* shift,
+    const uint64_t* forward,const uint64_t* backward,uint64_t* work,uint64_t* scratch,uint64_t* low,uint64_t* high,
+    uint64_t degree,unsigned* attempted,uint64_t* copied) {
+    (void)work; (void)scratch;
+    if(fail_launch) { ++*attempted; return launch(stream,[]{}); }
+    *attempted+=3+2*query_transform_launches(degree,1);
+    unsigned log=0; while((uint64_t{1}<<log)<2*degree) ++log;
+    if(log%2 && log>1) *copied+=2*2*degree*8;
+    return launch(stream,[=] {
+        std::vector<uint64_t> product(values,values+degree); product.resize(2*degree);
+        query_fft(product,forward,false);
+        for(uint64_t j=0;j<2*degree;++j) product[j]=fp_mul(product[j],shift[j]);
+        query_fft(product,backward,true);
+        std::copy(product.begin(),product.begin()+degree,low);
+        std::copy(product.begin()+degree,product.end(),high);
+    });
+}
+extern "C" int c71_pcs_query_add_launch(cudaStream_t stream,uint64_t* values,const uint64_t* correction,uint64_t count) {
+    return launch(stream,[=] { for(uint64_t i=0;i<count;++i) values[i]=fp_add(values[i],correction[i]); });
+}
 extern "C" int c71_pcs_weight_launch(cudaStream_t stream,const int16_t* weights,const c71_pcs::WeightTile* tiles,
     uint64_t tile_count,uint64_t live,const uint64_t* pads,const uint64_t* low,const uint64_t* high,
     uint64_t* ring,c71_pcs::WeightShape s,uint32_t* failed) {

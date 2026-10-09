@@ -10,6 +10,7 @@
 #include "c71_pcs_weight.cuh"
 #include "c71_pcs_source.cuh"
 #include "c71_pcs_salts.cuh"
+#include "c71_pcs_query.cuh"
 
 struct C71RangeContext;
 using C71RangeAccount = int (*)(int64_t);
@@ -114,6 +115,15 @@ int c71_pcs_transform_twiddles(C71RangeContext*,uint64_t output,uint32_t log_row
 int c71_pcs_transform(C71RangeContext*,uint64_t values,uint64_t scratch,uint64_t twiddles,
     uint32_t log_rows,uint32_t batch,uint32_t inverse);
 int c71_pcs_read_words(C71RangeContext*,uint64_t input,uint64_t first,uint64_t count,uint64_t* output);
+// Initial base queries: sealed original bytes stay resident. Public factors
+// have one distinct 2*degree spectrum per child. children=0 is the root block;
+// children=1 borrows the shared low/high halves of each preceding parent.
+int c71_pcs_query_low(C71RangeContext*,uint64_t bytes,uint64_t pads,uint64_t low,c71_pcs::QueryBlock);
+int c71_pcs_query_remainder(C71RangeContext*,uint64_t high,uint64_t low,uint64_t inverse,uint64_t modulus,
+    uint64_t forward,uint64_t backward,uint64_t work,uint64_t scratch,uint64_t output,uint64_t degree,uint32_t children);
+int c71_pcs_query_shift(C71RangeContext*,uint64_t values,uint64_t shift,uint64_t forward,uint64_t backward,
+    uint64_t work,uint64_t scratch,uint64_t low,uint64_t high);
+int c71_pcs_query_add(C71RangeContext*,uint64_t values,uint64_t correction);
 int c71_pcs_ring_zero(C71RangeContext*,uint64_t output);
 // Fused host submission: signed-wide original accumulation, private pads,
 // then the existing finite FFT on four columns. Only arithmetic flag D2H.

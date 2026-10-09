@@ -37,9 +37,11 @@ pub(in crate::c71_matrix) struct NativeWeights {
 /// using the numerical producer's same owner. The C ABI validates spans and
 /// byte count; uniqueness is guaranteed by the adapter's source-row coverage.
 /// The producer sees original buffers/layout only, never PCS coins.
+#[derive(Clone)]
 pub(in crate::c71_matrix) struct NativeSource {
     pub runtime: Arc<Mutex<device::Runtime>>,
     pub live: usize,
+    pub window: NativeByteWindow,
     pub scan: Arc<dyn Fn(&mut dyn FnMut(&mut device::Runtime, &device::Buffer,
         device::PcsSourceTile) -> Result<(), String>) -> Result<(), String> + Send + Sync>,
 }
@@ -60,6 +62,15 @@ pub(in crate::c71_matrix) type BaseScan = Arc<
 /// Like BaseScan, this trusted reader must agree with the immutable getter.
 pub(in crate::c71_matrix) type ByteWindow =
     Arc<dyn Fn(usize, &mut [u8]) -> Result<(), String> + Send + Sync>;
+/// Sealed original biased bytes; the PCS consumer borrows the existing owner.
+/// The reader receives only the same public source intervals as ByteWindow.
+pub(in crate::c71_matrix) type NativeByteWindow =
+    Arc<dyn Fn(&mut device::Runtime, usize, usize) -> Result<device::Buffer, String> + Send + Sync>;
+#[derive(Clone)]
+struct NativeQuery {
+    runtime: Arc<Mutex<device::Runtime>>,
+    read: NativeByteWindow,
+}
 const QUERY_BYTE_WINDOW: usize = 1 << 28;
 fn limbs(x: &E) -> &[Goldilocks] {
     <E as BasedVectorSpace<Goldilocks>>::as_basis_coefficients_slice(x)
@@ -91,6 +102,7 @@ struct Code {
     get: Getter,
     scan: Option<BaseScan>,
     window: Option<ByteWindow>,
+    native_query: Option<NativeQuery>,
     len: usize,
     live: usize,
     width: usize,
@@ -161,11 +173,16 @@ impl QueryLevel {
 }
 
 fn query_tree(points: &[Goldilocks], dft: &Radix2DFTSmallBatch<Goldilocks>) -> Vec<QueryLevel> {
+    let mut factors=Vec::new();
+    query_tree_with(points,dft,|level| { factors.push(level); Ok(()) }).unwrap();
+    factors
+}
+fn query_tree_with(points: &[Goldilocks], dft: &Radix2DFTSmallBatch<Goldilocks>,
+    mut emit: impl FnMut(QueryLevel) -> Result<(),String>) -> Result<(),String> {
     assert!(points.len().is_power_of_two());
     // Two contiguous spectra per level; no allocation retained per leaf.
     let mut level: Vec<_> = points.iter().flat_map(|&point| [-point, Goldilocks::ONE]).collect();
     let mut degree = 1;
-    let mut factors = Vec::new();
     loop {
         let mut spectra = QueryLevel {
             inverse: Vec::with_capacity(2 * points.len()),
@@ -181,9 +198,9 @@ fn query_tree(points: &[Goldilocks], dft: &Radix2DFTSmallBatch<Goldilocks>) -> V
             spectra.inverse.extend(dft.dft(inverse));
             spectra.modulus.extend(dft.dft(modulus));
         }
-        factors.push(spectra);
+        emit(spectra)?;
         if degree == points.len() {
-            return factors;
+            return Ok(());
         }
         let mut next = Vec::with_capacity(points.len() + points.len() / (2 * degree));
         for pair in level.chunks_exact(2 * (degree + 1)) {
@@ -512,6 +529,7 @@ impl Code {
         indices: &[usize],
         convert: impl Fn(E) -> Coefficient,
     ) -> Result<DenseMatrix<Goldilocks>, String> {
+        if let Some(native)=&self.native_query { return self.rows_native(indices,native); }
         if indices.len() > replay_tree::query_batch_rows(self.height)
             || indices.iter().any(|&index| index >= self.height)
         {
@@ -646,6 +664,171 @@ impl Code {
         phase.finish(json!({"completed_columns": self.width, "output_base_cells": values.len()}))?;
         Ok(DenseMatrix::new(values, self.columns()))
     }
+    fn rows_native(&self, indices: &[usize], native: &NativeQuery) -> Result<DenseMatrix<Goldilocks>,String> {
+        struct Level { degree: usize, inverse: device::Buffer, modulus: device::Buffer,
+            forward: device::Buffer, backward: device::Buffer }
+        let mut runtime=native.runtime.lock().map_err(|_| "native query owner poisoned")?;
+        let result: Result<DenseMatrix<Goldilocks>,String>=(|| {
+            if !self.base() || !self.len.is_power_of_two() || !self.width.is_power_of_two() || self.width>128 ||
+                self.len%self.width!=0 || !self.height.is_power_of_two() || self.height>1usize<<32 ||
+                self.live>self.len || self.pads.len()%self.width!=0 ||
+                indices.len()>replay_tree::query_batch_rows(self.height) ||
+                indices.iter().any(|&i| i>=self.height) {
+                return Err("native initial base query geometry differs".into());
+            }
+            if indices.is_empty() { return Ok(DenseMatrix::new(Vec::new(),self.width)); }
+            let n=self.len/self.width;
+            let pad_rows=self.pads.len()/self.width;
+            if !n.is_power_of_two() || n>1<<27 || pad_rows==0 || pad_rows>1536 || n+pad_rows>self.height {
+                return Err("native initial query message or pad bound differs".into());
+            }
+            let cap=indices.len().next_power_of_two();
+            let before=runtime.stats()?;
+            let mut phase=Span::start("pcs_query_remainders",json!({"height":self.height,
+                "query_rows":indices.len(),"columns":self.width,"base":true,
+                "original_byte_windows":true,"resident":true}))?;
+            let root=Goldilocks::two_adic_generator(self.height.ilog2() as usize);
+            let mut points: Vec<_>=indices.iter().map(|&i|root.exp_u64(i as u64)).collect();
+            points.resize(cap,Goldilocks::ZERO);
+            let mut levels=Vec::with_capacity(cap.ilog2() as usize+1);
+            let mut shift=None;
+            let split_pads=self.live<self.len && n>cap;
+            // Each CPU level is retired after upload; only one level and
+            // conversion staging coexist with the public product polynomial.
+            {
+                let dft=Radix2DFTSmallBatch::<Goldilocks>::default();
+                query_tree_with(&points,&dft,|level| {
+                    if split_pads && level.factor_len==2*cap {
+                        let spectrum=level.factor(0).monomial_spectrum(n,&dft);
+                        let buffer=runtime.pcs_words(spectrum.len())?;
+                        let words: Vec<_>=spectrum.iter().map(|x|x.as_canonical_u64()).collect();
+                        runtime.pcs_upload(&buffer,0,&words)?;
+                        shift=Some(buffer);
+                    }
+                    let inverse=runtime.pcs_words(level.inverse.len())?;
+                    let words: Vec<_>=level.inverse.iter().map(|x|x.as_canonical_u64()).collect();
+                    runtime.pcs_upload(&inverse,0,&words)?;
+                    drop(words);
+                    let modulus=runtime.pcs_words(level.modulus.len())?;
+                    let words: Vec<_>=level.modulus.iter().map(|x|x.as_canonical_u64()).collect();
+                    runtime.pcs_upload(&modulus,0,&words)?;
+                    drop(words);
+                    let log=level.factor_len.ilog2() as usize;
+                    let forward=runtime.pcs_transform_twiddles(log,false)?;
+                    let backward=runtime.pcs_transform_twiddles(log,true)?;
+                    levels.push(Level { degree:level.factor_len/2,inverse,modulus,forward,backward });
+                    Ok(())
+                })?;
+            }
+            drop(points);
+            let pads=runtime.pcs_words(self.pads.len())?;
+            let pad_words: Vec<_>=(0..self.pads.len())
+                .map(|i|base_coefficient(self.pads.get(i)).as_canonical_u64()).collect();
+            runtime.pcs_upload(&pads,0,&pad_words)?;
+            drop(pad_words);
+            let work=runtime.pcs_words(2*cap)?;
+            let scratch=runtime.pcs_words(2*cap)?;
+            let low=runtime.pcs_words(cap)?;
+            let mut remainders=[runtime.pcs_words(cap)?,runtime.pcs_words(cap)?];
+            let mut pad=runtime.pcs_words(cap)?;
+            let window_len=(2*n).min(QUERY_BYTE_WINDOW);
+            let mut window=None;
+            let mut window_first=usize::MAX;
+            let mut windows=0u64;
+            let mut original_bytes=0u64;
+            let mut root_blocks=0u64;
+            let mut pad_blocks=0u64;
+            // The Tree owns this sole host matrix; a column-sized u64 staging
+            // buffer receives only final query values, never original bytes.
+            let mut values=vec![Goldilocks::ZERO;self.width*indices.len()];
+            let mut column_words=vec![0u64;indices.len()];
+            let root_level=levels.last().unwrap();
+            for column in 0..self.width {
+                let active=self.live.saturating_sub(column*n).min(n);
+                let split=shift.is_some() && active<n;
+                let source_rows=if split {active} else {n+pad_rows};
+                let block=device::PcsQueryBlock { first:0,source_rows:0,message_rows:n as u64,active:0,
+                    byte_first:(column*n) as u64,window_first:0,pad_first:(column*pad_rows) as u64,
+                    pad_rows:pad_rows as u64,pad_only:0 };
+                runtime.pcs_query_low(None,&pads,&remainders[0],block)?;
+                let mut current=0;
+                for b in (0..source_rows.div_ceil(cap)).rev() {
+                    if b*cap<active {
+                        let first=column*n+b*cap;
+                        let start=first/window_len*window_len;
+                        let end=column*n+((b+1)*cap).min(active);
+                        if end>start+window_len { return Err("query block crosses resident byte window".into()); }
+                        if window_first!=start {
+                            if let Some(previous)=window.take() { runtime.release_buffer(previous)?; }
+                            let count=window_len.min(self.live-start);
+                            window=Some((native.read)(&mut runtime,start,count)?);
+                            window_first=start;
+                            windows+=1; original_bytes+=count as u64;
+                        }
+                    }
+                    runtime.pcs_query_low(window.as_ref(),&pads,&low,device::PcsQueryBlock {
+                        first:(b*cap) as u64,source_rows:source_rows as u64,active:active as u64,
+                        window_first:window_first as u64,..block })?;
+                    runtime.pcs_query_remainder(&remainders[current],&low,&root_level.inverse,&root_level.modulus,
+                        &root_level.forward,&root_level.backward,&work,&scratch,&remainders[1-current],cap,false)?;
+                    current=1-current; root_blocks+=1;
+                }
+                if split {
+                    if pad_rows<=cap {
+                        runtime.pcs_query_low(None,&pads,&pad,device::PcsQueryBlock {
+                            source_rows:pad_rows as u64,pad_only:1,..block })?;
+                    } else {
+                        runtime.pcs_query_low(None,&pads,&pad,block)?;
+                        for b in (0..pad_rows.div_ceil(cap)).rev() {
+                            runtime.pcs_query_low(None,&pads,&low,device::PcsQueryBlock {
+                                first:(b*cap) as u64,source_rows:pad_rows as u64,pad_only:1,..block })?;
+                            runtime.pcs_query_remainder(&pad,&low,&root_level.inverse,&root_level.modulus,
+                                &root_level.forward,&root_level.backward,&work,&scratch,&remainders[1-current],cap,false)?;
+                            std::mem::swap(&mut pad,&mut remainders[1-current]); pad_blocks+=1;
+                        }
+                    }
+                    runtime.pcs_query_shift(&pad,shift.as_ref().unwrap(),&root_level.forward,&root_level.backward,
+                        &work,&scratch,&low,&pad)?;
+                    runtime.pcs_query_remainder(&pad,&low,&root_level.inverse,&root_level.modulus,
+                        &root_level.forward,&root_level.backward,&work,&scratch,&remainders[1-current],cap,false)?;
+                    runtime.pcs_query_add(&remainders[current],&remainders[1-current])?;
+                }
+                for level in levels[..levels.len()-1].iter().rev() {
+                    runtime.pcs_query_remainder(&remainders[current],&remainders[current],&level.inverse,&level.modulus,
+                        &level.forward,&level.backward,&work,&scratch,&remainders[1-current],level.degree,true)?;
+                    current=1-current;
+                }
+                runtime.pcs_download_words(&remainders[current],0,&mut column_words)?;
+                for (row,&word) in column_words.iter().enumerate() {
+                    values[row*self.width+column]=Goldilocks::new(word);
+                }
+                phase.checkpoint(|| json!({"completed_columns":column+1,"total_columns":self.width,
+                    "original_windows":windows,"original_window_bytes":original_bytes,
+                    "root_blocks":root_blocks,"pad_blocks":pad_blocks,"native":runtime.stats().ok()}))?;
+            }
+            if let Some(window)=window { runtime.release_buffer(window)?; }
+            for level in levels {
+                for buffer in [level.inverse,level.modulus,level.forward,level.backward] { runtime.release_buffer(buffer)?; }
+            }
+            if let Some(shift)=shift { runtime.release_buffer(shift)?; }
+            for buffer in [pads,work,scratch,low,pad] { runtime.release_buffer(buffer)?; }
+            for buffer in remainders { runtime.release_buffer(buffer)?; }
+            let after=runtime.stats()?;
+            if after.arena_bytes!=before.arena_bytes { return Err("native query leaked common owner capacity".into()); }
+            phase.finish(json!({"completed_columns":self.width,"output_base_cells":values.len(),
+                "original_windows":windows,"original_window_bytes":original_bytes,
+                "root_blocks":root_blocks,"pad_blocks":pad_blocks,
+                "native_h2d_bytes":after.h2d_bytes-before.h2d_bytes,
+                "native_d2h_bytes":after.d2h_bytes-before.d2h_bytes,
+                "native_d2d_bytes":after.d2d_bytes-before.d2d_bytes,
+                "native_launches":after.launches-before.launches,"native_fences":after.fences-before.fences,
+                "host_output_payload_bytes":values.len()*size_of::<Goldilocks>(),
+                "host_column_capacity_bytes":column_words.capacity()*size_of::<u64>(),"native":after}))?;
+            Ok(DenseMatrix::new(values,self.width))
+        })();
+        match result { Ok(rows)=>Ok(rows),Err(error)=>runtime.abort(error) }
+    }
+
     fn commit(
         self,
         mmcs: &HidingMmcs,
@@ -681,7 +864,7 @@ impl Code {
         Ok((root, ZkWhirReplayHandle::new(Oracle { tree: Arc::new(tree), base, lease })))
     }
 
-    fn commit_native_source(self, mmcs: &HidingMmcs, native: NativeSource)
+    fn commit_native_source(mut self, mmcs: &HidingMmcs, native: NativeSource)
         -> Result<(replay_tree::Commitment, ZkWhirReplayHandle, [u64; 256]), String> {
         let owner = native.runtime.clone();
         let result = (|| {
@@ -697,6 +880,7 @@ impl Code {
                 self.pads.len() != 128 * pad {
                 return Err("native A accumulation or pad bound differs".into());
             }
+            self.native_query=Some(NativeQuery { runtime: owner.clone(), read: native.window.clone() });
             let code = Arc::new(self);
             let rowcode = code.clone();
             let mut histogram = [0u64; 256];
@@ -984,6 +1168,7 @@ pub(in crate::c71_matrix) struct ReplayModel {
     source: Getter,
     live: usize,
     scan: Option<(BaseScan, usize)>,
+    native_original: Option<NativeSource>,
     tree: Arc<Tree>,
     pads: Arc<[Goldilocks]>,
     retain_first: bool,
@@ -1121,11 +1306,15 @@ impl ReplayModel {
             get: source.clone(),
             scan: scan.clone(),
             window,
+            native_query: None,
             len,
             live,
             width: 1 << first,
             height,
             pads: Pads::Base(pads.clone()),
+        };
+        let native_original=match &native {
+            Some(NativeInitial::Source(source))=>Some(source.clone()), _=>None,
         };
         let (root, handle) = match native {
             Some(NativeInitial::Weights(native)) => code.commit_native_weights(&mmcs.inner, native)?,
@@ -1143,6 +1332,7 @@ impl ReplayModel {
             source,
             live,
             scan: scan.map(|scan| (scan, live)),
+            native_original,
             tree: oracle.tree,
             pads,
             retain_first: false,
@@ -1221,6 +1411,9 @@ impl ReplayModel {
 
     pub(in crate::c71_matrix) fn live_len(&self) -> usize {
         self.live
+    }
+    pub(in crate::c71_matrix) fn native_original(&self) -> Option<&NativeSource> {
+        self.native_original.as_ref()
     }
 
     /// Read each original live cell once. The canonical scanner owns its
@@ -1448,7 +1641,7 @@ impl<'a> ZkWhirOracleCommitter<Goldilocks, E, &'a ObservedMmcs> for Backend<'a> 
         Code {
             get,
             scan: None,
-            window: None,
+            window: None, native_query: None,
             len: 1 << state.num_variables(),
             live: 1 << state.num_variables(),
             width: 1 << folding,
@@ -1545,6 +1738,14 @@ fn compare_source_with_resident(
     dimension: usize, source: Getter, values: Vec<Goldilocks>, original: Option<&Model>,
     readers: Option<(BaseScan, ByteWindow)>, native: Option<NativeInitial>, fixture_initial_rows: bool,
 ) {
+    compare_source_with_query(dimension,source,values,original,readers,native,fixture_initial_rows,None)
+}
+#[cfg(test)]
+fn compare_source_with_query(
+    dimension: usize, source: Getter, values: Vec<Goldilocks>, original: Option<&Model>,
+    readers: Option<(BaseScan, ByteWindow)>, native: Option<NativeInitial>, fixture_initial_rows: bool,
+    native_query: Option<NativeQuery>,
+) {
     use rand_010::RngExt;
     assert!((10..=17).contains(&dimension));
     assert_eq!(values.len(), 1 << dimension);
@@ -1617,6 +1818,15 @@ fn compare_source_with_resident(
     )
     .unwrap();
     assert_eq!(root, *model.root());
+    if let Some(native_query)=native_query {
+        assert!(!fixture_initial_rows);
+        let code=Arc::new(Code { get:Arc::new(|_|panic!("query fixture scalar source")),scan:None,window:None,
+            native_query:Some(native_query),len:1<<dimension,live:model.live,
+            width:1<<config.round_folding_factor(0),height:model.tree.geometry().0,pads:Pads::Base(model.pads.clone()) });
+        // Replace only the opening evaluator after an ordinary initial
+        // commitment: no eager row table or cached query bypass.
+        Arc::get_mut(&mut model.tree).unwrap().fixture_rows(Arc::new(move |indices|code.rows(indices)));
+    }
     if let Some(rows) = fixture_rows {
         let payload = rows.values.len() * size_of::<Goldilocks>();
         Arc::get_mut(&mut model.tree).unwrap().fixture_rows(Arc::new(move |indices| {
@@ -1806,7 +2016,7 @@ mod tests {
             let mut rng = PrivateRng::from_seed([65; 32]);
             let code = Code {
                 get: Arc::new(|i| E::from(Goldilocks::new((i * 7919) as u64))),
-                scan: None, window: None, len: 4096, live: 4000, width: 128, height: 512,
+                scan: None, window: None, native_query: None, len: 4096, live: 4000, width: 128, height: 512,
                 pads: Pads::Base((0..1024).map(|_| rng.random()).collect()),
             };
             let (root, oracle) = code.commit(&mmcs([37; 32]), None).unwrap();
@@ -1999,7 +2209,7 @@ mod tests {
         let dft = Radix2DFTSmallBatch::default();
         let live = 117;
         let mut code = Code {
-            window: None,
+            window: None, native_query: None,
             get: Arc::new(|i| E::from(Goldilocks::new((i * 7 + 9) as u64))),
             scan: Some(Arc::new(move |emit| {
                 // Deliberately nonmonotone: causal order is not flat order.
@@ -2324,7 +2534,7 @@ mod tests {
             let code = Code {
                 get: Arc::new(move |i| folded[i]),
                 scan: None,
-                window: None,
+                window: None, native_query: None,
                 len: 32,
                 live: 32,
                 width: 2,
@@ -2368,6 +2578,7 @@ mod tests {
             let mut code = Code {
                 get: Arc::new(|_| panic!("byte query used scalar source")),
                 scan: None,
+                native_query: None,
                 window: Some(Arc::new(move |first, bytes| {
                     log.lock().unwrap().push((first, bytes.len()));
                     assert!(first + bytes.len() <= live);
@@ -2461,7 +2672,7 @@ mod tests {
             let pads: Vec<_> = (0..6).map(|index| -original(index + 131)).collect();
             let code = Code {
                 scan: None,
-                window: None,
+                window: None, native_query: None,
                 get: Arc::new(move |index| {
                     counter.fetch_add(1, Ordering::Relaxed);
                     original(index)
@@ -2524,7 +2735,7 @@ mod tests {
 
         let code = Code {
             scan: None,
-            window: None,
+            window: None, native_query: None,
             get: Arc::new(|_| E::new([Goldilocks::ONE, Goldilocks::ONE, Goldilocks::ZERO])),
             len: 8,
             live: 8,
@@ -2568,7 +2779,7 @@ mod tests {
                     let counter = reads.clone();
                     let code = Code {
                         scan: None,
-                        window: None,
+                        window: None, native_query: None,
                         get: Arc::new(move |index| {
                             assert!(index < live, "public zero tail must not read the source");
                             counter.fetch_add(1, Ordering::Relaxed);
@@ -2648,7 +2859,7 @@ mod tests {
             let pads: Vec<_> = (0..6).map(|index| -original(index + 131)).collect();
             let code = Code {
                 scan: None,
-                window: None,
+                window: None, native_query: None,
                 get: Arc::new(original),
                 len: 128,
                 live: 128,
@@ -2859,6 +3070,144 @@ mod tests {
         reconstructions: Arc<std::sync::atomic::AtomicU64>,
     }
 
+    #[test]
+    fn c71_b12_native_query_exact_horner_windows_pads_and_resources() {
+        let mut fixture=device::tests::fixture(512); fixture.config.arena_bytes=8<<20;
+        let f=native_source_fixture(&fixture.config);
+        let owner=f.native.runtime.clone();
+        let _budget=crate::c71_matrix::census::Budget::new(&f.weights).unwrap();
+        let cpu_requests=Arc::new(Mutex::new(Vec::new()));
+        let gpu_requests=Arc::new(Mutex::new(Vec::new()));
+        let log=gpu_requests.clone(); let resident=f.native.window.clone();
+        let native=NativeQuery { runtime:owner.clone(),read:Arc::new(move |runtime,first,count| {
+            log.lock().unwrap().push((first,count)); resident(runtime,first,count)
+        }) };
+        let mut cases=0;
+        for (n,pad_rows,lives) in [(128usize,6usize,vec![0,1,127,129,517,1024]),
+            (512,137,vec![0,511,513,2049,4096]),(2048,1536,vec![12288])] {
+            let height=(16*n).max((n+pad_rows).next_power_of_two());
+            let root=Goldilocks::two_adic_generator(height.ilog2() as usize);
+            let pads: Arc<[Goldilocks]>=(0..8*pad_rows).map(|i| match i%3 {
+                0=>Goldilocks::ZERO,1=>-Goldilocks::ONE,_=>-Goldilocks::new(i as u64+1000) }).collect();
+            for live in lives {
+                let source=f.bytes.clone(); let log=cpu_requests.clone();
+                let window: ByteWindow=Arc::new(move |first,out| {
+                    log.lock().unwrap().push((first,out.len()));
+                    out.copy_from_slice(&source[first..first+out.len()]); Ok(())
+                });
+                let mut code=Code { get:Arc::new(|_|panic!("native query used scalar source")),scan:None,
+                    window:Some(window),native_query:None,len:8*n,live,width:8,height,pads:Pads::Base(pads.clone()) };
+                let queries=if n==128 && live==1024 {vec![0,1,3,7,9,17,33,65,257]} else {vec![0,1,3,9,17,65]};
+                for count in queries {
+                    let indices: Vec<_>=(0..count).map(|i| match i%5 {
+                        0=>0,1=>height-1,2=>17,_=>(i*67+3)%height }).rev().collect();
+                    cpu_requests.lock().unwrap().clear(); gpu_requests.lock().unwrap().clear();
+                    code.native_query=None;
+                    let started=std::time::Instant::now();
+                    let reference=code.rows(&indices).unwrap();
+                    let cpu_s=started.elapsed().as_secs_f64();
+                    let expected: Vec<_>=indices.iter().flat_map(|&index| {
+                        let point=root.exp_u64(index as u64);
+                        let bytes=&f.bytes; let pads=&pads;
+                        (0..8).map(move |column| (0..n+pad_rows).rev().fold(Goldilocks::ZERO,|sum,j| {
+                            sum*point+if j>=n {pads[column*pad_rows+j-n]}
+                            else if column*n+j<live {Goldilocks::from_u8(bytes[column*n+j])}
+                            else {Goldilocks::ZERO}
+                        }))
+                    }).collect();
+                    assert_eq!(reference.values,expected,"CPU independent Horner n{n}/live{live}/q{count}");
+                    code.native_query=Some(native.clone());
+                    let before=owner.lock().unwrap().stats().unwrap();
+                    let started=std::time::Instant::now();
+                    let actual=code.rows(&indices).unwrap();
+                    let native_s=started.elapsed().as_secs_f64();
+                    let after=owner.lock().unwrap().stats().unwrap();
+                    assert_eq!(actual.values,expected,"resident n{n}/live{live}/q{count}");
+                    assert_eq!(*gpu_requests.lock().unwrap(),*cpu_requests.lock().unwrap(),"same reconstruction windows");
+                    assert_eq!(after.arena_bytes,before.arena_bytes);
+                    let gathers=gpu_requests.lock().unwrap().len();
+                    assert_eq!(after.d2h_bytes-before.d2h_bytes,(8*8*count+4*gathers) as u64);
+                    let cap=count.max(1).next_power_of_two();
+                    let factor_bytes=32*cap*(cap.ilog2() as usize+1);
+                    let shift_bytes=if live<8*n && n>cap {16*cap} else {0};
+                    assert_eq!(after.h2d_bytes-before.h2d_bytes,
+                        if count==0 {0} else {(factor_bytes+shift_bytes+8*8*pad_rows) as u64});
+                    cases+=1;
+                    if count==65 || count==257 { println!("C71_NATIVE_QUERY_LOCAL {}",json!({"domain_log2":(8*n).ilog2(),
+                        "message_rows":n,"pad_rows":pad_rows,"live":live,"query_rows":count,
+                        "cpu_reference_o0_s":cpu_s,"native_host_o2_s":native_s,"original_windows":gathers,
+                        "original_window_requests":*gpu_requests.lock().unwrap(),
+                        "native_h2d_bytes":after.h2d_bytes-before.h2d_bytes,
+                        "native_d2h_bytes":after.d2h_bytes-before.d2h_bytes,
+                        "native_d2d_bytes":after.d2d_bytes-before.d2d_bytes,"native":after,
+                        "only_returned_matrix_payload_bytes":actual.values.len()*size_of::<Goldilocks>(),
+                        "reference_and_expected_and_actual_harness_bytes":3*actual.values.len()*size_of::<Goldilocks>(),
+                        "census":crate::c71_matrix::census::simultaneous(),
+                        "different_compiler_optimization_no_speedup_claim":true,"gpu_execution":false,"credit":false})); }
+                }
+            }
+        }
+        assert_eq!(f.get_calls.load(std::sync::atomic::Ordering::Relaxed),0);
+        assert_eq!(f.cpu_scans.load(std::sync::atomic::Ordering::Relaxed),0);
+        println!("C71_NATIVE_QUERY_PARITY {}",json!({"cases":cases,"independent_horner":true,
+            "i16_and_split_raw_i48":true,"original_d2h_bytes":0,"same_original_windows":true,
+            "gpu_execution":false,"credit":false}));
+        owner.lock().unwrap().close().unwrap();
+    }
+
+    #[test]
+    fn c71_b12_native_query_reader_failure_without_host_fallback() {
+        let mut fixture=device::tests::fixture(512); fixture.config.arena_bytes=8<<20;
+        let weights=Arc::new(Vec::new());
+        let _budget=crate::c71_matrix::census::Budget::new(&weights).unwrap();
+        for fault in 0..4 {
+            let owner=Arc::new(Mutex::new(device::Runtime::new(&fixture.config).unwrap()));
+            let config=fixture.config.clone();
+            let reader: NativeByteWindow=Arc::new(move |runtime,_,_| match fault {
+                0=>Err("original reader failed".into()),
+                1=>runtime.byte_window(256), // unpublished
+                2=>runtime.upload_table(&[0]), // incomplete original window
+                3=>{
+                    let mut foreign=device::Runtime::new(&config)?;
+                    foreign.upload_table(&[0;256])
+                },
+                _=>unreachable!(),
+            });
+            let code=Code { get:Arc::new(|_|panic!("query scalar fallback")),scan:None,
+                window:Some(Arc::new(|_,_|panic!("query host window fallback"))),
+                native_query:Some(NativeQuery {runtime:owner.clone(),read:reader}),
+                len:1024,live:1024,width:8,height:2048,pads:Pads::Base(vec![Goldilocks::ONE;48].into()) };
+            assert!(code.rows(&[17,0,17]).is_err(),"reader fault {fault}");
+            let stats=owner.lock().unwrap().stats().unwrap();
+            assert_eq!(stats.d2h_bytes,0); assert_eq!(stats.stopped,1);
+            assert!(owner.lock().unwrap().pcs_words(1).is_err());
+            owner.lock().unwrap().close().unwrap();
+        }
+    }
+
+    #[test]
+    fn c71_b12_native_query_composed_uncached_chain_original_mac_and_transcript() {
+        let mut fixture=device::tests::fixture(512); fixture.config.arena_bytes=8<<20;
+        let f=native_source_fixture(&fixture.config);
+        let owner=f.native.runtime.clone();
+        let _budget=crate::c71_matrix::census::Budget::new(&f.weights).unwrap();
+        let bytes=f.bytes.clone();
+        let get: Getter=Arc::new(move |i|E::from(Goldilocks::from_u8(bytes[i])));
+        let values=(0..1024).map(|i|Goldilocks::from_u8(f.bytes[i])).collect();
+        let requests=Arc::new(Mutex::new(Vec::new()));
+        let log=requests.clone(); let read=f.native.window.clone();
+        compare_source_with_query(10,get,values,None,None,None,false,Some(NativeQuery {
+            runtime:owner.clone(),read:Arc::new(move |runtime,first,count| {
+                log.lock().unwrap().push((first,count)); read(runtime,first,count)
+            }),
+        }));
+        assert!(!requests.lock().unwrap().is_empty(),"full chain must execute native initial queries");
+        let stats=owner.lock().unwrap().close().unwrap(); assert_eq!(stats.stopped,0); assert_eq!(stats.arena_bytes,0);
+        println!("C71_NATIVE_QUERY_CHAIN {}",json!({"domain_log2":10,"initial_commitment_fixture":"CPU original",
+            "uncached_initial_query_route":true,"full_proof_wire_fs_rng_mac_and_verifiers_exact":true,
+            "query_original_windows":*requests.lock().unwrap(),"native":stats,"gpu_execution":false,"credit":false}));
+    }
+
     fn native_source_fixture(config: &device::Config) -> NativeSourceFixture {
         use std::sync::atomic::{AtomicU64, Ordering};
         let words: Vec<i16> = (0..96 * 16).map(|i| match i % 8 {
@@ -2888,7 +3237,21 @@ mod tests {
         let owner = runtime.clone();
         let buffer = input.clone();
         let counter = reconstructions.clone();
-        let native = NativeSource { runtime, live, scan: Arc::new(move |emit| {
+        let query_input=input.clone();
+        let query_raw=raw.clone();
+        let query_window: NativeByteWindow=Arc::new(move |runtime,first,count| {
+            let length=count.max(128).next_power_of_two();
+            let window=runtime.byte_window(length)?;
+            for (input,original_first,width,byte_first,signed_width) in [
+                (&query_input,0,2,0,2),(&query_raw,3072,4,0,6),(&query_raw,9216,2,4,6),
+            ] {
+                runtime.scatter_bytes(input,&device::ByteTile { input_first:0,input_stride:16,rows:96,columns:16,
+                    original_first,window_first:first as u64,window_length:length as u64,
+                    byte_first,width,signed_width,dimension:15,suffix:0,bottom:0 },&window)?;
+            }
+            runtime.seal_bytes(window)
+        });
+        let native = NativeSource { runtime, live, window:query_window, scan: Arc::new(move |emit| {
             counter.fetch_add(1, Ordering::Relaxed);
             let mut runtime = owner.lock().map_err(|_| "fixture source owner poisoned")?;
             for (input, first, width, byte_first, signed_width) in [
@@ -3247,7 +3610,7 @@ mod tests {
             let get: Getter = Arc::new(move |i| E::from(Goldilocks::from_u8(original.get(i).copied().unwrap_or(0))));
             let mut rng = PrivateRng::from_seed([112; 32]);
             let pads: Arc<[Goldilocks]> = (0..128 * pad).map(|_| rng.random()).collect();
-            let code = Code { get, scan: None, window: None, len: 128 * n, live: original_bytes.len(),
+            let code = Code { get, scan: None, window: None, native_query: None, len: 128 * n, live: original_bytes.len(),
                 width: 128, height: rows * cosets, pads: Pads::Base(pads.clone()) };
             let dft = Radix2DFTSmallBatch::<Goldilocks>::default();
             let started = std::time::Instant::now();
@@ -3362,7 +3725,7 @@ mod tests {
             });
             let mut rng = PrivateRng::from_seed([112; 32]);
             let pads: Arc<[Goldilocks]> = (0..128 * pad).map(|_| rng.random()).collect();
-            let code = Code { get, scan: None, window: None, len: 128 * n,
+            let code = Code { get, scan: None, window: None, native_query: None, len: 128 * n,
                 live: 96 * n, width: 128, height: rows * cosets, pads: Pads::Base(pads.clone()) };
             let dft = Radix2DFTSmallBatch::<Goldilocks>::default();
             let started = std::time::Instant::now();

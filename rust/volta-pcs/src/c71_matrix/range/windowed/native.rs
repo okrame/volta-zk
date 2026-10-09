@@ -276,6 +276,14 @@ pub(in crate::c71_matrix) struct PcsSourceShape {
 const _: () = assert!(size_of::<PcsSourceShape>() == 40);
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
+pub(in crate::c71_matrix) struct PcsQueryBlock {
+    pub first: u64, pub source_rows: u64, pub message_rows: u64, pub active: u64,
+    pub byte_first: u64, pub window_first: u64, pub pad_first: u64, pub pad_rows: u64,
+    pub pad_only: u32,
+}
+const _: () = assert!(size_of::<PcsQueryBlock>() == 72);
+#[derive(Clone, Copy, Debug)]
+#[repr(C)]
 pub(in crate::c71_matrix) struct WeightTile {
     pub first: u64, pub count: u64, pub packed_first: u64, pub packed_stride: u64, pub columns: u64,
 }
@@ -380,6 +388,10 @@ api! {
     transform_twiddles: unsafe extern "C" fn(Raw,u64,u32,u32)->i32 => "c71_pcs_transform_twiddles",
     transform: unsafe extern "C" fn(Raw,u64,u64,u64,u32,u32,u32)->i32 => "c71_pcs_transform",
     pcs_words_read: unsafe extern "C" fn(Raw,u64,u64,u64,*mut u64)->i32 => "c71_pcs_read_words",
+    query_low: unsafe extern "C" fn(Raw,u64,u64,u64,PcsQueryBlock)->i32 => "c71_pcs_query_low",
+    query_remainder: unsafe extern "C" fn(Raw,u64,u64,u64,u64,u64,u64,u64,u64,u64,u64,u32)->i32 => "c71_pcs_query_remainder",
+    query_shift: unsafe extern "C" fn(Raw,u64,u64,u64,u64,u64,u64,u64,u64)->i32 => "c71_pcs_query_shift",
+    query_add: unsafe extern "C" fn(Raw,u64,u64)->i32 => "c71_pcs_query_add",
     pcs_zero: unsafe extern "C" fn(Raw,u64)->i32 => "c71_pcs_ring_zero",
     pcs_weight: unsafe extern "C" fn(Raw,u64,u64,u64,u64,u64,u64,WeightShape)->i32 => "c71_pcs_weight",
     pcs_weight_tensor: unsafe extern "C" fn(Raw,u64,u64,u64,u64,u64,u64,WeightShape)->i32 => "c71_pcs_weight_tensor",
@@ -680,6 +692,32 @@ impl Runtime {
         self.require_buffer(values)?;
         let status=unsafe { (self.api.pcs_words_read)(self.raw,values.id,first as u64,output.len() as u64,output.as_mut_ptr()) };
         self.check(status)
+    }
+    pub(in crate::c71_matrix) fn pcs_query_low(&mut self, bytes: Option<&Buffer>, pads: &Buffer,
+        low: &Buffer, block: PcsQueryBlock) -> Result<(),String> {
+        for b in bytes.into_iter().chain([pads,low]) { self.require_buffer(b)?; }
+        let status=unsafe { (self.api.query_low)(self.raw,bytes.map_or(0,|b|b.id),pads.id,low.id,block) };
+        self.check(status)
+    }
+    pub(in crate::c71_matrix) fn pcs_query_remainder(&mut self, high: &Buffer, low: &Buffer,
+        inverse: &Buffer, modulus: &Buffer, forward: &Buffer, backward: &Buffer,
+        work: &Buffer, scratch: &Buffer, output: &Buffer, degree: usize, children: bool) -> Result<(),String> {
+        for b in [high,low,inverse,modulus,forward,backward,work,scratch,output] { self.require_buffer(b)?; }
+        let status=unsafe { (self.api.query_remainder)(self.raw,high.id,low.id,inverse.id,modulus.id,
+            forward.id,backward.id,work.id,scratch.id,output.id,degree as u64,u32::from(children)) };
+        self.check(status)
+    }
+    pub(in crate::c71_matrix) fn pcs_query_shift(&mut self, values: &Buffer, shift: &Buffer,
+        forward: &Buffer, backward: &Buffer, work: &Buffer, scratch: &Buffer,
+        low: &Buffer, high: &Buffer) -> Result<(),String> {
+        for b in [values,shift,forward,backward,work,scratch,low,high] { self.require_buffer(b)?; }
+        let status=unsafe { (self.api.query_shift)(self.raw,values.id,shift.id,forward.id,backward.id,
+            work.id,scratch.id,low.id,high.id) };
+        self.check(status)
+    }
+    pub(in crate::c71_matrix) fn pcs_query_add(&mut self, values: &Buffer, correction: &Buffer) -> Result<(),String> {
+        self.require_buffer(values)?; self.require_buffer(correction)?;
+        let status=unsafe { (self.api.query_add)(self.raw,values.id,correction.id) }; self.check(status)
     }
     pub(in crate::c71_matrix) fn pcs_ring(&mut self, rows: usize) -> Result<Buffer, String> {
         if rows == 0 || rows > 1 << 20 { return self.abort("native PCS ring capacity differs"); }
@@ -1881,6 +1919,94 @@ pub(in crate::c71_matrix) mod tests {
             let legacy=fixture_library(512,Some(symbol));
             let error=Runtime::new(&legacy.config).err().unwrap(); assert!(error.contains(symbol),"{error}");
         }
+    }
+
+    #[test]
+    fn c71_b12_native_query_private_phase_read_and_mandatory_symbols() {
+        for symbol in ["c71_pcs_query_low","c71_pcs_query_remainder","c71_pcs_query_shift","c71_pcs_query_add"] {
+            let legacy=fixture_library(512,Some(symbol));
+            let error=Runtime::new(&legacy.config).err().unwrap(); assert!(error.contains(symbol),"{error}");
+        }
+        let fixture=fixture(512);
+        let weights=Arc::new(Vec::new());
+        let _budget=crate::c71_matrix::census::Budget::new(&weights).unwrap();
+        let mut runtime=Runtime::new(&fixture.config).unwrap();
+        let values=runtime.pcs_words(4).unwrap(); runtime.pcs_upload(&values,0,&[1,2,3,4]).unwrap();
+        let (_,private)=runtime.pcs_salts_prepare(&[31;32],SaltGeometry { rows:4,origin:0,cosets:4,cut:4 },
+            4,&mut [0;4],&mut [0;4]).unwrap();
+        let before=runtime.stats().unwrap();
+        let mut words=[73;4];
+        assert!(runtime.pcs_download_words(&values,0,&mut words).is_err());
+        assert_eq!(words,[73;4]);
+        let after=runtime.stats().unwrap();
+        assert_eq!(after.d2h_bytes,before.d2h_bytes);
+        assert_eq!(after.launches,before.launches); assert_eq!(after.fences,before.fences);
+        assert_eq!(after.stopped,1);
+        drop(private); runtime.close().unwrap();
+    }
+
+    #[test]
+    fn c71_b12_native_query_rejections_and_fail_closed() {
+        let fixture=fixture(512); let injection=Injection::new(&fixture.config);
+        let weights=Arc::new(Vec::new());
+        let _budget=crate::c71_matrix::census::Budget::new(&weights).unwrap();
+        for fault in 0..25 {
+            let mut runtime=Runtime::new(&fixture.config).unwrap();
+            let bytes=runtime.upload_table(&[3;8]).unwrap();
+            let pads=runtime.pcs_words(4).unwrap(); runtime.pcs_upload(&pads,0,&[1;4]).unwrap();
+            let high=runtime.pcs_words(4).unwrap();
+            if fault!=15 { runtime.pcs_upload(&high,0,&[1;4]).unwrap(); }
+            let low=runtime.pcs_words(4).unwrap(); runtime.pcs_upload(&low,0,&[1;4]).unwrap();
+            let inverse=runtime.pcs_words(8).unwrap(); runtime.pcs_upload(&inverse,0,&[1;8]).unwrap();
+            let modulus=runtime.pcs_words(8).unwrap(); runtime.pcs_upload(&modulus,0,&[2;8]).unwrap();
+            let forward=runtime.pcs_transform_twiddles(3,false).unwrap();
+            let backward=runtime.pcs_transform_twiddles(3,true).unwrap();
+            let work=runtime.pcs_words(8).unwrap(); let scratch=runtime.pcs_words(8).unwrap();
+            let output=runtime.pcs_words(4).unwrap();
+            let block=PcsQueryBlock { first:0,source_rows:12,message_rows:8,active:8,byte_first:0,
+                window_first:0,pad_first:0,pad_rows:4,pad_only:0 };
+            let result=match fault {
+                0=>runtime.pcs_query_low(None,&pads,&low,block),
+                1=>{ let pending=runtime.byte_window(8).unwrap(); runtime.pcs_query_low(Some(&pending),&pads,&low,block) },
+                2=>runtime.pcs_query_low(Some(&bytes),&pads,&low,PcsQueryBlock { window_first:1,..block }),
+                3=>runtime.pcs_query_low(Some(&bytes),&pads,&low,PcsQueryBlock { source_rows:9,..block }),
+                4=>runtime.pcs_query_low(Some(&bytes),&pads,&low,PcsQueryBlock { pad_only:2,..block }),
+                5=>runtime.pcs_query_low(Some(&bytes),&pads,&low,PcsQueryBlock { pad_rows:0,..block }),
+                6=>runtime.pcs_query_low(Some(&bytes),&pads,&low,PcsQueryBlock { pad_first:1,..block }),
+                7=>runtime.pcs_query_low(Some(&high),&pads,&low,block),
+                8=>runtime.pcs_query_remainder(&high,&low,&inverse,&modulus,&forward,&backward,&work,&scratch,&output,0,false),
+                9=>runtime.pcs_query_remainder(&high,&high,&inverse,&modulus,&forward,&backward,&work,&scratch,&output,4,true),
+                10=>runtime.pcs_query_remainder(&high,&low,&inverse,&modulus,&forward,&backward,&work,&scratch,&output,2,false),
+                11=>runtime.pcs_query_remainder(&high,&low,&pads,&modulus,&forward,&backward,&work,&scratch,&output,4,false),
+                12=>runtime.pcs_query_remainder(&high,&low,&inverse,&modulus,&forward,&backward,&work,&scratch,&high,4,false),
+                13=>runtime.pcs_query_remainder(&high,&low,&inverse,&modulus,&forward,&backward,&work,&work,&output,4,false),
+                14=>runtime.pcs_query_remainder(&high,&low,&inverse,&modulus,&backward,&forward,&work,&scratch,&output,4,false),
+                15=>runtime.pcs_query_remainder(&high,&low,&inverse,&modulus,&forward,&backward,&work,&scratch,&output,4,false),
+                16=>{
+                    let mut other=Runtime::new(&fixture.config).unwrap(); let foreign=other.pcs_words(4).unwrap();
+                    runtime.pcs_query_remainder(&foreign,&low,&inverse,&modulus,&forward,&backward,&work,&scratch,&output,4,false)
+                },
+                17..=21=>{
+                    if fault==17 { injection.set(1); }
+                    let submitted=runtime.pcs_query_remainder(&high,&low,&inverse,&modulus,&forward,&backward,&work,&scratch,&output,4,false);
+                    if fault==17 { submitted } else {
+                        submitted.unwrap();
+                        injection.set(match fault { 18=>2,19=>7,20=>3,21=>4,_=>unreachable!() });
+                        if fault==20 { runtime.release_buffer(output) }
+                        else { runtime.pcs_download_words(&output,0,&mut [0;4]) }
+                    }
+                },
+                22=>runtime.pcs_query_shift(&high,&modulus,&forward,&backward,&work,&work,&low,&output),
+                23=>runtime.pcs_query_shift(&high,&modulus,&forward,&backward,&work,&scratch,&low,&low),
+                24=>runtime.pcs_query_add(&high,&high),
+                _=>unreachable!(),
+            };
+            assert!(result.is_err(),"query fault {fault}"); injection.set(0);
+            assert_eq!(runtime.stats().unwrap().stopped,1); assert!(runtime.pcs_words(1).is_err());
+            let closed=runtime.close();
+            if fault==20 { assert!(closed.is_err()); } else { closed.unwrap(); }
+        }
+        println!("C71_NATIVE_QUERY_FAILURE {{\"terminal_rejections\":25,\"gpu_execution\":false,\"credit\":false}}");
     }
 
     fn salt_values(runtime: &mut Runtime, rows: usize, column: usize, count: usize, bias: u64) -> Buffer {

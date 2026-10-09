@@ -34,6 +34,12 @@ cudaError_t c71_pcs_fft_launch(cudaStream_t,uint64_t*,const uint64_t*,unsigned,u
 cudaError_t c71_pcs_twiddles_launch(cudaStream_t,uint64_t*,unsigned);
 cudaError_t c71_pcs_transform_twiddles_launch(cudaStream_t,uint64_t*,unsigned,unsigned);
 cudaError_t c71_pcs_transform_launch(cudaStream_t,uint64_t*,uint64_t*,const uint64_t*,unsigned,unsigned,unsigned,unsigned*);
+cudaError_t c71_pcs_query_low_launch(cudaStream_t,const uint8_t*,const uint64_t*,uint64_t*,uint64_t,c71_pcs::QueryBlock);
+cudaError_t c71_pcs_query_remainder_launch(cudaStream_t,const uint64_t*,const uint64_t*,const uint64_t*,const uint64_t*,
+    const uint64_t*,const uint64_t*,uint64_t*,uint64_t*,uint64_t*,uint64_t,uint64_t,unsigned,unsigned*,uint64_t*);
+cudaError_t c71_pcs_query_shift_launch(cudaStream_t,const uint64_t*,const uint64_t*,const uint64_t*,const uint64_t*,
+    uint64_t*,uint64_t*,uint64_t*,uint64_t*,uint64_t,unsigned*,uint64_t*);
+cudaError_t c71_pcs_query_add_launch(cudaStream_t,uint64_t*,const uint64_t*,uint64_t);
 cudaError_t c71_pcs_source_powers_launch(cudaStream_t,uint64_t*,uint64_t*,c71_pcs::SourceShape);
 cudaError_t c71_pcs_source_tile_launch(cudaStream_t,const void*,unsigned,c71_pcs::SourceTile,const uint64_t*,
     uint64_t*,uint64_t*,uint64_t*,c71_pcs::SourceShape,uint32_t*);
@@ -869,6 +875,86 @@ extern "C" int c71_pcs_read_words(C71RangeContext* c,uint64_t input,uint64_t fir
     if(fence(c)) return -1;
     for(uint64_t i=0;i<count;++i) if(output[i]>=P) return fail(c,"noncanonical PCS base output");
     return 0;
+}
+namespace {
+bool query_twiddles(const Buffer* b,uint64_t count,unsigned inverse) {
+    return full(b,C71_PCS_POWERS) && b->count==count &&
+        b->visits==((uint64_t{1}<<63)|(uint64_t(inverse)<<62)|count);
+}
+bool query_output(const Buffer* b,uint64_t count) {
+    return b && b->kind==C71_PCS_BASE && b->count==count;
+}
+}
+extern "C" int c71_pcs_query_low(C71RangeContext* c,uint64_t bytes,uint64_t pads,uint64_t low,c71_pcs::QueryBlock s) {
+    if(!ready(c)) return -1;
+    auto* b=bytes?buffer(c,bytes):nullptr; auto* p=buffer(c,pads); auto* l=buffer(c,low);
+    if(bytes && !b) return -1;
+    if(!l || l->kind!=C71_PCS_BASE || !power2(l->count) || l->count>(uint64_t{1}<<20) ||
+       !full(p,C71_PCS_BASE) || p==l || (b && (!full(b,C71_U8) || b->count>(uint64_t{1}<<28))) ||
+       s.pad_only>1 || !power2(s.message_rows) ||
+       s.message_rows>(uint64_t{1}<<27) || s.active>s.message_rows || !s.pad_rows || s.pad_rows>1536 ||
+       s.pad_first>p->count || s.pad_rows>p->count-s.pad_first || s.first%l->count ||
+       s.first>(uint64_t{1}<<28) || s.byte_first>(uint64_t{1}<<35) ||
+       (s.pad_only ? (s.active || s.source_rows!=s.pad_rows) :
+           (s.source_rows!=s.active && s.source_rows!=s.message_rows+s.pad_rows)))
+        return fail(c,"PCS query low geometry, pads or type");
+    const uint64_t end=std::min(s.active,s.first+l->count);
+    if(!s.pad_only && end>s.first) {
+        if(!full(b,C71_U8) || b->count>(uint64_t{1}<<28) || s.window_first>s.byte_first+s.first ||
+           s.byte_first+end-s.window_first>b->count) return fail(c,"PCS query original byte window coverage");
+    }
+    if(launched(c,c71_pcs_query_low_launch(c->stream,b?ptr<uint8_t>(c,b):nullptr,
+        ptr<uint64_t>(c,p),ptr<uint64_t>(c,l),l->count,s))) return -1;
+    l->initialized=l->count; return 0;
+}
+extern "C" int c71_pcs_query_remainder(C71RangeContext* c,uint64_t high,uint64_t low,uint64_t inverse,uint64_t modulus,
+    uint64_t forward,uint64_t backward,uint64_t work,uint64_t scratch,uint64_t output,uint64_t degree,uint32_t children) {
+    if(!ready(c)) return -1;
+    auto* h=buffer(c,high); auto* l=buffer(c,low); auto* i=buffer(c,inverse); auto* m=buffer(c,modulus);
+    auto* f=buffer(c,forward); auto* b=buffer(c,backward); auto* w=buffer(c,work); auto* s=buffer(c,scratch); auto* o=buffer(c,output);
+    if(!o || !power2(o->count) || o->count>(uint64_t{1}<<20) || !power2(degree) || degree>o->count || children>1 ||
+       (children ? (degree==o->count || h!=l) : degree!=o->count) ||
+       !full(h,C71_PCS_BASE) || !full(l,C71_PCS_BASE) || h->count!=o->count || l->count!=o->count ||
+       !full(i,C71_PCS_BASE) || !full(m,C71_PCS_BASE) || i==m || i->count!=2*o->count || m->count!=2*o->count ||
+       !query_twiddles(f,2*degree,0) || !query_twiddles(b,2*degree,1) ||
+       !query_output(w,2*o->count) || !query_output(s,2*o->count) || !query_output(o,o->count) || w==s || w==o || s==o)
+        return fail(c,"PCS query remainder type, degree or factor geometry");
+    for(auto* read:{h,l,i,m,f,b}) if(read==w || read==s || read==o)
+        return fail(c,"PCS query remainder output alias");
+    unsigned attempted=0; uint64_t copied=0;
+    const auto status=c71_pcs_query_remainder_launch(c->stream,ptr<uint64_t>(c,h),ptr<uint64_t>(c,l),
+        ptr<uint64_t>(c,i),ptr<uint64_t>(c,m),ptr<uint64_t>(c,f),ptr<uint64_t>(c,b),ptr<uint64_t>(c,w),
+        ptr<uint64_t>(c,s),ptr<uint64_t>(c,o),degree,o->count,children,&attempted,&copied);
+    c->stats.launches+=attempted; c->stats.d2d_bytes+=copied;
+    if(checked(c,status)) return -1;
+    o->initialized=o->count; return 0; // final bounded read fences the same stream
+}
+extern "C" int c71_pcs_query_shift(C71RangeContext* c,uint64_t values,uint64_t shift,uint64_t forward,uint64_t backward,
+    uint64_t work,uint64_t scratch,uint64_t low,uint64_t high) {
+    if(!ready(c)) return -1;
+    auto* v=buffer(c,values); auto* t=buffer(c,shift); auto* f=buffer(c,forward); auto* b=buffer(c,backward);
+    auto* w=buffer(c,work); auto* s=buffer(c,scratch); auto* l=buffer(c,low); auto* h=buffer(c,high);
+    if(!full(v,C71_PCS_BASE) || !power2(v->count) || v->count>(uint64_t{1}<<20) ||
+       !full(t,C71_PCS_BASE) || t->count!=2*v->count || !query_twiddles(f,2*v->count,0) ||
+       !query_twiddles(b,2*v->count,1) || !query_output(w,2*v->count) || !query_output(s,2*v->count) ||
+       !query_output(l,v->count) || !query_output(h,v->count) || w==s || l==h || w==l || w==h || s==l || s==h)
+        return fail(c,"PCS query pad shift geometry or workspace alias");
+    for(auto* read:{v,t,f,b}) if(read==w || read==s || (read!=v && (read==l || read==h)))
+        return fail(c,"PCS query pad shift input alias");
+    unsigned attempted=0; uint64_t copied=0;
+    const auto status=c71_pcs_query_shift_launch(c->stream,ptr<uint64_t>(c,v),ptr<uint64_t>(c,t),
+        ptr<uint64_t>(c,f),ptr<uint64_t>(c,b),ptr<uint64_t>(c,w),ptr<uint64_t>(c,s),ptr<uint64_t>(c,l),
+        ptr<uint64_t>(c,h),v->count,&attempted,&copied);
+    c->stats.launches+=attempted; c->stats.d2d_bytes+=copied;
+    if(checked(c,status)) return -1;
+    l->initialized=l->count; h->initialized=h->count; return 0;
+}
+extern "C" int c71_pcs_query_add(C71RangeContext* c,uint64_t values,uint64_t correction) {
+    if(!ready(c)) return -1;
+    auto* v=buffer(c,values); auto* a=buffer(c,correction);
+    if(!full(v,C71_PCS_BASE) || !full(a,C71_PCS_BASE) || v==a || v->count!=a->count || v->count>(uint64_t{1}<<20))
+        return fail(c,"PCS query correction geometry or alias");
+    return launched(c,c71_pcs_query_add_launch(c->stream,ptr<uint64_t>(c,v),ptr<uint64_t>(c,a),v->count));
 }
 extern "C" int c71_pcs_ring_zero(C71RangeContext* c,uint64_t out) {
     if(!ready(c)) return -1;

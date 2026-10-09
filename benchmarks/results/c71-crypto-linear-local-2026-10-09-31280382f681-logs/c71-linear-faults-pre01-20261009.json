@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+    "c71_b12_native_linear_producer_errors_burn_only_completed_rounds",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 7.767033698968589,
+  "max_rss_bytes": 283992064,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 7.701804,
+  "system_s": 0.062666,
+  "log": "/tmp/c71-linear-faults-pre01-20261009.log"
+}

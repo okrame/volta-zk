@@ -1,0 +1,5 @@
+C71_LINEAR_NATIVE_BENCH {"dimension":15,"live":32765,"prefix_bits":6,"public_cubes":8,"dense_oracle_host_s":0.286342764,"helper_prepare_and_scan_host_s":0.085854158,"gpu_execution":false,"credit":false}
+C71_LINEAR_NATIVE_BENCH {"dimension":17,"live":131069,"prefix_bits":6,"public_cubes":8,"dense_oracle_host_s":1.288564044,"helper_prepare_and_scan_host_s":0.439530127,"gpu_execution":false,"credit":false}
+C71_LINEAR_NATIVE_HOST {"cases":167,"original_visits":218809,"max_dimension":35,"shared_bytes":30720,"rejections":16,"MAC_basis_u3_2":true,"gpu_execution":false,"credit":false}
+.
+1 passed in 4.04s

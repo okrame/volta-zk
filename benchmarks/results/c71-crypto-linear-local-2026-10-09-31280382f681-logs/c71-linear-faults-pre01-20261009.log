@@ -1,0 +1,7 @@
+
+running 1 test
+test c71_matrix::linear::tests::c71_b12_native_linear_producer_errors_burn_only_completed_rounds ... C71_NATIVE_LINEAR_FAILED_ROUNDS {"producer_failures":5,"fallback_getter_calls":0,"credit":false}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 553 filtered out; finished in 7.76s
+

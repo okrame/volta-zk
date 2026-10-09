@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+    "c71_b12_native_linear_original_codecs_exact_coefficients_endpoints_and_work",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 7.822992865927517,
+  "max_rss_bytes": 283254784,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 7.623901,
+  "system_s": 0.191992,
+  "log": "/tmp/c71-linear-codecs-pre01-20261009.log"
+}

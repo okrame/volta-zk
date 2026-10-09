@@ -1,0 +1,211 @@
+{
+  "checks": [
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_native_linear_owner_token_coverage_and_fail_closed",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 7.188464202918112,
+      "max_rss_bytes": 284229632,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 7.046157,
+      "system_s": 0.139816,
+      "log": "/tmp/c71-linear-owner-pre01-20261009.log",
+      "name": "owner",
+      "record_run": false,
+      "git_dirty": true,
+      "passed": 1
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_native_linear_symbols_are_required",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 28.25068041589111,
+      "max_rss_bytes": 283930624,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 27.916199,
+      "system_s": 0.32647,
+      "log": "/tmp/c71-linear-symbols-pre01-20261009.log",
+      "name": "symbols",
+      "record_run": false,
+      "git_dirty": true,
+      "passed": 1
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_native_linear_producer_errors_burn_only_completed_rounds",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 7.767033698968589,
+      "max_rss_bytes": 283992064,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 7.701804,
+      "system_s": 0.062666,
+      "log": "/tmp/c71-linear-faults-pre01-20261009.log",
+      "name": "faults",
+      "record_run": false,
+      "git_dirty": true,
+      "passed": 1
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_native_linear_full_wire_fs_point_and_original_mac",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 42.909559009131044,
+      "max_rss_bytes": 283979776,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 42.769681,
+      "system_s": 0.12687099999999998,
+      "log": "/tmp/c71-linear-wire-pre01-20261009.log",
+      "name": "wire",
+      "record_run": false,
+      "git_dirty": true,
+      "passed": 1
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_native_query_exact_horner_windows_pads_and_resources",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 9.06952088419348,
+      "max_rss_bytes": 284299264,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 8.995329,
+      "system_s": 0.071561,
+      "log": "/tmp/c71-linear-query-pre01-20261009.log",
+      "name": "query",
+      "record_run": false,
+      "git_dirty": true,
+      "passed": 1
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_native_source_tree_",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 27.231470249127597,
+      "max_rss_bytes": 283897856,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 27.088783,
+      "system_s": 0.127223,
+      "log": "/tmp/c71-linear-a-tree-pre01-20261009.log",
+      "name": "a-tree",
+      "record_run": false,
+      "git_dirty": true,
+      "passed": 2
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_native_weight_tree_",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 34.424392309971154,
+      "max_rss_bytes": 283963392,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 34.252791,
+      "system_s": 0.163545,
+      "log": "/tmp/c71-linear-w-tree-pre01-20261009.log",
+      "name": "w-tree",
+      "record_run": false,
+      "git_dirty": true,
+      "passed": 2
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "-s",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_c71_range_native.py",
+        "tests/test_c71_fft_microbench.py",
+        "tests/test_c71_linear_native.py",
+        "tests/test_c71_pcs_residual.py"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 19.9336602431722,
+      "max_rss_bytes": 305872896,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 19.542322,
+      "system_s": 0.273043,
+      "log": "/tmp/c71-linear-components-pre01-20261009.log",
+      "name": "components",
+      "record_run": false,
+      "git_dirty": true,
+      "passed": 11
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_c71_docs.py"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 1,
+      "wall_s": 1.0094265919178724,
+      "max_rss_bytes": 58417152,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.9479639999999999,
+      "system_s": 0.062245999999999996,
+      "log": "/tmp/c71-linear-docs-pre01-20261009.log",
+      "name": "docs",
+      "record_run": false,
+      "git_dirty": true
+    }
+  ]
+}

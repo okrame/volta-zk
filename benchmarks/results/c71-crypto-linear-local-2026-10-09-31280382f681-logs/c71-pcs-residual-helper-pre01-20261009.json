@@ -1,0 +1,22 @@
+{
+  "command": [
+    ".venv/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "-s",
+    "-p",
+    "no:cacheprovider",
+    "tests/test_c71_pcs_residual.py"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 3.746848316863179,
+  "max_rss_bytes": 186769408,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 3.62111,
+  "system_s": 0.10205499999999999,
+  "log": "/tmp/c71-pcs-residual-helper-pre01-20261009.log"
+}

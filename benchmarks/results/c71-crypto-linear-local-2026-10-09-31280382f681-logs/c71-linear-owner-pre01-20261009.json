@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+    "c71_b12_native_linear_owner_token_coverage_and_fail_closed",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 7.188464202918112,
+  "max_rss_bytes": 284229632,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 7.046157,
+  "system_s": 0.139816,
+  "log": "/tmp/c71-linear-owner-pre01-20261009.log"
+}

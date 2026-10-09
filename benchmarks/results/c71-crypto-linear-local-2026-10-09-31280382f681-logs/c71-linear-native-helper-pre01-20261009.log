@@ -1,0 +1,3 @@
+C71_LINEAR_NATIVE_HOST {"cases":165,"original_visits":54975,"max_dimension":35,"shared_bytes":30720,"rejections":6,"MAC_basis_u3_2":true,"gpu_execution":false,"credit":false}
+.
+1 passed in 1.83s

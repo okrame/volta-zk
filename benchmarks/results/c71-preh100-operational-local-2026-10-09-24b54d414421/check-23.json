@@ -1,0 +1,21 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/.venv/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "tests/test_c71_campaign_measure.py"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 2.0509665138088167,
+  "max_rss_bytes": 30580736,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 0.35664199999999996,
+  "system_s": 0.053987999999999994,
+  "log": "/tmp/c71-preh100-20261009-ops/check-23.log"
+}

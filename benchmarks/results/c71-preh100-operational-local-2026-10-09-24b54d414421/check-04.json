@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+    "c71_b12_native_query_exact_horner_windows_pads_and_resources",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 11.668048930820078,
+  "max_rss_bytes": 328118272,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 11.570956,
+  "system_s": 0.093151,
+  "log": "/tmp/c71-preh100-20261009-ops/check-04.log"
+}

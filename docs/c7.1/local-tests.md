@@ -173,6 +173,8 @@ sessioni/gruppi e lettura `smaps` sono locali reali:
 (ulimit -v 2097152; timeout -k 5s 60s .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_campaign_measure.py)
 ```
 
+La [verifica pre-H100](../c7.1-history/crypto-preh100-operations-2026-10-09.md)
+registra 28 test Rust, 28 test del monitor e 9 controlli documentali passati.
 Le fixture non misurano HBM o picco fisico canonico. La
 [procedura operativa](runpod-tests.md#preparazione-operativa-della-campagna)
 distingue questi controlli dal futuro lancio H100.

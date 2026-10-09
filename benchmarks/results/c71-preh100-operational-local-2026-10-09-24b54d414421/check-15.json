@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+    "c71_b12_native_hardware_parity_rejects_missing_and_host_library",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 9.606991732958704,
+  "max_rss_bytes": 328314880,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 9.542777,
+  "system_s": 0.061852,
+  "log": "/tmp/c71-preh100-20261009-ops/check-15.log"
+}

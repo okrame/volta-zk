@@ -37,8 +37,8 @@ esatto e cache compatta; i coefficienti Fp3 residui restano CPU.
 Il conto per fasi è nominato, `joint_admitted:false`; la
 [revisione locale dei lifetime](../c7.1-history/crypto-retirement-short-merkle-2026-10-09.md)
 conserva anche il timeout della prova composta.
-Il [conto locale conclusivo](../../benchmarks/results/c71-crypto-rms-local-2026-10-09-abd2de09efb4.json) include cache/workspace
-RMS: massimo 5.878.734.834 B e 26.845.198 B residui
+Il [conto locale aggiornato](../../benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421.json) include cache/workspace
+RMS e il campo di lifecycle W: massimo 5.878.734.842 B e 26.845.190 B residui
 nel payload. Il manifest del
 trial deve vincolare capacità dei path/argv ≤4.096 B e identità
 Γ/layout/toolchain applicabili; non trasformare questa premessa in
@@ -63,7 +63,10 @@ quando l'ammissione pertinente è invalidata; la prova completa richiede
 ### Preparazione operativa della campagna
 
 La revisione su `c5b81bf` ha individuato tre lacune del passaggio hardware;
-le correzioni sono implementate nel codice e nelle procedure correnti:
+le correzioni sono implementate nel codice e nelle procedure correnti.
+La [chiusura locale](../c7.1-history/crypto-preh100-operations-2026-10-09.md)
+registra 65 test passati e il conto aggiornato, prima di qualsiasi nuova
+autorizzazione hardware:
 
 1. **Ingressi CUDA espliciti.** Quattordici test positivi `#[ignore]`
    riusano gli oracoli host per sali/FFT, commitment/query W/A, closure

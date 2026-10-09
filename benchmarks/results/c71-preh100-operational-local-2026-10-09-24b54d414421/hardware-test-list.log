@@ -1,0 +1,22 @@
+c71_matrix::b12::replay::tests::c71_b12_native_hardware_initial_source_query_horner: test
+c71_matrix::b12::replay::tests::c71_b12_native_hardware_initial_source_query_whir_chain: test
+c71_matrix::b12::replay::tests::c71_b12_native_hardware_initial_weight_query_horner: test
+c71_matrix::b12::replay::tests::c71_b12_native_hardware_residual_query_horner: test
+c71_matrix::b12::replay::tests::c71_b12_native_hardware_residual_source_whir_chain: test
+c71_matrix::b12::replay::tests::c71_b12_native_hardware_residual_tree_roots_salts_openings: test
+c71_matrix::b12::replay::tests::c71_b12_native_hardware_residual_weight_whir_chain: test
+c71_matrix::b12::replay::tests::c71_b12_native_hardware_source_tree_roots_openings_histogram: test
+c71_matrix::b12::replay::tests::c71_b12_native_hardware_weight_tree_roots_openings: test
+c71_matrix::b12::replay::tests::c71_b12_native_source_uncached_full_chain_performance_obligation: test
+c71_matrix::b12::replay::tests::c71_b12_native_weight_uncached_full_chain_performance_obligation: test
+c71_matrix::b12::sourcewise::tests::c71_b12_native_hardware_residual_state_retention_and_views: test
+c71_matrix::gemma::native::protocol::pool::seed6_tests::c71_seed6_native_three_retained_dense_responses_same_registry: test
+c71_matrix::gemma::native::protocol::tests::c71_b12_native_ordered_two_attempts_keep_accepted_history_and_original_macs: test
+c71_matrix::linear::tests::c71_b12_native_hardware_linear_coefficients_endpoints: test
+c71_matrix::linear::tests::c71_b12_native_hardware_linear_full_wire_fs_point_and_original_mac: test
+c71_matrix::range::windowed::native::tests::c71_b12_native_hardware_private_salts_stream_and_hash: test
+c71_matrix::range::windowed::native::tests::c71_b12_native_hardware_transform_natural_forward_inverse: test
+c71_matrix::range::windowed::tests::c71_b12_windowed_native_hardware_parity_explicit: test
+x4::x4c_v4::tests::x4d2_standalone_cpu_backend_runs_the_upper_production_scale_ladder: test
+
+20 tests, 0 benchmarks

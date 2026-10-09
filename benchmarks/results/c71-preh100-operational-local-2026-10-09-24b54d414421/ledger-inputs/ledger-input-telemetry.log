@@ -1,0 +1,7 @@
+
+running 1 test
+test c71_matrix::gemma::native::canonical::state::metrics::tests::c71_canonical_public_metadata_telemetry_bounded_schema ... C71_PUBLIC_METADATA_TELEMETRY {"active_phase_count_upper":7,"admission":false,"after_cleanup_report_metadata_heap_upper_bytes":56038054,"channel_count_upper":6,"credit":false,"crypto_live_metadata_heap_upper_bytes":16078886,"diagnostic_status_read_moving_upper_bytes_per_role":196611,"json_node_upper_bytes":1360,"phase_count_upper":44,"phase_record_heap_upper_bytes":262208,"progress_heap_upper_bytes":513152,"resource_count_upper":6,"resource_record_heap_upper_bytes":302928,"sample_heap_upper_bytes":112624,"schema":"volta-c71-public-metadata-telemetry-v1","scope":"allocator payload upper; report clones occur after native cleanup; durable progress does not retain records","source":"canonical_runner/canonical_state call sites; current sample/Stats/Session JSON schema"}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 599 filtered out; finished in 0.00s
+

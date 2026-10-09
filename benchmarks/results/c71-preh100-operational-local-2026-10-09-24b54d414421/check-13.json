@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+    "c71_b12_native_linear_full_wire_fs_point_and_original_mac",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 43.021112555172294,
+  "max_rss_bytes": 328060928,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 42.922427,
+  "system_s": 0.084535,
+  "log": "/tmp/c71-preh100-20261009-ops/check-13.log"
+}

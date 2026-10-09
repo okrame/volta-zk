@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+    "c71_canonical_packed_observer_precedes_load_and_preserves_codec",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 0.003653181716799736,
+  "max_rss_bytes": 12423168,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 0.0032689999999999998,
+  "system_s": 0.0,
+  "log": "/tmp/c71-preh100-20261009-ops/check-17.log"
+}

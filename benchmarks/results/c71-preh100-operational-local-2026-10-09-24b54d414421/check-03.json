@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+    "c71_b12_native_source_tree_exact_roots_openings_histogram_and_work",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 22.504095238167793,
+  "max_rss_bytes": 328167424,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 22.39093,
+  "system_s": 0.107958,
+  "log": "/tmp/c71-preh100-20261009-ops/check-03.log"
+}

@@ -1130,9 +1130,9 @@ di query, S1 e cache iniziali A1..A3; il
 [record del checkpoint](../../benchmarks/results/c71-crypto-residual-query-local-2026-10-09-9a5da712a258.json) lega il backend `s1-prepared`
 alle shape correnti di tutti gli stadi extension nativi. È uno screen
 nominato con `joint_admitted:false`, non un
-conto completo. Il [conto tipato conclusivo](../../benchmarks/results/c71-crypto-rms-local-2026-10-09-abd2de09efb4.json) comprende
-le capacità e i lifetime RMS aggiornati. Il massimo è
-5.878.734.834 B, lasciando 26.845.198 B al payload.
+conto completo. Il [conto tipato aggiornato](../../benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421.json) comprende
+le capacità/lifetime RMS e gli 8 B del nuovo campo di lifecycle W. Il massimo è
+5.878.734.842 B, lasciando 26.845.190 B al payload.
 Tutte le 11 classi
 hanno termini espliciti: profili/layout/Arc/tabelle, fattori query CPU,
 aperture già trattenute, AES/VOLE/journal, prove/codec/framing,

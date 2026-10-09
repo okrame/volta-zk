@@ -1,0 +1,91 @@
+{
+  "command": [
+    "cargo",
+    "rustc",
+    "--offline",
+    "--locked",
+    "-j",
+    "1",
+    "-p",
+    "volta-pcs",
+    "--features",
+    "c71-seed6-reference",
+    "--lib",
+    "--profile",
+    "test",
+    "--config",
+    "profile.dev.package.volta-pcs.opt-level=0",
+    "--config",
+    "profile.dev.package.volta-pcs.codegen-units=64",
+    "--",
+    "-Clink-arg=-fuse-ld=lld",
+    "-Clink-arg=-B/home/okrame/.rustup/toolchains/stable-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/bin/gcc-ld",
+    "-Clink-arg=-Wl,--threads=1"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk/rust",
+  "exit_code": 0,
+  "wall_s": 53.78922724816948,
+  "max_rss_bytes": 2562371584,
+  "sampled_aggregate_live_rss_peak_bytes": 2603102208,
+  "sampled_processes": {
+    "27": {
+      "name": "timeout",
+      "max_rss_bytes": 1576960,
+      "cpu_ticks": 0,
+      "first_seen_s": 0.0008365870453417301,
+      "last_seen_s": 53.789182539097965
+    },
+    "28": {
+      "name": "cargo",
+      "max_rss_bytes": 52985856,
+      "cpu_ticks": 9,
+      "first_seen_s": 0.10157585982233286,
+      "last_seen_s": 53.6872043851763
+    },
+    "39": {
+      "name": "rustc",
+      "max_rss_bytes": 30588928,
+      "cpu_ticks": 0,
+      "first_seen_s": 0.10164781799539924,
+      "last_seen_s": 0.10164877725765109
+    },
+    "43": {
+      "name": "rustc",
+      "max_rss_bytes": 2548539392,
+      "cpu_ticks": 5280,
+      "first_seen_s": 0.20257655018940568,
+      "last_seen_s": 53.68724946817383
+    },
+    "113": {
+      "name": "cc",
+      "max_rss_bytes": 2117632,
+      "cpu_ticks": 0,
+      "first_seen_s": 52.87549400283024,
+      "last_seen_s": 53.58549239905551
+    },
+    "114": {
+      "name": "collect2",
+      "max_rss_bytes": 1568768,
+      "cpu_ticks": 0,
+      "first_seen_s": 52.87554287817329,
+      "last_seen_s": 53.5855303988792
+    },
+    "115": {
+      "name": "rust-lld",
+      "max_rss_bytes": 596774912,
+      "cpu_ticks": 70,
+      "first_seen_s": 52.87560479482636,
+      "last_seen_s": 53.585568856913596
+    }
+  },
+  "sample_interval_s": 0.1,
+  "clock_ticks_per_s": 100,
+  "deadline_s": 120,
+  "workers": 1,
+  "as_limit_mib": null,
+  "sampled_aggregate_rss_stop_bytes": 3221225472,
+  "memory_stop": false,
+  "user_s": 48.241725,
+  "system_s": 5.526038,
+  "log": "/tmp/c71-preh100-20261009-ops/build-clean.log"
+}

@@ -1,0 +1,10 @@
+
+running 1 test
+test c71_matrix::range::windowed::native::tests::c71_b12_native_private_salts_owner_exact_stream_hash_and_work ... C71_PRIVATE_SALTS_OWNER {"candidate_bytes":16384,"case":0,"cosets":32,"credit":false,"gpu_execution":false,"group_cosets":4,"hash_bands":8,"hash_fences":8,"hash_replay_host_s":0.015193066,"host_indices_capacity_bytes":640,"host_owner_bytes":42088,"leaves":512,"native_d2h_bytes_after_prescan":16608,"native_h2d_bytes_after_prescan":524288,"native_peak_capacity_bytes":84736,"prescan_host_s":0.000650544,"reference_samples_capacity_bytes":16384,"rows":16,"salt_band_uploads":0}
+C71_PRIVATE_SALTS_OWNER {"candidate_bytes":8192,"case":1,"cosets":64,"credit":false,"gpu_execution":false,"group_cosets":32,"hash_bands":2,"hash_fences":2,"hash_replay_host_s":0.00764145,"host_indices_capacity_bytes":160,"host_owner_bytes":42088,"leaves":256,"native_d2h_bytes_after_prescan":8248,"native_h2d_bytes_after_prescan":262144,"native_peak_capacity_bytes":21248,"prescan_host_s":0.000280959,"reference_samples_capacity_bytes":8192,"rows":4,"salt_band_uploads":0}
+C71_PRIVATE_SALTS_OWNER {"candidate_bytes":4194304,"case":2,"cosets":32,"credit":false,"gpu_execution":false,"group_cosets":32,"hash_bands":2,"hash_fences":1,"hash_replay_host_s":3.922026345,"host_indices_capacity_bytes":163840,"host_owner_bytes":42088,"leaves":131072,"native_d2h_bytes_after_prescan":4227084,"native_h2d_bytes_after_prescan":134217728,"native_peak_capacity_bytes":14713344,"prescan_host_s":0.102907118,"reference_samples_capacity_bytes":4194304,"rows":4096,"salt_band_uploads":0}
+C71_PRIVATE_SALTS_OWNER {"candidate_bytes":4096,"case":3,"cosets":32,"credit":false,"gpu_execution":false,"group_cosets":32,"hash_bands":1,"hash_fences":1,"hash_replay_host_s":0.003792267,"host_indices_capacity_bytes":160,"host_owner_bytes":42088,"leaves":128,"native_d2h_bytes_after_prescan":4140,"native_h2d_bytes_after_prescan":131072,"native_peak_capacity_bytes":17152,"prescan_host_s":0.000194835,"reference_samples_capacity_bytes":4096,"rows":4,"salt_band_uploads":0}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 599 filtered out; finished in 13.82s
+

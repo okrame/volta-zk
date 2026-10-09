@@ -1,0 +1,6 @@
+
+running 1 test
+test c71_matrix::census::memory_tests::c71_temporary_budget_combines_host_device_and_realloc_before_allocation ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 599 filtered out; finished in 0.00s
+

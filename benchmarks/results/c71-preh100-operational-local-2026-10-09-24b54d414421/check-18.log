@@ -1,0 +1,7 @@
+
+running 2 tests
+test c71_matrix::progress::tests::c71_progress_durable_prefix_no_overwrite_and_failure ... ok
+test c71_matrix::progress::tests::c71_progress_process_identity_uses_last_parenthesis ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 598 filtered out; finished in 0.00s
+

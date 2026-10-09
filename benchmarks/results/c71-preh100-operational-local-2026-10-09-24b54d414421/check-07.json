@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+    "c71_b12_native_residual_paired_tree_root_salts_and_cpu_geometry",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 9.739895001985133,
+  "max_rss_bytes": 328290304,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 9.643016,
+  "system_s": 0.09256299999999999,
+  "log": "/tmp/c71-preh100-20261009-ops/check-07.log"
+}

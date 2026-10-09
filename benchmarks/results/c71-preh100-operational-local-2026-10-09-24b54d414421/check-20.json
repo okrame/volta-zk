@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+    "c71_b12_windowed_native_failure_before_authentication",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 9.846811356022954,
+  "max_rss_bytes": 328204288,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 9.775818,
+  "system_s": 0.068271,
+  "log": "/tmp/c71-preh100-20261009-ops/check-20.log"
+}

@@ -1,0 +1,1269 @@
+{
+  "artifacts": [
+    {
+      "bytes": 221,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/binary.json",
+      "sha256": "627afaea5cdabcc385f49eb3ec57f7a74aa06974ed98a3f5cc58aa45a7958d5d"
+    },
+    {
+      "bytes": 2329,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/build-clean.json",
+      "sha256": "5c3ac9a371677d7f4185c34a7d62a184aea51f44bff97e8fac382e639380bd02"
+    },
+    {
+      "bytes": 14061,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/build-clean.log",
+      "sha256": "95e975946a8c4168da0bd1ef452d265bb539393675f8afa907dcb11afe3c8fe7"
+    },
+    {
+      "bytes": 2148,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/build.json",
+      "sha256": "491aa38d4399283440fcf60ac0acb8fb2470c7bc52aa2c9227832dc1a62393bc"
+    },
+    {
+      "bytes": 14061,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/build.log",
+      "sha256": "e61810f0ba0e0331b06a0d4611d95baf5bf1fdf4c497588f97811226180fb7a8"
+    },
+    {
+      "bytes": 502,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-00.json",
+      "sha256": "9170a2b115c1efaa1d660617a8d814c406ae953323c75ab3e8f82eff97d9ca53"
+    },
+    {
+      "bytes": 2061,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-00.log",
+      "sha256": "3329b3bd34805376b32e4aad4f90dc686d48a2fb0ff5009f5e4dfc22723e18b0"
+    },
+    {
+      "bytes": 507,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-01.json",
+      "sha256": "c3f3f81359fdb91b414a7908b1532a583bedb34ecb6de9fdcd2d32e011e8ce9d"
+    },
+    {
+      "bytes": 2155,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-01.log",
+      "sha256": "829c14b342cc24d2d8c74ffa3838b068836a7b4c5f3967a67789fd25a69c5871"
+    },
+    {
+      "bytes": 502,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-02.json",
+      "sha256": "800ea5f1a40f6224bb11b231b5adef8f9359e05dfd05a4d26ae54b62956aed5f"
+    },
+    {
+      "bytes": 2707,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-02.log",
+      "sha256": "38d07d5882ee60d05d418a6a15540acac53e83947e641b25f6a793954f3fb974"
+    },
+    {
+      "bytes": 511,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-03.json",
+      "sha256": "90c932182051df2b08aa6f9efd0f6a39377177b6c48ae93957b380f67f8de51c"
+    },
+    {
+      "bytes": 2847,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-03.log",
+      "sha256": "1b159adf30d43a80c9352c07f7025a220db51c6e637fb4acfa362850f9f3e80c"
+    },
+    {
+      "bytes": 506,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-04.json",
+      "sha256": "0bac1bf679cbe20c49ca96ba1e5213fabdaf958380ef6538da4a05b5f8aac7c7"
+    },
+    {
+      "bytes": 18733,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-04.log",
+      "sha256": "db721408a77ac95fe1b21e9f15ab5684059300c8572b701ece5337d261cef82e"
+    },
+    {
+      "bytes": 517,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-05.json",
+      "sha256": "80435e01bb9aa1d182e90641af972af3061d2d83bb1e0f06649dc340f7683d8b"
+    },
+    {
+      "bytes": 4076,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-05.log",
+      "sha256": "f50c975b5318208f8f07fb16d322238bfee1716b21714353094aefce9042a74a"
+    },
+    {
+      "bytes": 514,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-06.json",
+      "sha256": "548ae7ef5ebf29a6c90cfb08abef4d616cad4cec0a06c7e009f011ef4d9584f7"
+    },
+    {
+      "bytes": 3060,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-06.log",
+      "sha256": "d7f6a05474cbb2ab0b5767709464515bb4d63b4ccb688d937d8ccc116e7c8eb0"
+    },
+    {
+      "bytes": 518,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-07.json",
+      "sha256": "9e40429ce1601802797893fda54851d8f28a9d0a1e6b6c8cba77559576fed82d"
+    },
+    {
+      "bytes": 2723,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-07.log",
+      "sha256": "b271adfb16f31268ad56bd60ec7343fd34b4ca44bbf2b2dae082c503ccf98f99"
+    },
+    {
+      "bytes": 530,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-08.json",
+      "sha256": "5aba98bf45fa5bc112453b4c139260f184c6c7f85647fe2f486920cd2df82da1"
+    },
+    {
+      "bytes": 1331,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-08.log",
+      "sha256": "b4c5eb8d6f6fb211d6c36a36482bc1721e17e2da462ce67a984afcdbf1d0b6f2"
+    },
+    {
+      "bytes": 516,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-09.json",
+      "sha256": "9d0c782105eac55df9111e92fa4d04196fc8f41f06557fec040e819fe20ce935"
+    },
+    {
+      "bytes": 3771,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-09.log",
+      "sha256": "a4bf78a3ffbef3b8a771957d7b11c2bf042b93c9643a828566373b8138984545"
+    },
+    {
+      "bytes": 515,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-10.json",
+      "sha256": "a69d4a37d70c9cdbed7719ea2521c0ad3505b69b25008653260c3c11c0a5b261"
+    },
+    {
+      "bytes": 3556,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-10.log",
+      "sha256": "666d3f07489b5f4b829c730371b1fb4223ed07ff27f30c455e05f59e678fd9c2"
+    },
+    {
+      "bytes": 518,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-11.json",
+      "sha256": "49c318defb860beccd86970eee92448d7eb21cc757ad19e1694711c543c9eaa3"
+    },
+    {
+      "bytes": 2915,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-11.log",
+      "sha256": "3b17362270e9e5b0573cb0de6f497dbdc7072d3f827e81de041790a0f50e4e23"
+    },
+    {
+      "bytes": 519,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-12.json",
+      "sha256": "3e5f9b16edc2910e8c0e56e2b233960b05fa4c483dda5a90d64aadd989f738bd"
+    },
+    {
+      "bytes": 4350,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-12.log",
+      "sha256": "dee4e86baf33692628cda1441f17ce4c44fd59edb1fe8d62be11e9e30eb32492"
+    },
+    {
+      "bytes": 503,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-13.json",
+      "sha256": "8bf15f52c381205281479ecf0836b6daac5f2561a87d4022cdb245fc8074eae7"
+    },
+    {
+      "bytes": 212,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-13.log",
+      "sha256": "24a9c422e50190dd74bd2a8775822ceb31e3ad48ecdce1fdaefa369bef161c3e"
+    },
+    {
+      "bytes": 526,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-14.json",
+      "sha256": "abc12d50870bea99352604d36cc7ad1c89aab3368402dcccdc327d5bf994be92"
+    },
+    {
+      "bytes": 225,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-14.log",
+      "sha256": "76d3a60aaae758e62db785862c807d0f04177df1ade860dd591f39d19a8b7d52"
+    },
+    {
+      "bytes": 507,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-15.json",
+      "sha256": "cb3b3daeeaea326287950f684ffb89e021f0cf7270d7ce4b74809cc1822d4b4c"
+    },
+    {
+      "bytes": 234,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-15.log",
+      "sha256": "09f669c6ce505d3e5effb77e85e9b224e14f75889fa08b5bc2771bcc8d08a4ec"
+    },
+    {
+      "bytes": 444,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-16-local-ipc.json",
+      "sha256": "77c227c8e7393d594421602d6d8263cdf2a96f6f1ea62147fe0583b3b9700017"
+    },
+    {
+      "bytes": 10019,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-16-local-ipc.log",
+      "sha256": "1d5fc736122e3958ec9077e97226a95f434b58a74b756784b9fab9952f665c6c"
+    },
+    {
+      "bytes": 469,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-16.json",
+      "sha256": "4000b73e9aba8c383de93edfcc636d5b2221a768d64420a9076ec8af2e2ccad5"
+    },
+    {
+      "bytes": 10960,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-16.log",
+      "sha256": "90de6541773715cf703764a03a4d4d0ab4d5e23790126580c32a521b725502d6"
+    },
+    {
+      "bytes": 517,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-17.json",
+      "sha256": "9b200b5b3d55953e80c9c04d89a6c9f04186754484bdf86122cc7b7f18c3131c"
+    },
+    {
+      "bytes": 248,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-17.log",
+      "sha256": "85bfd41a815f9a4f3c0dee1595468e3145c41d45fcca3802d4f9c97255b5eb76"
+    },
+    {
+      "bytes": 454,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-18.json",
+      "sha256": "55e3d44c741b7c36834026c51a01bf15bdfeb939ad7b1b14f1c2898dbe3d49e4"
+    },
+    {
+      "bytes": 302,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-18.log",
+      "sha256": "66a586f46c52dda84489f821ddc4514f589534ccdbcbc24415fa50691e60cf4a"
+    },
+    {
+      "bytes": 512,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-19.json",
+      "sha256": "13c9edfafa99a88cbb06f886d2ca081e29de39eae07af356c2dfb6866f49b24c"
+    },
+    {
+      "bytes": 232,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-19.log",
+      "sha256": "c03719e092e658ee57c477f8c880825eb077bca30d4e751f50eea8a807356b77"
+    },
+    {
+      "bytes": 497,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-20.json",
+      "sha256": "9589a0a81bb3edd38ca77a1aeb507421c5e2a76da9a3ee9f7bda75d35c5e80c9"
+    },
+    {
+      "bytes": 318,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-20.log",
+      "sha256": "4048c13565af368c2bdbb715facb51b0965ed38d163a8ff5548ffe02ae40c513"
+    },
+    {
+      "bytes": 529,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-21.json",
+      "sha256": "6e3a5db874ee0a9372eed93ca7cc69f18733c79598f664a4da0f86cc70851f3c"
+    },
+    {
+      "bytes": 4304,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-21.log",
+      "sha256": "4feb0d1d2b93083e902f21eca21990922d8e5e9a4b86c7118b13b99fd1b766e0"
+    },
+    {
+      "bytes": 508,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-22.json",
+      "sha256": "c7daef35e618b27f6ff9895ae8d6fa54b73d3bbc4b67a36c123b9c3606245397"
+    },
+    {
+      "bytes": 1018,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-22.log",
+      "sha256": "0b022718f72d88740e34d4d7cfe3662ead70993715e42ffbb6ea0282c68b71f1"
+    },
+    {
+      "bytes": 493,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-23.json",
+      "sha256": "329381ab4df2c49bfc8ff24a27ed7a699ef49d71b0de3f7150409b5d74f3ce89"
+    },
+    {
+      "bytes": 99,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-23.log",
+      "sha256": "9efb844bbd8c5272896378609ac33be5b930cae1db65f4f054c90651f9ce9a78"
+    },
+    {
+      "bytes": 467,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-24.json",
+      "sha256": "09e08429a1fd43b2ff24072c0a477f344530b72ae339059415d48f6674dadb69"
+    },
+    {
+      "bytes": 98,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-24.log",
+      "sha256": "65753f75354bf9bdd5a43f6987ee8caa1ff289d69f8651f043d0ba77ed5b1c8a"
+    },
+    {
+      "bytes": 83,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/continuation-source.json",
+      "sha256": "851109e018f527d3f32720669e9093289635f5694a752fe278851e86f6a41325"
+    },
+    {
+      "bytes": 3199,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/finish-checks.py",
+      "sha256": "1cc97a4f3e58d2700203c632e0f8b6cd42969f6781a330d84def41800b2220b7"
+    },
+    {
+      "bytes": 1086,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/hardware-entrypoints.json",
+      "sha256": "ac8a4d144d1fe83e52b36b35cc61a8677d80317bf6fbe1db35b25bdafd094276"
+    },
+    {
+      "bytes": 1984,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/hardware-test-list.log",
+      "sha256": "f50874f94fe70a6079ef762600e77dfa4d7c66e3cdbbbeef3433828c6a5fb72d"
+    },
+    {
+      "bytes": 427,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-c71-closure-retire-claim-pre01-20261009.log",
+      "sha256": "d2b16638dedb02425a1ae4f7966c0a676a20d78c93e87431f04576822a0d353c"
+    },
+    {
+      "bytes": 427,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-c71-closure-retire-clean-claim-20261009.log",
+      "sha256": "d2b16638dedb02425a1ae4f7966c0a676a20d78c93e87431f04576822a0d353c"
+    },
+    {
+      "bytes": 3760,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-c71-initial-w-query-a-full-clean-20261009.log",
+      "sha256": "ca8ec77a6eb2a38a3202b67fb91321abd521f3dbd7052484b15daaf3a90aed3a"
+    },
+    {
+      "bytes": 3545,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-c71-initial-w-query-w-full-clean-20261009.log",
+      "sha256": "b816423d561041a974fcb3ad4857b2f6b8c98d67e953f34b038172a439c31740"
+    },
+    {
+      "bytes": 1050,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-c71-s1-query-final-07-20261009.log",
+      "sha256": "bb291474e97db7733f67e19c6f39fab33b38c509cbc6fb4b9c8b0ea86c58b6e9"
+    },
+    {
+      "bytes": 1037,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-c71-s1-query-final-08-20261009.log",
+      "sha256": "89e37ce363bd71d29c049e943c0a99a0ee46751d37527e272830b43223146105"
+    },
+    {
+      "bytes": 13339,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-c71-s1-query-final-09-20261009.log",
+      "sha256": "b49841ddb3ef32bf85acb99f255fe171c8f07cf0227aff59ee64db0a43e3ad93"
+    },
+    {
+      "bytes": 2942,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-c71-s1-query-final-10-20261009.log",
+      "sha256": "a9967b56157b5f141c82a391aa2185f448ca5539c120ccaf0087a73e07dfc308"
+    },
+    {
+      "bytes": 1196,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-c71_b12_canonical_initial_geometry.log",
+      "sha256": "842fb27cfc11c7e1172104fbbb275d25de597713d93fbfbcef7813af6e2b0694"
+    },
+    {
+      "bytes": 2274,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-c71_b12_windowed_native_.log",
+      "sha256": "0b5bc3410a687b52d11eae613b77320bc0fde98fa83d5776adf5aa95e0e05aac"
+    },
+    {
+      "bytes": 4916,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-canonical-wire.log",
+      "sha256": "cd4b394e7dd9af34e5c65fa67a620bd705cd6493c8fcaf0a30b796419b8a19e0"
+    },
+    {
+      "bytes": 10907,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-forms.log",
+      "sha256": "fd66e4f8dba1e1adf38ac5956dea20f9a9bfc29f5b5f1bebf5fdf072a7ec359f"
+    },
+    {
+      "bytes": 4304,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-metadata.log",
+      "sha256": "4feb0d1d2b93083e902f21eca21990922d8e5e9a4b86c7118b13b99fd1b766e0"
+    },
+    {
+      "bytes": 9354,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-seed6-local-socket-authorized.log",
+      "sha256": "c7478f7bea7cfe6f2a8edb6b3b6aaeda308e2ebf7cd9559f09c1918932e98d5f"
+    },
+    {
+      "bytes": 1018,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-telemetry.log",
+      "sha256": "0b022718f72d88740e34d4d7cfe3662ead70993715e42ffbb6ea0282c68b71f1"
+    },
+    {
+      "bytes": 768,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger.json",
+      "sha256": "fe61ff9084fcf04b62d907e7eab6c13d0d55534dd16b308f5bb7dd3e13d27c53"
+    },
+    {
+      "bytes": 1397911,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger.log",
+      "sha256": "0b81584fe79ddc0a1197f5902a74c276d8c499935337345a64e182ddee240380"
+    },
+    {
+      "bytes": 447,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/monitor-tests-03.json",
+      "sha256": "f85dbf80b0f1554a5f57cb9e516a0df38078dd175ccb6d8f8f3fe9b27782013f"
+    },
+    {
+      "bytes": 99,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/monitor-tests-03.log",
+      "sha256": "1aae22fd1401965e159688c761d58ec4b19f254a77879fd16757734ba7140bc4"
+    },
+    {
+      "bytes": 461,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/monitor-tests-final.json",
+      "sha256": "96505493ec6da99874137a44898cb850016065a29d09c22a2a43300c9d493def"
+    },
+    {
+      "bytes": 38707,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/monitor-tests-final.log",
+      "sha256": "f15526521bc55220b4240cdaf75da6d3921c38571c2d3b43eb08f64c156aefef"
+    },
+    {
+      "bytes": 444,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/monitor-tests.json",
+      "sha256": "d1cc0f624df1273b1a8635e4bbf40d5ff315c5159d1bc69c51bc9144afb57c46"
+    },
+    {
+      "bytes": 14816,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/monitor-tests.log",
+      "sha256": "682c92ddc56d524ea2b3442b8b1651ba0b25dee7ea049bf4b9d53f5b30ce401f"
+    },
+    {
+      "bytes": 3158,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/run-checks.py",
+      "sha256": "3f2c2eef9df53359a50efca3c8fcee40d6a7eec1d951fa0e253bb7151195bb1a"
+    },
+    {
+      "bytes": 83,
+      "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/source.json",
+      "sha256": "851109e018f527d3f32720669e9093289635f5694a752fe278851e86f6a41325"
+    }
+  ],
+  "baseline": "9033c64",
+  "build": {
+    "binary": {
+      "bytes": 95718048,
+      "path": "rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+      "sha256": "fffe160ebd975d7f307f9a0daa45a6544cebf6608402162a1dd8b7cc558ea4cb",
+      "source_git_sha": "24b54d4144211cec93c1847b84c0b5fe0a81b5c2"
+    },
+    "cuda_compiled": false,
+    "measurement": {
+      "as_limit_mib": null,
+      "clock_ticks_per_s": 100,
+      "command": [
+        "cargo",
+        "rustc",
+        "--offline",
+        "--locked",
+        "-j",
+        "1",
+        "-p",
+        "volta-pcs",
+        "--features",
+        "c71-seed6-reference",
+        "--lib",
+        "--profile",
+        "test",
+        "--config",
+        "profile.dev.package.volta-pcs.opt-level=0",
+        "--config",
+        "profile.dev.package.volta-pcs.codegen-units=64",
+        "--",
+        "-Clink-arg=-fuse-ld=lld",
+        "-Clink-arg=-B/home/okrame/.rustup/toolchains/stable-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/bin/gcc-ld",
+        "-Clink-arg=-Wl,--threads=1"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk/rust",
+      "deadline_s": 120,
+      "exit_code": 0,
+      "log": "/tmp/c71-preh100-20261009-ops/build-clean.log",
+      "max_rss_bytes": 2562371584,
+      "memory_stop": false,
+      "sample_interval_s": 0.1,
+      "sampled_aggregate_live_rss_peak_bytes": 2603102208,
+      "sampled_aggregate_rss_stop_bytes": 3221225472,
+      "sampled_processes": {
+        "113": {
+          "cpu_ticks": 0,
+          "first_seen_s": 52.87549400283024,
+          "last_seen_s": 53.58549239905551,
+          "max_rss_bytes": 2117632,
+          "name": "cc"
+        },
+        "114": {
+          "cpu_ticks": 0,
+          "first_seen_s": 52.87554287817329,
+          "last_seen_s": 53.5855303988792,
+          "max_rss_bytes": 1568768,
+          "name": "collect2"
+        },
+        "115": {
+          "cpu_ticks": 70,
+          "first_seen_s": 52.87560479482636,
+          "last_seen_s": 53.585568856913596,
+          "max_rss_bytes": 596774912,
+          "name": "rust-lld"
+        },
+        "27": {
+          "cpu_ticks": 0,
+          "first_seen_s": 0.0008365870453417301,
+          "last_seen_s": 53.789182539097965,
+          "max_rss_bytes": 1576960,
+          "name": "timeout"
+        },
+        "28": {
+          "cpu_ticks": 9,
+          "first_seen_s": 0.10157585982233286,
+          "last_seen_s": 53.6872043851763,
+          "max_rss_bytes": 52985856,
+          "name": "cargo"
+        },
+        "39": {
+          "cpu_ticks": 0,
+          "first_seen_s": 0.10164781799539924,
+          "last_seen_s": 0.10164877725765109,
+          "max_rss_bytes": 30588928,
+          "name": "rustc"
+        },
+        "43": {
+          "cpu_ticks": 5280,
+          "first_seen_s": 0.20257655018940568,
+          "last_seen_s": 53.68724946817383,
+          "max_rss_bytes": 2548539392,
+          "name": "rustc"
+        }
+      },
+      "system_s": 5.526038,
+      "user_s": 48.241725,
+      "wall_s": 53.78922724816948,
+      "workers": 1
+    },
+    "report": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/build-clean.json"
+  },
+  "canonical_execution": false,
+  "checks": [
+    {
+      "as_limit_mib": 2048,
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+        "c71_b12_native_transform_natural_forward_inverse_and_work",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "deadline_s": 60,
+      "exit_code": 0,
+      "log": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-00.log",
+      "max_rss_bytes": 328278016,
+      "passed": 1,
+      "report": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-00.json",
+      "system_s": 0.107941,
+      "user_s": 11.356206,
+      "wall_s": 11.46716325590387,
+      "workers": 1
+    },
+    {
+      "as_limit_mib": 2048,
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+        "c71_b12_native_private_salts_owner_exact_stream_hash_and_work",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "deadline_s": 60,
+      "exit_code": 0,
+      "log": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-01.log",
+      "max_rss_bytes": 328134656,
+      "passed": 1,
+      "report": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-01.json",
+      "system_s": 0.079804,
+      "user_s": 13.741126,
+      "wall_s": 13.824731159955263,
+      "workers": 1
+    },
+    {
+      "as_limit_mib": 2048,
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+        "c71_b12_native_weight_tree_exact_roots_openings_and_work",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "deadline_s": 60,
+      "exit_code": 0,
+      "log": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-02.log",
+      "max_rss_bytes": 328089600,
+      "passed": 1,
+      "report": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-02.json",
+      "system_s": 0.132071,
+      "user_s": 22.535499,
+      "wall_s": 22.675447733607143,
+      "workers": 1
+    },
+    {
+      "as_limit_mib": 2048,
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+        "c71_b12_native_source_tree_exact_roots_openings_histogram_and_work",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "deadline_s": 60,
+      "exit_code": 0,
+      "log": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-03.log",
+      "max_rss_bytes": 328167424,
+      "passed": 1,
+      "report": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-03.json",
+      "system_s": 0.107958,
+      "user_s": 22.39093,
+      "wall_s": 22.504095238167793,
+      "workers": 1
+    },
+    {
+      "as_limit_mib": 2048,
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+        "c71_b12_native_query_exact_horner_windows_pads_and_resources",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "deadline_s": 60,
+      "exit_code": 0,
+      "log": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-04.log",
+      "max_rss_bytes": 328118272,
+      "passed": 1,
+      "report": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-04.json",
+      "system_s": 0.093151,
+      "user_s": 11.570956,
+      "wall_s": 11.668048930820078,
+      "workers": 1
+    },
+    {
+      "as_limit_mib": 2048,
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+        "c71_b12_native_weight_query_horner_signed_pads_duplicates_and_accounting",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "deadline_s": 60,
+      "exit_code": 0,
+      "log": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-05.log",
+      "max_rss_bytes": 328323072,
+      "passed": 1,
+      "report": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-05.json",
+      "system_s": 0.102008,
+      "user_s": 9.953426,
+      "wall_s": 10.059306764043868,
+      "workers": 1
+    },
+    {
+      "as_limit_mib": 2048,
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+        "c71_b12_native_query_composed_uncached_chain_original_mac_and_transcript",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "deadline_s": 60,
+      "exit_code": 0,
+      "log": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-06.log",
+      "max_rss_bytes": 328359936,
+      "passed": 1,
+      "report": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-06.json",
+      "system_s": 0.796101,
+      "user_s": 55.19656,
+      "wall_s": 56.041722914204,
+      "workers": 1
+    },
+    {
+      "as_limit_mib": 2048,
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+        "c71_b12_native_residual_paired_tree_root_salts_and_cpu_geometry",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "deadline_s": 60,
+      "exit_code": 0,
+      "log": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-07.log",
+      "max_rss_bytes": 328290304,
+      "passed": 1,
+      "report": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-07.json",
+      "system_s": 0.09256299999999999,
+      "user_s": 9.643016,
+      "wall_s": 9.739895001985133,
+      "workers": 1
+    },
+    {
+      "as_limit_mib": 2048,
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+        "c71_b12_native_residual_query_horner_pads_duplicates_and_virtual_prefixes",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "deadline_s": 60,
+      "exit_code": 0,
+      "log": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-08.log",
+      "max_rss_bytes": 328130560,
+      "passed": 1,
+      "report": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-08.json",
+      "system_s": 0.12326799999999999,
+      "user_s": 10.200385,
+      "wall_s": 10.329318956937641,
+      "workers": 1
+    },
+    {
+      "as_limit_mib": 2048,
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+        "c71_b12_native_residual_query_full_whir_a_wire_fs_rng_and_original_mac",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "deadline_s": 60,
+      "exit_code": 0,
+      "log": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-09.log",
+      "max_rss_bytes": 328105984,
+      "passed": 1,
+      "report": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-09.json",
+      "system_s": 0.168783,
+      "user_s": 50.844553,
+      "wall_s": 51.026893272064626,
+      "workers": 1
+    },
+    {
+      "as_limit_mib": 2048,
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+        "c71_b12_native_residual_query_full_whir_w_wire_fs_rng_and_original_mac",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "deadline_s": 60,
+      "exit_code": 0,
+      "log": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-10.log",
+      "max_rss_bytes": 328359936,
+      "passed": 1,
+      "report": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-10.json",
+      "system_s": 0.125085,
+      "user_s": 50.539978,
+      "wall_s": 50.67842832673341,
+      "workers": 1
+    },
+    {
+      "as_limit_mib": 2048,
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+        "c71_b12_native_residual_state_exact_coefficients_late_retention_and_views",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "deadline_s": 60,
+      "exit_code": 0,
+      "log": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-11.log",
+      "max_rss_bytes": 328249344,
+      "passed": 1,
+      "report": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-11.json",
+      "system_s": 0.072988,
+      "user_s": 10.07222,
+      "wall_s": 10.150110622867942,
+      "workers": 1
+    },
+    {
+      "as_limit_mib": 2048,
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+        "c71_b12_native_linear_original_codecs_exact_coefficients_endpoints_and_work",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "deadline_s": 60,
+      "exit_code": 0,
+      "log": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-12.log",
+      "max_rss_bytes": 328282112,
+      "passed": 1,
+      "report": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-12.json",
+      "system_s": 0.093288,
+      "user_s": 9.899286,
+      "wall_s": 9.996328582055867,
+      "workers": 1
+    },
+    {
+      "as_limit_mib": 2048,
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+        "c71_b12_native_linear_full_wire_fs_point_and_original_mac",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "deadline_s": 60,
+      "exit_code": 0,
+      "log": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-13.log",
+      "max_rss_bytes": 328060928,
+      "passed": 1,
+      "report": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-13.json",
+      "system_s": 0.084535,
+      "user_s": 42.922427,
+      "wall_s": 43.021112555172294,
+      "workers": 1
+    },
+    {
+      "as_limit_mib": 2048,
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+        "c71_b12_sourcewise_linear_matches_dense_wire_fs_point_and_original_mac",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "deadline_s": 60,
+      "exit_code": 0,
+      "log": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-14.log",
+      "max_rss_bytes": 79159296,
+      "passed": 1,
+      "report": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-14.json",
+      "system_s": 0.057331999999999994,
+      "user_s": 36.825685,
+      "wall_s": 36.89495341107249,
+      "workers": 1
+    },
+    {
+      "as_limit_mib": 2048,
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+        "c71_b12_native_hardware_parity_rejects_missing_and_host_library",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "deadline_s": 60,
+      "exit_code": 0,
+      "log": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-15.log",
+      "max_rss_bytes": 328314880,
+      "passed": 1,
+      "report": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-15.json",
+      "system_s": 0.061852,
+      "user_s": 9.542777,
+      "wall_s": 9.606991732958704,
+      "workers": 1
+    },
+    {
+      "as_limit_mib": 2048,
+      "command": [
+        "rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+        "c71_canonical_runner_",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "deadline_s": 60,
+      "exit_code": 0,
+      "log": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-16-local-ipc.log",
+      "max_rss_bytes": 91295744,
+      "passed": 5,
+      "report": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-16-local-ipc.json",
+      "system_s": 0.025025,
+      "user_s": 0.001349,
+      "wall_s": 0.0488775921985507,
+      "workers": 1
+    },
+    {
+      "as_limit_mib": 2048,
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+        "c71_canonical_packed_observer_precedes_load_and_preserves_codec",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "deadline_s": 60,
+      "exit_code": 0,
+      "log": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-17.log",
+      "max_rss_bytes": 12423168,
+      "passed": 1,
+      "report": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-17.json",
+      "system_s": 0.0,
+      "user_s": 0.0032689999999999998,
+      "wall_s": 0.003653181716799736,
+      "workers": 1
+    },
+    {
+      "as_limit_mib": 2048,
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+        "c71_progress_",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "deadline_s": 60,
+      "exit_code": 0,
+      "log": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-18.log",
+      "max_rss_bytes": 15859712,
+      "passed": 2,
+      "report": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-18.json",
+      "system_s": 0.0,
+      "user_s": 0.003938,
+      "wall_s": 0.004194851964712143,
+      "workers": 1
+    },
+    {
+      "as_limit_mib": 2048,
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+        "c71_temporary_budget_combines_host_device_and_realloc_before_allocation",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "deadline_s": 60,
+      "exit_code": 0,
+      "log": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-19.log",
+      "max_rss_bytes": 8900608,
+      "passed": 1,
+      "report": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-19.json",
+      "system_s": 0.0,
+      "user_s": 0.003322,
+      "wall_s": 0.0036555989645421505,
+      "workers": 1
+    },
+    {
+      "as_limit_mib": 2048,
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+        "c71_b12_windowed_native_failure_before_authentication",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "deadline_s": 60,
+      "exit_code": 0,
+      "log": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-20.log",
+      "max_rss_bytes": 328204288,
+      "passed": 1,
+      "report": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-20.json",
+      "system_s": 0.068271,
+      "user_s": 9.775818,
+      "wall_s": 9.846811356022954,
+      "workers": 1
+    },
+    {
+      "as_limit_mib": 2048,
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+        "c71_canonical_public_metadata_capacity_pinned_no_private_inputs",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "deadline_s": 60,
+      "exit_code": 0,
+      "log": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-21.log",
+      "max_rss_bytes": 141451264,
+      "passed": 1,
+      "report": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-21.json",
+      "system_s": 0.047980999999999996,
+      "user_s": 5.7749749999999995,
+      "wall_s": 5.824716410133988,
+      "workers": 1
+    },
+    {
+      "as_limit_mib": 2048,
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+        "c71_canonical_public_metadata_telemetry_bounded_schema",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "deadline_s": 60,
+      "exit_code": 0,
+      "log": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-22.log",
+      "max_rss_bytes": 12877824,
+      "passed": 1,
+      "report": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-22.json",
+      "system_s": 0.0,
+      "user_s": 0.0034809999999999997,
+      "wall_s": 0.003753799945116043,
+      "workers": 1
+    },
+    {
+      "as_limit_mib": 2048,
+      "command": [
+        "/home/okrame/projects/volta-zk/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_c71_campaign_measure.py"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "deadline_s": 60,
+      "exit_code": 0,
+      "log": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-23.log",
+      "max_rss_bytes": 30580736,
+      "passed": 28,
+      "report": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-23.json",
+      "system_s": 0.053987999999999994,
+      "user_s": 0.35664199999999996,
+      "wall_s": 2.0509665138088167,
+      "workers": 1
+    },
+    {
+      "as_limit_mib": 2048,
+      "command": [
+        "/home/okrame/projects/volta-zk/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_c71_docs.py"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "deadline_s": 60,
+      "exit_code": 0,
+      "log": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-24.log",
+      "max_rss_bytes": 59326464,
+      "passed": 9,
+      "report": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-24.json",
+      "system_s": 0.049816,
+      "user_s": 0.9921749999999999,
+      "wall_s": 1.041399294976145,
+      "workers": 1
+    }
+  ],
+  "credit": false,
+  "date": "2026-10-09",
+  "development_provenance": {
+    "build.log/build.json": "Preliminary dirty-tree build before shortening timeout environment String lifetime; not final build provenance.",
+    "monitor-tests-03.log/monitor-tests-03.json": "28 passing monitor development tests; clean repetition is check-23.",
+    "run-checks.py": "Stopped at sandbox-only local socket failure; finish-checks.py continued untouched remaining checks after separately authorized local IPC execution."
+  },
+  "failures_preserved": [
+    {
+      "git_dirty": true,
+      "reason": "Development fixtures did not emulate missing local cgroup memory.events; 22 passed, 5 failed. Production remains fail-closed.",
+      "report": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/monitor-tests.json",
+      "source_snapshot_frozen": false
+    },
+    {
+      "git_dirty": true,
+      "reason": "Development fixtures did not emulate missing local /usr/bin/time; 24 passed, 4 failed. Production remains fail-closed.",
+      "report": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/monitor-tests-final.json",
+      "source_snapshot_frozen": false
+    },
+    {
+      "git_dirty": false,
+      "reason": "Sandbox denied local Unix socketpair with EPERM: 3 passed, 2 failed before transport; same binary/limits passed all five with the documented local IPC exception in check-16-local-ipc.json.",
+      "report": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/check-16.json"
+    }
+  ],
+  "git_dirty": false,
+  "gpu_execution": false,
+  "hardware_entrypoints": {
+    "checked_only": "compiled ignored test registration, one matching test per runbook filter",
+    "credit": false,
+    "filters": [
+      "c71_b12_windowed_native_hardware_parity_explicit",
+      "c71_b12_native_hardware_transform_natural_forward_inverse",
+      "c71_b12_native_hardware_private_salts_stream_and_hash",
+      "c71_b12_native_hardware_weight_tree_roots_openings",
+      "c71_b12_native_hardware_source_tree_roots_openings_histogram",
+      "c71_b12_native_hardware_initial_source_query_horner",
+      "c71_b12_native_hardware_initial_weight_query_horner",
+      "c71_b12_native_hardware_initial_source_query_whir_chain",
+      "c71_b12_native_hardware_residual_state_retention_and_views",
+      "c71_b12_native_hardware_residual_tree_roots_salts_openings",
+      "c71_b12_native_hardware_residual_query_horner",
+      "c71_b12_native_hardware_residual_source_whir_chain",
+      "c71_b12_native_hardware_residual_weight_whir_chain",
+      "c71_b12_native_hardware_linear_coefficients_endpoints",
+      "c71_b12_native_hardware_linear_full_wire_fs_point_and_original_mac"
+    ],
+    "gpu_execution": false
+  },
+  "joint_admitted": false,
+  "ledger_summary": {
+    "all_eleven_classes_have_explicit_parts": true,
+    "delta_bytes_each_phase": 8,
+    "delta_reason": "Runtime weight_install_bytes is automatically counted once by typed Arc<Mutex<Runtime>> capacity marker; telemetry remains within existing bounded schema.",
+    "inputs": [
+      {
+        "bytes": 427,
+        "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-c71-closure-retire-claim-pre01-20261009.log",
+        "sha256": "d2b16638dedb02425a1ae4f7966c0a676a20d78c93e87431f04576822a0d353c"
+      },
+      {
+        "bytes": 427,
+        "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-c71-closure-retire-clean-claim-20261009.log",
+        "sha256": "d2b16638dedb02425a1ae4f7966c0a676a20d78c93e87431f04576822a0d353c"
+      },
+      {
+        "bytes": 3760,
+        "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-c71-initial-w-query-a-full-clean-20261009.log",
+        "sha256": "ca8ec77a6eb2a38a3202b67fb91321abd521f3dbd7052484b15daaf3a90aed3a"
+      },
+      {
+        "bytes": 3545,
+        "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-c71-initial-w-query-w-full-clean-20261009.log",
+        "sha256": "b816423d561041a974fcb3ad4857b2f6b8c98d67e953f34b038172a439c31740"
+      },
+      {
+        "bytes": 1050,
+        "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-c71-s1-query-final-07-20261009.log",
+        "sha256": "bb291474e97db7733f67e19c6f39fab33b38c509cbc6fb4b9c8b0ea86c58b6e9"
+      },
+      {
+        "bytes": 1037,
+        "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-c71-s1-query-final-08-20261009.log",
+        "sha256": "89e37ce363bd71d29c049e943c0a99a0ee46751d37527e272830b43223146105"
+      },
+      {
+        "bytes": 13339,
+        "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-c71-s1-query-final-09-20261009.log",
+        "sha256": "b49841ddb3ef32bf85acb99f255fe171c8f07cf0227aff59ee64db0a43e3ad93"
+      },
+      {
+        "bytes": 2942,
+        "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-c71-s1-query-final-10-20261009.log",
+        "sha256": "a9967b56157b5f141c82a391aa2185f448ca5539c120ccaf0087a73e07dfc308"
+      },
+      {
+        "bytes": 1196,
+        "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-c71_b12_canonical_initial_geometry.log",
+        "sha256": "842fb27cfc11c7e1172104fbbb275d25de597713d93fbfbcef7813af6e2b0694"
+      },
+      {
+        "bytes": 2274,
+        "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-c71_b12_windowed_native_.log",
+        "sha256": "0b5bc3410a687b52d11eae613b77320bc0fde98fa83d5776adf5aa95e0e05aac"
+      },
+      {
+        "bytes": 4916,
+        "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-canonical-wire.log",
+        "sha256": "cd4b394e7dd9af34e5c65fa67a620bd705cd6493c8fcaf0a30b796419b8a19e0"
+      },
+      {
+        "bytes": 10907,
+        "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-forms.log",
+        "sha256": "fd66e4f8dba1e1adf38ac5956dea20f9a9bfc29f5b5f1bebf5fdf072a7ec359f"
+      },
+      {
+        "bytes": 4304,
+        "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-metadata.log",
+        "sha256": "4feb0d1d2b93083e902f21eca21990922d8e5e9a4b86c7118b13b99fd1b766e0"
+      },
+      {
+        "bytes": 9354,
+        "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-seed6-local-socket-authorized.log",
+        "sha256": "c7478f7bea7cfe6f2a8edb6b3b6aaeda308e2ebf7cd9559f09c1918932e98d5f"
+      },
+      {
+        "bytes": 1018,
+        "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-telemetry.log",
+        "sha256": "0b022718f72d88740e34d4d7cfe3662ead70993715e42ffbb6ea0282c68b71f1"
+      }
+    ],
+    "joint_admitted": false,
+    "ledger_artifact": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger.log",
+    "maximum": {
+      "counter_is_fit_evidence": false,
+      "is_complete_phase_peak": false,
+      "lifetime": "One source loader for all3 limbs;4 remainder buffers, no original getter/D2H. 96q matrix+24q Rust column+24q C staging overlap until canonical check/free/publication. Both adjacent caches and predecessor planes stay alive through opening/release.",
+      "named_allocation_subtotal_bytes": 5878734842,
+      "named_subtotal_exceeds_payload": false,
+      "parts": {
+        "E_C_staged_column_host": 25165824,
+        "E_Rust_EQ_packet_host_upper": 288,
+        "E_Rust_column_host": 25165824,
+        "E_Rust_pad_marshalling_host_upper": 98304,
+        "E_forward_inverse_twiddles": 67110400,
+        "E_four_remainders": 33554432,
+        "E_private_shape_EQ_and_pads": 49920,
+        "E_private_sticky_flag": 256,
+        "E_private_three_limb_low": 25165824,
+        "E_public_factor_spectra": 704643072,
+        "E_returned_matrix_host": 100663296,
+        "E_work_and_scratch": 33554432,
+        "canonical_Writer_fixed_capacity": 100663296,
+        "class1_9_pruned_path_BTree_nodes_upper": 435968,
+        "class1_9_typed_persistent_metadata": 52424216,
+        "class3_current_batch_indices_retained_upper": 16777216,
+        "class3_current_needed_queries_frontiers_and_sampled_indices_upper": 40960,
+        "class3_current_one_regenerated_subtree_upper": 393568,
+        "class3_current_path_triple_vec_payload_upper": 294912,
+        "class3_current_single_matrix_row_wrapper_upper": 122880,
+        "class3_retained_source_opening_prefix_upper": 2883584,
+        "class4_both_role_retained_setup_Audit_Vec_capacity": 1792,
+        "class4_carried_original_mask_cache_payload_upper": 108231968,
+        "class4_current_real_AES_PCG_expansion_including_idle": 2775464,
+        "class4_optional_XOF_buffers_upper": 258048,
+        "class5_MatrixProof_other_heap_upper": 2876112,
+        "class8_historical_KV_current_role_upper": 33066816,
+        "class8_retained_current_role_original_claims": 457819648,
+        "class9_crypto_telemetry_capacity_upper": 16078886,
+        "class9_session_census_KV_dedup_set_upper": 112784,
+        "device_persistent_or_single_replay_envelope": 591277824,
+        "extension_previous_and_current_host_pads": 98304,
+        "extension_previous_and_current_root_offset_caches": 11796416,
+        "full_calibration_table_serialization_difference_upper": 921596,
+        "initial_W_and_A_root_offset_caches": 188743552,
+        "native_common_owner_host": 42088,
+        "retained_initial_private_host_pads": 6291456,
+        "retained_predecessor": 3221225472,
+        "two_public_table_host_payloads": 47908144
+      },
+      "phase": "native_E_D34_A3_S2_predecessor_E_query_publication",
+      "remaining_shared_payload_capacity_bytes": 26845190
+    },
+    "phases": 653,
+    "physical_allowance_verified": false,
+    "reproduction": "Run scripts/c71_temporary_ledger.py on archived ledger-inputs with --backend s1-prepared and the unchanged query/linear/lifetime record arguments recorded in ledger.json.",
+    "reused_source_record": "benchmarks/results/c71-crypto-rms-local-2026-10-09-abd2de09efb4.json"
+  },
+  "local_resources": {
+    "maximum_test_rss_bytes": 328359936,
+    "maximum_test_wall_s": 56.041722914204,
+    "serial_invocations": 25,
+    "successful_checks_wall_sum_s": 398.51257705828175,
+    "test_as_bytes": 2147483648,
+    "test_deadline_s": 60,
+    "workers": 1
+  },
+  "monitor_test_scope": "GPU, cgroup-v2 and GNU time explicitly emulated; actual Linux /proc/smaps, 8 KiB host mapping, subprocess/session/process-group teardown used. No provider call or hardware measurement.",
+  "paid_campaign_authorized": false,
+  "passed_tests": {
+    "documents_python": 9,
+    "monitor_python": 28,
+    "rust": 28,
+    "total": 65
+  },
+  "recorded_at_utc": "2026-10-09T17:50:47.538771+00:00",
+  "remaining": [
+    "New owner authorization for H100 80 GB and campaign duration; independent provider shutdown guard",
+    "Compile sm_90 and execute all 15 real-library parity filters on authorized hardware",
+    "Measure installation, setup, inference, proof and verification; full physical allowance and transient peaks",
+    "Quantify remaining CPU GKR/RMS, PCG and synchronization costs; no full-response 65-second claim"
+  ],
+  "resource_scope": "Named conditional allocator accounting remains distinct from simultaneous physical admission. Path/argv capacities <=4096, pinned Gamma/layout/toolchain premises retained. Host RSS includes monitor; whole-device HBM conservative. Transition samples have no joint-memory credit and complete physical peak stays false.",
+  "schema": "volta-c71-preh100-operational-local-v1",
+  "scope": "Operational corrections following documentation/code audit; no protocol, numeric kernels, Gamma, NoPeek, original MAC, one-time correlation or AES-PCG changes.",
+  "selected_changes": [
+    "14 explicit ignored real-library parity entrypoints reuse existing positive host oracles; existing hardware range also guarded against fake library, including renamed fixtures",
+    "finite configurable socket silence timeout recorded separately from unchanged 65-second response target; external process/campaign deadlines retained",
+    "canonical/calibration monitor with explicit closeout reserve, joint physical sampling, W residency lifecycle and conservative smaps exemption, OOM/swap/GPU/free/disk stops and session-wide termination",
+    "private durable W allocation/retirement events and current CPU/GPU route labels; no witness values published"
+  ],
+  "source_git_sha": "24b54d4144211cec93c1847b84c0b5fe0a81b5c2",
+  "status": "local operational corrections validated; ready to request hardware and duration authorization"
+}

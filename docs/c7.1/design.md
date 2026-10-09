@@ -149,7 +149,10 @@ Il [runbook](runpod-tests.md#preparazione-operativa-della-campagna)
 definisce la procedura aggiornata e i suoi limiti: i campioni nelle
 transizioni di W non attribuiscono credito congiunto di memoria;
 picco completo, allowance e target hardware restano aperti.
-Nuova H100 e durata richiedono nuova autorizzazione.
+La [chiusura operativa locale](../c7.1-history/crypto-preh100-operations-2026-10-09.md)
+registra 65 test passati e il ledger aggiornato: codice e procedure sono
+pronti alla richiesta di hardware. Nuova H100 e durata richiedono nuova
+autorizzazione.
 
 Il [checkpoint S1 e Query E](../c7.1-history/crypto-residual-query-2026-10-09.md)
 collega owner e caller fino alle query extension di tutti gli stadi.
@@ -166,10 +169,11 @@ Fattori, FFT dispari, range e producer restano costi
 separati; almeno 581 scan complete dell'A corrente precedono le richieste
 parziali e gli altri consumer.
 
-Il [conto tipato conclusivo](../../benchmarks/results/c71-crypto-rms-local-2026-10-09-abd2de09efb4.json) enumera 653 fasi e le 11
-classi di allocazione, compresi cache e workspace RMS aggiornati.
-Il massimo modellato è 5.878.734.834 B,
-con 26.845.198 B residui nel payload di 5.905.580.032 B.
+Il [conto tipato aggiornato](../../benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421.json) enumera 653 fasi e le 11
+classi di allocazione, compresi cache/workspace RMS e gli 8 B aggiunti
+per seguire il lifecycle W.
+Il massimo modellato è 5.878.734.842 B,
+con 26.845.190 B residui nel payload di 5.905.580.032 B.
 Rimane condizionato alle capacità dei path/argv
 ≤4.096 B ed alle identità Γ/layout registrate; `joint_admitted:false`
 conserva il confine rispetto al picco fisico non misurato.
@@ -244,6 +248,7 @@ locali sono `credit:false`, senza compilazione o esecuzione CUDA.
 | [Query W, profilo del caller e audit di convergenza](../c7.1-history/crypto-local-convergence-2026-10-09.md) | 14 filtri Rust e tre test Python passano; RMS sul Γ ammesso quantificato parzialmente, timeout della catena AES conservato, quattro classi di capacità aperte |
 | [Capacità tipate e preflight originali](../c7.1-history/crypto-capacity-close-2026-10-09.md) | Parità lineare D10 esatta; 653 fasi con bound condizionati, picco fisico e accelerazione RMS ancora aperti |
 | [Replay e geometrie RMS](../c7.1-history/crypto-rms-close-2026-10-09.md) | Replay64 su scale nonzero, parità dei conteggi e primo round esatto; fixture GKR completa senza PCS con wire/FS/RNG/MAC, nessun tempo H100 |
+| [Chiusura operativa pre-H100](../c7.1-history/crypto-preh100-operations-2026-10-09.md) | 65 test locali, 15 ingressi hardware registrati, trasporto/monitor corretti e ledger aggiornato; nessuna esecuzione CUDA |
 | [Regole operative](../c7.1-history/operating-rules-2026-10-08.md), [temporanei](../c7.1-history/temporary-memory-2026-10-04.md) | Ragioni delle decisioni; autorizzazioni correnti definite nel [runbook](runpod-tests.md#autorizzazione-e-limiti) |
 
 ## Contratto delle risorse

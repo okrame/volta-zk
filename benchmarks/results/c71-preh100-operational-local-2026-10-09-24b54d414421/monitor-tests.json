@@ -1,0 +1,21 @@
+{
+  "command": [
+    ".venv/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "tests/test_c71_campaign_measure.py"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 1,
+  "wall_s": 0.4342033099383116,
+  "max_rss_bytes": 34115584,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 0.358155,
+  "system_s": 0.072036,
+  "log": "/tmp/c71-preh100-20261009-ops/monitor-tests.log"
+}

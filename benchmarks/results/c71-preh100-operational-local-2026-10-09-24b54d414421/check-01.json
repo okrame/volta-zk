@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+    "c71_b12_native_private_salts_owner_exact_stream_hash_and_work",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 13.824731159955263,
+  "max_rss_bytes": 328134656,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 13.741126,
+  "system_s": 0.079804,
+  "log": "/tmp/c71-preh100-20261009-ops/check-01.log"
+}

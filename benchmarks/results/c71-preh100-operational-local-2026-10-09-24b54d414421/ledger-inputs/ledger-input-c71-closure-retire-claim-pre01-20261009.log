@@ -1,0 +1,7 @@
+
+running 1 test
+test c71_matrix::gemma::native::protocol::c71_original_claim_batch_releases_construction_capacity ... C71_CLAIM_ALLOCATION_GEOMETRY {"auth_bytes":48,"construction_capacity_released":true,"credit":false,"cube_bytes":56,"field_bytes":24,"max_cubes_per_root":524288,"max_targets_per_root":8192,"vector_bytes":24}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 553 filtered out; finished in 0.00s
+

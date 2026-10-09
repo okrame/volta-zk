@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+    "c71_canonical_public_metadata_capacity_pinned_no_private_inputs",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 5.824716410133988,
+  "max_rss_bytes": 141451264,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 5.7749749999999995,
+  "system_s": 0.047980999999999996,
+  "log": "/tmp/c71-preh100-20261009-ops/check-21.log"
+}

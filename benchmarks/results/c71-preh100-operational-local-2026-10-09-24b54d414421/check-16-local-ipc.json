@@ -1,0 +1,18 @@
+{
+  "command": [
+    "rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+    "c71_canonical_runner_",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 0.0488775921985507,
+  "max_rss_bytes": 91295744,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 0.001349,
+  "system_s": 0.025025,
+  "log": "/tmp/c71-preh100-20261009-ops/check-16-local-ipc.log"
+}

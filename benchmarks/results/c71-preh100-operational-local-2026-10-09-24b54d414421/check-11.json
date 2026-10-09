@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+    "c71_b12_native_residual_state_exact_coefficients_late_retention_and_views",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 10.150110622867942,
+  "max_rss_bytes": 328249344,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 10.07222,
+  "system_s": 0.072988,
+  "log": "/tmp/c71-preh100-20261009-ops/check-11.log"
+}

@@ -174,7 +174,7 @@ __global__ void tiled_transpose_kernel(
     }
 }
 
-__global__ void row_fft_kernel(
+static __global__ void row_fft_kernel(
     uint64_t* values, const uint64_t* twiddles, size_t m, int log2_m, size_t rows,
     size_t twiddle_stride) {
     extern __shared__ uint64_t shared[];
@@ -258,7 +258,7 @@ inline cudaError_t launch_odd(cudaStream_t stream,uint64_t* values,const uint64_
     return cudaGetLastError();
 }
 
-__global__ void parity_scatter_kernel(const uint64_t* values,uint64_t* scratch,size_t length,size_t count) {
+static __global__ void parity_scatter_kernel(const uint64_t* values,uint64_t* scratch,size_t length,size_t count) {
     const size_t i=size_t(blockIdx.x)*blockDim.x+threadIdx.x;
     if(i>=count) return;
     scratch[parity_index(i,length)]=values[i];

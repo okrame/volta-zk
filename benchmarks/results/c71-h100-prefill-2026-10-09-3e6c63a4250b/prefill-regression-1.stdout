@@ -1,0 +1,6 @@
+
+running 1 test
+test c71_matrix::gemma::native::canonical::resident::device::tests::c71_canonical_device_schedule_all_producers_three_contexts ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 600 filtered out; finished in 4.12s
+

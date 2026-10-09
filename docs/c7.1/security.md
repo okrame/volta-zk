@@ -25,10 +25,12 @@ non selezionati ripristina la semantica del lookup; selezionare MIN resta
 un errore terminale. Il diagnostico `inference-cuda` non promuove KV,
 non usa correlazioni e non produce accettazione o credito di protocollo.
 Il [confronto O=0](../c7.1-history/h100-inference-01-2026-10-09.md)
-ha uguaglianza dei 150 token pubblici e parità finita CUDA. Il batching
-del prompt noto mantiene il limite causale di ogni riga QK/PV, senza
-aggiungere monete PCS agli ingressi del preparatore; la sua validazione
-non sostituisce il raffinamento generale o la verifica del certificato.
+ha uguaglianza dei 150 token pubblici e parità finita CUDA. Il
+[batching esatto ma più lento](../c7.1-history/h100-prefill-2026-10-09.md)
+è ritirato per prestazioni; il preparatore selezionato torna scalare.
+Le sue parità non sostituiscono il raffinamento generale o la verifica
+del certificato. Il trial interrotto non ha creato setup/journal;
+il successivo riparte con capacità fresche e non importa stato.
 
 Il teorema richiede almeno 78 bit per ciascun vantaggio completo.
 Si lavora nel modello dell'oracolo casuale classico, con lavoro e memoria

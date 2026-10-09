@@ -1,0 +1,140 @@
+{
+  "artifacts": [
+    {
+      "bytes": 33202,
+      "path": "benchmarks/results/c71-h100-canonical-02-2026-10-09-3e6c63a4250b/canonical.memory.csv",
+      "sha256": "4da8bd00308cd06aede394e8ccc44980a84f956103cef7d2164a9d10ea6c0103"
+    },
+    {
+      "bytes": 1795,
+      "path": "benchmarks/results/c71-h100-canonical-02-2026-10-09-3e6c63a4250b/canonical.summary.json",
+      "sha256": "a71753f8c0ddcb878644159657dbece5ae4ab707e20199a95504f7910e3a792b"
+    },
+    {
+      "bytes": 0,
+      "path": "benchmarks/results/c71-h100-canonical-02-2026-10-09-3e6c63a4250b/canonical.time.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 8234,
+      "path": "benchmarks/results/c71-h100-canonical-02-2026-10-09-3e6c63a4250b/cpu-gpu-observations.jsonl",
+      "sha256": "aadc71af4bf391e531d277e711d056c841e3c6664c3108df72f03647cf8f891a"
+    },
+    {
+      "bytes": 583,
+      "path": "benchmarks/results/c71-h100-canonical-02-2026-10-09-3e6c63a4250b/manual-stop-reason.json",
+      "sha256": "c235447d37d338903ad3ca2c1192effe4333963e0656655ae56207516c4cb010"
+    }
+  ],
+  "canonical_certificates_verified": 0,
+  "complete": false,
+  "date": "2026-10-09",
+  "decision": "Fresh canonical03 uses the validated scalar2a31625 binary; no state resumed.",
+  "git_dirty": false,
+  "git_sha": "3e6c63a4250b5c8b215b5c5709646668b70891c1",
+  "launch": {
+    "argv": [
+      "/workspace/volta-zk/rust/target/debug/examples/c71_canonical_reference",
+      "experiment-cuda",
+      "/workspace/c71-h100-20261009/gamma-inputs/candidate.json",
+      "/workspace/c71-h100-20261009/gamma-inputs/tables.bin",
+      "/workspace/c71-h100-20261009/weights/gemma-4-31b-5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89.packed.i16",
+      "/workspace/c71-h100-20261009/canonical-02/journals",
+      "2147483648",
+      "/workspace/c71-h100-20261009/libc71_device_runner_tensor.so",
+      "0"
+    ],
+    "argv_encoded_bytes": 422,
+    "argv_path_capacity_bound_bytes": 4096,
+    "binary_sha256": "460a1ad5f3842b97a78ca2fdf1b66ef4d94d737a4586c6e5cdd1a8920c5bbb31",
+    "correlations": "fresh one-time real AES; no reuse",
+    "diagnostic_timeout_seconds": 7200,
+    "gamma_reused": true,
+    "git_dirty": false,
+    "initial_accepted_kv": "empty",
+    "library_sha256": "c0b0ef7aeb93cfd245bb472c1f4e17721a564ff6af6a43a8a9d9d97a882a567c",
+    "library_source_git_sha": "26c4c89288df95123d601e7b2dc63239ba031a04",
+    "monitor_label": "canonical",
+    "new_journals": true,
+    "prefill_validation": "inference-02 plus geometry and all 15 real CUDA tests; exact public tokens O=0",
+    "prepared_epoch": 1791580923.7756977,
+    "response_target_seconds": 65,
+    "source_git_sha": "3e6c63a4250b5c8b215b5c5709646668b70891c1"
+  },
+  "monitor": {
+    "authorized_end_epoch": 1791601722.0,
+    "close_reserve_seconds": 1800,
+    "command": [
+      "bash",
+      "-c",
+      "ulimit -S -v unlimited; exec \"$@\"",
+      "c71-canonical",
+      "/workspace/volta-zk/rust/target/debug/examples/c71_canonical_reference",
+      "experiment-cuda",
+      "/workspace/c71-h100-20261009/gamma-inputs/candidate.json",
+      "/workspace/c71-h100-20261009/gamma-inputs/tables.bin",
+      "/workspace/c71-h100-20261009/weights/gemma-4-31b-5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89.packed.i16",
+      "/workspace/c71-h100-20261009/canonical-02/journals",
+      "2147483648",
+      "/workspace/c71-h100-20261009/libc71_device_runner_tensor.so",
+      "0"
+    ],
+    "compute_end_epoch": 1791599922.0,
+    "exit_code": -9,
+    "gpu_uuid": "GPU-9f6b4728-e7d8-ff40-d9f1-e1cec5dd2b3a",
+    "incomplete_samples": 0,
+    "label": "canonical",
+    "mode": "canonical",
+    "observed_payload_peak_bytes": 0,
+    "payload_limit_bytes": 5905580032,
+    "physical_complete_peak": false,
+    "physical_temporary_limit_bytes": 6174015488,
+    "resource_failure": "KeyboardInterrupt: monitor interrupted by signal 15",
+    "sampled_host_rss_peak_bytes": 40131268608,
+    "sampled_stable_temporary_peak_bytes": 161873920,
+    "sampled_whole_gpu_peak_bytes": 0,
+    "samples": 285,
+    "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption is a smaps residency lower bound; device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+    "sampling_target_seconds": 0.2,
+    "stable_samples": 285,
+    "start_unix_seconds": 1791580923.8144336,
+    "wall_seconds": 68.27707547694445
+  },
+  "private_bundle": {
+    "bytes": 21892646,
+    "files": 245,
+    "manifest_sha256": "ff82275dac4d43b70e00b94bc45e1726316e2ac85b5598fce0fd60f8b738bf77",
+    "path": "artifact/c7.1-pod/h100-final-prefill-20261009T212500Z"
+  },
+  "run": "canonical-02",
+  "schema": "volta-c71-h100-canonical-terminal-v1",
+  "terminal": {
+    "W_commitment_started": false,
+    "exit_code": -9,
+    "journals_created": false,
+    "last_event": {
+      "address": 130851288862736,
+      "bytes": 61394690560,
+      "kind": "resident_w",
+      "pid": 61462,
+      "process_start_ticks": 1460641739,
+      "space": "host",
+      "state": "live"
+    },
+    "manual_stop": true,
+    "reason": {
+      "action": "SIGTERM to canonical monitor; monitor terminates entire benchmark group and writes terminal summary",
+      "epoch": 1791580991.8665814,
+      "pid": 61458,
+      "preserve_trial": true,
+      "process_start_ticks": 1460641735,
+      "reason": "Completed inference02 exact but132.035951605s versus scalar90.615329151s. Automatic launcher crossed the diagnostic completion before waiting-launcher cancellation; no signal was sent by failed identity/children assertion. Stop this new run and use validated scalar source for fresh canonical trial.",
+      "resume_or_correlation_reuse": false
+    },
+    "resource_limit_violation": false,
+    "response_started": false,
+    "session_setup_started": false,
+    "timeout": false,
+    "wall_seconds": 68.27707547694445
+  }
+}

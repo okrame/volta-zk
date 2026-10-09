@@ -1,0 +1,30 @@
+{
+  "source_git_sha": "3e6c63a4250b5c8b215b5c5709646668b70891c1",
+  "git_dirty": false,
+  "all_shared_context_fields_exact": true,
+  "recipe_digest_exact": true,
+  "public_table_blake3_exact": true,
+  "reservation_exact": true,
+  "added_native_RMS_work_accounting_fields": [
+    "contexts/0/rms/replay_census_scope",
+    "contexts/0/rms/selected_first_cell_round_Boolean_gate_scales",
+    "contexts/0/rms/selected_packed_replay",
+    "contexts/1/rms/replay_census_scope",
+    "contexts/1/rms/selected_first_cell_round_Boolean_gate_scales",
+    "contexts/1/rms/selected_packed_replay",
+    "contexts/2/rms/replay_census_scope",
+    "contexts/2/rms/selected_first_cell_round_Boolean_gate_scales",
+    "contexts/2/rms/selected_packed_replay"
+  ],
+  "original_wrapper_only_analytic_fields": [
+    "contexts/0/rms_source_prover",
+    "contexts/0/rms_structural_support",
+    "contexts/1/rms_source_prover",
+    "contexts/1/rms_structural_support",
+    "contexts/2/rms_source_prover",
+    "contexts/2/rms_structural_support"
+  ],
+  "native_sha256": "3c26a99eb446ae2ff860167cb1a6cd69d2cafe1d999c26d8703c098499cfb80c",
+  "tables_reused_without_regeneration": true,
+  "scope": "Direct native ledger reuses certified tables. Numerical/shared protocol geometry matches all3contexts. Native RMS work-accounting fields added since original Oct7 ledger; original Python-wrapper analytic fields are not native output. Neither difference changes Gamma; no numerical execution or joint memory admission."
+}

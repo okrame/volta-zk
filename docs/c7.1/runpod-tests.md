@@ -37,10 +37,15 @@ Il [diagnostico su `2a31625`](../c7.1-history/h100-inference-01-2026-10-09.md)
 passa in 202,679 s: inferenza 90,615 s, preparazione 92,433 s, tutti i
 150 token uguali al riferimento intero O=0. Otto regressioni, 15/15
 CUDA e lookup con marker passano. Massimo temporaneo stabile campionato
-1.474.276.864 B, senza credito al picco completo. La revisione `3e6c63a`
-riduce i lanci raggruppando il prompt: compilazione, geometria/parità e
-nuovo diagnostico sono predisposti in sequenza; prima del nuovo canonico
-richiedere esito positivo e confronto esatto degli output pubblici.
+1.474.276.864 B, senza credito al picco completo. La
+[variante `3e6c63a`](../c7.1-history/h100-prefill-2026-10-09.md) passa
+parità e confronto esatto, ma impiega 132,036 s: è ritirata. Il trial
+automatico `canonical-02` è stato interrotto tramite monitor dopo
+68,277 s durante il caricamento, prima di commitment/setup/journal.
+`canonical-03` è in corso dalle 21:24:12 UTC su sorgenti pulite `2a31625`
+e binario scalare salvato, hash e compatibilità verificati: nuovo W,
+setup AES e journal, timeout diagnostico 7.200 s. Non riusa stato
+del trial interrotto. Deadline e guard della campagna restano invariati.
 
 La precedente campagna chiusa conserva il proprio fallimento nel commitment
 W; il suo pod spento e le sue autorizzazioni non descrivono questa campagna.

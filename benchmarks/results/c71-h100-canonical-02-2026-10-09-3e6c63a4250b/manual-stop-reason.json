@@ -1,0 +1,9 @@
+{
+  "epoch": 1791580991.8665814,
+  "action": "SIGTERM to canonical monitor; monitor terminates entire benchmark group and writes terminal summary",
+  "pid": 61458,
+  "process_start_ticks": 1460641735,
+  "reason": "Completed inference02 exact but132.035951605s versus scalar90.615329151s. Automatic launcher crossed the diagnostic completion before waiting-launcher cancellation; no signal was sent by failed identity/children assertion. Stop this new run and use validated scalar source for fresh canonical trial.",
+  "preserve_trial": true,
+  "resume_or_correlation_reuse": false
+}

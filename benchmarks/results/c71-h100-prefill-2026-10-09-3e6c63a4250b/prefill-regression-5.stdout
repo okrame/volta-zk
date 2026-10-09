@@ -1,0 +1,11 @@
+
+running 6 tests
+test c71_matrix::gemma::native::canonical::state::runner::tests::c71_canonical_runner_counted_socket_protocol_three_slots ... ok
+test c71_matrix::gemma::native::canonical::state::runner::tests::c71_canonical_runner_diagnostic_timeout_and_disconnect ... ok
+test c71_matrix::gemma::native::canonical::state::runner::tests::c71_canonical_runner_packed_input_checks_before_installation ... ok
+test c71_matrix::gemma::native::canonical::state::runner::tests::c71_canonical_runner_preserves_both_role_failures ... ok
+test c71_matrix::gemma::native::canonical::state::runner::tests::c71_canonical_runner_public_installation_and_request_framing ... ok
+test c71_matrix::gemma::native::canonical::state::runner::tests::c71_canonical_runner_transport_and_default_stop ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 595 filtered out; finished in 0.11s
+

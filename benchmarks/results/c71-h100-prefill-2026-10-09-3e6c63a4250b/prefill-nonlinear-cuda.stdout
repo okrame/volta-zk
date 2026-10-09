@@ -1,0 +1,1 @@
+C71_NONLINEAR_CUDA_PARITY {"dense_cases":4,"pointwise_cases":2,"lookup_entries":65535,"rope_cases":2,"argmax_rows":3,"rms_cases":3,"attention_contexts":3,"attention_row_batches":2,"rejections":13,"gpu_execution":true,"credit":false}

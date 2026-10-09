@@ -1,0 +1,24 @@
+{
+  "recorded_epoch": 1791580707.7971616,
+  "source_git_sha": "3e6c63a4250b5c8b215b5c5709646668b70891c1",
+  "events": [
+    {
+      "kind": "wrong_cli",
+      "label": "prefill-gamma-ledger",
+      "exit_code": 1,
+      "detail": "canonical_reference does not support ledger; no model execution; corrected command uses c71_calibration"
+    },
+    {
+      "kind": "comparison_too_strict",
+      "detail": "First direct native ledger comparison raised AssertionError:rms. Only three new RMS analytic fields per context; wrapper-only prior fields absent. All shared fields exact; corrected comparison receipt preserved."
+    },
+    {
+      "kind": "receipt_cwd",
+      "detail": "First capacity receipt was created empty before git rev-parse failed outside checkout. Empty original preserved; corrected receipt has new filename."
+    }
+  ],
+  "corrections": [
+    "prefill-gamma-compatibility.json",
+    "prefill-capacity-reconciliation-corrected.json"
+  ]
+}

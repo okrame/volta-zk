@@ -1265,12 +1265,12 @@ il binding da solo non è un preparatore completo. Il runner
 `canonical_device` lo collega a scanner/replay GPU, senza fallback.
 La [misura O=0](../c7.1-history/h100-inference-01-2026-10-09.md)
 del preparatore scalare è 90,615 s con 1.185.820 lanci e 3.668.557 fence.
-La revisione `3e6c63a` raggruppa le 100 righe del prompt noto per producer,
-poi prosegue a una riga per token generato. La head produce solo la
-decisione del prompt 99; QK/PV mantengono il limite causale per riga.
-Il replay resta invariato. Schedule, memoria trattenuta del primo batch
-e kernel a 100 righe hanno controlli dedicati in validazione; il bound
-preesistente di 1 GiB per i producer deve ancora passare su questa build.
+La [variante `3e6c63a`](../c7.1-history/h100-prefill-2026-10-09.md)
+raggruppa il prompt a 100 righe, con causalità/parità esatte e conto
+631.061.248 B entro l'inviluppo replay 785.789.696 B. Riduce i lanci
+a 403.423 ma impiega 132,036 s: è ritirata. Preparazione scalare e
+replay selezionati tornano byte per byte a `2a31625`; nessun nuovo
+buffer o cambiamento del conto simultaneo resta in produzione.
 `NonlinearTables` valida e carica tabelle i16, 60 EXP30 i32 e due finestre RoPE alle
 posizioni assolute del contesto: 23.954.072 B logici, 23.954.176 B allineati
 nella stessa arena. Le tabelle i16 possono contenere marker MIN in voci

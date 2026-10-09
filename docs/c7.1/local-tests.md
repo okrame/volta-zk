@@ -18,9 +18,11 @@ non selezionata e aggiunge `c71_canonical_runner_preserves_both_role_failures`.
 La [validazione sul pod](../c7.1-history/h100-inference-01-2026-10-09.md)
 passa otto regressioni, ripete 15/15 sulla libreria reale e copre sia
 marker non usato sia marker selezionato nel test CUDA nonlineare.
-Il batching del prompt estende i test di schedule e geometria nei tre
-contesti e il test CUDA con GEMM a 100 righe e attenzione batch 2/100;
-questi controlli aggiuntivi sono ancora in esecuzione sul pod.
+Il [trial del batching](../c7.1-history/h100-prefill-2026-10-09.md)
+passa dieci regressioni, 15/15 CUDA e i casi aggiuntivi a 100 righe,
+ma rallenta l'inferenza completa. La variante e i suoi test sono
+conservati in `3e6c63a` e nel record; il codice selezionato torna
+identico a `2a31625`, con la precedente validazione applicabile.
 
 ## Limiti e ambiente
 

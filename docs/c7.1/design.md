@@ -142,9 +142,11 @@ CUDA rifiutava marker di overflow in voci pubbliche non selezionate.
 La [correzione validata](../c7.1-history/h100-inference-01-2026-10-09.md)
 passa otto regressioni e la parità CUDA 15/15. Il diagnostico O=0
 completa l'inferenza in 90,615 s, con tutti i token uguali al replay
-intero ammesso, senza prova o promozione KV. Il profilo di 1.185.820
-lanci motiva il batching del prompt noto, ora in validazione; non
-cambia Γ, causalità o replay. O=0/150/300 non sono verificati.
+intero ammesso, senza prova o promozione KV. Il
+[batching del prompt](../c7.1-history/h100-prefill-2026-10-09.md) è esatto
+ma rallenta a 132,036 s (+45,71%), nonostante −65,98% lanci: è ritirato.
+Il trial fresco `canonical-03` usa il binario scalare validato `2a31625`;
+Γ, causalità, replay e garanzie restano invariati. O=0/150/300 non sono verificati.
 Il precedente timeout CPU dopo
 circa 41 minuti rimane il fallimento di quella schedule da 1.024 scansioni,
 non lo stato del commitment H100 corrente. La CLI ricostruisce W a ogni

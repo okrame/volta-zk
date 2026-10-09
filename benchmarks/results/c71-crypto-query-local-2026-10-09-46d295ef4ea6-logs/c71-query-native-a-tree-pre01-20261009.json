@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+    "c71_b12_native_source_tree_",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 26.150772273074836,
+  "max_rss_bytes": 274661376,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 26.023233,
+  "system_s": 0.12007599999999999,
+  "log": "/tmp/c71-query-native-a-tree-pre01-20261009.log"
+}

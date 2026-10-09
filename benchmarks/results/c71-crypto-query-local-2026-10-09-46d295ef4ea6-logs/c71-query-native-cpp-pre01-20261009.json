@@ -1,0 +1,22 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/.venv/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "tests/test_c71_range_native.py",
+    "tests/test_c71_fft_microbench.py"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 12.07530793407932,
+  "max_rss_bytes": 297058304,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 11.772188,
+  "system_s": 0.224457,
+  "log": "/tmp/c71-query-native-cpp-pre01-20261009.log"
+}

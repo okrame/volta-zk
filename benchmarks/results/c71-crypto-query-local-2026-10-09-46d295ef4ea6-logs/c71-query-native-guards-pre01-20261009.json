@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+    "c71_b12_native_query_rejections_and_fail_closed",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 6.60889083519578,
+  "max_rss_bytes": 274526208,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 6.550131,
+  "system_s": 0.056881999999999995,
+  "log": "/tmp/c71-query-native-guards-pre01-20261009.log"
+}

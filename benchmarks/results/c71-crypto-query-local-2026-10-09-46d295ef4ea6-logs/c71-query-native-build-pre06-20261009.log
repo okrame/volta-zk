@@ -1,0 +1,15 @@
+   Compiling volta-proto v0.0.0 (/home/okrame/projects/volta-zk/rust/volta-proto)
+warning: function `cache_fold_rows_values` is never used
+    --> volta-proto/src/block_proof.rs:2209:4
+     |
+2209 | fn cache_fold_rows_values(segs: &[CacheSegP], wr: &[Fp2], c0: usize, w: usize) -> Vec<Fp2> {
+     |    ^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `cache_fold_cols_values` is never used
+    --> volta-proto/src/block_proof.rs:2264:4
+     |
+2264 | fn cache_fold_cols_values(segs: &[CacheSegP], wc: &[Fp2], c0: usize, w: usize) -> Vec<Fp2> {
+     |    ^^^^^^^^^^^^^^^^^^^^^^
+

@@ -1,0 +1,160 @@
+[
+  {
+    "command": [
+      "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+      "c71_b12_native_query_reader_failure_without_host_fallback",
+      "--test-threads=1",
+      "--nocapture"
+    ],
+    "cwd": "/home/okrame/projects/volta-zk",
+    "exit_code": 0,
+    "wall_s": 6.8521662298589945,
+    "max_rss_bytes": 274374656,
+    "as_limit_mib": 2048,
+    "deadline_s": 60,
+    "workers": 1,
+    "user_s": 6.6184069999999995,
+    "system_s": 0.228231,
+    "log": "/tmp/c71-query-native-reader-pre01-20261009.log",
+    "name": "reader",
+    "git_dirty": true,
+    "record_run": false,
+    "passed": 1
+  },
+  {
+    "command": [
+      "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+      "c71_b12_native_query_rejections_and_fail_closed",
+      "--test-threads=1",
+      "--nocapture"
+    ],
+    "cwd": "/home/okrame/projects/volta-zk",
+    "exit_code": 0,
+    "wall_s": 6.60889083519578,
+    "max_rss_bytes": 274526208,
+    "as_limit_mib": 2048,
+    "deadline_s": 60,
+    "workers": 1,
+    "user_s": 6.550131,
+    "system_s": 0.056881999999999995,
+    "log": "/tmp/c71-query-native-guards-pre01-20261009.log",
+    "name": "guards",
+    "git_dirty": true,
+    "record_run": false,
+    "passed": 1
+  },
+  {
+    "command": [
+      "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+      "c71_b12_native_query_private_phase_read_and_mandatory_symbols",
+      "--test-threads=1",
+      "--nocapture"
+    ],
+    "cwd": "/home/okrame/projects/volta-zk",
+    "exit_code": 0,
+    "wall_s": 33.121202792972326,
+    "max_rss_bytes": 275410944,
+    "as_limit_mib": 2048,
+    "deadline_s": 60,
+    "workers": 1,
+    "user_s": 32.741914,
+    "system_s": 0.370595,
+    "log": "/tmp/c71-query-native-symbols-pre01-20261009.log",
+    "name": "symbols",
+    "git_dirty": true,
+    "record_run": false,
+    "passed": 1
+  },
+  {
+    "command": [
+      "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+      "c71_b12_native_query_composed_uncached_chain_original_mac_and_transcript",
+      "--test-threads=1",
+      "--nocapture"
+    ],
+    "cwd": "/home/okrame/projects/volta-zk",
+    "exit_code": 0,
+    "wall_s": 50.038895341102034,
+    "max_rss_bytes": 274837504,
+    "as_limit_mib": 2048,
+    "deadline_s": 60,
+    "workers": 1,
+    "user_s": 49.810327,
+    "system_s": 0.215995,
+    "log": "/tmp/c71-query-native-chain-pre01-20261009.log",
+    "name": "chain",
+    "git_dirty": true,
+    "record_run": false,
+    "passed": 1
+  },
+  {
+    "command": [
+      "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+      "c71_b12_native_source_tree_",
+      "--test-threads=1",
+      "--nocapture"
+    ],
+    "cwd": "/home/okrame/projects/volta-zk",
+    "exit_code": 0,
+    "wall_s": 26.150772273074836,
+    "max_rss_bytes": 274661376,
+    "as_limit_mib": 2048,
+    "deadline_s": 60,
+    "workers": 1,
+    "user_s": 26.023233,
+    "system_s": 0.12007599999999999,
+    "log": "/tmp/c71-query-native-a-tree-pre01-20261009.log",
+    "name": "a-tree",
+    "git_dirty": true,
+    "record_run": false,
+    "passed": 2
+  },
+  {
+    "command": [
+      "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+      "c71_b12_native_weight_tree_",
+      "--test-threads=1",
+      "--nocapture"
+    ],
+    "cwd": "/home/okrame/projects/volta-zk",
+    "exit_code": 0,
+    "wall_s": 30.466809871140867,
+    "max_rss_bytes": 274558976,
+    "as_limit_mib": 2048,
+    "deadline_s": 60,
+    "workers": 1,
+    "user_s": 30.317202,
+    "system_s": 0.140171,
+    "log": "/tmp/c71-query-native-w-tree-pre01-20261009.log",
+    "name": "w-tree",
+    "git_dirty": true,
+    "record_run": false,
+    "passed": 2
+  },
+  {
+    "command": [
+      "/home/okrame/projects/volta-zk/.venv/bin/python",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_c71_range_native.py",
+      "tests/test_c71_fft_microbench.py"
+    ],
+    "cwd": "/home/okrame/projects/volta-zk",
+    "exit_code": 0,
+    "wall_s": 12.07530793407932,
+    "max_rss_bytes": 297058304,
+    "as_limit_mib": 2048,
+    "deadline_s": 60,
+    "workers": 1,
+    "user_s": 11.772188,
+    "system_s": 0.224457,
+    "log": "/tmp/c71-query-native-cpp-pre01-20261009.log",
+    "name": "cpp",
+    "git_dirty": true,
+    "record_run": false,
+    "passed": 9
+  }
+]

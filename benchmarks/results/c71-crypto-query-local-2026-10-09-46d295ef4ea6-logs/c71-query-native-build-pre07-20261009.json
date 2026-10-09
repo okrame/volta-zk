@@ -1,0 +1,58 @@
+{
+  "command": [
+    "cargo",
+    "rustc",
+    "--offline",
+    "--locked",
+    "-j",
+    "1",
+    "-p",
+    "volta-pcs",
+    "--features",
+    "c71-seed6-reference",
+    "--lib",
+    "--profile",
+    "test",
+    "--config",
+    "profile.dev.package.volta-pcs.opt-level=0",
+    "--",
+    "-Cllvm-args=-global-isel=0",
+    "-Cllvm-args=-fast-isel=1"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk/rust",
+  "exit_code": 124,
+  "wall_s": 60.096452568192035,
+  "max_rss_bytes": 53067776,
+  "sampled_aggregate_live_rss_peak_bytes": 1905430528,
+  "sampled_processes": {
+    "5": {
+      "name": "timeout",
+      "max_rss_bytes": 1568768,
+      "cpu_ticks": 0,
+      "first_seen_s": 0.002255472354590893,
+      "last_seen_s": 60.09596064919606
+    },
+    "6": {
+      "name": "cargo",
+      "max_rss_bytes": 53067776,
+      "cpu_ticks": 52,
+      "first_seen_s": 0.1133535630069673,
+      "last_seen_s": 59.99432279309258
+    },
+    "13": {
+      "name": "rustc",
+      "max_rss_bytes": 1850793984,
+      "cpu_ticks": 5915,
+      "first_seen_s": 0.535151835065335,
+      "last_seen_s": 60.09603023342788
+    }
+  },
+  "sample_interval_s": 0.1,
+  "clock_ticks_per_s": 100,
+  "deadline_s": 60,
+  "workers": 1,
+  "as_limit_mib": null,
+  "user_s": 0.24418199999999998,
+  "system_s": 0.362822,
+  "log": "/tmp/c71-query-native-build-pre07-20261009.log"
+}

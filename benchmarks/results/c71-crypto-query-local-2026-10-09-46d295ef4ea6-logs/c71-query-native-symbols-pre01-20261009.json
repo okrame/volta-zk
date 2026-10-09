@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+    "c71_b12_native_query_private_phase_read_and_mandatory_symbols",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 33.121202792972326,
+  "max_rss_bytes": 275410944,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 32.741914,
+  "system_s": 0.370595,
+  "log": "/tmp/c71-query-native-symbols-pre01-20261009.log"
+}

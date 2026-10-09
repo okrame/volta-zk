@@ -1,0 +1,82 @@
+{
+  "command": [
+    "cargo",
+    "rustc",
+    "--offline",
+    "--locked",
+    "-j",
+    "1",
+    "-p",
+    "volta-pcs",
+    "--features",
+    "c71-seed6-reference",
+    "--lib",
+    "--profile",
+    "test",
+    "--config",
+    "profile.dev.package.volta-pcs.opt-level=0",
+    "--config",
+    "profile.dev.package.volta-pcs.codegen-units=256",
+    "--",
+    "-Clink-arg=-fuse-ld=lld",
+    "-Clink-arg=-B/home/okrame/.rustup/toolchains/stable-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/bin/gcc-ld",
+    "-Clink-arg=-Wl,--threads=1"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk/rust",
+  "exit_code": 0,
+  "wall_s": 57.088880157563835,
+  "max_rss_bytes": 2442866688,
+  "sampled_aggregate_live_rss_peak_bytes": 2493812736,
+  "sampled_processes": {
+    "5": {
+      "name": "timeout",
+      "max_rss_bytes": 1576960,
+      "cpu_ticks": 0,
+      "first_seen_s": 0.0016061337664723396,
+      "last_seen_s": 57.08871919894591
+    },
+    "6": {
+      "name": "cargo",
+      "max_rss_bytes": 52981760,
+      "cpu_ticks": 18,
+      "first_seen_s": 0.10320155788213015,
+      "last_seen_s": 56.98498584982008
+    },
+    "13": {
+      "name": "rustc",
+      "max_rss_bytes": 2439254016,
+      "cpu_ticks": 5563,
+      "first_seen_s": 0.20401068683713675,
+      "last_seen_s": 56.98503068368882
+    },
+    "275": {
+      "name": "cc",
+      "max_rss_bytes": 2232320,
+      "cpu_ticks": 1,
+      "first_seen_s": 55.76051352592185,
+      "last_seen_s": 56.88313438696787
+    },
+    "276": {
+      "name": "collect2",
+      "max_rss_bytes": 1568768,
+      "cpu_ticks": 0,
+      "first_seen_s": 55.760633068624884,
+      "last_seen_s": 56.88317351182923
+    },
+    "277": {
+      "name": "rust-lld",
+      "max_rss_bytes": 580034560,
+      "cpu_ticks": 110,
+      "first_seen_s": 55.76076390268281,
+      "last_seen_s": 56.883213178720325
+    }
+  },
+  "sample_interval_s": 0.1,
+  "clock_ticks_per_s": 100,
+  "deadline_s": 60,
+  "workers": 1,
+  "as_limit_mib": null,
+  "user_s": 49.101432,
+  "system_s": 7.964288,
+  "log": "/tmp/c71-query-native-build-pre09-20261009.log"
+}

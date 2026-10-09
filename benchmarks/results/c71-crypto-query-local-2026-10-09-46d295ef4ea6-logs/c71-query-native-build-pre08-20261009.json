@@ -1,0 +1,59 @@
+{
+  "command": [
+    "cargo",
+    "rustc",
+    "--offline",
+    "--locked",
+    "-j",
+    "1",
+    "-p",
+    "volta-pcs",
+    "--features",
+    "c71-seed6-reference",
+    "--lib",
+    "--profile",
+    "test",
+    "--config",
+    "profile.dev.package.volta-pcs.opt-level=0",
+    "--",
+    "-Clink-arg=-fuse-ld=lld",
+    "-Clink-arg=-B/home/okrame/.rustup/toolchains/stable-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/bin/gcc-ld",
+    "-Clink-arg=-Wl,--threads=1"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk/rust",
+  "exit_code": 124,
+  "wall_s": 60.06185970408842,
+  "max_rss_bytes": 53022720,
+  "sampled_aggregate_live_rss_peak_bytes": 2487812096,
+  "sampled_processes": {
+    "5": {
+      "name": "timeout",
+      "max_rss_bytes": 1576960,
+      "cpu_ticks": 0,
+      "first_seen_s": 0.0012402571737766266,
+      "last_seen_s": 60.061406367924064
+    },
+    "6": {
+      "name": "cargo",
+      "max_rss_bytes": 53022720,
+      "cpu_ticks": 18,
+      "first_seen_s": 0.10234065726399422,
+      "last_seen_s": 59.95946963690221
+    },
+    "13": {
+      "name": "rustc",
+      "max_rss_bytes": 2433212416,
+      "cpu_ticks": 5951,
+      "first_seen_s": 0.20324872201308608,
+      "last_seen_s": 60.0614902023226
+    }
+  },
+  "sample_interval_s": 0.1,
+  "clock_ticks_per_s": 100,
+  "deadline_s": 60,
+  "workers": 1,
+  "as_limit_mib": null,
+  "user_s": 0.086713,
+  "system_s": 0.14740999999999999,
+  "log": "/tmp/c71-query-native-build-pre08-20261009.log"
+}

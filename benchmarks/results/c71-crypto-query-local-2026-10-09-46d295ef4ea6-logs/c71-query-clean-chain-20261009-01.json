@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+    "c71_b12_native_query_composed_uncached_chain_original_mac_and_transcript",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 49.81420146394521,
+  "max_rss_bytes": 274530304,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 49.562107,
+  "system_s": 0.236832,
+  "log": "/tmp/c71-query-clean-chain-20261009-01.log"
+}

@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+    "c71_b12_native_source_tree_",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 26.278215298894793,
+  "max_rss_bytes": 274886656,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 26.117461,
+  "system_s": 0.14901999999999999,
+  "log": "/tmp/c71-query-clean-a-tree-20261009-01.log"
+}

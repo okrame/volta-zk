@@ -1,0 +1,2441 @@
+{
+  "schema": "c71-crypto-preparation-local-v1",
+  "date": "2026-10-09",
+  "recorded_at_utc": "2026-10-09T10:36:41.829187+00:00",
+  "status": "PASS_LOCAL_RESIDENT_INITIAL_A_QUERY_REMAINDERS_AND_UNCACHED_REDUCED_PCS_CHAIN",
+  "credit": false,
+  "source_git_sha": "46d295ef4ea69ea6130a64c411d982d8fc1cba9d",
+  "git_dirty": false,
+  "baseline": "9033c64",
+  "goal_complete": false,
+  "goal_status": "active",
+  "canonical_diagnostic": "benchmarks/results/c71-cuda-experiment-2026-10-07-868a3e8.json",
+  "prior_stage": "benchmarks/results/c71-crypto-transform-local-2026-10-09-e96bd202d527.json",
+  "readiness": {
+    "resident_A_initial_query_caller_integrated": true,
+    "resident_A_S1_integrated": false,
+    "GPU_linear_owner_caller_integrated": false,
+    "H100_campaign_authorized": false
+  },
+  "provenance": {
+    "platform": "Linux-6.12.94+deb13-arm64-aarch64-with-glibc2.41",
+    "machine": "aarch64",
+    "gpu_execution": false,
+    "cuda_compilation": false,
+    "inputs_sha256": {
+      "cuda/c71_pcs_query.cu": "8934ce2994967b26af3dc60cd1f37fae498cdc452d3feff24aca1e0541f6307d",
+      "cuda/c71_pcs_query.cuh": "37c38afb301a6f693045a07c1e42d0aebe3eb8fbbcb8214c2b553beb6d71b7fc",
+      "cuda/c71_range_runtime.cpp": "39f6bfc99bc555db9a3ff02efade7270d350e829099877d038139f413d5f4397",
+      "cuda/c71_range_runtime.h": "2122e270269294809a2685503293771ddeae285e831470033bba45a5a65bb46e",
+      "rust/volta-pcs/src/c71_matrix/b12/replay.rs": "af1cd6def4dced3dee895684e6f61e0a2f77339628feb118311e063b55db326f",
+      "rust/volta-pcs/src/c71_matrix/gemma/native/canonical_device.rs": "6d6402fbfa701f7f74507afd972508cd6f500b49a102c8b4526a82c32b58ea57",
+      "rust/volta-pcs/src/c71_matrix/range/windowed/native.rs": "45ca695cafb5e5eaf1990d576870b15d23bdcd52a88a9f5d1b01485e93cf24ed",
+      "tests/c71_range_runtime_host.cpp": "447d6b2cdcfe6af44a5c12c999804ee3e75a6cdfd47fe7feaf98f62a65ccce9b"
+    },
+    "gamma_identities_unchanged": true,
+    "native_fixture": "deferred fake CUDA driver; exact base FFT and query models; independent Rust P3 and direct Horner; no CUDA kernels executed",
+    "clean_suite": "same clean source SHA and binary digest checked before and after every invocation; all checks completed before subsequent edits",
+    "binary_build": "build-pre09 completed in 57.088880157563835 s; one job, incremental disabled; crate O0, dependencies O2, 256 codegen units; existing toolchain LLD with one linker thread; debug overflow checks retained",
+    "timeout_rusage": "wait4 descendant RSS/CPU is incomplete when a timed-out rustc is killed before its parent reaps it; pre06-09 additionally sample all live sandbox descendants at100ms",
+    "composed_scope": "D10 full PCS wire/FS/RNG/original ideal MAC/verifiers; ordinary CPU initial commitment, real uncached native initial-query route; remaining extension PCS CPU"
+  },
+  "binary": {
+    "path": "rust/target/debug/deps/volta_pcs-efe6791186972026",
+    "bytes": 92281232,
+    "sha256": "acf518266cbf68f8cc67d5036865017ac5670e0507549ea4ba462364d2680122"
+  },
+  "checks": [
+    {
+      "command": [
+        "cargo",
+        "rustc",
+        "--offline",
+        "--locked",
+        "-j",
+        "1",
+        "-p",
+        "volta-pcs",
+        "--features",
+        "c71-seed6-reference",
+        "--lib",
+        "--profile",
+        "test",
+        "--config",
+        "profile.dev.package.volta-pcs.opt-level=0",
+        "--config",
+        "profile.dev.package.volta-pcs.codegen-units=256",
+        "--",
+        "-Clink-arg=-fuse-ld=lld",
+        "-Clink-arg=-B/home/okrame/.rustup/toolchains/stable-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/bin/gcc-ld",
+        "-Clink-arg=-Wl,--threads=1"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk/rust",
+      "exit_code": 0,
+      "wall_s": 0.153932545799762,
+      "max_rss_bytes": 52883456,
+      "as_limit_mib": null,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.095464,
+      "system_s": 0.054936,
+      "log": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-clean-build-20261009-01.log",
+      "name": "build",
+      "source_git_sha": "46d295ef4ea69ea6130a64c411d982d8fc1cba9d",
+      "git_dirty": false,
+      "record_run": true,
+      "kind": "warm_build"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_native_query_exact_horner_windows_pads_and_resources",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 8.640421212185174,
+      "max_rss_bytes": 274472960,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 8.558158,
+      "system_s": 0.07987,
+      "log": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-clean-parity-20261009-01.log",
+      "name": "parity",
+      "source_git_sha": "46d295ef4ea69ea6130a64c411d982d8fc1cba9d",
+      "git_dirty": false,
+      "record_run": true,
+      "passed": 1,
+      "kind": "rust"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_native_query_reader_failure_without_host_fallback",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 6.565389362629503,
+      "max_rss_bytes": 274640896,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 6.494041,
+      "system_s": 0.069303,
+      "log": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-clean-reader-20261009-01.log",
+      "name": "reader",
+      "source_git_sha": "46d295ef4ea69ea6130a64c411d982d8fc1cba9d",
+      "git_dirty": false,
+      "record_run": true,
+      "passed": 1,
+      "kind": "rust"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_native_query_rejections_and_fail_closed",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 6.519630228169262,
+      "max_rss_bytes": 274522112,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 6.455766,
+      "system_s": 0.061939999999999995,
+      "log": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-clean-guards-20261009-01.log",
+      "name": "guards",
+      "source_git_sha": "46d295ef4ea69ea6130a64c411d982d8fc1cba9d",
+      "git_dirty": false,
+      "record_run": true,
+      "passed": 1,
+      "kind": "rust"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_native_query_private_phase_read_and_mandatory_symbols",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 32.714325577020645,
+      "max_rss_bytes": 275402752,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 32.4272,
+      "system_s": 0.278659,
+      "log": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-clean-symbols-20261009-01.log",
+      "name": "symbols",
+      "source_git_sha": "46d295ef4ea69ea6130a64c411d982d8fc1cba9d",
+      "git_dirty": false,
+      "record_run": true,
+      "passed": 1,
+      "kind": "rust"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_native_query_composed_uncached_chain_original_mac_and_transcript",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 49.81420146394521,
+      "max_rss_bytes": 274530304,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 49.562107,
+      "system_s": 0.236832,
+      "log": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-clean-chain-20261009-01.log",
+      "name": "chain",
+      "source_git_sha": "46d295ef4ea69ea6130a64c411d982d8fc1cba9d",
+      "git_dirty": false,
+      "record_run": true,
+      "passed": 1,
+      "kind": "rust"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_native_source_tree_",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 26.278215298894793,
+      "max_rss_bytes": 274886656,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 26.117461,
+      "system_s": 0.14901999999999999,
+      "log": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-clean-a-tree-20261009-01.log",
+      "name": "a-tree",
+      "source_git_sha": "46d295ef4ea69ea6130a64c411d982d8fc1cba9d",
+      "git_dirty": false,
+      "record_run": true,
+      "passed": 2,
+      "kind": "rust"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_native_weight_tree_",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 30.39150805119425,
+      "max_rss_bytes": 274464768,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 30.288465,
+      "system_s": 0.09546199999999999,
+      "log": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-clean-w-tree-20261009-01.log",
+      "name": "w-tree",
+      "source_git_sha": "46d295ef4ea69ea6130a64c411d982d8fc1cba9d",
+      "git_dirty": false,
+      "record_run": true,
+      "passed": 2,
+      "kind": "rust"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_c71_range_native.py",
+        "tests/test_c71_fft_microbench.py"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 12.000519698951393,
+      "max_rss_bytes": 297017344,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 11.709858,
+      "system_s": 0.22080899999999998,
+      "log": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-clean-cpp-20261009-01.log",
+      "name": "cpp",
+      "source_git_sha": "46d295ef4ea69ea6130a64c411d982d8fc1cba9d",
+      "git_dirty": false,
+      "record_run": true,
+      "passed": 9,
+      "kind": "python"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_c71_docs.py"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 0.9897210667841136,
+      "max_rss_bytes": 58392576,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.92804,
+      "system_s": 0.06250599999999999,
+      "log": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-clean-docs-20261009-01.log",
+      "name": "docs",
+      "source_git_sha": "46d295ef4ea69ea6130a64c411d982d8fc1cba9d",
+      "git_dirty": false,
+      "record_run": true,
+      "passed": 9,
+      "kind": "python"
+    }
+  ],
+  "metrics": {
+    "C71_NATIVE_QUERY_LOCAL": [
+      {
+        "census": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 1024,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 61518,
+          "native_reservation_bytes": 52648,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 268597613,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 113867,
+          "temporary_payload_peak_bytes": 162157
+        },
+        "cpu_reference_o0_s": 0.03795111,
+        "credit": false,
+        "different_compiler_optimization_no_speedup_claim": true,
+        "domain_log2": 10,
+        "gpu_execution": false,
+        "live": 0,
+        "message_rows": 128,
+        "native": {
+          "allocations": 134,
+          "arena_bytes": 15360,
+          "cleanup_failed": 0,
+          "d2d_bytes": 160768,
+          "d2h_bytes": 6084,
+          "fences": 229,
+          "h2d_bytes": 48752,
+          "host_owner_bytes": 37288,
+          "launches": 2695,
+          "live_capacity_bytes": 15360,
+          "logical_bytes": 15360,
+          "peak_capacity_bytes": 66560,
+          "peak_reserved_bytes": 67584,
+          "releases": 132,
+          "stopped": 0,
+          "weights_bytes": 1024,
+          "weights_loaded_bytes": 1024,
+          "weights_sealed": 1,
+          "zeroed_bytes": 4
+        },
+        "native_d2d_bytes": 131072,
+        "native_d2h_bytes": 4160,
+        "native_h2d_bytes": 33152,
+        "native_host_o2_s": 0.01733202,
+        "only_returned_matrix_payload_bytes": 4160,
+        "original_window_requests": [],
+        "original_windows": 0,
+        "pad_rows": 6,
+        "query_rows": 65,
+        "reference_and_expected_and_actual_harness_bytes": 12480
+      },
+      {
+        "census": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 1024,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 61742,
+          "native_reservation_bytes": 52648,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 268598253,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 114091,
+          "temporary_payload_peak_bytes": 162797
+        },
+        "cpu_reference_o0_s": 0.037963027,
+        "credit": false,
+        "different_compiler_optimization_no_speedup_claim": true,
+        "domain_log2": 10,
+        "gpu_execution": false,
+        "live": 1,
+        "message_rows": 128,
+        "native": {
+          "allocations": 275,
+          "arena_bytes": 15360,
+          "cleanup_failed": 0,
+          "d2d_bytes": 322560,
+          "d2h_bytes": 12184,
+          "fences": 465,
+          "h2d_bytes": 93408,
+          "host_owner_bytes": 37288,
+          "launches": 5468,
+          "live_capacity_bytes": 15360,
+          "logical_bytes": 15360,
+          "peak_capacity_bytes": 67072,
+          "peak_reserved_bytes": 68096,
+          "releases": 273,
+          "stopped": 0,
+          "weights_bytes": 1024,
+          "weights_loaded_bytes": 1024,
+          "weights_sealed": 1,
+          "zeroed_bytes": 664
+        },
+        "native_d2d_bytes": 131072,
+        "native_d2h_bytes": 4164,
+        "native_h2d_bytes": 33152,
+        "native_host_o2_s": 0.017502314,
+        "only_returned_matrix_payload_bytes": 4160,
+        "original_window_requests": [
+          [
+            0,
+            1
+          ]
+        ],
+        "original_windows": 1,
+        "pad_rows": 6,
+        "query_rows": 65,
+        "reference_and_expected_and_actual_harness_bytes": 12480
+      },
+      {
+        "census": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 1024,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 61742,
+          "native_reservation_bytes": 52648,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 268598253,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 114091,
+          "temporary_payload_peak_bytes": 162797
+        },
+        "cpu_reference_o0_s": 0.038173445,
+        "credit": false,
+        "different_compiler_optimization_no_speedup_claim": true,
+        "domain_log2": 10,
+        "gpu_execution": false,
+        "live": 127,
+        "message_rows": 128,
+        "native": {
+          "allocations": 416,
+          "arena_bytes": 15360,
+          "cleanup_failed": 0,
+          "d2d_bytes": 491520,
+          "d2h_bytes": 18284,
+          "fences": 701,
+          "h2d_bytes": 138064,
+          "host_owner_bytes": 37288,
+          "launches": 8871,
+          "live_capacity_bytes": 15360,
+          "logical_bytes": 15360,
+          "peak_capacity_bytes": 67072,
+          "peak_reserved_bytes": 68096,
+          "releases": 414,
+          "stopped": 0,
+          "weights_bytes": 1024,
+          "weights_loaded_bytes": 1024,
+          "weights_sealed": 1,
+          "zeroed_bytes": 1324
+        },
+        "native_d2d_bytes": 131072,
+        "native_d2h_bytes": 4164,
+        "native_h2d_bytes": 33152,
+        "native_host_o2_s": 0.01746348,
+        "only_returned_matrix_payload_bytes": 4160,
+        "original_window_requests": [
+          [
+            0,
+            127
+          ]
+        ],
+        "original_windows": 1,
+        "pad_rows": 6,
+        "query_rows": 65,
+        "reference_and_expected_and_actual_harness_bytes": 12480
+      },
+      {
+        "census": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 1024,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 61742,
+          "native_reservation_bytes": 52648,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 268598253,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 114091,
+          "temporary_payload_peak_bytes": 162797
+        },
+        "cpu_reference_o0_s": 0.037943777,
+        "credit": false,
+        "different_compiler_optimization_no_speedup_claim": true,
+        "domain_log2": 10,
+        "gpu_execution": false,
+        "live": 129,
+        "message_rows": 128,
+        "native": {
+          "allocations": 557,
+          "arena_bytes": 15360,
+          "cleanup_failed": 0,
+          "d2d_bytes": 660864,
+          "d2h_bytes": 24384,
+          "fences": 937,
+          "h2d_bytes": 182720,
+          "host_owner_bytes": 37288,
+          "launches": 12280,
+          "live_capacity_bytes": 15360,
+          "logical_bytes": 15360,
+          "peak_capacity_bytes": 67072,
+          "peak_reserved_bytes": 68096,
+          "releases": 555,
+          "stopped": 0,
+          "weights_bytes": 1024,
+          "weights_loaded_bytes": 1024,
+          "weights_sealed": 1,
+          "zeroed_bytes": 2624
+        },
+        "native_d2d_bytes": 131072,
+        "native_d2h_bytes": 4164,
+        "native_h2d_bytes": 33152,
+        "native_host_o2_s": 0.017461855,
+        "only_returned_matrix_payload_bytes": 4160,
+        "original_window_requests": [
+          [
+            0,
+            129
+          ]
+        ],
+        "original_windows": 1,
+        "pad_rows": 6,
+        "query_rows": 65,
+        "reference_and_expected_and_actual_harness_bytes": 12480
+      },
+      {
+        "census": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 1024,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 61934,
+          "native_reservation_bytes": 52648,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 268598253,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 114283,
+          "temporary_payload_peak_bytes": 162797
+        },
+        "cpu_reference_o0_s": 0.0388092,
+        "credit": false,
+        "different_compiler_optimization_no_speedup_claim": true,
+        "domain_log2": 10,
+        "gpu_execution": false,
+        "live": 517,
+        "message_rows": 128,
+        "native": {
+          "allocations": 718,
+          "arena_bytes": 15360,
+          "cleanup_failed": 0,
+          "d2d_bytes": 852864,
+          "d2h_bytes": 30524,
+          "fences": 1193,
+          "h2d_bytes": 227376,
+          "host_owner_bytes": 37288,
+          "launches": 17637,
+          "live_capacity_bytes": 15360,
+          "logical_bytes": 15360,
+          "peak_capacity_bytes": 67072,
+          "peak_reserved_bytes": 68096,
+          "releases": 716,
+          "stopped": 0,
+          "weights_bytes": 1024,
+          "weights_loaded_bytes": 1024,
+          "weights_sealed": 1,
+          "zeroed_bytes": 5884
+        },
+        "native_d2d_bytes": 131072,
+        "native_d2h_bytes": 4172,
+        "native_h2d_bytes": 33152,
+        "native_host_o2_s": 0.017805774,
+        "only_returned_matrix_payload_bytes": 4160,
+        "original_window_requests": [
+          [
+            0,
+            256
+          ],
+          [
+            256,
+            256
+          ],
+          [
+            512,
+            5
+          ]
+        ],
+        "original_windows": 3,
+        "pad_rows": 6,
+        "query_rows": 65,
+        "reference_and_expected_and_actual_harness_bytes": 12480
+      },
+      {
+        "census": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 1024,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 62054,
+          "native_reservation_bytes": 52648,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 268598277,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 114403,
+          "temporary_payload_peak_bytes": 162821
+        },
+        "cpu_reference_o0_s": 0.037729649,
+        "credit": false,
+        "different_compiler_optimization_no_speedup_claim": true,
+        "domain_log2": 10,
+        "gpu_execution": false,
+        "live": 1024,
+        "message_rows": 128,
+        "native": {
+          "allocations": 959,
+          "arena_bytes": 15360,
+          "cleanup_failed": 0,
+          "d2d_bytes": 1205120,
+          "d2h_bytes": 39276,
+          "fences": 1565,
+          "h2d_bytes": 287312,
+          "host_owner_bytes": 37288,
+          "launches": 27149,
+          "live_capacity_bytes": 15360,
+          "logical_bytes": 15360,
+          "peak_capacity_bytes": 67072,
+          "peak_reserved_bytes": 68096,
+          "releases": 957,
+          "stopped": 0,
+          "weights_bytes": 1024,
+          "weights_loaded_bytes": 1024,
+          "weights_sealed": 1,
+          "zeroed_bytes": 13164
+        },
+        "native_d2d_bytes": 131072,
+        "native_d2h_bytes": 4176,
+        "native_h2d_bytes": 33152,
+        "native_host_o2_s": 0.017606106,
+        "only_returned_matrix_payload_bytes": 4160,
+        "original_window_requests": [
+          [
+            0,
+            256
+          ],
+          [
+            256,
+            256
+          ],
+          [
+            512,
+            256
+          ],
+          [
+            768,
+            256
+          ]
+        ],
+        "original_windows": 4,
+        "pad_rows": 6,
+        "query_rows": 65,
+        "reference_and_expected_and_actual_harness_bytes": 12480
+      },
+      {
+        "census": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 1024,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 112742,
+          "native_reservation_bytes": 52648,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 268830997,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 165091,
+          "temporary_payload_peak_bytes": 395541
+        },
+        "cpu_reference_o0_s": 0.188192953,
+        "credit": false,
+        "different_compiler_optimization_no_speedup_claim": true,
+        "domain_log2": 10,
+        "gpu_execution": false,
+        "live": 1024,
+        "message_rows": 128,
+        "native": {
+          "allocations": 1014,
+          "arena_bytes": 15360,
+          "cleanup_failed": 0,
+          "d2d_bytes": 1991552,
+          "d2h_bytes": 55740,
+          "fences": 1649,
+          "h2d_bytes": 451536,
+          "host_owner_bytes": 37288,
+          "launches": 28621,
+          "live_capacity_bytes": 15360,
+          "logical_bytes": 15360,
+          "peak_capacity_bytes": 247296,
+          "peak_reserved_bytes": 248320,
+          "releases": 1012,
+          "stopped": 0,
+          "weights_bytes": 1024,
+          "weights_loaded_bytes": 1024,
+          "weights_sealed": 1,
+          "zeroed_bytes": 14204
+        },
+        "native_d2d_bytes": 786432,
+        "native_d2h_bytes": 16464,
+        "native_h2d_bytes": 164224,
+        "native_host_o2_s": 0.089153664,
+        "only_returned_matrix_payload_bytes": 16448,
+        "original_window_requests": [
+          [
+            0,
+            256
+          ],
+          [
+            256,
+            256
+          ],
+          [
+            512,
+            256
+          ],
+          [
+            768,
+            256
+          ]
+        ],
+        "original_windows": 4,
+        "pad_rows": 6,
+        "query_rows": 257,
+        "reference_and_expected_and_actual_harness_bytes": 49344
+      },
+      {
+        "census": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 1024,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 69982,
+          "native_reservation_bytes": 52648,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 268830997,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 122331,
+          "temporary_payload_peak_bytes": 395541
+        },
+        "cpu_reference_o0_s": 0.046894351,
+        "credit": false,
+        "different_compiler_optimization_no_speedup_claim": true,
+        "domain_log2": 12,
+        "gpu_execution": false,
+        "live": 0,
+        "message_rows": 512,
+        "native": {
+          "allocations": 1146,
+          "arena_bytes": 15360,
+          "cleanup_failed": 0,
+          "d2d_bytes": 2226048,
+          "d2h_bytes": 61820,
+          "fences": 1877,
+          "h2d_bytes": 540160,
+          "host_owner_bytes": 37288,
+          "launches": 37747,
+          "live_capacity_bytes": 15360,
+          "logical_bytes": 15360,
+          "peak_capacity_bytes": 247296,
+          "peak_reserved_bytes": 248320,
+          "releases": 1144,
+          "stopped": 0,
+          "weights_bytes": 1024,
+          "weights_loaded_bytes": 1024,
+          "weights_sealed": 1,
+          "zeroed_bytes": 14204
+        },
+        "native_d2d_bytes": 131072,
+        "native_d2h_bytes": 4160,
+        "native_h2d_bytes": 43584,
+        "native_host_o2_s": 0.019935375,
+        "only_returned_matrix_payload_bytes": 4160,
+        "original_window_requests": [],
+        "original_windows": 0,
+        "pad_rows": 137,
+        "query_rows": 65,
+        "reference_and_expected_and_actual_harness_bytes": 12480
+      },
+      {
+        "census": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 1024,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 70078,
+          "native_reservation_bytes": 52648,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 268830997,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 122427,
+          "temporary_payload_peak_bytes": 395541
+        },
+        "cpu_reference_o0_s": 0.047865777,
+        "credit": false,
+        "different_compiler_optimization_no_speedup_claim": true,
+        "domain_log2": 12,
+        "gpu_execution": false,
+        "live": 511,
+        "message_rows": 512,
+        "native": {
+          "allocations": 1288,
+          "arena_bytes": 15360,
+          "cleanup_failed": 0,
+          "d2d_bytes": 2493312,
+          "d2h_bytes": 67920,
+          "fences": 2115,
+          "h2d_bytes": 628784,
+          "host_owner_bytes": 37288,
+          "launches": 49774,
+          "live_capacity_bytes": 15360,
+          "logical_bytes": 15360,
+          "peak_capacity_bytes": 247296,
+          "peak_reserved_bytes": 248320,
+          "releases": 1286,
+          "stopped": 0,
+          "weights_bytes": 1024,
+          "weights_loaded_bytes": 1024,
+          "weights_sealed": 1,
+          "zeroed_bytes": 16784
+        },
+        "native_d2d_bytes": 131072,
+        "native_d2h_bytes": 4164,
+        "native_h2d_bytes": 43584,
+        "native_host_o2_s": 0.020042377,
+        "only_returned_matrix_payload_bytes": 4160,
+        "original_window_requests": [
+          [
+            0,
+            511
+          ]
+        ],
+        "original_windows": 1,
+        "pad_rows": 137,
+        "query_rows": 65,
+        "reference_and_expected_and_actual_harness_bytes": 12480
+      },
+      {
+        "census": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 1024,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 70078,
+          "native_reservation_bytes": 52648,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 268830997,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 122427,
+          "temporary_payload_peak_bytes": 395541
+        },
+        "cpu_reference_o0_s": 0.04757394,
+        "credit": false,
+        "different_compiler_optimization_no_speedup_claim": true,
+        "domain_log2": 12,
+        "gpu_execution": false,
+        "live": 513,
+        "message_rows": 512,
+        "native": {
+          "allocations": 1430,
+          "arena_bytes": 15360,
+          "cleanup_failed": 0,
+          "d2d_bytes": 2759936,
+          "d2h_bytes": 74020,
+          "fences": 2353,
+          "h2d_bytes": 717408,
+          "host_owner_bytes": 37288,
+          "launches": 61733,
+          "live_capacity_bytes": 15360,
+          "logical_bytes": 15360,
+          "peak_capacity_bytes": 247296,
+          "peak_reserved_bytes": 248320,
+          "releases": 1428,
+          "stopped": 0,
+          "weights_bytes": 1024,
+          "weights_loaded_bytes": 1024,
+          "weights_sealed": 1,
+          "zeroed_bytes": 21924
+        },
+        "native_d2d_bytes": 131072,
+        "native_d2h_bytes": 4164,
+        "native_h2d_bytes": 43584,
+        "native_host_o2_s": 0.020061627,
+        "only_returned_matrix_payload_bytes": 4160,
+        "original_window_requests": [
+          [
+            0,
+            513
+          ]
+        ],
+        "original_windows": 1,
+        "pad_rows": 137,
+        "query_rows": 65,
+        "reference_and_expected_and_actual_harness_bytes": 12480
+      },
+      {
+        "census": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 1024,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 70270,
+          "native_reservation_bytes": 52648,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 268830997,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 122619,
+          "temporary_payload_peak_bytes": 395541
+        },
+        "cpu_reference_o0_s": 0.051701809,
+        "credit": false,
+        "different_compiler_optimization_no_speedup_claim": true,
+        "domain_log2": 12,
+        "gpu_execution": false,
+        "live": 2049,
+        "message_rows": 512,
+        "native": {
+          "allocations": 1592,
+          "arena_bytes": 15360,
+          "cleanup_failed": 0,
+          "d2d_bytes": 3119872,
+          "d2h_bytes": 80160,
+          "fences": 2611,
+          "h2d_bytes": 806032,
+          "host_owner_bytes": 37288,
+          "launches": 81906,
+          "live_capacity_bytes": 15360,
+          "logical_bytes": 15360,
+          "peak_capacity_bytes": 247296,
+          "peak_reserved_bytes": 248320,
+          "releases": 1590,
+          "stopped": 0,
+          "weights_bytes": 1024,
+          "weights_loaded_bytes": 1024,
+          "weights_sealed": 1,
+          "zeroed_bytes": 32864
+        },
+        "native_d2d_bytes": 131072,
+        "native_d2h_bytes": 4172,
+        "native_h2d_bytes": 43584,
+        "native_host_o2_s": 0.020440588,
+        "only_returned_matrix_payload_bytes": 4160,
+        "original_window_requests": [
+          [
+            0,
+            1024
+          ],
+          [
+            1024,
+            1024
+          ],
+          [
+            2048,
+            1
+          ]
+        ],
+        "original_windows": 3,
+        "pad_rows": 137,
+        "query_rows": 65,
+        "reference_and_expected_and_actual_harness_bytes": 12480
+      },
+      {
+        "census": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 1024,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 70366,
+          "native_reservation_bytes": 52648,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 268830997,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 122715,
+          "temporary_payload_peak_bytes": 395541
+        },
+        "cpu_reference_o0_s": 0.054939044,
+        "credit": false,
+        "different_compiler_optimization_no_speedup_claim": true,
+        "domain_log2": 12,
+        "gpu_execution": false,
+        "live": 4096,
+        "message_rows": 512,
+        "native": {
+          "allocations": 1759,
+          "arena_bytes": 15360,
+          "cleanup_failed": 0,
+          "d2d_bytes": 3603200,
+          "d2h_bytes": 86320,
+          "fences": 2869,
+          "h2d_bytes": 891760,
+          "host_owner_bytes": 37288,
+          "launches": 112916,
+          "live_capacity_bytes": 15360,
+          "logical_bytes": 15360,
+          "peak_capacity_bytes": 247296,
+          "peak_reserved_bytes": 248320,
+          "releases": 1757,
+          "stopped": 0,
+          "weights_bytes": 1024,
+          "weights_loaded_bytes": 1024,
+          "weights_sealed": 1,
+          "zeroed_bytes": 53424
+        },
+        "native_d2d_bytes": 131072,
+        "native_d2h_bytes": 4176,
+        "native_h2d_bytes": 41536,
+        "native_host_o2_s": 0.018914159,
+        "only_returned_matrix_payload_bytes": 4160,
+        "original_window_requests": [
+          [
+            0,
+            1024
+          ],
+          [
+            1024,
+            1024
+          ],
+          [
+            2048,
+            1024
+          ],
+          [
+            3072,
+            1024
+          ]
+        ],
+        "original_windows": 4,
+        "pad_rows": 137,
+        "query_rows": 65,
+        "reference_and_expected_and_actual_harness_bytes": 12480
+      },
+      {
+        "census": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 1024,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 159766,
+          "native_reservation_bytes": 52648,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 268880845,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 212115,
+          "temporary_payload_peak_bytes": 445389
+        },
+        "cpu_reference_o0_s": 0.137101607,
+        "credit": false,
+        "different_compiler_optimization_no_speedup_claim": true,
+        "domain_log2": 14,
+        "gpu_execution": false,
+        "live": 12288,
+        "message_rows": 2048,
+        "native": {
+          "allocations": 1921,
+          "arena_bytes": 15360,
+          "cleanup_failed": 0,
+          "d2d_bytes": 5326848,
+          "d2h_bytes": 92460,
+          "fences": 3127,
+          "h2d_bytes": 1428064,
+          "host_owner_bytes": 37288,
+          "launches": 253095,
+          "live_capacity_bytes": 15360,
+          "logical_bytes": 15360,
+          "peak_capacity_bytes": 247296,
+          "peak_reserved_bytes": 248320,
+          "releases": 1919,
+          "stopped": 0,
+          "weights_bytes": 1024,
+          "weights_loaded_bytes": 1024,
+          "weights_sealed": 1,
+          "zeroed_bytes": 114924
+        },
+        "native_d2d_bytes": 131072,
+        "native_d2h_bytes": 4172,
+        "native_h2d_bytes": 133120,
+        "native_host_o2_s": 0.030500464,
+        "only_returned_matrix_payload_bytes": 4160,
+        "original_window_requests": [
+          [
+            0,
+            4096
+          ],
+          [
+            4096,
+            4096
+          ],
+          [
+            8192,
+            4096
+          ]
+        ],
+        "original_windows": 3,
+        "pad_rows": 1536,
+        "query_rows": 65,
+        "reference_and_expected_and_actual_harness_bytes": 12480
+      }
+    ],
+    "C71_NATIVE_QUERY_PARITY": [
+      {
+        "cases": 75,
+        "credit": false,
+        "gpu_execution": false,
+        "i16_and_split_raw_i48": true,
+        "independent_horner": true,
+        "original_d2h_bytes": 0,
+        "same_original_windows": true
+      }
+    ],
+    "C71_NATIVE_QUERY_FAILURE": [
+      {
+        "terminal_rejections": 25,
+        "gpu_execution": false,
+        "credit": false
+      }
+    ],
+    "C71_NATIVE_QUERY_CHAIN": [
+      {
+        "credit": false,
+        "domain_log2": 10,
+        "full_proof_wire_fs_rng_mac_and_verifiers_exact": true,
+        "gpu_execution": false,
+        "initial_commitment_fixture": "CPU original",
+        "native": {
+          "allocations": 851,
+          "arena_bytes": 0,
+          "cleanup_failed": 0,
+          "d2d_bytes": 10485760,
+          "d2h_bytes": 262212,
+          "fences": 1252,
+          "h2d_bytes": 6164480,
+          "host_owner_bytes": 37288,
+          "launches": 8305,
+          "live_capacity_bytes": 0,
+          "logical_bytes": 0,
+          "peak_capacity_bytes": 534272,
+          "peak_reserved_bytes": 535296,
+          "releases": 849,
+          "stopped": 0,
+          "weights_bytes": 0,
+          "weights_loaded_bytes": 1024,
+          "weights_sealed": 1,
+          "zeroed_bytes": 16452
+        },
+        "query_original_windows": [
+          [
+            0,
+            1024
+          ],
+          [
+            0,
+            1024
+          ],
+          [
+            0,
+            1024
+          ],
+          [
+            0,
+            1024
+          ],
+          [
+            0,
+            1024
+          ],
+          [
+            0,
+            1024
+          ],
+          [
+            0,
+            1024
+          ],
+          [
+            0,
+            1024
+          ],
+          [
+            0,
+            1024
+          ],
+          [
+            0,
+            1024
+          ],
+          [
+            0,
+            1024
+          ],
+          [
+            0,
+            1024
+          ],
+          [
+            0,
+            1024
+          ],
+          [
+            0,
+            1024
+          ],
+          [
+            0,
+            1024
+          ],
+          [
+            0,
+            1024
+          ]
+        ],
+        "uncached_initial_query_route": true
+      }
+    ],
+    "C71_NATIVE_A_TREE_LOCAL": [
+      {
+        "cache": {
+          "domain_log2": 15,
+          "initial_coset_bytes": 262144,
+          "initial_merkle_scratch_bytes": 292352,
+          "initial_native_peak_capacity_bytes": 1880576,
+          "query_subtree_bytes_each": 24544,
+          "retained_merkle_digest_bytes": 4064,
+          "retained_pcs_pad_bytes": 1572864,
+          "retained_range_histogram_capacity_bytes": 0,
+          "retained_rng_bytes": 176,
+          "retained_s1_policy": false,
+          "retained_salt_offset_bytes": 512,
+          "scope": "Merkle/pad payloads, not total host capacity; initial scratch includes coset and is no longer live; native high-water includes all buffers on the common owner, separately from this Merkle payload; S1 is retained only within active sequential PCS chain, not by this snapshot; other FFT/cache/query/sourcewise temporaries excluded"
+        },
+        "census": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 1024,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 3247560,
+          "native_reservation_bytes": 52648,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 275315638,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 3299909,
+          "temporary_payload_peak_bytes": 6880182
+        },
+        "credit": false,
+        "different_compiler_optimization_no_speedup_claim": true,
+        "domain_log2": 15,
+        "durable_records": 6,
+        "fixture_original_upload_before_commit": true,
+        "gpu_execution": false,
+        "initial_cpu_scans": 0,
+        "initial_scalar_getter_calls": 0,
+        "native": {
+          "allocations": 594,
+          "arena_bytes": 15360,
+          "cleanup_failed": 0,
+          "d2d_bytes": 0,
+          "d2h_bytes": 8720,
+          "fences": 602,
+          "h2d_bytes": 1577128,
+          "host_owner_bytes": 37288,
+          "launches": 1548,
+          "live_capacity_bytes": 15360,
+          "logical_bytes": 15360,
+          "peak_capacity_bytes": 1880576,
+          "peak_reserved_bytes": 1881600,
+          "releases": 592,
+          "stopped": 0,
+          "weights_bytes": 1024,
+          "weights_loaded_bytes": 1024,
+          "weights_sealed": 1,
+          "zeroed_bytes": 16779780
+        },
+        "native_commitment_census": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 1024,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 1620047,
+          "native_reservation_bytes": 52648,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 273272887,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 1672396,
+          "temporary_payload_peak_bytes": 4837431
+        },
+        "native_commitment_host_s": 0.896993356,
+        "native_geometry": [
+          16384,
+          256,
+          64,
+          256
+        ],
+        "reconstructions": 64,
+        "reference_commitment_o0_s": 6.230505019,
+        "reference_geometry": [
+          16384,
+          256,
+          64,
+          256
+        ],
+        "source_visits": 786432
+      }
+    ],
+    "C71_NATIVE_A_TREE_REJECTIONS": [
+      {
+        "cases": 8,
+        "scalar_fallback_calls": 0,
+        "gpu_execution": false,
+        "credit": false
+      }
+    ],
+    "C71_NATIVE_W_TREE_LOCAL": [
+      {
+        "cache": {
+          "domain_log2": 15,
+          "initial_coset_bytes": 524288,
+          "initial_merkle_scratch_bytes": 1061376,
+          "initial_native_peak_capacity_bytes": 2702080,
+          "query_subtree_bytes_each": 24544,
+          "retained_merkle_digest_bytes": 4064,
+          "retained_pcs_pad_bytes": 1572864,
+          "retained_range_histogram_capacity_bytes": 0,
+          "retained_rng_bytes": 176,
+          "retained_s1_policy": false,
+          "retained_salt_offset_bytes": 512,
+          "scope": "Merkle/pad payloads, not total host capacity; initial scratch includes coset and is no longer live; native high-water includes all buffers on the common owner, separately from this Merkle payload; S1 is retained only within active sequential PCS chain, not by this snapshot; other FFT/cache/query/sourcewise temporaries excluded"
+        },
+        "census": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 49152,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 3277474,
+          "native_reservation_bytes": 37288,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 273498114,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 3266335,
+          "temporary_payload_peak_bytes": 5062658
+        },
+        "credit": false,
+        "different_compiler_optimization_no_speedup_claim": true,
+        "domain_log2": 15,
+        "durable_records": 6,
+        "gpu_execution": false,
+        "native": {
+          "allocations": 101,
+          "arena_bytes": 0,
+          "cleanup_failed": 0,
+          "d2d_bytes": 0,
+          "d2h_bytes": 8996,
+          "fences": 110,
+          "h2d_bytes": 1622264,
+          "host_owner_bytes": 37288,
+          "launches": 447,
+          "live_capacity_bytes": 0,
+          "logical_bytes": 0,
+          "peak_capacity_bytes": 2702080,
+          "peak_reserved_bytes": 2751232,
+          "releases": 101,
+          "stopped": 0,
+          "weights_bytes": 49152,
+          "weights_loaded_bytes": 49152,
+          "weights_sealed": 1,
+          "zeroed_bytes": 1048840
+        },
+        "native_commitment_census": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 49152,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 1651402,
+          "native_reservation_bytes": 37288,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 273498114,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 1640263,
+          "temporary_payload_peak_bytes": 5062658
+        },
+        "native_commitment_host_s": 0.738500816,
+        "native_geometry": [
+          16384,
+          64,
+          256,
+          256
+        ],
+        "reference_commitment_o0_s": 6.583391891,
+        "reference_geometry": [
+          16384,
+          256,
+          64,
+          256
+        ],
+        "source_visits": 49152
+      }
+    ],
+    "C71_NATIVE_W_TREE_REJECTIONS": [
+      {
+        "cases": 8,
+        "scalar_fallback_calls": 0,
+        "gpu_execution": false,
+        "credit": false
+      }
+    ]
+  },
+  "preliminary_checks": [
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_native_source_tree_",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 26.150772273074836,
+      "max_rss_bytes": 274661376,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 26.023233,
+      "system_s": 0.12007599999999999,
+      "log": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-a-tree-pre01-20261009.log",
+      "record_run": false,
+      "git_dirty": true
+    },
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--offline",
+        "--locked",
+        "-j",
+        "1",
+        "-p",
+        "volta-pcs",
+        "--features",
+        "c71-seed6-reference",
+        "--lib",
+        "--no-run",
+        "--config",
+        "profile.dev.package.volta-pcs.opt-level=0"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk/rust",
+      "exit_code": 101,
+      "wall_s": 13.660491009242833,
+      "max_rss_bytes": 1535729664,
+      "as_limit_mib": null,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 12.594511,
+      "system_s": 1.044188,
+      "log": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-build-pre01-20261009.log",
+      "record_run": false,
+      "git_dirty": true
+    },
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--offline",
+        "--locked",
+        "-j",
+        "1",
+        "-p",
+        "volta-pcs",
+        "--features",
+        "c71-seed6-reference",
+        "--lib",
+        "--no-run",
+        "--config",
+        "profile.dev.package.volta-pcs.opt-level=0"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk/rust",
+      "exit_code": 124,
+      "wall_s": 60.01552624395117,
+      "max_rss_bytes": 52994048,
+      "as_limit_mib": null,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.28121999999999997,
+      "system_s": 0.333714,
+      "log": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-build-pre02-20261009.log",
+      "record_run": false,
+      "git_dirty": true
+    },
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--offline",
+        "--locked",
+        "-j",
+        "1",
+        "-p",
+        "volta-pcs",
+        "--features",
+        "c71-seed6-reference",
+        "--lib",
+        "--no-run",
+        "--config",
+        "profile.dev.package.volta-pcs.opt-level=0"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk/rust",
+      "exit_code": 124,
+      "wall_s": 60.03906396217644,
+      "max_rss_bytes": 52924416,
+      "as_limit_mib": null,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.24572,
+      "system_s": 0.305411,
+      "log": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-build-pre03-20261009.log",
+      "record_run": false,
+      "git_dirty": true
+    },
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--offline",
+        "--locked",
+        "-j",
+        "1",
+        "-p",
+        "volta-pcs",
+        "--features",
+        "c71-seed6-reference",
+        "--lib",
+        "--no-run",
+        "--config",
+        "profile.dev.package.volta-pcs.opt-level=0",
+        "--config",
+        "profile.dev.package.volta-pcs.codegen-units=64"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk/rust",
+      "exit_code": 124,
+      "wall_s": 60.037771741393954,
+      "max_rss_bytes": 52965376,
+      "as_limit_mib": null,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.8549169999999999,
+      "system_s": 0.9149349999999999,
+      "log": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-build-pre04-20261009.log",
+      "record_run": false,
+      "git_dirty": true
+    },
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--offline",
+        "--locked",
+        "-j",
+        "1",
+        "-p",
+        "volta-pcs",
+        "--features",
+        "c71-b12-pcs",
+        "--lib",
+        "--no-run",
+        "--config",
+        "profile.dev.package.volta-pcs.opt-level=0"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk/rust",
+      "exit_code": 124,
+      "wall_s": 60.026729811914265,
+      "max_rss_bytes": 422567936,
+      "as_limit_mib": null,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 19.892139,
+      "system_s": 0.966703,
+      "log": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-build-pre05-20261009.log",
+      "record_run": false,
+      "git_dirty": true
+    },
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--offline",
+        "--locked",
+        "-j",
+        "1",
+        "-p",
+        "volta-pcs",
+        "--features",
+        "c71-b12-pcs",
+        "--lib",
+        "--no-run",
+        "--config",
+        "profile.dev.package.volta-pcs.opt-level=0"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk/rust",
+      "exit_code": 124,
+      "wall_s": 60.02064221398905,
+      "max_rss_bytes": 53059584,
+      "sampled_aggregate_live_rss_peak_bytes": 1062526976,
+      "sampled_processes": {
+        "5": {
+          "name": "timeout",
+          "max_rss_bytes": 1576960,
+          "cpu_ticks": 0,
+          "first_seen_s": 0.0019223038107156754,
+          "last_seen_s": 60.020343211945146
+        },
+        "6": {
+          "name": "cargo",
+          "max_rss_bytes": 53059584,
+          "cpu_ticks": 24,
+          "first_seen_s": 0.10409122984856367,
+          "last_seen_s": 59.91841622302309
+        },
+        "13": {
+          "name": "rustc",
+          "max_rss_bytes": 1007890432,
+          "cpu_ticks": 5652,
+          "first_seen_s": 0.2066592420451343,
+          "last_seen_s": 60.02043408807367
+        }
+      },
+      "sample_interval_s": 0.1,
+      "clock_ticks_per_s": 100,
+      "deadline_s": 60,
+      "workers": 1,
+      "as_limit_mib": null,
+      "user_s": 0.158139,
+      "system_s": 0.108052,
+      "log": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-build-pre06-20261009.log",
+      "record_run": false,
+      "git_dirty": true
+    },
+    {
+      "command": [
+        "cargo",
+        "rustc",
+        "--offline",
+        "--locked",
+        "-j",
+        "1",
+        "-p",
+        "volta-pcs",
+        "--features",
+        "c71-seed6-reference",
+        "--lib",
+        "--profile",
+        "test",
+        "--config",
+        "profile.dev.package.volta-pcs.opt-level=0",
+        "--",
+        "-Cllvm-args=-global-isel=0",
+        "-Cllvm-args=-fast-isel=1"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk/rust",
+      "exit_code": 124,
+      "wall_s": 60.096452568192035,
+      "max_rss_bytes": 53067776,
+      "sampled_aggregate_live_rss_peak_bytes": 1905430528,
+      "sampled_processes": {
+        "5": {
+          "name": "timeout",
+          "max_rss_bytes": 1568768,
+          "cpu_ticks": 0,
+          "first_seen_s": 0.002255472354590893,
+          "last_seen_s": 60.09596064919606
+        },
+        "6": {
+          "name": "cargo",
+          "max_rss_bytes": 53067776,
+          "cpu_ticks": 52,
+          "first_seen_s": 0.1133535630069673,
+          "last_seen_s": 59.99432279309258
+        },
+        "13": {
+          "name": "rustc",
+          "max_rss_bytes": 1850793984,
+          "cpu_ticks": 5915,
+          "first_seen_s": 0.535151835065335,
+          "last_seen_s": 60.09603023342788
+        }
+      },
+      "sample_interval_s": 0.1,
+      "clock_ticks_per_s": 100,
+      "deadline_s": 60,
+      "workers": 1,
+      "as_limit_mib": null,
+      "user_s": 0.24418199999999998,
+      "system_s": 0.362822,
+      "log": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-build-pre07-20261009.log",
+      "record_run": false,
+      "git_dirty": true
+    },
+    {
+      "command": [
+        "cargo",
+        "rustc",
+        "--offline",
+        "--locked",
+        "-j",
+        "1",
+        "-p",
+        "volta-pcs",
+        "--features",
+        "c71-seed6-reference",
+        "--lib",
+        "--profile",
+        "test",
+        "--config",
+        "profile.dev.package.volta-pcs.opt-level=0",
+        "--",
+        "-Clink-arg=-fuse-ld=lld",
+        "-Clink-arg=-B/home/okrame/.rustup/toolchains/stable-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/bin/gcc-ld",
+        "-Clink-arg=-Wl,--threads=1"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk/rust",
+      "exit_code": 124,
+      "wall_s": 60.06185970408842,
+      "max_rss_bytes": 53022720,
+      "sampled_aggregate_live_rss_peak_bytes": 2487812096,
+      "sampled_processes": {
+        "5": {
+          "name": "timeout",
+          "max_rss_bytes": 1576960,
+          "cpu_ticks": 0,
+          "first_seen_s": 0.0012402571737766266,
+          "last_seen_s": 60.061406367924064
+        },
+        "6": {
+          "name": "cargo",
+          "max_rss_bytes": 53022720,
+          "cpu_ticks": 18,
+          "first_seen_s": 0.10234065726399422,
+          "last_seen_s": 59.95946963690221
+        },
+        "13": {
+          "name": "rustc",
+          "max_rss_bytes": 2433212416,
+          "cpu_ticks": 5951,
+          "first_seen_s": 0.20324872201308608,
+          "last_seen_s": 60.0614902023226
+        }
+      },
+      "sample_interval_s": 0.1,
+      "clock_ticks_per_s": 100,
+      "deadline_s": 60,
+      "workers": 1,
+      "as_limit_mib": null,
+      "user_s": 0.086713,
+      "system_s": 0.14740999999999999,
+      "log": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-build-pre08-20261009.log",
+      "record_run": false,
+      "git_dirty": true
+    },
+    {
+      "command": [
+        "cargo",
+        "rustc",
+        "--offline",
+        "--locked",
+        "-j",
+        "1",
+        "-p",
+        "volta-pcs",
+        "--features",
+        "c71-seed6-reference",
+        "--lib",
+        "--profile",
+        "test",
+        "--config",
+        "profile.dev.package.volta-pcs.opt-level=0",
+        "--config",
+        "profile.dev.package.volta-pcs.codegen-units=256",
+        "--",
+        "-Clink-arg=-fuse-ld=lld",
+        "-Clink-arg=-B/home/okrame/.rustup/toolchains/stable-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/bin/gcc-ld",
+        "-Clink-arg=-Wl,--threads=1"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk/rust",
+      "exit_code": 0,
+      "wall_s": 57.088880157563835,
+      "max_rss_bytes": 2442866688,
+      "sampled_aggregate_live_rss_peak_bytes": 2493812736,
+      "sampled_processes": {
+        "5": {
+          "name": "timeout",
+          "max_rss_bytes": 1576960,
+          "cpu_ticks": 0,
+          "first_seen_s": 0.0016061337664723396,
+          "last_seen_s": 57.08871919894591
+        },
+        "6": {
+          "name": "cargo",
+          "max_rss_bytes": 52981760,
+          "cpu_ticks": 18,
+          "first_seen_s": 0.10320155788213015,
+          "last_seen_s": 56.98498584982008
+        },
+        "13": {
+          "name": "rustc",
+          "max_rss_bytes": 2439254016,
+          "cpu_ticks": 5563,
+          "first_seen_s": 0.20401068683713675,
+          "last_seen_s": 56.98503068368882
+        },
+        "275": {
+          "name": "cc",
+          "max_rss_bytes": 2232320,
+          "cpu_ticks": 1,
+          "first_seen_s": 55.76051352592185,
+          "last_seen_s": 56.88313438696787
+        },
+        "276": {
+          "name": "collect2",
+          "max_rss_bytes": 1568768,
+          "cpu_ticks": 0,
+          "first_seen_s": 55.760633068624884,
+          "last_seen_s": 56.88317351182923
+        },
+        "277": {
+          "name": "rust-lld",
+          "max_rss_bytes": 580034560,
+          "cpu_ticks": 110,
+          "first_seen_s": 55.76076390268281,
+          "last_seen_s": 56.883213178720325
+        }
+      },
+      "sample_interval_s": 0.1,
+      "clock_ticks_per_s": 100,
+      "deadline_s": 60,
+      "workers": 1,
+      "as_limit_mib": null,
+      "user_s": 49.101432,
+      "system_s": 7.964288,
+      "log": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-build-pre09-20261009.log",
+      "record_run": false,
+      "git_dirty": true
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_native_query_composed_uncached_chain_original_mac_and_transcript",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 50.038895341102034,
+      "max_rss_bytes": 274837504,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 49.810327,
+      "system_s": 0.215995,
+      "log": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-chain-pre01-20261009.log",
+      "record_run": false,
+      "git_dirty": true
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_c71_range_native.py",
+        "tests/test_c71_fft_microbench.py"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 12.07530793407932,
+      "max_rss_bytes": 297058304,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 11.772188,
+      "system_s": 0.224457,
+      "log": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-cpp-pre01-20261009.log",
+      "record_run": false,
+      "git_dirty": true
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_native_query_rejections_and_fail_closed",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 6.60889083519578,
+      "max_rss_bytes": 274526208,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 6.550131,
+      "system_s": 0.056881999999999995,
+      "log": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-guards-pre01-20261009.log",
+      "record_run": false,
+      "git_dirty": true
+    },
+    {
+      "command": [
+        "rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_native_query_exact_horner_windows_pads_and_resources",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 8.960849578026682,
+      "max_rss_bytes": 274526208,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 8.722612999999999,
+      "system_s": 0.232947,
+      "log": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-parity-pre01-20261009.log",
+      "record_run": false,
+      "git_dirty": true
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_native_query_reader_failure_without_host_fallback",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 6.8521662298589945,
+      "max_rss_bytes": 274374656,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 6.6184069999999995,
+      "system_s": 0.228231,
+      "log": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-reader-pre01-20261009.log",
+      "record_run": false,
+      "git_dirty": true
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_native_query_private_phase_read_and_mandatory_symbols",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 33.121202792972326,
+      "max_rss_bytes": 275410944,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 32.741914,
+      "system_s": 0.370595,
+      "log": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-symbols-pre01-20261009.log",
+      "record_run": false,
+      "git_dirty": true
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_native_weight_tree_",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 30.466809871140867,
+      "max_rss_bytes": 274558976,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 30.317202,
+      "system_s": 0.140171,
+      "log": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-w-tree-pre01-20261009.log",
+      "record_run": false,
+      "git_dirty": true
+    }
+  ],
+  "failures_preserved": [
+    {
+      "log": "c71-query-native-build-pre01-20261009.log",
+      "exit_code": 101,
+      "reason": "ambiguous closure Result error type, fixed with explicit Result<DenseMatrix<Goldilocks>,String>; no tests ran"
+    },
+    {
+      "logs": [
+        "c71-query-native-build-pre02-20261009.log",
+        "c71-query-native-build-pre03-20261009.log",
+        "c71-query-native-build-pre04-20261009.log",
+        "c71-query-native-build-pre05-20261009.log",
+        "c71-query-native-build-pre06-20261009.log",
+        "c71-query-native-build-pre07-20261009.log",
+        "c71-query-native-build-pre08-20261009.log"
+      ],
+      "exit_code": 124,
+      "reason": "60s compile deadline; incomplete artifacts not executed; build strategy changed, limits not extended"
+    }
+  ],
+  "invariants": {
+    "fields": "Goldilocks base; PCS v^3=v+1 and MAC u^3=2 unchanged",
+    "layout": "original biased little-endian bytes, column-major polynomial coefficients; original salts/pads, natural roots and duplicate/reversed opening indices retained",
+    "owner": "same numerical owner/stream and original buffer binding; unavailable/pending/foreign/failed readers terminal, no scalar/host-window fallback",
+    "NoPeek": "numeric reader receives runtime and original public interval only; private query spectra/PCS pads remain in consumer",
+    "replay": "exact original window requests match CPU oracle; no extra initial A commitment reconstructions, still512",
+    "transfer": "no original byte D2H; final returned column words plus existing4B original gather flags; CPU creates only public query factors/shift and private PCS pads",
+    "authentication": "original endpoint MACs, fresh reserved correlations, FS wire/order, roots/pads and both verifier results unchanged; no MAC reauthentication",
+    "salts": "mandatory-symbol/private read negative tests preserve completion guard and deny private buffers"
+  },
+  "accounting": {
+    "checks": 10,
+    "rust_tests": 9,
+    "python_tests": 18,
+    "max_test_or_descendant_rss_bytes": 297017344,
+    "max_test_wall_s": 49.81420146394521,
+    "AS_per_test_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "serial": true,
+    "full_build_rss_bytes": 2442866688,
+    "full_build_sampled_aggregate_peak_bytes": 2493812736,
+    "full_build_wall_s": 57.088880157563835,
+    "owner_host_bytes": 37288,
+    "owner_stats_bytes": 152,
+    "Rust_API_additional_bytes": 32,
+    "query_block_bytes": 72,
+    "independent_query_parity_cases": 75,
+    "reader_rejections": 4,
+    "owner_rejections": 25,
+    "mandatory_symbol_rejections": 4,
+    "q_max": 1048576,
+    "message_rows_max": 134217728,
+    "pad_rows_max": 1536,
+    "returned_columns_max": 128,
+    "byte_window_max": 268435456,
+    "column_staging_max": 8388608,
+    "canonical_query_device_named_bytes": 1125647872,
+    "canonical_query_device_breakdown": {
+      "public_factor_spectra": 704643072,
+      "aligned_forward_inverse_twiddles_all_levels": 67110400,
+      "optional_pad_shift": 16777216,
+      "low_pad_remainders_work_scratch": 67108864,
+      "original_field_pads": 1572864,
+      "original_byte_window": 268435456
+    },
+    "query_buffer_descriptors": 93,
+    "additional_original_gather_flag_aligned_bytes": 256,
+    "returned_matrix_host_bytes": 1073741824,
+    "returned_column_staging_host_bytes": 8388608,
+    "maximum_batch_H2D_bytes": 722993152,
+    "maximum_batch_return_matrix_D2H_bytes": 1073741824,
+    "original_window_flag_D2H_bytes_each": 4,
+    "original_data_D2H_bytes": 0,
+    "joint_admitted": false,
+    "additional_joint_costs": "public product construction, conversion staging and CPU DFT cache; retained W/A Tree/replay, already-opened requested rows/salts/paths across batches; numeric producer/workspace, PCG/masks, proof/codec, both roles and runtime/physical margin; all remain globally charged",
+    "lifetime": "native query temporary buffers retire before Tree regenerates/copies the current batch; previously opened rows remain live. S1 retention starts only after original A opening/release, so it does not coexist with initial A native-query scratch"
+  },
+  "measurements_scope": "representative bounded local owner/models and harness census; Rust O0 vs C++ O2 timings do not support a speedup claim; no H100 performance, CUDA scheduling or physical admission",
+  "primary_sources": [
+    {
+      "url": "https://doc.rust-lang.org/cargo/commands/cargo-rustc.html",
+      "purpose": "--profile test selects unit-test mode and flags target only the selected crate"
+    },
+    {
+      "url": "https://lld.llvm.org/",
+      "purpose": "existing GNU-compatible ELF linker; local one-thread link, no new dependency"
+    }
+  ],
+  "remaining": [
+    "resident S1 commit/OOD/retention/fold and extension opening consumers preserving512initial+35non-queryApasses",
+    "GPU original-linear owner/caller, GKR/range/PCG and sync profile, exact attention and Tensor candidate hardware comparisons",
+    "complete joint host/device/physical ledger and separate installation/setup/inference/proof/verification measurements",
+    "sm_90 compilation and CUDA parity/performance only on a new owner-authorized H100 campaign"
+  ],
+  "artifact_manifest": [
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-clean-build-20261009-01.log",
+      "bytes": 14474,
+      "sha256": "9e430836bf3ed58947f323292576d2b0e6739a9c83792fbc2c86709a2569404b"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-clean-build-20261009-01.json",
+      "bytes": 846,
+      "sha256": "1854b98cd5612a85119c820ed7b0a258a4357b7453d904e123bce7f6f584c9d4"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-clean-parity-20261009-01.log",
+      "bytes": 18730,
+      "sha256": "5eb65a12cbf12f2b22f6e28b90aceb7707ef3ad4400b4b364d41896bd9221cf8"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-clean-parity-20261009-01.json",
+      "bytes": 504,
+      "sha256": "ce9d0df3d442949aa163af8667f91d19a1dd05bace306345da13d8008295ec8c"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-clean-reader-20261009-01.log",
+      "bytes": 216,
+      "sha256": "f919ab9b7fd597affd7d349ee89bcbc76f0f53bb5ac1612cd604447f9b4e5d22"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-clean-reader-20261009-01.json",
+      "bytes": 502,
+      "sha256": "4ee897eb5989d4153027ec55b7bf2d96ac3c8124801b72a9320e007c95664500"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-clean-guards-20261009-01.log",
+      "bytes": 307,
+      "sha256": "eb5a5b607ff5a459fd9a531ca1bb74fe9f9786424e547ea5b3b576bfc1d4afce"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-clean-guards-20261009-01.json",
+      "bytes": 504,
+      "sha256": "bf1cb6894094d66fed08349a4916d85cfb45ddb79da9426b98be56bf1054547c"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-clean-symbols-20261009-01.log",
+      "bytes": 233,
+      "sha256": "3cd57f5a15a0f36e7f95e15be8362fe360153105c8bb71155ed10c336b9c9936"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-clean-symbols-20261009-01.json",
+      "bytes": 507,
+      "sha256": "4f90b68fde0c94951cf4bbe24fccb0f9410f41330ee841d2762ab0b16f19ae2b"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-clean-chain-20261009-01.log",
+      "bytes": 3062,
+      "sha256": "e205fc70346f5d5d9f22f946980963c093097e53d2101352ee4603aeba389f87"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-clean-chain-20261009-01.json",
+      "bytes": 517,
+      "sha256": "f7ede5b2a5a049e40f43792a9391b9bfe5e7291b706d0d9c3ca8353d862e31ab"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-clean-a-tree-20261009-01.log",
+      "bytes": 3040,
+      "sha256": "13bf9b451cd534d4f8ca626c62dee482e2f2b14b5ce1ba3d8ebfcc6bbf328495"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-clean-a-tree-20261009-01.json",
+      "bytes": 485,
+      "sha256": "d0b0519febd970cbefbe6984d3a505c269d0a3692c49afacde7341885dfa01e0"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-clean-w-tree-20261009-01.log",
+      "bytes": 2900,
+      "sha256": "d0236fd2e45a0a6bd1dff9aa415089859dadcf41808bdc38261f1d1d5ae386f6"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-clean-w-tree-20261009-01.json",
+      "bytes": 484,
+      "sha256": "a625f12aacc295369612226a0a1f741e61fafb11fdc98a16dee61521d2f38d20"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-clean-cpp-20261009-01.log",
+      "bytes": 99,
+      "sha256": "2fed7d6e11365fe42d15e33a8acf35884503f72ba0c23d9196b0656be773446d"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-clean-cpp-20261009-01.json",
+      "bytes": 517,
+      "sha256": "daff4e8e561975e32317b5dda861ef8373321d1b123056cf92227de2353f65fa"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-clean-docs-20261009-01.log",
+      "bytes": 98,
+      "sha256": "e32e51039d77db401f9c2063a32d60d3b279a66f389a98f35e3afce6249189a1"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-clean-docs-20261009-01.json",
+      "bytes": 467,
+      "sha256": "5ac7e642ccbe878c3149cafa57e6a2cc04d5d1ac61e75e845d7aa29aba87ed58"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-a-tree-pre01-20261009.log",
+      "bytes": 3040,
+      "sha256": "b45874b4646b0ee72c2e218d8e3ea707d29923925f194c726d24a6645a8b36a8"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-a-tree-pre01-20261009.json",
+      "bytes": 489,
+      "sha256": "a777081219b5450215203bc584c18b10ce4d25bcc16756e4472fcb761a90d0b9"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-build-pre01-20261009.log",
+      "bytes": 55314,
+      "sha256": "b3e400b328b1215fab146ec801cddae985d5ab19c1da53792d93121c48d32f5a"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-build-pre01-20261009.json",
+      "bytes": 562,
+      "sha256": "c963fa869914c28166527c212e6b70d28588ec526a700aa6b68f1c716a90d219"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-build-pre02-20261009.log",
+      "bytes": 14371,
+      "sha256": "3568d2f04cd28040ee3bfe52ae76d5f4e7bd84b6b1c26424e9bbc653a00dddb0"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-build-pre02-20261009.json",
+      "bytes": 569,
+      "sha256": "0f1c15a104bce0ba5f5bd995a5fbe25d05d3ca42d5137c8169b5b43545450be2"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-build-pre03-20261009.log",
+      "bytes": 14371,
+      "sha256": "3568d2f04cd28040ee3bfe52ae76d5f4e7bd84b6b1c26424e9bbc653a00dddb0"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-build-pre03-20261009.json",
+      "bytes": 557,
+      "sha256": "f7a890ef19267cc3927981f148d273cfd77cb51b74c5a5487011344daa34e556"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-build-pre04-20261009.log",
+      "bytes": 7239,
+      "sha256": "d17bbc86a486a63a8a9d91c21d346882d592909e8840cec1c8d781bbd21fa017"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-build-pre04-20261009.json",
+      "bytes": 649,
+      "sha256": "0d72673b0933c7d7acb97812ae9902cd01993bf928ff5b3aa4c6d22c53680fc2"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-build-pre05-20261009.log",
+      "bytes": 809,
+      "sha256": "2857d72449c31f26ee9871b547227d0b5e553620cb7b31addc1ada64296b4fc9"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-build-pre05-20261009.json",
+      "bytes": 553,
+      "sha256": "cf1a88c5eece61c940577ba25cd2ed7bce74f335b2e3e3b78ce7caf940551f8f"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-build-pre06-20261009.log",
+      "bytes": 653,
+      "sha256": "95f27ec8b7873db2e6b13714f0301d32e97cceb9f3d4497b0cb8aa83d089560b"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-build-pre06-20261009.json",
+      "bytes": 1234,
+      "sha256": "c731c9c8e8ddd34effecd1f852d06d269097d3dcad9437fdac8953218c326181"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-build-pre07-20261009.log",
+      "bytes": 14371,
+      "sha256": "3568d2f04cd28040ee3bfe52ae76d5f4e7bd84b6b1c26424e9bbc653a00dddb0"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-build-pre07-20261009.json",
+      "bytes": 1340,
+      "sha256": "d92a1399be09441bdcb79c74bb2c65bf39db3111c12306560239e2d4df6d1a00"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-build-pre08-20261009.log",
+      "bytes": 14371,
+      "sha256": "3568d2f04cd28040ee3bfe52ae76d5f4e7bd84b6b1c26424e9bbc653a00dddb0"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-build-pre08-20261009.json",
+      "bytes": 1476,
+      "sha256": "f72edd376bdc95f383b1aa2534630e1a8d661b8ea72f2984ccf87779e2224d76"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-build-pre09-20261009.log",
+      "bytes": 14553,
+      "sha256": "0cca059efd9c56c166196216305e24b6697764aa6db879abe94f0bfae2701d12"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-build-pre09-20261009.json",
+      "bytes": 2078,
+      "sha256": "8cbaa3a6d842a98cb2b7caad98562d6b3634a5fd5717df3da0d9200f2edaf057"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-chain-pre01-20261009.log",
+      "bytes": 3063,
+      "sha256": "2c31707e99b709e06ca1fd28bef6cd608da2996c717fbd973512fda1023f6b30"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-chain-pre01-20261009.json",
+      "bytes": 522,
+      "sha256": "deac6423712bf6866992fd7c7b85b4483e096317bd6eb7c33b8baa01b8c5a119"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-cpp-pre01-20261009.log",
+      "bytes": 99,
+      "sha256": "f228076d7852e5e55347c0dd551a9c4742c94c324aa2eaf064820c6a6e0ce74e"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-cpp-pre01-20261009.json",
+      "bytes": 509,
+      "sha256": "4fcb406547f9fc1bf013e05894ff474b00d4a6459c7142f1e1bc6ca8b04c820e"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-guards-pre01-20261009.log",
+      "bytes": 307,
+      "sha256": "82ec11d30051af328ac6286ebda507c82d1928201138101e00dc5be3cb73598c"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-guards-pre01-20261009.json",
+      "bytes": 507,
+      "sha256": "9c41b58c9cfd98ec52734f451e2f151b4c6a20db8778426ec74ce2a0b04d0ff3"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-parity-pre01-20261009.log",
+      "bytes": 18733,
+      "sha256": "92b5faaba5599be4b322e5e98ea8d2f3714b423c519b78023fe7fce2542a1649"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-parity-pre01-20261009.json",
+      "bytes": 487,
+      "sha256": "5995cfffe3bc7b6dc1f15a88e4cef13a4a1eec6133faece014010b89717e21f4"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-reader-pre01-20261009.log",
+      "bytes": 216,
+      "sha256": "921eb5f531232eccfe504124e6688ff170753cbeacb1374461d1619bf1774cfe"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-reader-pre01-20261009.json",
+      "bytes": 517,
+      "sha256": "b95bdb40bcdf791f4aaf9cb4ad5a96fb5732d9819b36b46537aae92e522f054d"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-symbols-pre01-20261009.log",
+      "bytes": 233,
+      "sha256": "ac795dfa401b6ef0ebc07dfefcc697da28f0a811f2c6449b06abd4b5e2ee6eb3"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-symbols-pre01-20261009.json",
+      "bytes": 513,
+      "sha256": "8b2c245abbb63bee45fded18aac3bcfe2e538fe8729007c60716a0c61ea6e5ef"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-w-tree-pre01-20261009.log",
+      "bytes": 2899,
+      "sha256": "c897d5288b09723d4b97ab3f96abcc76f89db73b3ed9745db4d91a9d7725f660"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-w-tree-pre01-20261009.json",
+      "bytes": 478,
+      "sha256": "5f338ad7ad231e02d5b10d1cb2b405a446954ce9b0f5edad8c9f7d8902d9c0cc"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-local-check-20261008.py",
+      "bytes": 1448,
+      "sha256": "ab78b46d0e49e9a15b170ad0adac2346905d548a12111dd6060628988a4b0bc1"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-build-monitor-20261009.py",
+      "bytes": 2501,
+      "sha256": "cffd827a89272be514b005c57c6268614c6503b7f8bcbf811d0829da726db3c8"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-pre-suite-20261009.py",
+      "bytes": 1774,
+      "sha256": "c23515e7ae65d2b85858ac5f6dcc0d9c29b2a92c7fe1306de0476496f15ec27d"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-native-pre-suite-20261009.json",
+      "bytes": 4411,
+      "sha256": "7be20a9cde9ef7fb4b18cf4bda0fc3483f636785f11d4e1eff0cc723fe4df9b4"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-clean-20261009.py",
+      "bytes": 3071,
+      "sha256": "38c2d3f4e627bdfd1e9334f0017dcf24e2bf2903ddd13f70695c10c1b54ba761"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-record-20261009.py",
+      "bytes": 10057,
+      "sha256": "5a4dc8f79efa697abce5ee837934aec6e8690ba6e7be5bad376e281d7297a39d"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6-logs/c71-query-clean-suite-20261009-01.json",
+      "bytes": 7936,
+      "sha256": "e1372a5871905605f80a11744cf33969261d514984c2feb559b4e9c421cf7f98"
+    }
+  ],
+  "artifacts": 61
+}

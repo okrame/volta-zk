@@ -1,0 +1,18 @@
+{
+  "command": [
+    "rust/target/debug/deps/volta_pcs-efe6791186972026",
+    "c71_b12_native_query_exact_horner_windows_pads_and_resources",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 8.960849578026682,
+  "max_rss_bytes": 274526208,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 8.722612999999999,
+  "system_s": 0.232947,
+  "log": "/tmp/c71-query-native-parity-pre01-20261009.log"
+}

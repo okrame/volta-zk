@@ -552,7 +552,11 @@ fn prove_schedule<S: Auxiliary>(
     }
     let (proof, _) =
         w.source().close(s.attempt, p.plan.layout_digest, &bw.forms, &bw.targets, &mut fs, rows)?;
+    // The closure owns its values; release the original claim capacities
+    // before encoding, then the proof before closing any A.
+    drop(bw);
     wire.raw(15, &codec::encode_linear(DOMAIN_W, &proof).map_err(|e| e.to_string())?, &mut fs)?;
+    drop(proof);
     for (i, o) in openings.into_iter().enumerate() {
         let (proof, _) = old[i].model().close(
             s.attempt,
@@ -576,11 +580,13 @@ fn prove_schedule<S: Auxiliary>(
         &mut fs,
         rows,
     )?;
+    drop(ba);
     wire.raw(
         16 + old.len() as u16,
         &codec::encode_linear(DOMAIN_A, &proof).map_err(|e| e.to_string())?,
         &mut fs,
     )?;
+    drop(proof);
     snapshot.phase_end("linear_A_and_WHIR");
     if rows.len() != 0 {
         return Err("composed prover did not consume its exact reservation".into());

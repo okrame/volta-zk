@@ -1,0 +1,1870 @@
+{
+  "schema": "c71-crypto-preparation-local-v1",
+  "date": "2026-10-09",
+  "recorded_at_utc": "2026-10-09T08:23:46.450414+00:00",
+  "status": "PASS_LOCAL_PRIVATE_SALTS_COMMON_OWNER_AND_W_A_TREE; CPU_LOOKUP_GKR_WHIR_CHAIN_TIMEOUT",
+  "credit": false,
+  "source_git_sha": "f85f6a77dbb2c7f0dcbb5297e74ec06cbcc67c51",
+  "git_dirty": false,
+  "baseline": "9033c64",
+  "goal_complete": false,
+  "goal_status": "active",
+  "canonical_diagnostic": "benchmarks/results/c71-cuda-experiment-2026-10-07-868a3e8.json",
+  "prior_stage": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2.json",
+  "readiness": {
+    "GPU_XOF_owner_and_Tree_integrated": true,
+    "resident_A_initial_Tree_selected": true,
+    "resident_A_query_and_S1_integrated": false,
+    "Tensor_Core_default_selected": false,
+    "QK_PV_MMA_selected": false,
+    "H100_campaign_authorized": false
+  },
+  "provenance": {
+    "platform": "Linux-6.12.94+deb13-arm64-aarch64-with-glibc2.41",
+    "machine": "aarch64",
+    "gpu_execution": false,
+    "cuda_compilation": false,
+    "inputs_sha256": {
+      "cuda/c71_range_runtime.cpp": "3387caf1b8e5b9a73429f009af4703842345471eae43e52e1c892e07b7716643",
+      "cuda/c71_range_runtime.h": "04510060ef3af38a57407f308430074ab9758f413032b5b545a9cd8419295a9e",
+      "cuda/c71_pcs_salts.cu": "f21f37d800f9a7e7fa1af41c2fa6db9dd80460ae2c06c64c3a828b3991b4de5e",
+      "cuda/c71_pcs_salts.cuh": "0ac8d02fb004cd0c5266b29357d9347245d1169bad5d4eac9ad95e0874c6ca03",
+      "rust/volta-pcs/src/c71_matrix/b12.rs": "bc9bf6fe1843844cb32fb6ca2a790409c6a35139fc3221caef851c7b66a2f62d",
+      "rust/volta-pcs/src/c71_matrix/b12/replay.rs": "34d0e20d93cd3a23658b47f934a9f3d45f25540933f65bf21d11fa28b4adb9f9",
+      "rust/volta-pcs/src/c71_matrix/b12/replay_tree.rs": "de10817158ab534d41c4b9ec6113b74afc888575a1228e466f3ea56805e532d0",
+      "rust/volta-pcs/src/c71_matrix/range/windowed/native.rs": "b2a688fe0f6a3c9b4821f5cc8f7c558219ab83baeb1c6057371b4d4c6a8f725e",
+      "tests/c71_range_runtime_host.cpp": "e75ca8c642f44e21b422d58f3ea22a26f41698bc30ea43e889af935c05c498bb",
+      "tests/c71_pcs_salts_host.cpp": "109e1b5f7b9b7e250ecf156ed82cc92c31270f72cf6180fa450d14b1415d1243",
+      "tests/test_c71_range_native.py": "8630807ad647be156d6e01224328f9c755909a1a7c9f0ad85d69a3c3c18d54d2"
+    },
+    "gamma_identities_unchanged": true,
+    "native_fixture": "deferred fake driver; owner g++ O2 Werror UBSan, Rust root O0/dependencies O2",
+    "CUDA_prescan_hierarchy_execution": false,
+    "prescan_oracle": "sequential independent stream in fake driver; original BLAKE3 Rust stream and leaf digests",
+    "clean_suite": "each invocation asserted clean tree and same SHA/binary digest before and after",
+    "warm_cargo": "clean build reused exact binary of tree-build-pre02; full build 55.4205 s / 2483286016 B separately",
+    "full_build_tree_input_identity": "final dirty build source tree committed unchanged at source_git_sha; Cargo fingerprints and binary digest unchanged"
+  },
+  "binary": {
+    "path": "rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+    "bytes": 90035384,
+    "sha256": "c3b2ba04c9ea090d0b6964d938482e45744925e5bb5d37c309cdb5cfab4538d0"
+  },
+  "checks": [
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--offline",
+        "--locked",
+        "-j",
+        "1",
+        "-p",
+        "volta-pcs",
+        "--features",
+        "c71-seed6-reference",
+        "--lib",
+        "--no-run",
+        "--config",
+        "profile.dev.package.volta-pcs.opt-level=0"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk/rust",
+      "exit_code": 0,
+      "wall_s": 0.18765017297118902,
+      "max_rss_bytes": 52953088,
+      "as_limit_mib": null,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.080785,
+      "system_s": 0.106829,
+      "log": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-build-20261009-01.log",
+      "name": "build",
+      "source_git_sha": "f85f6a77dbb2c7f0dcbb5297e74ec06cbcc67c51",
+      "git_dirty": false,
+      "record_run": true,
+      "kind": "warm_build"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_private_coins_",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 2.02662596013397,
+      "max_rss_bytes": 108716032,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 1.972976,
+      "system_s": 0.055668999999999996,
+      "log": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-private-coins-20261009-01.log",
+      "name": "private-coins",
+      "source_git_sha": "f85f6a77dbb2c7f0dcbb5297e74ec06cbcc67c51",
+      "git_dirty": false,
+      "record_run": true,
+      "kind": "rust",
+      "passed": 8
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_private_salts_owner_exact_stream_hash_and_work",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 9.867064610123634,
+      "max_rss_bytes": 235835392,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 9.715585,
+      "system_s": 0.149222,
+      "log": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-owner-exact-20261009-01.log",
+      "name": "owner-exact",
+      "source_git_sha": "f85f6a77dbb2c7f0dcbb5297e74ec06cbcc67c51",
+      "git_dirty": false,
+      "record_run": true,
+      "kind": "rust",
+      "passed": 1
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_private_salts_owner_metadata_alias_and_stale_capability",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 5.636962271761149,
+      "max_rss_bytes": 235724800,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 5.576211,
+      "system_s": 0.058943999999999996,
+      "log": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-owner-metadata-20261009-01.log",
+      "name": "owner-metadata",
+      "source_git_sha": "f85f6a77dbb2c7f0dcbb5297e74ec06cbcc67c51",
+      "git_dirty": false,
+      "record_run": true,
+      "kind": "rust",
+      "passed": 1
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_private_salts_owner_rejections_and_fail_closed",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 5.642728823237121,
+      "max_rss_bytes": 235671552,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 5.551607,
+      "system_s": 0.089154,
+      "log": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-owner-rejections-20261009-01.log",
+      "name": "owner-rejections",
+      "source_git_sha": "f85f6a77dbb2c7f0dcbb5297e74ec06cbcc67c51",
+      "git_dirty": false,
+      "record_run": true,
+      "kind": "rust",
+      "passed": 1
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_private_salts_owner_symbols_are_mandatory",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 33.81361044710502,
+      "max_rss_bytes": 235794432,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 33.486999,
+      "system_s": 0.317228,
+      "log": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-owner-symbols-20261009-01.log",
+      "name": "owner-symbols",
+      "source_git_sha": "f85f6a77dbb2c7f0dcbb5297e74ec06cbcc67c51",
+      "git_dirty": false,
+      "record_run": true,
+      "kind": "rust",
+      "passed": 1
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_weight_tree",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 28.567542775068432,
+      "max_rss_bytes": 235753472,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 28.431138,
+      "system_s": 0.12858,
+      "log": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-w-tree-20261009-01.log",
+      "name": "w-tree",
+      "source_git_sha": "f85f6a77dbb2c7f0dcbb5297e74ec06cbcc67c51",
+      "git_dirty": false,
+      "record_run": true,
+      "kind": "rust",
+      "passed": 2
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_source_tree",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 28.43829970387742,
+      "max_rss_bytes": 235712512,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 28.293361,
+      "system_s": 0.1381,
+      "log": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-a-tree-20261009-01.log",
+      "name": "a-tree",
+      "source_git_sha": "f85f6a77dbb2c7f0dcbb5297e74ec06cbcc67c51",
+      "git_dirty": false,
+      "record_run": true,
+      "kind": "rust",
+      "passed": 2
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_weight_composed_full_chain_original_mac_and_transcript",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 54.45144471433014,
+      "max_rss_bytes": 235687936,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 54.150539,
+      "system_s": 0.282591,
+      "log": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-w-chain-20261009-01.log",
+      "name": "w-chain",
+      "source_git_sha": "f85f6a77dbb2c7f0dcbb5297e74ec06cbcc67c51",
+      "git_dirty": false,
+      "record_run": true,
+      "kind": "rust",
+      "passed": 1
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_source_composed_full_chain_original_mac_and_transcript",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 51.35457858862355,
+      "max_rss_bytes": 235716608,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 51.052587,
+      "system_s": 0.288329,
+      "log": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-a-chain-20261009-01.log",
+      "name": "a-chain",
+      "source_git_sha": "f85f6a77dbb2c7f0dcbb5297e74ec06cbcc67c51",
+      "git_dirty": false,
+      "record_run": true,
+      "kind": "rust",
+      "passed": 1
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "geometry_and_resource_envelope",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 0.0038445238023996353,
+      "max_rss_bytes": 10567680,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.001295,
+      "system_s": 0.002165,
+      "log": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-resources-20261009-01.log",
+      "name": "resources",
+      "source_git_sha": "f85f6a77dbb2c7f0dcbb5297e74ec06cbcc67c51",
+      "git_dirty": false,
+      "record_run": true,
+      "kind": "rust",
+      "passed": 2
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 124,
+      "wall_s": 60.00824767583981,
+      "max_rss_bytes": 161689600,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 59.927343,
+      "system_s": 0.06802899999999999,
+      "log": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-range-macs-20261009-01.log",
+      "name": "range-macs",
+      "source_git_sha": "f85f6a77dbb2c7f0dcbb5297e74ec06cbcc67c51",
+      "git_dirty": false,
+      "record_run": true,
+      "kind": "rust_obligation",
+      "passed": 0,
+      "status": "TIMEOUT_LOCAL_CPU_FULL_LOOKUP_GKR_WHIR_CHAIN",
+      "credit": false
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_canonical_device_original_scan_coverage_rejects_duplicate_and_omitted_rows",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 5.731127287726849,
+      "max_rss_bytes": 235671552,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 5.626015,
+      "system_s": 0.102561,
+      "log": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-source-coverage-20261009-02.log",
+      "name": "source-coverage",
+      "source_git_sha": "f85f6a77dbb2c7f0dcbb5297e74ec06cbcc67c51",
+      "git_dirty": false,
+      "record_run": true,
+      "kind": "rust",
+      "passed": 1
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_c71_range_native.py"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 7.413678550161421,
+      "max_rss_bytes": 265048064,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 7.188381,
+      "system_s": 0.17613099999999998,
+      "log": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-cpp-20261009-02.log",
+      "name": "cpp",
+      "source_git_sha": "f85f6a77dbb2c7f0dcbb5297e74ec06cbcc67c51",
+      "git_dirty": false,
+      "record_run": true,
+      "kind": "python",
+      "passed": 2
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_c71_docs.py"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 0.9944358309730887,
+      "max_rss_bytes": 58249216,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.931319,
+      "system_s": 0.063667,
+      "log": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-docs-20261009-02.log",
+      "name": "docs",
+      "source_git_sha": "f85f6a77dbb2c7f0dcbb5297e74ec06cbcc67c51",
+      "git_dirty": false,
+      "record_run": true,
+      "kind": "python",
+      "passed": 9
+    }
+  ],
+  "metrics": {
+    "C71_XOF_COMPONENT": [
+      {
+        "buffer_bytes": 4096,
+        "buffered_seconds": 0.016196876,
+        "credit": false,
+        "samples_per_mode": 262144,
+        "scope": "local sequential Goldilocks sampler; not H100 or whole PCS",
+        "speedup": 2.3925787911199667,
+        "unbuffered_seconds": 0.038752302
+      }
+    ],
+    "C71_PCS_SALTS_HOST": [
+      {
+        "vector_cases": 56,
+        "byte_checks": 7168,
+        "stream_cases": 11,
+        "forced_mask_checks": 32768,
+        "leaves": 66308,
+        "chunk_calls": 541,
+        "physical_blocks": 66734,
+        "fixture_scratch_bytes": 1280,
+        "max_shape_scratch_bytes": 10520320,
+        "host_prescan_seconds": 0.097478301,
+        "host_replay_seconds": 0.143702328,
+        "gpu_execution": false,
+        "credit": false
+      }
+    ],
+    "C71_PCS_SALTS_REFERENCE": [
+      {
+        "credit": false,
+        "cuda_compilation": false,
+        "gpu_execution": false,
+        "live_mmcs_cases": 3,
+        "reference": "pinned Rust blake3 OutputReader and Goldilocks StandardUniform",
+        "rng_state_bytes": 176,
+        "stdin_blake3": "74580b1dc7829ebd1b2dba166eb9218551b771d98b5fff3124253e0f24112cdc",
+        "stdin_bytes": 2662620
+      }
+    ],
+    "C71_XOF_SALTS4_COMPONENT": [
+      {
+        "accepted_salts_per_mode": 262144,
+        "credit": false,
+        "gpu_execution": false,
+        "leaf_pairs_checked": 65536,
+        "parity_candidate_bytes": 2097152,
+        "repetitions": 3,
+        "same_binary": true,
+        "schedules": [
+          {
+            "ordinary_seconds": [
+              0.018749896,
+              0.018630937,
+              0.018617562
+            ],
+            "salts4_seconds": [
+              0.021920004,
+              0.021861212,
+              0.021892712
+            ],
+            "strided": false
+          },
+          {
+            "ordinary_seconds": [
+              0.04563323,
+              0.045503187,
+              0.045255936
+            ],
+            "salts4_seconds": [
+              0.030309902,
+              0.029746356,
+              0.029711856
+            ],
+            "strided": true
+          }
+        ],
+        "scope": "local sequential and strided sampler; not H100 or whole PCS",
+        "stack_batch_bytes": 32,
+        "strided_cosets": 4096,
+        "strided_rows": 2048
+      }
+    ],
+    "C71_PRIVATE_SALTS_OWNER": [
+      {
+        "candidate_bytes": 16384,
+        "case": 0,
+        "cosets": 32,
+        "credit": false,
+        "gpu_execution": false,
+        "group_cosets": 4,
+        "hash_bands": 8,
+        "hash_fences": 8,
+        "hash_replay_host_s": 0.015192493,
+        "host_indices_capacity_bytes": 640,
+        "host_owner_bytes": 37288,
+        "leaves": 512,
+        "native_d2h_bytes_after_prescan": 16608,
+        "native_h2d_bytes_after_prescan": 524288,
+        "native_peak_capacity_bytes": 84736,
+        "prescan_host_s": 0.000619838,
+        "reference_samples_capacity_bytes": 16384,
+        "rows": 16,
+        "salt_band_uploads": 0
+      },
+      {
+        "candidate_bytes": 8192,
+        "case": 1,
+        "cosets": 64,
+        "credit": false,
+        "gpu_execution": false,
+        "group_cosets": 32,
+        "hash_bands": 2,
+        "hash_fences": 2,
+        "hash_replay_host_s": 0.007630392,
+        "host_indices_capacity_bytes": 160,
+        "host_owner_bytes": 37288,
+        "leaves": 256,
+        "native_d2h_bytes_after_prescan": 8248,
+        "native_h2d_bytes_after_prescan": 262144,
+        "native_peak_capacity_bytes": 21248,
+        "prescan_host_s": 0.000278502,
+        "reference_samples_capacity_bytes": 8192,
+        "rows": 4,
+        "salt_band_uploads": 0
+      },
+      {
+        "candidate_bytes": 4194304,
+        "case": 2,
+        "cosets": 32,
+        "credit": false,
+        "gpu_execution": false,
+        "group_cosets": 32,
+        "hash_bands": 2,
+        "hash_fences": 1,
+        "hash_replay_host_s": 3.875744186,
+        "host_indices_capacity_bytes": 163840,
+        "host_owner_bytes": 37288,
+        "leaves": 131072,
+        "native_d2h_bytes_after_prescan": 4227084,
+        "native_h2d_bytes_after_prescan": 134217728,
+        "native_peak_capacity_bytes": 14713344,
+        "prescan_host_s": 0.103901595,
+        "reference_samples_capacity_bytes": 4194304,
+        "rows": 4096,
+        "salt_band_uploads": 0
+      },
+      {
+        "candidate_bytes": 4096,
+        "case": 3,
+        "cosets": 32,
+        "credit": false,
+        "gpu_execution": false,
+        "group_cosets": 32,
+        "hash_bands": 1,
+        "hash_fences": 1,
+        "hash_replay_host_s": 0.003794696,
+        "host_indices_capacity_bytes": 160,
+        "host_owner_bytes": 37288,
+        "leaves": 128,
+        "native_d2h_bytes_after_prescan": 4140,
+        "native_h2d_bytes_after_prescan": 131072,
+        "native_peak_capacity_bytes": 17152,
+        "prescan_host_s": 0.000186501,
+        "reference_samples_capacity_bytes": 4096,
+        "rows": 4,
+        "salt_band_uploads": 0
+      }
+    ],
+    "C71_PRIVATE_SALTS_METADATA_FAILURE": [
+      {
+        "terminal_rejections": 7,
+        "gpu_execution": false,
+        "credit": false
+      }
+    ],
+    "C71_PRIVATE_SALTS_FAILURE": [
+      {
+        "terminal_rejections": 24,
+        "generic_private_reads": 0,
+        "gpu_execution": false,
+        "credit": false
+      }
+    ],
+    "C71_NATIVE_W_TREE_LOCAL": [
+      {
+        "cache": {
+          "domain_log2": 15,
+          "initial_coset_bytes": 524288,
+          "initial_merkle_scratch_bytes": 1061376,
+          "initial_native_peak_capacity_bytes": 2702080,
+          "query_subtree_bytes_each": 24544,
+          "retained_merkle_digest_bytes": 4064,
+          "retained_pcs_pad_bytes": 1572864,
+          "retained_range_histogram_capacity_bytes": 0,
+          "retained_rng_bytes": 176,
+          "retained_s1_policy": false,
+          "retained_salt_offset_bytes": 512,
+          "scope": "Merkle/pad payloads, not total host capacity; initial scratch includes coset and is no longer live; native high-water includes all buffers on the common owner, separately from this Merkle payload; S1 is retained only within active sequential PCS chain, not by this snapshot; other FFT/cache/query/sourcewise temporaries excluded"
+        },
+        "census": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 49152,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 3277369,
+          "native_reservation_bytes": 37288,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 273498033,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 3266230,
+          "temporary_payload_peak_bytes": 5062577
+        },
+        "credit": false,
+        "different_compiler_optimization_no_speedup_claim": true,
+        "domain_log2": 15,
+        "durable_records": 6,
+        "gpu_execution": false,
+        "native": {
+          "allocations": 101,
+          "arena_bytes": 0,
+          "cleanup_failed": 0,
+          "d2d_bytes": 0,
+          "d2h_bytes": 8996,
+          "fences": 110,
+          "h2d_bytes": 1622264,
+          "host_owner_bytes": 37288,
+          "launches": 447,
+          "live_capacity_bytes": 0,
+          "logical_bytes": 0,
+          "peak_capacity_bytes": 2702080,
+          "peak_reserved_bytes": 2751232,
+          "releases": 101,
+          "stopped": 0,
+          "weights_bytes": 49152,
+          "weights_loaded_bytes": 49152,
+          "weights_sealed": 1,
+          "zeroed_bytes": 1048840
+        },
+        "native_commitment_census": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 49152,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 1651321,
+          "native_reservation_bytes": 37288,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 273498033,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 1640182,
+          "temporary_payload_peak_bytes": 5062577
+        },
+        "native_commitment_host_s": 0.738865241,
+        "native_geometry": [
+          16384,
+          64,
+          256,
+          256
+        ],
+        "reference_commitment_o0_s": 6.5135991650000005,
+        "reference_geometry": [
+          16384,
+          256,
+          64,
+          256
+        ],
+        "source_visits": 49152
+      }
+    ],
+    "C71_NATIVE_W_TREE_REJECTIONS": [
+      {
+        "cases": 8,
+        "scalar_fallback_calls": 0,
+        "gpu_execution": false,
+        "credit": false
+      }
+    ],
+    "C71_NATIVE_A_TREE_LOCAL": [
+      {
+        "cache": {
+          "domain_log2": 15,
+          "initial_coset_bytes": 262144,
+          "initial_merkle_scratch_bytes": 292352,
+          "initial_native_peak_capacity_bytes": 1880576,
+          "query_subtree_bytes_each": 24544,
+          "retained_merkle_digest_bytes": 4064,
+          "retained_pcs_pad_bytes": 1572864,
+          "retained_range_histogram_capacity_bytes": 0,
+          "retained_rng_bytes": 176,
+          "retained_s1_policy": false,
+          "retained_salt_offset_bytes": 512,
+          "scope": "Merkle/pad payloads, not total host capacity; initial scratch includes coset and is no longer live; native high-water includes all buffers on the common owner, separately from this Merkle payload; S1 is retained only within active sequential PCS chain, not by this snapshot; other FFT/cache/query/sourcewise temporaries excluded"
+        },
+        "census": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 1024,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 3247326,
+          "native_reservation_bytes": 52648,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 273272773,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 3299675,
+          "temporary_payload_peak_bytes": 4837317
+        },
+        "credit": false,
+        "different_compiler_optimization_no_speedup_claim": true,
+        "domain_log2": 15,
+        "durable_records": 6,
+        "fixture_original_upload_before_commit": true,
+        "gpu_execution": false,
+        "initial_cpu_scans": 0,
+        "initial_scalar_getter_calls": 0,
+        "native": {
+          "allocations": 594,
+          "arena_bytes": 15360,
+          "cleanup_failed": 0,
+          "d2d_bytes": 0,
+          "d2h_bytes": 8720,
+          "fences": 602,
+          "h2d_bytes": 1577128,
+          "host_owner_bytes": 37288,
+          "launches": 1548,
+          "live_capacity_bytes": 15360,
+          "logical_bytes": 15360,
+          "peak_capacity_bytes": 1880576,
+          "peak_reserved_bytes": 1881600,
+          "releases": 592,
+          "stopped": 0,
+          "weights_bytes": 1024,
+          "weights_loaded_bytes": 1024,
+          "weights_sealed": 1,
+          "zeroed_bytes": 16779780
+        },
+        "native_commitment_census": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 1024,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 1619837,
+          "native_reservation_bytes": 52648,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 273272773,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 1672186,
+          "temporary_payload_peak_bytes": 4837317
+        },
+        "native_commitment_host_s": 0.899068664,
+        "native_geometry": [
+          16384,
+          256,
+          64,
+          256
+        ],
+        "reconstructions": 64,
+        "reference_commitment_o0_s": 6.174917692,
+        "reference_geometry": [
+          16384,
+          256,
+          64,
+          256
+        ],
+        "source_visits": 786432
+      }
+    ],
+    "C71_NATIVE_A_TREE_REJECTIONS": [
+      {
+        "cases": 8,
+        "scalar_fallback_calls": 0,
+        "gpu_execution": false,
+        "credit": false
+      }
+    ],
+    "C71_NATIVE_A_RESOURCE_ENVELOPE": [
+      {
+        "columns_per_reconstruction": 128,
+        "common_device_parts": {
+          "frontier": 301989888,
+          "pads": 1572864,
+          "salt_band": 2097152,
+          "salt_metadata": 256,
+          "salt_row_cursors": 8388608,
+          "twiddles": 8388608,
+          "values": 4294967296
+        },
+        "component_plus_device_replay_upper_bytes": 5585161864,
+        "cosets_per_reconstruction": 4,
+        "credit": false,
+        "cut": 4096,
+        "device_accumulation_phase_bytes": 4650965536,
+        "device_hash_phase_bytes": 4751622656,
+        "device_prescan_phase_bytes": 23102720,
+        "geometry_only": true,
+        "gpu_execution": false,
+        "groups": 512,
+        "host_salt_band_bytes": 0,
+        "named_host_bytes": 47749512,
+        "prescan_minimum_chunks": 512,
+        "remaining_payload_for_other_host_owners_bytes": 320418168,
+        "rows": 1048576,
+        "salt_d2h_control_minimum_bytes": 20998144,
+        "salt_h2d_bytes": 168,
+        "scope": "phase envelope before other host owners; no full pipeline/physical memory claim"
+      }
+    ],
+    "C71_NATIVE_W_RESOURCE_ENVELOPE": [
+      {
+        "component_plus_device_replay_upper_bytes": 4618167208,
+        "credit": false,
+        "cut": 4096,
+        "device_component_bytes": 3745182208,
+        "device_parts": {
+          "cv": 1073741824,
+          "frontier": 234881024,
+          "high_powers": 65792,
+          "low_powers": 268435456,
+          "pads": 1572864,
+          "ring": 2147483648,
+          "salt_band": 2097152,
+          "salt_metadata": 256,
+          "salt_row_cursors": 8388608,
+          "tiles": 126464,
+          "twiddles": 8388608,
+          "weight_and_hash_flags": 512
+        },
+        "device_prescan_phase_bytes": 27297024,
+        "geometry_only": true,
+        "gpu_execution": false,
+        "groups": 128,
+        "host_salt_band_bytes": 0,
+        "named_host_payload_bytes": 87195304,
+        "prescan_minimum_chunks": 1024,
+        "remaining_payload_for_other_host_owners_bytes": 1287412824,
+        "rows": 1048576,
+        "salt_d2h_control_minimum_bytes": 25211904,
+        "salt_h2d_bytes": 168,
+        "scope": "geometry screen before other host owners; their actual capacities are charged by the joint counter"
+      }
+    ],
+    "C71_INTEGRATED_GETTER": [
+      {
+        "phase": "prepare_before_commit",
+        "scope": "reduced original numerical source; CPU work, not HBM or H100 time",
+        "work": {
+          "emitted_bytes": 0,
+          "named_heap_peak": 288,
+          "numerical": {
+            "caller_transient_logical_bytes_upper": 48,
+            "divide_calls": 7,
+            "fp_additions": 0,
+            "fp_multiplications": 0,
+            "integer_additions": 193,
+            "integer_comparisons": 1221,
+            "integer_multiplications": 233,
+            "integer_subtractions": 47,
+            "opaque_affine_calls": 20,
+            "opaque_rms_calls": 37,
+            "opaque_rne_calls": 82,
+            "result_capacity_bytes": 8128,
+            "result_logical_bytes": 4552,
+            "table_reads": 24
+          },
+          "old_kv_reads": 0,
+          "original_scalar_reads": 606,
+          "producer_rows": [
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            2,
+            2,
+            2,
+            2,
+            1
+          ],
+          "weight_scalar_reads": 222
+        }
+      },
+      {
+        "phase": "initial_commit_A",
+        "scope": "reduced original numerical source; CPU work, not HBM or H100 time",
+        "work": {
+          "emitted_bytes": 120576,
+          "named_heap_peak": 400,
+          "numerical": {
+            "caller_transient_logical_bytes_upper": 48,
+            "divide_calls": 3072,
+            "fp_additions": 0,
+            "fp_multiplications": 0,
+            "integer_additions": 72960,
+            "integer_comparisons": 407424,
+            "integer_multiplications": 88832,
+            "integer_subtractions": 16128,
+            "opaque_affine_calls": 3328,
+            "opaque_rms_calls": 13312,
+            "opaque_rne_calls": 25088,
+            "result_capacity_bytes": 2725888,
+            "result_logical_bytes": 1509376,
+            "table_reads": 8192
+          },
+          "old_kv_reads": 0,
+          "original_scalar_reads": 197376,
+          "producer_rows": [
+            768,
+            512,
+            0,
+            2048,
+            2048,
+            2048,
+            2048,
+            2048,
+            2048,
+            2048,
+            1792,
+            1792,
+            1792,
+            2048,
+            2048,
+            2048,
+            2048,
+            2048,
+            2048,
+            2048,
+            1792,
+            1792,
+            1792,
+            1792,
+            1792,
+            1792,
+            1792,
+            1792,
+            1792,
+            1792,
+            1792,
+            1792,
+            1792,
+            1792,
+            1792,
+            1792,
+            1536,
+            1280,
+            512,
+            512,
+            512,
+            0,
+            512,
+            512,
+            256,
+            256,
+            128
+          ],
+          "weight_scalar_reads": 78848
+        }
+      }
+    ]
+  },
+  "durable_traces": [
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-native-w-chain-233-13252699429782912040.jsonl",
+      "records": 296,
+      "provenance": "clean reduced composed proof; original numeric fixtures; no private inputs"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-native-a-chain-254-18147792163206714825.jsonl",
+      "records": 295,
+      "provenance": "clean reduced composed proof; original numeric fixtures; no private inputs"
+    }
+  ],
+  "preliminary_checks": [
+    {
+      "command": [
+        "rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_source_composed_full_chain_original_mac_and_transcript",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 50.887368741910905,
+      "max_rss_bytes": 235667456,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 50.669514,
+      "system_s": 0.196813,
+      "log": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-a-chain-pre02-20261009.log",
+      "record_run": false,
+      "git_dirty": true
+    },
+    {
+      "command": [
+        "rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_source_tree",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 28.468127379659563,
+      "max_rss_bytes": 235716608,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 28.316297,
+      "system_s": 0.14593,
+      "log": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-a-tree-pre01-20261009.log",
+      "record_run": false,
+      "git_dirty": true
+    },
+    {
+      "command": [
+        "g++",
+        "-std=c++17",
+        "-O2",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-fsanitize=undefined",
+        "-fno-sanitize-recover=all",
+        "-I",
+        "cuda",
+        "tests/c71_pcs_salts_host.cpp",
+        "-o",
+        "/tmp/c71-salts-host-pre01"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 1.0596058326773345,
+      "max_rss_bytes": 108769280,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.9631909999999999,
+      "system_s": 0.092703,
+      "log": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-cpp-build-pre01.log",
+      "record_run": false,
+      "git_dirty": true
+    },
+    {
+      "command": [
+        ".venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_c71_range_native.py"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 11.757128674071282,
+      "max_rss_bytes": 264945664,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 10.871042,
+      "system_s": 0.37746199999999996,
+      "log": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-cpp-pre02-20261009.log",
+      "record_run": false,
+      "git_dirty": true
+    },
+    {
+      "command": [
+        "python3",
+        "-c",
+        "import subprocess; subprocess.run([\"/tmp/c71-salts-host-pre01\"], input=bytes(8), check=True)"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 0.035173624753952026,
+      "max_rss_bytes": 10817536,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.029768,
+      "system_s": 0.005162,
+      "log": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-forced-pre01.log",
+      "record_run": false,
+      "git_dirty": true
+    },
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--offline",
+        "--locked",
+        "-j",
+        "1",
+        "-p",
+        "volta-pcs",
+        "--features",
+        "c71-seed6-reference",
+        "--lib",
+        "--no-run",
+        "--config",
+        "profile.dev.package.volta-pcs.opt-level=0"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk/rust",
+      "exit_code": 101,
+      "wall_s": 12.864627068862319,
+      "max_rss_bytes": 1509019648,
+      "as_limit_mib": null,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 11.877068,
+      "system_s": 0.9638289999999999,
+      "log": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-owner-build-pre01-20261009.log",
+      "record_run": false,
+      "git_dirty": true
+    },
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--offline",
+        "--locked",
+        "-j",
+        "1",
+        "-p",
+        "volta-pcs",
+        "--features",
+        "c71-seed6-reference",
+        "--lib",
+        "--no-run",
+        "--config",
+        "profile.dev.package.volta-pcs.opt-level=0"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk/rust",
+      "exit_code": 0,
+      "wall_s": 54.60528912721202,
+      "max_rss_bytes": 2487250944,
+      "as_limit_mib": null,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 48.944691,
+      "system_s": 5.679089,
+      "log": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-owner-build-pre02-20261009.log",
+      "record_run": false,
+      "git_dirty": true
+    },
+    {
+      "command": [
+        ".venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "-s",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_c71_range_native.py"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 7.423991757910699,
+      "max_rss_bytes": 264953856,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 7.138864,
+      "system_s": 0.257038,
+      "log": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-owner-cpp-pre01-20261009.log",
+      "record_run": false,
+      "git_dirty": true
+    },
+    {
+      "command": [
+        "rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_private_salts_owner",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 15.584753971081227,
+      "max_rss_bytes": 235859968,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 15.383816,
+      "system_s": 0.19480699999999998,
+      "log": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-owner-parity-pre01-20261009.log",
+      "record_run": false,
+      "git_dirty": true
+    },
+    {
+      "command": [
+        "rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_private_salts_owner_",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 54.81233396707103,
+      "max_rss_bytes": 235790336,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 54.243289,
+      "system_s": 0.551283,
+      "log": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-owner-pre02-20261009.log",
+      "record_run": false,
+      "git_dirty": true
+    },
+    {
+      "command": [
+        "rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_private_coins_",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 1.9062626790255308,
+      "max_rss_bytes": 108793856,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 1.878225,
+      "system_s": 0.029522999999999997,
+      "log": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-private-coins-pre02-20261009.log",
+      "record_run": false,
+      "git_dirty": true
+    },
+    {
+      "command": [
+        "rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "geometry_and_resource_envelope",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 0.005055589135736227,
+      "max_rss_bytes": 10567680,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.0,
+      "system_s": 0.004737,
+      "log": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-resources-pre02-20261009.log",
+      "record_run": false,
+      "git_dirty": true
+    },
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--offline",
+        "--locked",
+        "-j",
+        "1",
+        "-p",
+        "volta-pcs",
+        "--features",
+        "c71-seed6-reference",
+        "--lib",
+        "--no-run",
+        "--config",
+        "profile.dev.package.volta-pcs.opt-level=0"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk/rust",
+      "exit_code": 0,
+      "wall_s": 54.6598739977926,
+      "max_rss_bytes": 2482434048,
+      "as_limit_mib": null,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 48.845807,
+      "system_s": 5.838912,
+      "log": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-tree-build-pre01-20261009.log",
+      "record_run": false,
+      "git_dirty": true
+    },
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--offline",
+        "--locked",
+        "-j",
+        "1",
+        "-p",
+        "volta-pcs",
+        "--features",
+        "c71-seed6-reference",
+        "--lib",
+        "--no-run",
+        "--config",
+        "profile.dev.package.volta-pcs.opt-level=0"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk/rust",
+      "exit_code": 0,
+      "wall_s": 55.4205222139135,
+      "max_rss_bytes": 2483286016,
+      "as_limit_mib": null,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 49.505069,
+      "system_s": 5.924039,
+      "log": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-tree-build-pre02-20261009.log",
+      "record_run": false,
+      "git_dirty": true
+    },
+    {
+      "command": [
+        "rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_weight_composed_full_chain_original_mac_and_transcript",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 52.56412462098524,
+      "max_rss_bytes": 235728896,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 52.367976,
+      "system_s": 0.18595899999999999,
+      "log": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-w-chain-pre02-20261009.log",
+      "record_run": false,
+      "git_dirty": true
+    },
+    {
+      "command": [
+        "rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_weight_tree",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 101,
+      "wall_s": 12.227869619149715,
+      "max_rss_bytes": 235712512,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 12.031405,
+      "system_s": 0.193021,
+      "log": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-w-tree-pre01-20261009.log",
+      "record_run": false,
+      "git_dirty": true
+    },
+    {
+      "command": [
+        "rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_weight_tree",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 28.80223609879613,
+      "max_rss_bytes": 235778048,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 28.590961,
+      "system_s": 0.20130099999999998,
+      "log": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-w-tree-pre02-20261009.log",
+      "record_run": false,
+      "git_dirty": true
+    }
+  ],
+  "failures_preserved": [
+    {
+      "log": "c71-salts-owner-build-pre01-20261009.log",
+      "exit_code": 101,
+      "reason": "E0282 Result inference; fixed explicit private capability result type; no test ran"
+    },
+    {
+      "log": "c71-salts-w-tree-pre01-20261009.log",
+      "exit_code": 101,
+      "reason": "old D2H accounting assertion 4328 expected vs 8996 actual; fixed complete control-transfer ledger; root/opening checks in later passing runs"
+    },
+    {
+      "log": "c71-salts-clean-range-macs-20261009-01.log",
+      "exit_code": 124,
+      "reason": "unchanged full CPU lookup/GKR/WHIR positive test exceeded 60 s; last output initial_commit_A. Not a pass or a localized proof-stage timing; no extended timeout or retry"
+    }
+  ],
+  "invariants": {
+    "private_capability": "opaque nonclone token tied to common Rust owner; kind17 never publicly allocatable/readable/releasable",
+    "stream": "same domain/NUL/seed, logical cursor, LE rejection and finite cap 2^40; advance host sampler exactly once after prescan, discard prefetch",
+    "replay": "one owner stream; same sticky hash flag; cursor/consumption verified after fence; no salt H2D",
+    "publication": "digest read denied until all groups/replay/current cursors complete and private buffers retire",
+    "A_reconstructions": 512,
+    "W_equivalent_scans": 128,
+    "canonical_counts": "analytical pinned schedule; not measured canonical workload",
+    "MACs": "original VOLE authenticated values and one-time correlations; real AES PCG unchanged; PCS Fp3 and transcript unchanged"
+  },
+  "accounting": {
+    "rust_tests": 21,
+    "python_tests": 11,
+    "checks": 15,
+    "max_test_or_descendant_rss_bytes": 265048064,
+    "max_test_wall_s": 60.00824767583981,
+    "max_passing_test_wall_s": 54.45144471433014,
+    "failed_checks": 1,
+    "AS_per_test_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "serial": true,
+    "owner_host_bytes": 37288,
+    "owner_stats_bytes": 152,
+    "Rust_API_additional_bytes": 48,
+    "salted_band_host_bytes": 0,
+    "salt_seed_metadata_H2D_bytes": 168,
+    "private_device_metadata_aligned_bytes": 256,
+    "private_prescan_scratch_aligned_bytes": 10519552,
+    "W_private_prescan_phase_bytes": 27297024,
+    "A_private_prescan_phase_bytes": 23102720,
+    "private_prescan_phase_retires_before_field_buffers": true,
+    "resource_scope": "named geometry/phase envelope only; joint reduced Budget measured, complete canonical host/device/physical peak still open"
+  },
+  "remaining": [
+    "compile and verify actual CUDA prescan/select/replay and sm_90 kernels in newly authorized campaign",
+    "resident A initial queries and S1; exact PCS v^3=v+1 FFT/remainders, bounded original readers and retention order",
+    "GPU linear/GKR/range and attention selection/synchronizations according to measured profile",
+    "full simultaneous capacities/physical envelope; separate installation/setup/inference/proof/verification and target measurements"
+  ],
+  "artifact_manifest": [
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-build-20261009-01.log",
+      "bytes": 14063,
+      "sha256": "6bdeda30f56de4da517a830e0086c2e577de6a2181bff445f60097f92739e172"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-build-20261009-01.json",
+      "bytes": 554,
+      "sha256": "334231c169237a8fe301ee026e6bf74bc7caee58c7860278a5a183c895a97c53"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-private-coins-20261009-01.log",
+      "bytes": 16731,
+      "sha256": "1ff76c89d2751199f88648d4dbed99580b494f19ff757b1ec204da1942c58df9"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-private-coins-20261009-01.json",
+      "bytes": 485,
+      "sha256": "9efe0324afdd429933916597dcdf457f08e82998d92663449f45b531d68b2064"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-owner-exact-20261009-01.log",
+      "bytes": 2155,
+      "sha256": "2e60aa7cc5c5ed3d942589d74c98f44f74de61c7e7532b9d382010b02f103b20"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-owner-exact-20261009-01.json",
+      "bytes": 511,
+      "sha256": "b65e92de93bc3520d537aa242c666a4c8e4fd2f146946bae76fbce8f40430224"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-owner-metadata-20261009-01.log",
+      "bytes": 339,
+      "sha256": "88b8427de70214ce5b83e38eb76427744b32f52a5cd5ada3f0975169f2945950"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-owner-metadata-20261009-01.json",
+      "bytes": 535,
+      "sha256": "063768f7aa170960d0f3c5b5efeb96d80718e2b0036ca82171d400dc9406ebf2"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-owner-rejections-20261009-01.log",
+      "bytes": 348,
+      "sha256": "b2fcf091ad3f6be8766a3679149c1978833e3907e54f6d8b6c331944b9059e2a"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-owner-rejections-20261009-01.json",
+      "bytes": 516,
+      "sha256": "43018f9b825aa610c43fb1c89c3429f8c02b51539d0982b880aea4dbe1ee68b4"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-owner-symbols-20261009-01.log",
+      "bytes": 228,
+      "sha256": "004afc52a885d053001431e88b0e49f3e18811e4fbbc07b1d0b3dc7314552577"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-owner-symbols-20261009-01.json",
+      "bytes": 509,
+      "sha256": "55d824bf1b95fa0dbf147a8ad81b3fb464c4f8f391f2a95174ee08d5e305a3f6"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-w-tree-20261009-01.log",
+      "bytes": 2907,
+      "sha256": "523122c74dc7f705f42f26b304b961098ba2e3f56b2e8ae8843825f8d026d84c"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-w-tree-20261009-01.json",
+      "bytes": 472,
+      "sha256": "e2699f24a41daf3761b7c10f5cfa168bbe79fb466652051b22d58d4c771bbc39"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-a-tree-20261009-01.log",
+      "bytes": 3040,
+      "sha256": "f805340ed141c5794dcb2a810aaccb9c9569bea1792dfc17f9a6d5de474e090d"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-a-tree-20261009-01.json",
+      "bytes": 470,
+      "sha256": "41bcb83cbf333808f74bce0fdf1f9d70672b649320bd1b64a6f546b2f3afd5e8"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-w-chain-20261009-01.log",
+      "bytes": 2466,
+      "sha256": "a2210b0acb9a7fc98fa76ab57b24bfc9d321fed96ce5dd6d91ac9ab03809bf21"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-w-chain-20261009-01.json",
+      "bytes": 516,
+      "sha256": "c76fb2b2f0d9938a57b66e2d60c31d1b44adc64bf3b080ca6fc69a445815b171"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-native-w-chain-233-13252699429782912040.jsonl",
+      "bytes": 261374,
+      "sha256": "6c02e9944baa4335f49f03fbe56db55b7a4c29432f49acd9f6cdb015db171460"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-a-chain-20261009-01.log",
+      "bytes": 2466,
+      "sha256": "2d0306c51108adbbbc4a7d5176a98279a679560a85bae0ae1204a0ab82d4b33a"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-a-chain-20261009-01.json",
+      "bytes": 516,
+      "sha256": "b409c16df1a19722641de29e9102011ceb1147192690df5fbafe81e570302f82"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-native-a-chain-254-18147792163206714825.jsonl",
+      "bytes": 260048,
+      "sha256": "16678723cbad7971a0a7ab87653615738cbc75eb56fbcbb9d757df9c371186c3"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-resources-20261009-01.log",
+      "bytes": 1974,
+      "sha256": "63c85b8905e44d004086da13b86ccf0f6105bd7739b564b97c2598a01bdeb48d"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-resources-20261009-01.json",
+      "bytes": 481,
+      "sha256": "c24c2997e483e0501c53bb79c7132cf1f618c91f4592e1e52a71181516d81aab"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-range-macs-20261009-01.log",
+      "bytes": 1745,
+      "sha256": "6613b387787a90dd9d3143e5a04107d8a3000059c621e372b9d2cf438149018f"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-range-macs-20261009-01.json",
+      "bytes": 526,
+      "sha256": "cf35cf9f02eaad5d5670d3fb687710839ca12c309b1988aee2422083c29ccd84"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-source-coverage-20261009-02.log",
+      "bytes": 268,
+      "sha256": "380dee0620e21c65fa87884f03a97db742b14e0524c70bceabf1dbfa0c6636ab"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-source-coverage-20261009-02.json",
+      "bytes": 532,
+      "sha256": "7504af9551d0e7baf6c64cc6dc8123a7915c9553e09a54c232e33a9c00c74471"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-cpp-20261009-02.log",
+      "bytes": 98,
+      "sha256": "36efc401ca075946e41e03419c993525607e5fd63b59a00c2356117a74966b96"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-cpp-20261009-02.json",
+      "bytes": 475,
+      "sha256": "d85a1494edd1981285052d29a9016de3480b54d62d738983438b0ebc98cc0382"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-docs-20261009-02.log",
+      "bytes": 98,
+      "sha256": "e32e51039d77db401f9c2063a32d60d3b279a66f389a98f35e3afce6249189a1"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-docs-20261009-02.json",
+      "bytes": 457,
+      "sha256": "0b07cc6f151c4282f3adab410f28892501520bbcf4bdcc460862aaec5b8303cc"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-a-chain-pre02-20261009.log",
+      "bytes": 2466,
+      "sha256": "b2a9b02285f055e57ca419016197226d5676acfdb4457ed9f3d66a5f3927af6e"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-a-chain-pre02-20261009.json",
+      "bytes": 483,
+      "sha256": "cd7c51c62189cc7bea3ca2d203ed1aa1ce69cf53ada7e7b6a42828be842c360a"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-a-tree-pre01-20261009.log",
+      "bytes": 3040,
+      "sha256": "5862237181cf3c25b044f431f19587397eda5d3984127c455dbc0d1c8a440def"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-a-tree-pre01-20261009.json",
+      "bytes": 438,
+      "sha256": "89f5c9b62966acd5d7bdbc31ef267508dad840bd99f4f9afdff15f990c195111"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-cpp-build-pre01.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-cpp-build-pre01.json",
+      "bytes": 553,
+      "sha256": "80caadf744d207482fb7dca285dfc03a4359734a80ddc94e1de22a41aa123f99"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-cpp-pre02-20261009.log",
+      "bytes": 99,
+      "sha256": "1ac285189481bb85a7f4c86eb49cfefa8c858cbb47ed0435c18bafb4cbdc6641"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-cpp-pre02-20261009.json",
+      "bytes": 443,
+      "sha256": "e1cefbd4a59f7ea989bb677c93217b21950156dba0297da5791b9449ba9467b7"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-forced-pre01.log",
+      "bytes": 312,
+      "sha256": "10e2390b79ab1eec3630e882ac4971da8b97d0980988d097efc16c63586e8e09"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-forced-pre01.json",
+      "bytes": 423,
+      "sha256": "2affe6cbd21d9f18f8660ef2a0a51620b6e02fba37995c3d4decffb6df56da08"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-owner-build-pre01-20261009.log",
+      "bytes": 8363,
+      "sha256": "b9c23e5aef09b5e3179afbe610015068679ff7cf6bced4c1495e25eabecbf05b"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-owner-build-pre01-20261009.json",
+      "bytes": 571,
+      "sha256": "31bf54a0b78b3f2e5357430caf9683563cf55d89235c47aa53a772b5aa0542a9"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-owner-build-pre02-20261009.log",
+      "bytes": 14142,
+      "sha256": "d691a6e68fe50dd2c9aac5a0a70db9c00798cb98d1cd82490082e7157f675dc5"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-owner-build-pre02-20261009.json",
+      "bytes": 558,
+      "sha256": "9b97aa2cf3fc10e4b9c584153aa874e16b15244bfb800bf1cbacce9b259f0855"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-owner-cpp-pre01-20261009.log",
+      "bytes": 21,
+      "sha256": "5229bb535261bcd9269d660ecb86a48f8df8319fdf41f73db35f477cd71d1afc"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-owner-cpp-pre01-20261009.json",
+      "bytes": 446,
+      "sha256": "0a1dfd366830ecf4d176d308a3ce1c2afd3af227ed115192a0d75b389c950503"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-owner-parity-pre01-20261009.log",
+      "bytes": 2391,
+      "sha256": "2afc2af63c38abbc5d6d777840d51dc4a4b4fea79aff54745ecd1028613e34d0"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-owner-parity-pre01-20261009.json",
+      "bytes": 464,
+      "sha256": "f817daf733be3c8514f999a932e987825fddd9ebc30a0f12b4f025056675ceac"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-owner-pre02-20261009.log",
+      "bytes": 2725,
+      "sha256": "80ba543c44801d6e9e5bc9b37b2477a4f70de9d3dabd5ac24ed9b0e541bd6c7f"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-owner-pre02-20261009.json",
+      "bytes": 446,
+      "sha256": "f2500ee1e70ffa0862c5f4013a3383576ad1b22aceba3b04a02ea0ad69239ebc"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-private-coins-pre02-20261009.log",
+      "bytes": 16727,
+      "sha256": "7ec809e5202f1d65feade6c36079131cd2d9e1a0c51f756e680324d76ea798f3"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-private-coins-pre02-20261009.json",
+      "bytes": 453,
+      "sha256": "8f350fb6f6ccc572b6a1dbf342739640b7fc8f1eaf2616a37a0b0ebaaa65f5d0"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-resources-pre02-20261009.log",
+      "bytes": 1974,
+      "sha256": "63c85b8905e44d004086da13b86ccf0f6105bd7739b564b97c2598a01bdeb48d"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-resources-pre02-20261009.json",
+      "bytes": 441,
+      "sha256": "a611815065c925c71c33dc95a560237c6cf5447c00ce23c556d8c6ad2ca8b31f"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-tree-build-pre01-20261009.log",
+      "bytes": 14142,
+      "sha256": "6c68be97e68fab7aff3a26153ccff1c15b16aa6b14dbae973153d5cda8f646a4"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-tree-build-pre01-20261009.json",
+      "bytes": 556,
+      "sha256": "1bc7dd601317815151d9f20610b4b1c508210fa4b144b8fdd7dba53f8e20aa82"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-tree-build-pre02-20261009.log",
+      "bytes": 14142,
+      "sha256": "b0b7e25afb12216ae22b96f11fe811a36144dcb70b6ead15227aef0e98e1aadb"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-tree-build-pre02-20261009.json",
+      "bytes": 556,
+      "sha256": "24ee5b4296bf266234d22fb805852bbfee351f43fba988bea088d5d715fb9a09"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-w-chain-pre02-20261009.log",
+      "bytes": 2464,
+      "sha256": "be80eb78b3d75f7cf8f28271ad1c5b02d92892e36d4a3426beff831c495dde6e"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-w-chain-pre02-20261009.json",
+      "bytes": 493,
+      "sha256": "638fe7ad5c7549364401d8c076288c10a55b5ab355b02c2abe7fa3c613de2d9c"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-w-tree-pre01-20261009.log",
+      "bytes": 850,
+      "sha256": "4620573448c2e21c12bc235bcc510d45f6684785d6a48e6b9b958fef38072d6b"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-w-tree-pre01-20261009.json",
+      "bytes": 441,
+      "sha256": "4d8ccc192c16932ab5c34c2162f5b3deab18cb816e52f758680ee4abfe3ef036"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-w-tree-pre02-20261009.log",
+      "bytes": 2900,
+      "sha256": "779c18ec6a433ca8f4dae5d941aee811e03bea0b49e7987386c9a303516056a9"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-w-tree-pre02-20261009.json",
+      "bytes": 449,
+      "sha256": "c3227614f11ff873d9837f1ba99440a982008dd118f4f7234b3b119a7e515fb1"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-local-check-20261008.py",
+      "bytes": 1448,
+      "sha256": "ab78b46d0e49e9a15b170ad0adac2346905d548a12111dd6060628988a4b0bc1"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-suite-20261009.py",
+      "bytes": 2870,
+      "sha256": "2baf1870d8dd862a934abace1f766a24956bcb9294557e73fe856444fc88a797"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-dev-suite-20261009.py",
+      "bytes": 1074,
+      "sha256": "5ecb7230ce7d9dcc519b0ee744cfb56060ba62c780c953348642537f3a8c5329"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-record-20261009.py",
+      "bytes": 9550,
+      "sha256": "1a9e2f45a9ee4c3b9138e1018a8cd78158b9c3965b79b148d9197516a979c9f2"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-suite-20261009-01.json",
+      "bytes": 8952,
+      "sha256": "566cbc5c0d2a4f87a34dd12eccb0eca17a4e986b3989975a6df8d1fe42c85625"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-tail-20261009.py",
+      "bytes": 1638,
+      "sha256": "c107ff3453d865d3108f7fd6c8f47cb8b7bed2b2f841911d9c6624236fd9b3b4"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2-logs/c71-salts-clean-complete-checks-20261009-02.json",
+      "bytes": 11095,
+      "sha256": "38d53f20fe109859240c82c68909056212198e743a3af8018562fc64c55a6e9e"
+    }
+  ],
+  "artifacts": 73
+}

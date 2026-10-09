@@ -1,0 +1,1 @@
+C71_PCS_SALTS_HOST {"vector_cases":0,"byte_checks":0,"stream_cases":0,"forced_mask_checks":32768,"leaves":0,"chunk_calls":0,"physical_blocks":0,"fixture_scratch_bytes":0,"max_shape_scratch_bytes":10520320,"host_prescan_seconds":0.000000000,"host_replay_seconds":0.000000000,"gpu_execution":false,"credit":false}

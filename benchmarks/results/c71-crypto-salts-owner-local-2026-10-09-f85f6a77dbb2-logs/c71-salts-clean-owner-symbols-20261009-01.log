@@ -1,0 +1,6 @@
+
+running 1 test
+test c71_matrix::range::windowed::native::tests::c71_b12_native_private_salts_owner_symbols_are_mandatory ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 540 filtered out; finished in 33.81s
+

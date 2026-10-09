@@ -1,0 +1,15 @@
+
+running 4 tests
+test c71_matrix::range::windowed::native::tests::c71_b12_native_private_salts_owner_exact_stream_hash_and_work ... C71_PRIVATE_SALTS_OWNER {"candidate_bytes":16384,"case":0,"cosets":32,"credit":false,"gpu_execution":false,"group_cosets":4,"hash_bands":8,"hash_fences":8,"hash_replay_host_s":0.015161052,"host_indices_capacity_bytes":640,"host_owner_bytes":37288,"leaves":512,"native_d2h_bytes_after_prescan":16608,"native_h2d_bytes_after_prescan":524288,"native_peak_capacity_bytes":84736,"prescan_host_s":0.0006843,"reference_samples_capacity_bytes":16384,"rows":16,"salt_band_uploads":0}
+C71_PRIVATE_SALTS_OWNER {"candidate_bytes":8192,"case":1,"cosets":64,"credit":false,"gpu_execution":false,"group_cosets":32,"hash_bands":2,"hash_fences":2,"hash_replay_host_s":0.007655214,"host_indices_capacity_bytes":160,"host_owner_bytes":37288,"leaves":256,"native_d2h_bytes_after_prescan":8248,"native_h2d_bytes_after_prescan":262144,"native_peak_capacity_bytes":21248,"prescan_host_s":0.00027867,"reference_samples_capacity_bytes":8192,"rows":4,"salt_band_uploads":0}
+C71_PRIVATE_SALTS_OWNER {"candidate_bytes":4194304,"case":2,"cosets":32,"credit":false,"gpu_execution":false,"group_cosets":32,"hash_bands":2,"hash_fences":1,"hash_replay_host_s":3.883268255,"host_indices_capacity_bytes":163840,"host_owner_bytes":37288,"leaves":131072,"native_d2h_bytes_after_prescan":4227084,"native_h2d_bytes_after_prescan":134217728,"native_peak_capacity_bytes":14713344,"prescan_host_s":0.10260282,"reference_samples_capacity_bytes":4194304,"rows":4096,"salt_band_uploads":0}
+C71_PRIVATE_SALTS_OWNER {"candidate_bytes":4096,"case":3,"cosets":32,"credit":false,"gpu_execution":false,"group_cosets":32,"hash_bands":1,"hash_fences":1,"hash_replay_host_s":0.003797461,"host_indices_capacity_bytes":160,"host_owner_bytes":37288,"leaves":128,"native_d2h_bytes_after_prescan":4140,"native_h2d_bytes_after_prescan":131072,"native_peak_capacity_bytes":17152,"prescan_host_s":0.000193544,"reference_samples_capacity_bytes":4096,"rows":4,"salt_band_uploads":0}
+ok
+test c71_matrix::range::windowed::native::tests::c71_b12_native_private_salts_owner_metadata_alias_and_stale_capability ... C71_PRIVATE_SALTS_METADATA_FAILURE {"terminal_rejections":7,"gpu_execution":false,"credit":false}
+ok
+test c71_matrix::range::windowed::native::tests::c71_b12_native_private_salts_owner_rejections_and_fail_closed ... C71_PRIVATE_SALTS_FAILURE {"terminal_rejections":24,"generic_private_reads":0,"gpu_execution":false,"credit":false}
+ok
+test c71_matrix::range::windowed::native::tests::c71_b12_native_private_salts_owner_symbols_are_mandatory ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 537 filtered out; finished in 54.81s
+

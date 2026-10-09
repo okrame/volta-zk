@@ -1,0 +1,18 @@
+{
+  "command": [
+    "rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+    "c71_b12_native_private_salts_owner",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 15.584753971081227,
+  "max_rss_bytes": 235859968,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 15.383816,
+  "system_s": 0.19480699999999998,
+  "log": "/tmp/c71-salts-owner-parity-pre01-20261009.log"
+}

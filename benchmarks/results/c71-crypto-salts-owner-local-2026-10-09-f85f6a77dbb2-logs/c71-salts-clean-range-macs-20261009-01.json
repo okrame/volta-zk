@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+    "c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 124,
+  "wall_s": 60.00824767583981,
+  "max_rss_bytes": 161689600,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 59.927343,
+  "system_s": 0.06802899999999999,
+  "log": "/tmp/c71-salts-clean-range-macs-20261009-01.log"
+}

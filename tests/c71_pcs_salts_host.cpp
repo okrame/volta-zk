@@ -120,6 +120,28 @@ static uint64_t masks_and_boundaries() {
     assert(!valid(Chunk{CAP-7,0,4,1,8},Geometry{1,CAP-7,1,1}));
     assert(!valid(Geometry{3,0,1,1}) && !valid(Geometry{1,CAP+1,1,1}));
     assert(!valid_capacity(4) && !valid_capacity(MAX_CANDIDATES+8));
+    // Metadata-only S1 R23 admission. Every original R20 shape remains
+    // valid; larger rows require the explicit construction's cut/height.
+    const uint64_t r23=uint64_t{1}<<23;
+    assert(valid(Geometry{r23,63,64,4096}));
+    assert(valid(Geometry{r23,63,128,4096}));
+    assert(valid(Geometry{r23,63,512,4096}));
+    assert(!valid(Geometry{r23,63,1024,4096}));
+    assert(!valid(Geometry{r23,63,1,4096}));
+    assert(!valid(Geometry{r23,63,64,2048}));
+    assert(!valid(Geometry{r23*2,63,64,4096}));
+    assert(valid(Geometry{uint64_t{1}<<20,63,1,1}));
+    assert(valid(Geometry{uint64_t{1}<<20,63,4096,1}));
+    const uint64_t s1_accepted=(uint64_t{1}<<32)+17;
+    assert(valid(Chunk{63+8*s1_accepted,s1_accepted,s1_accepted+25,64,64},
+        Geometry{r23,63,512,4096}));
+    assert(valid_replay_span(r23,0,65536));
+    assert(valid_replay_span(r23,2*r23-1,1));
+    assert(!valid_replay_span(r23,2*r23,1));
+    assert(!valid_replay_span(r23,0,65537));
+    assert(!valid_replay_span(r23,0,0));
+    assert(valid_replay_span(uint64_t{1}<<20,32*(uint64_t{1}<<20)-1,1));
+    assert(!valid_replay_span(r23*2,0,1));
     return checks;
 }
 
@@ -213,7 +235,8 @@ int main() {
     std::printf("C71_PCS_SALTS_HOST {\"vector_cases\":%u,\"byte_checks\":%llu,\"stream_cases\":%u,"
         "\"forced_mask_checks\":%llu,\"leaves\":%llu,\"chunk_calls\":%llu,\"physical_blocks\":%llu,"
         "\"fixture_scratch_bytes\":%llu,\"max_shape_scratch_bytes\":%llu,"
-        "\"host_prescan_seconds\":%.9f,\"host_replay_seconds\":%.9f,\"gpu_execution\":false,\"credit\":false}\n",
+        "\"host_prescan_seconds\":%.9f,\"host_replay_seconds\":%.9f,\"s1_metadata_checks\":17,"
+        "\"gpu_execution\":false,\"credit\":false}\n",
         vector_cases,(unsigned long long)byte_checks,stream_cases,(unsigned long long)forced_checks,
         (unsigned long long)leaves,(unsigned long long)chunk_calls,(unsigned long long)physical,
         (unsigned long long)max_scratch,(unsigned long long)scratch,scan_seconds,replay_seconds);

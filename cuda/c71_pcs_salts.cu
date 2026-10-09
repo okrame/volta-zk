@@ -143,8 +143,8 @@ extern "C" cudaError_t c71_pcs_salts_replay_launch(cudaStream_t stream,
     const c71_salts::Descriptor* descriptor,uint64_t* current,uint64_t rows,uint64_t first,uint64_t count,
     uint64_t* salts,uint64_t* consumed,uint32_t* failed) {
     if(!stream || !descriptor || !current || !salts || !consumed || !failed ||
-        !c71_salts::power_two(rows) || rows>(uint64_t{1}<<20) || !count || count>65536 ||
-        first>32*rows || count>32*rows-first || current==salts || current==consumed || salts==consumed)
+        !c71_salts::valid_replay_span(rows,first,count) ||
+        current==salts || current==consumed || salts==consumed)
         return cudaErrorInvalidValue;
     const uint64_t unique=count<rows ? count : rows;
     replay<<<unsigned((unique+127)/128),128,0,stream>>>(descriptor,current,rows,first,count,salts,consumed,failed);

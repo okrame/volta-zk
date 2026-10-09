@@ -31,8 +31,19 @@ C71_SALT_HD constexpr bool valid_capacity(uint32_t n) {
     return power_two(n) && n>=8 && n<=MAX_CANDIDATES;
 }
 C71_SALT_HD constexpr bool valid(Geometry g) {
-    return power_two(g.rows) && g.rows<=(uint64_t{1}<<20) && g.origin<=CAP &&
-        power_two(g.cosets) && g.cosets<=4096 && power_two(g.cut) && g.cut<=g.rows*g.cosets;
+    if (!power_two(g.rows) || g.rows>(uint64_t{1}<<23) || g.origin>CAP ||
+        !power_two(g.cosets) || g.cosets>4096 || !power_two(g.cut) ||
+        g.cut>g.rows*g.cosets) return false;
+    // Preserve every original R20 geometry. The only larger geometry is
+    // the S1 construction: cut4096, at least two cosets, height<=2^32.
+    // Its owner must additionally enforce an explicit two-coset group.
+    return g.rows<=(uint64_t{1}<<20) ||
+        (g.cosets>=2 && g.cut==4096 && g.rows*g.cosets<=(uint64_t{1}<<32));
+}
+C71_SALT_HD constexpr bool valid_replay_span(uint64_t rows, uint64_t first, uint64_t count) {
+    if (!power_two(rows) || rows>(uint64_t{1}<<23) || !count || count>65536) return false;
+    const uint64_t height=(rows<=(uint64_t{1}<<20) ? 32 : 2)*rows;
+    return first<=height && count<=height-first;
 }
 C71_SALT_HD constexpr bool valid(Chunk c, Geometry g) {
     return valid(g) && valid_capacity(c.capacity) && c.cursor<=CAP && c.cursor>=g.origin &&

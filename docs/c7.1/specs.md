@@ -511,8 +511,10 @@ W non seleziona una retention completa.
 diretta/inversa, normalizzazione 1/N, geometrie pari/dispari e riferimento
 dei resti a quattro FFT. Due tabelle twiddle coesistono: `32*B` byte,
 64 MiB al cap B=2^21. I confronti Rust/C++ usano spettri nativi, pad e
-tre colonne base per Fp3. Il percorso host è verificato; quello CUDA
-è compilato, senza una verifica GPU acquisita.
+tre colonne base per Fp3. Il percorso host è verificato; le compilazioni
+CUDA storiche non convalidano le modifiche correnti alla FFT naturale.
+Compilazione e parità GPU della sorgente corrente restano da acquisire
+nella campagna.
 
 ## Preparazione e prova a memoria limitata
 
@@ -681,7 +683,11 @@ ricevuti prima dell'installazione. I cap precedono le allocazioni del
 decoder: candidata ≤1 MiB, tabelle esattamente 24.414.870 B, installazione
 136 B, richiesta 416 B. Il framing della risposta aggiunge 680 B al corpo;
 il completamento ne usa 73. Sono dati sul canale locale autenticato,
-non una nuova autenticazione crittografica del trasporto.
+non una nuova autenticazione crittografica del trasporto. Il runner
+attuale imposta timeout socket fissi di 65 s, anche durante l'attesa
+della risposta completa. Il limite diagnostico deve essere separato dal
+target temporale secondo i [prerequisiti del runbook](runpod-tests.md#prerequisiti-operativi-ancora-aperti),
+con deadline esterna e arresto terminale conservati.
 
 [canonical_metrics.rs](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_metrics.rs)
 conta i byte effettivamente letti/scritti dal lato V, separando
@@ -1258,8 +1264,9 @@ raw, output, istogramma o slack privato viene scaricato. Un raw RoPE
 150×32×512 usa 19.660.800 B, oltre a 4.915.200 B di input e altrettanti
 per la RNE se simultaneamente vivi. Questi subtotali non sostituiscono
 il conto completo. L'owner dispone ora di 512 descrittori fissi, conteggiati
-in `host_owner_bytes`; l'esaurimento resta terminale. La schedule deve
-ancora censire tutti gli istogrammi, checkpoint e workspace simultanei.
+in `host_owner_bytes`; l'esaurimento resta terminale. Istogrammi,
+checkpoint e workspace simultanei sono inclusi nel ledger tipato sopra;
+la misura della loro residenza fisica resta aperta.
 RMS conserva prodotto ponderato opzionale, somma dei quadrati per testa e
 output i16. Usa gli stessi tre coefficienti u128 di `rms::Integer`, con
 envelope verificato prima del launch e confronto delle soglie quadrate

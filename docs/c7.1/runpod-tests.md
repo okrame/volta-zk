@@ -11,9 +11,12 @@ il pod spento. Lo [stato del percorso](design.md#stato-di-implementazione-e-lavo
 e l'[indice delle evidenze](design.md#evidenze-e-decisioni) distinguono
 ammissione Γ, failure canonico e nuovi controlli locali.
 
-Il goal prepara in locale l'intero percorso crittografico per H100 80 GB,
-ed è concluso prima della campagna, con parità e conto conclusivo nel
-[record](../../benchmarks/results/c71-crypto-rms-local-2026-10-09-abd2de09efb4.json);
+Il goal prepara in locale l'intero percorso crittografico per H100 80 GB.
+Parità e conto del checkpoint locale sono nel
+[record](../../benchmarks/results/c71-crypto-rms-local-2026-10-09-abd2de09efb4.json),
+ma la revisione ha rilevato i [prerequisiti operativi](#prerequisiti-operativi-ancora-aperti)
+ancora aperti. La precedente dichiarazione di conclusione non copriva
+queste lacune del passaggio hardware;
 **nessuna nuova campagna è autorizzata**.
 Hardware e durata richiedono una nuova decisione.
 La preparazione locale non autorizza riattivazione, nuovi pod o benchmark
@@ -48,7 +51,7 @@ Accumulo W ordinario e QK/PV scalari rimangono default; le candidate Tensor/MMA
 sono confronti espliciti. Parità host e driver simulato non attribuiscono
 compilazione sm_90, parità CUDA, prestazioni o picco fisico H100.
 
-Percorso principale: completare codice/test/screen locali → autorizzare
+Percorso principale: chiudere i prerequisiti operativi locali → autorizzare
 hardware e durata → verificare ambiente e riusare Γ → parità CUDA e
 misure rappresentative con conto simultaneo → esperimento O=0/150/300 →
 conservare esiti e arrestare il pod. La campagna misurerà separatamente
@@ -57,6 +60,46 @@ installazione W, setup di sessione, inferenza, prova e verifica. La
 quando l'ammissione pertinente è invalidata; la prova completa richiede
 Γ ammesso. Cronache, pod/deadline e stime superate rimangono nel
 [runbook storico](../c7.1-history/runpod-tests-2026-10-07.md).
+
+### Prerequisiti operativi ancora aperti
+
+La revisione su `c5b81bf` conferma le integrazioni e i record locali,
+ma non un passaggio alla campagna completo. Prima dell'avvio a pagamento:
+
+1. **Parità dei nuovi consumer sulla libreria reale.** I filtri PCS/sali,
+   FFT naturale, query, closure lineare e S1/Query E usano
+   [`native::tests::fixture`](../../rust/volta-pcs/src/c71_matrix/range/windowed/native.rs),
+   che compila sempre `range-host-fixture.so` con il driver simulato.
+   `C71_NATIVE_PARITY_LIBRARY` è letto soltanto dal test hardware range
+   già documentato sotto; impostarlo non converte gli altri filtri.
+   Preparare ingressi hardware espliciti per le parità positive,
+   riusando gli oracoli e rifiutando la libreria simulata. I test di fault
+   injection e simboli mancanti restano host. L'esecuzione CUDA avverrà
+   soltanto sul pod autorizzato, prima della prova canonica.
+2. **Timeout del trasporto diagnostico.**
+   [`canonical_runner::pair`](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_runner.rs)
+   imposta read/write timeout a 65 s. Il verificatore attende il primo
+   byte mentre il prover prepara l'intera risposta: oltre quel silenzio
+   chiude il canale, anche con `PROOF_SECONDS` maggiore. L'installazione W
+   precede queste socket e non è soggetta a tale attesa. Separare il limite
+   diagnostico di trasporto dal target prestazionale, mantenendo deadline
+   esterna, terminalità e test ridotti di timeout/disconnessione.
+3. **Monitor e metadati della campagna.** Lo snippet dell'esperimento
+   registra HBM ma non arresta al superamento delle soglie fisiche.
+   [`c71_campaign_measure.py`](../../scripts/c71_campaign_measure.py) usa
+   ancora la riserva di chiusura fissa di 1.800 s e soglie della calibrazione
+   (RSS 96 GiB, HBM 80 GB), senza verificare la riserva fisica congiunta
+   della prova. Preparare e verificare con fixture un lancio sorvegliato
+   che applichi i limiti canonici e la riserva concordata. Aggiornare anche
+   `cpu_phases`/`gpu_phases` nel report del runner: le etichette elencano
+   ancora A, sali, resti e contrazioni fra le fasi CPU, benché le route
+   selezionate siano residenti. Non usarle per attribuire i tempi.
+
+Questi interventi riguardano test e controllo dell'esperimento; non
+cambiano Γ, protocollo, limiti di memoria o target di 65 s. I record
+positivi e negativi esistenti conservano il proprio ambito. Compilazione
+CUDA, parità hardware, picco fisico e cinque tempi restano verifiche della
+campagna successiva, non risultati già acquisiti.
 
 ## Autorizzazione e limiti
 
@@ -95,7 +138,9 @@ corretto. Le eccezioni AS non richiedono una nuova approvazione per campagna.
 Monitorare l'albero processi, HBM, cgroup/swap e disco; i campioni non sono
 un picco completo. [c71_campaign_measure.py](../../scripts/c71_campaign_measure.py)
 richiede `AUTHORIZED_END_EPOCH` e UUID in `CUDA_VISIBLE_DEVICES`; il suo
-arresto deve raggiungere i gruppi figli. Il timeout di un processo non spegne
+arresto deve raggiungere i gruppi figli. Il wrapper corrente richiede
+l'adattamento indicato nei [prerequisiti](#prerequisiti-operativi-ancora-aperti)
+prima dell'uso canonico. Il timeout di un processo non spegne
 il pod. Verificare lo stato finale dal provider entro la deadline, anche
 se il salvataggio è incompleto. I vecchi flag provider di deadline non
 sono un meccanismo affidabile di arresto.
@@ -286,8 +331,10 @@ dei MAC originali, contando 124 B e due fence del consumer per round
 separatamente dai producer. Verificare mapping W unico, scanner A
 senza lock esterno, ritiro prima della pubblicazione e assenza di
 consumo correlazioni sui round falliti. Il checkpoint locale non
-compila CUDA; ripetere i cinque filtri nativi pertinenti sulla libreria
-reale. Per S1 ripetere singleton/OOD, codec, contrazioni e fold contro
+compila CUDA; portare i confronti positivi dei filtri lineari negli
+ingressi hardware espliciti ancora da predisporre sopra. Non rilanciare
+i filtri simulati attribuendo loro credito CUDA. Per S1 ripetere
+singleton/OOD, codec, contrazioni e fold contro
 l'oracolo PCS indipendente; verificare retention dopo apertura del
 predecessore e old+new fino al retirement, senza duplicato host S1.
 Per Query E ripetere Horner in tutti gli stadi, prefissi virtuali 0..2,
@@ -344,8 +391,12 @@ fisiche. Il raggruppamento dei coset introduce accumulazioni aggiuntive:
 non riusare i vecchi upper temporali o dare credito al lavoro non crescente.
 
 Parità hardware, tempo H100 e picco fisico si verificano nella campagna
-autorizzata, con parità prima della prova completa; non sono gate locali. Il target di 65 s non è un gate preventivo per l'esperimento
-diagnostico: misurare e conservare anche il mancato target. Rimangono
+autorizzata, con parità prima della prova completa; non sono gate locali.
+Gli ingressi di test e il lancio sorvegliato vanno invece preparati prima,
+secondo i [prerequisiti](#prerequisiti-operativi-ancora-aperti).
+Il target di 65 s non è un gate preventivo per l'esperimento diagnostico;
+il timeout socket attuale deve essere corretto per permettere tale misura.
+Misurare e conservare anche il mancato target. Rimangono
 invariati NoPeek, MAC originali, margine arena 256 MiB, margine globale
 1 GiB e stop su esaurimento senza spill dinamico.
 
@@ -359,8 +410,10 @@ loro stati simultaneamente vivi. Un kernel veloce da solo non dimostra
 il tempo completo. CUDA richiesto ma non disponibile deve produrre errore,
 senza un percorso CPU sostitutivo. La produzione usa PCG reale/AES.
 
-Comando sul solo hardware autorizzato, dopo ammissione di Γ, build e
-parità, entro il budget residuo con la riserva di chiusura. Impostare
+Schema di comando sul solo hardware autorizzato, dopo chiusura dei
+prerequisiti sopra, ammissione di Γ, build e parità, entro il budget residuo
+con la riserva di chiusura. Non è ancora un lanciatore completo con gli
+arresti fisici richiesti. Impostare
 `APPROVED_SHA`, `PROOF_SECONDS`, `CANDIDATE`, `TABLES`, `PACKED`, `LIBRARY`
 e `RUN` (directory nuova sotto `benchmarks/raw`). Il device logico è 0;
 fissare prima `CUDA_VISIBLE_DEVICES` all'UUID autorizzato,

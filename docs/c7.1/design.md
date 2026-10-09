@@ -73,9 +73,10 @@ non trasferisce automaticamente i bound B12 al programma completo.
 
 Il runner esplicito `experiment-cuda` collega i 13 producer, inferenza
 causale, replay A, PCS/range/GKR, verifica e promozione per O=0/150/300.
-È un percorso misto GPU/CPU. Il seguente stato distingue l'ultimo
-checkpoint locale validato dalla preparazione successiva; integrazione software e parità ridotta
-non attribuiscono prestazioni o picco fisico H100.
+È un percorso misto GPU/CPU. La tabella descrive l'integrazione corrente;
+parità ridotta e integrazione software non attribuiscono compilazione,
+prestazioni o picco fisico H100. I prerequisiti operativi ancora aperti
+sono nel [runbook](runpod-tests.md#prerequisiti-operativi-ancora-aperti).
 
 | Parte | Stato e confine |
 |---|---|
@@ -137,9 +138,15 @@ riprende un'installazione interrotta. La campagna precedente è chiusa.
 Il goal locale prepara **l'intero percorso crittografico per H100 80 GB**,
 baseline `9033c64`. Si conclude quando codice, parità ridotte, benchmark
 rappresentativi, conto completo e procedure sono pronti, prima della
-campagna hardware. La preparazione locale è conclusa: il
-[record conclusivo](../../benchmarks/results/c71-crypto-rms-local-2026-10-09-abd2de09efb4.json)
-conserva parità, benchmark e ledger. I target hardware restano aperti.
+campagna hardware. Il
+[checkpoint locale](../../benchmarks/results/c71-crypto-rms-local-2026-10-09-abd2de09efb4.json)
+conserva parità, benchmark e ledger. La revisione del passaggio alla H100
+ha però rilevato prerequisiti operativi non coperti dalla precedente
+dichiarazione di conclusione: ingressi di test sulla libreria CUDA reale,
+timeout del trasporto diagnostico e monitor della campagna. Il
+[runbook](runpod-tests.md#prerequisiti-operativi-ancora-aperti) ne definisce
+la chiusura; la preparazione operativa non è ancora completa.
+I target hardware restano aperti.
 Nuova H100 e durata richiedono nuova autorizzazione.
 
 Il [checkpoint S1 e Query E](../c7.1-history/crypto-residual-query-2026-10-09.md)
@@ -210,8 +217,10 @@ e compilazione sm_90 non scaricano queste premesse.
 
 ### Evidenze e decisioni
 
-Questa è la mappa dei checkpoint; dettagli di fixture, RSS, tempi,
-fallimenti e provenienza rimangono nei record e nelle storie datate.
+Questa è la mappa dei checkpoint, ciascuno riferito alla propria SHA;
+le lacune storiche in tabella non sostituiscono lo stato corrente sopra.
+Dettagli di fixture, RSS, tempi, fallimenti e provenienza rimangono nei
+record e nelle storie datate.
 Ogni nuova integrazione deve avere parità esatta ridotta, benchmark
 rappresentativo e conto completo prima della selezione. Le evidenze
 locali sono `credit:false`, senza compilazione o esecuzione CUDA.

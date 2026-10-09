@@ -8,7 +8,10 @@
 I controlli locali usano input piccoli, un solo processo di test per volta,
 un worker Rayon e 60 s / 2 GiB per invocazione. La compilazione è mirata,
 con un solo job, 64 codegen unit, deadline 120 s e monitor del RSS
-aggregato dell'albero processi: Stop a 3 GiB. Usa il target assoluto
+aggregato campionato: stop a 3 GiB. Il wrapper archiviato osserva i
+processi visibili in `/proc`, esclusi sé stesso e i processi con PPid zero;
+il valore può includere altri processi, non soltanto i figli della build.
+Usa il target assoluto
 `rust/target`, senza incremental. Il nuovo limite riguarda solo la build;
 i timeout dei test non autorizzano estensioni.
 Non eseguire il workspace completo, i pesi reali o i domini PCS D34/D35.
@@ -58,19 +61,30 @@ Le fonti congelate conservano i riferimenti originali secondo la
 
 ## Compilazione mirata
 
+Il wrapper seguente è quello della VM `/home/okrame/projects/volta-zk`;
+contiene quel target assoluto. Su un altro host predisporre un wrapper
+equivalente senza modificare l'artefatto storico. Log/report devono essere
+nuovi: la directory temporanea distinta evita sovrascritture.
+
 ```bash
+set -euo pipefail
+C71_BUILD_MONITOR="$C71_ROOT/benchmarks/results/c71-crypto-rms-local-2026-10-09-abd2de09efb4/c71-build-monitor-120-20261009.py"
+C71_BUILD_LOGS="$(mktemp -d /tmp/c71-build.XXXXXX)"
 cd "$C71_ROOT/rust"
 C71_RUST_HOST="$(rustc -vV | sed -n 's/^host: //p')"
 C71_LLD_DIR="$(rustc --print sysroot)/lib/rustlib/$C71_RUST_HOST/bin/gcc-ld"
 test -d "$C71_LLD_DIR"
-timeout -k 5s 120s cargo rustc --offline --locked -j 1 -p volta-pcs \
+python3 "$C71_BUILD_MONITOR" "$C71_BUILD_LOGS/lib.log" "$C71_BUILD_LOGS/lib.json" \
+  cargo rustc --offline --locked -j 1 -p volta-pcs \
   --features c71-seed6-reference --lib --profile test \
   --config profile.dev.package.volta-pcs.opt-level=0 \
   --config profile.dev.package.volta-pcs.codegen-units=64 -- \
   -Clink-arg=-fuse-ld=lld "-Clink-arg=-B$C71_LLD_DIR" -Clink-arg=-Wl,--threads=1
-timeout -k 5s 120s cargo build --offline --locked -j 1 -p volta-pcs \
+python3 "$C71_BUILD_MONITOR" "$C71_BUILD_LOGS/calibration.log" "$C71_BUILD_LOGS/calibration.json" \
+  cargo build --offline --locked -j 1 -p volta-pcs \
   --features c71-b12-pcs --example c71_calibration
-timeout -k 5s 120s cargo build --offline --locked -j 1 -p volta-pcs \
+python3 "$C71_BUILD_MONITOR" "$C71_BUILD_LOGS/reference.log" "$C71_BUILD_LOGS/reference.json" \
+  cargo build --offline --locked -j 1 -p volta-pcs \
   --features c71-seed6-reference --example c71_canonical_reference
 cd "$C71_ROOT"
 ```
@@ -121,6 +135,10 @@ Dopo la build mirata, eseguire **un filtro per invocazione**, con 60 s /
 un driver CUDA simulato; confrontano matematica e lifecycle, senza
 compilare/eseguire CUDA. I risultati datati, RSS e provenienza sono
 nell'[indice delle evidenze](design.md#evidenze-e-decisioni).
+Questi filtri costruiscono la libreria simulata anche su una H100:
+`C71_NATIVE_PARITY_LIBRARY` non ne cambia il backend. Gli ingressi
+hardware dei nuovi consumer sono un
+[prerequisito ancora aperto](runpod-tests.md#prerequisiti-operativi-ancora-aperti).
 
 | Filtro | Significato |
 |---|---|
@@ -563,10 +581,12 @@ Il link dell'owner ABI 4 richiede anche
 `cuda/c71_dense_i16.cu`; Rust rifiuta librerie della precedente ABI.
 Con un toolkit dotato di runtime statico usare `--cudart static` per la libreria;
 non dedurre un errore dei kernel dall'assenza di `libcudart.so`.
-I filtri `c71_b12_windowed_native_*` compilano ora una libreria host
+I filtri ordinari `c71_b12_windowed_native_*` compilano una libreria host
 temporanea del medesimo owner, con simboli CUDA fittizi e algebra di
 riferimento, e la caricano nel prover Rust. Non caricano la libreria CUDA
-reale. Byte D10 usa finestre da 512 B, signed D12 da 4.096 B; l'arena
+reale; l'eccezione è il test ignored
+`c71_b12_windowed_native_hardware_parity_explicit` del runbook H100.
+Byte D10 usa finestre da 512 B, signed D12 da 4.096 B; l'arena
 simulata è di 262.144 B. I controlli non verificano kernel, D34/D35 o H100.
 Per il controllo host della FFT:
 
@@ -633,9 +653,12 @@ c71_b12_scattered_
 c71_b12_query_byte_windows
 c71_b12_retained_lifecycle
 c71_b12_full_sourcewise_chain
-c71_b12_windowed_native_
 c71_seed6_native_full_o0_proof_promotes_same_receipt_after_role_journals
 ```
+
+Per il range nativo riusare i filtri separati già elencati sopra;
+il prefisso aggregato include molte fixture e non è un controllo unico
+da 60 s.
 
 Il test budget controlla rifiuto prima di allocazione, somma host/device,
 realloc vecchio+nuovo, singolo owner e restituzione mmap. Le fixture C

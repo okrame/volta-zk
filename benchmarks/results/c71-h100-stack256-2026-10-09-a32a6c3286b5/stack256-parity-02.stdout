@@ -1,0 +1,13 @@
+
+running 1 test
+test c71_matrix::range::windowed::native::tests::c71_b12_native_hardware_transform_natural_forward_inverse ... C71_NATIVE_TRANSFORM_BENCH {"batch":32767,"credit":false,"forward_owner_host_s":0.002386929,"gpu_execution":true,"inverse_owner_host_s":0.001217546,"launches_per_transform":7,"log_length":3}
+C71_NATIVE_TRANSFORM_BENCH {"batch":32768,"credit":false,"forward_owner_host_s":0.002154206,"gpu_execution":true,"inverse_owner_host_s":0.001241161,"launches_per_transform":13,"log_length":3}
+C71_NATIVE_TRANSFORM_BENCH {"batch":65530,"credit":false,"forward_owner_host_s":0.004499703,"gpu_execution":true,"inverse_owner_host_s":0.002372738,"launches_per_transform":13,"log_length":3}
+C71_NATIVE_TRANSFORM_BENCH {"batch":65536,"credit":false,"forward_owner_host_s":0.004308715,"gpu_execution":true,"inverse_owner_host_s":0.0024896,"launches_per_transform":19,"log_length":3}
+C71_NATIVE_TRANSFORM_BENCH {"batch":3,"credit":false,"forward_owner_host_s":0.001078457,"gpu_execution":true,"inverse_owner_host_s":0.000375157,"launches_per_transform":5,"log_length":16}
+C71_NATIVE_TRANSFORM_BENCH {"batch":3,"credit":false,"forward_owner_host_s":0.002087549,"gpu_execution":true,"inverse_owner_host_s":0.000690852,"launches_per_transform":7,"log_length":17}
+C71_NATIVE_TRANSFORM {"capacity_peak_bytes":8389120,"cases":36,"census":{"denied_allocations":0,"enforced":true,"excluded_packed_w_capacity_bytes":0,"host_large_allocation_release":"glibc fixed mmap threshold 128 KiB, max 2 arenas","host_layout_bytes":2103024,"native_reservation_bytes":0,"operational_margin_required_bytes":268435456,"payload_limit_bytes":5905580032,"peak_plus_runtime_allowance_bytes":292599884,"physical_runtime_allowance_verified":false,"runtime_allowance_bytes":268435456,"temporary_live_bytes":2103749,"temporary_payload_peak_bytes":24164428},"credit":false,"gpu_execution":true,"host_owner_bytes":42088,"log_lengths":[1,17],"natural_forward_and_inverse":true}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 600 filtered out; finished in 0.58s
+

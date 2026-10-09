@@ -27,7 +27,10 @@ La [correzione successiva del monitor](../c7.1-history/h100-monitor-stack-2026-1
 passa 35 test: copertura smaps contigua, massimo due riletture/64 fallimenti,
 snapshot privati e cap fisico conservato. Due test Python del runtime nativo
 passano con la riserva iniziale CUDA a 256 B e tre errori terminali simulati.
-Questi risultati locali non sostituiscono la nuova parità sulla libreria reale.
+La [validazione successiva sulla H100](../c7.1-history/h100-stack256-2026-10-09.md)
+passa i 15 test reali e il diagnostico nonlineare dopo ricompilazione sm_90;
+la nuova inferenza ha token e contatori nativi identici alla baseline.
+Questi sono risultati del pod, distinti dai test locali e dalla prova completa.
 
 ## Limiti e ambiente
 

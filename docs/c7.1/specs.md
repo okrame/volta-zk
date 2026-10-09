@@ -1258,11 +1258,13 @@ l'owner Rust e i relativi descrittori rimangono memoria host da censire.
 Il loader controlla ABI 4 prima di creare un contesto e richiede i simboli
 di vista/abort; la precedente ABI 2 da 144 B è rifiutata prima di leggere
 il nuovo ledger, che aggiunge `d2d_bytes`.
-La [candidata H100 `a32a6c3`](../c7.1-history/h100-monitor-stack-2026-10-09.md)
+La [configurazione H100 `a32a6c3`](../c7.1-history/h100-stack256-2026-10-09.md)
 richiede e rilegge `cudaLimitStackSize=256` prima di creare lo stream;
 errore o valore diverso rende l'owner terminale. È una configurazione iniziale,
-non un bound fisico: il probe a contesto vuoto libera 207.618.048 B,
-mentre risparmio canonico e allowance completa richiedono misure separate.
+non un bound fisico: il probe a contesto vuoto libera 207.618.048 B.
+Passano 15/15 parità CUDA e inferenza O=0 esatta; il massimo temporaneo
+campionato scende da 1.474.276.864 a 1.267.047.936 B, con contatori nativi
+identici. Picco canonico completo e allowance restano da verificare.
 Il monitor esenta W solo con copertura smaps completa e contigua. Conserva
 letture fallite, consente due riletture per campione e al massimo 64 fallimenti
 per run; i campioni recuperati conservano il cap fisico ma non il credito al

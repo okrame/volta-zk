@@ -1,0 +1,532 @@
+{
+  "artifacts": [
+    {
+      "bytes": 41417,
+      "path": "benchmarks/results/c71-h100-stack256-2026-10-09-a32a6c3286b5/build-cuda-stack256.stderr",
+      "sha256": "8e10942a1b63179ef1ff2afca6c465b162397597356684d91ce71f073e3f0194"
+    },
+    {
+      "bytes": 0,
+      "path": "benchmarks/results/c71-h100-stack256-2026-10-09-a32a6c3286b5/build-cuda-stack256.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 0,
+      "path": "benchmarks/results/c71-h100-stack256-2026-10-09-a32a6c3286b5/build-parity-stack256.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 0,
+      "path": "benchmarks/results/c71-h100-stack256-2026-10-09-a32a6c3286b5/build-parity-stack256.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 14131,
+      "path": "benchmarks/results/c71-h100-stack256-2026-10-09-a32a6c3286b5/build-rust-stack256.stderr",
+      "sha256": "a6f8458679a3635dd6fd87ff1ef044c5df733d973c2ee0830452c2d6dee01a90"
+    },
+    {
+      "bytes": 0,
+      "path": "benchmarks/results/c71-h100-stack256-2026-10-09-a32a6c3286b5/build-rust-stack256.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 30500,
+      "path": "benchmarks/results/c71-h100-stack256-2026-10-09-a32a6c3286b5/cpu-gpu-observations.jsonl",
+      "sha256": "007efa41d688b8ce0bc0cb834b25dde1d259cfd19d13c37455a3bd096ef1c148"
+    },
+    {
+      "bytes": 59877,
+      "path": "benchmarks/results/c71-h100-stack256-2026-10-09-a32a6c3286b5/inference.memory.csv",
+      "sha256": "77264e04e47fdebc9f6790bb0121793bcfc320eeef117e8d5b951a1816b22961"
+    },
+    {
+      "bytes": 31887,
+      "path": "benchmarks/results/c71-h100-stack256-2026-10-09-a32a6c3286b5/inference.stdout",
+      "sha256": "b27e5721e333892bda8084686a446587a8e6dce2bab037106284464a1b0f52cd"
+    },
+    {
+      "bytes": 1968,
+      "path": "benchmarks/results/c71-h100-stack256-2026-10-09-a32a6c3286b5/inference.summary.json",
+      "sha256": "ea2e052584c5eb7f4c65543c049578d9ba4d334827e9f5871a2bcff2447f7dd6"
+    },
+    {
+      "bytes": 1205,
+      "path": "benchmarks/results/c71-h100-stack256-2026-10-09-a32a6c3286b5/inference.time.txt",
+      "sha256": "1374a8a4fd949c3fa76461a0544c269389ebc2f5e5da43ab7c413c95ec9e3250"
+    },
+    {
+      "bytes": 207,
+      "path": "benchmarks/results/c71-h100-stack256-2026-10-09-a32a6c3286b5/stack256-nonlinear-cuda.stdout",
+      "sha256": "4e169c610173d9dffeac9689e86f03d7c116cac7b67b82dc9391ea44aa923108"
+    },
+    {
+      "bytes": 211,
+      "path": "benchmarks/results/c71-h100-stack256-2026-10-09-a32a6c3286b5/stack256-parity-01.stdout",
+      "sha256": "3725f33f9e1e27461899b5e2233d13db458cb1eeb905b7d079490229c39a8f3d"
+    },
+    {
+      "bytes": 2053,
+      "path": "benchmarks/results/c71-h100-stack256-2026-10-09-a32a6c3286b5/stack256-parity-02.stdout",
+      "sha256": "e417d9199e0c9ca9bda109fe09c4f5fba6cc7dbd907f7eef2cb868c8af59e0ba"
+    },
+    {
+      "bytes": 2142,
+      "path": "benchmarks/results/c71-h100-stack256-2026-10-09-a32a6c3286b5/stack256-parity-03.stdout",
+      "sha256": "ba9d1f68d6353819cd1d21a41200c9d270aa6f9d0b57c3fcd12a13be2d312cd9"
+    },
+    {
+      "bytes": 2698,
+      "path": "benchmarks/results/c71-h100-stack256-2026-10-09-a32a6c3286b5/stack256-parity-04.stdout",
+      "sha256": "d832d8530e155787ded35de0b32674ec98ca4f22a30331f7e6d497156b10a67d"
+    },
+    {
+      "bytes": 2838,
+      "path": "benchmarks/results/c71-h100-stack256-2026-10-09-a32a6c3286b5/stack256-parity-05.stdout",
+      "sha256": "95fa6bf82f21b87ae68fcabfd9a0880ee00fa44b3fd69fb5fd461929da0429ac"
+    },
+    {
+      "bytes": 18707,
+      "path": "benchmarks/results/c71-h100-stack256-2026-10-09-a32a6c3286b5/stack256-parity-06.stdout",
+      "sha256": "4e978cf196fab28a617702d4b38e6e87cbd7e506891e55aef976b833cb0022a1"
+    },
+    {
+      "bytes": 4049,
+      "path": "benchmarks/results/c71-h100-stack256-2026-10-09-a32a6c3286b5/stack256-parity-07.stdout",
+      "sha256": "7bc4657f111295c1d65f344e655a55a20ec3d7c8c0115498203b160fa1a75de3"
+    },
+    {
+      "bytes": 989,
+      "path": "benchmarks/results/c71-h100-stack256-2026-10-09-a32a6c3286b5/stack256-parity-08.stdout",
+      "sha256": "b4d5940110da80d515d908749c98286e5b8fde514c3594ced1be2bfb5aa468ba"
+    },
+    {
+      "bytes": 2895,
+      "path": "benchmarks/results/c71-h100-stack256-2026-10-09-a32a6c3286b5/stack256-parity-09.stdout",
+      "sha256": "d072917ca88e8feba86dd92a0bf5091e0d2fc8e82684c00df08373685ec43ecb"
+    },
+    {
+      "bytes": 2714,
+      "path": "benchmarks/results/c71-h100-stack256-2026-10-09-a32a6c3286b5/stack256-parity-10.stdout",
+      "sha256": "bb3676fc46b39a9468fa43aef162187ec0484f58bac964cee10e78fc38e92386"
+    },
+    {
+      "bytes": 1300,
+      "path": "benchmarks/results/c71-h100-stack256-2026-10-09-a32a6c3286b5/stack256-parity-11.stdout",
+      "sha256": "1592a2405457a7a76522ca02632876bdb08d38ad3e4fd91331ceafea99875291"
+    },
+    {
+      "bytes": 1694,
+      "path": "benchmarks/results/c71-h100-stack256-2026-10-09-a32a6c3286b5/stack256-parity-12.stdout",
+      "sha256": "b4441f014e5c217277a78294be15c398d431a6c0d13030c2646443b814109c86"
+    },
+    {
+      "bytes": 1479,
+      "path": "benchmarks/results/c71-h100-stack256-2026-10-09-a32a6c3286b5/stack256-parity-13.stdout",
+      "sha256": "5e7f5d5eee429173c62efc93a6c355a23b578c978d014c6b0d712a3420fa0b01"
+    },
+    {
+      "bytes": 4315,
+      "path": "benchmarks/results/c71-h100-stack256-2026-10-09-a32a6c3286b5/stack256-parity-14.stdout",
+      "sha256": "ed3b9537a43d7b1f193bdc309ec0d95d1f08b187b14c4f8c402ad8baaf9679ef"
+    },
+    {
+      "bytes": 220,
+      "path": "benchmarks/results/c71-h100-stack256-2026-10-09-a32a6c3286b5/stack256-parity-15.stdout",
+      "sha256": "55b04fadb71be44054d533d8889be888ae9c66293de70a82f64e91a342ed2d7d"
+    },
+    {
+      "bytes": 37598,
+      "path": "benchmarks/results/c71-h100-stack256-2026-10-09-a32a6c3286b5/stack256-validation.json",
+      "sha256": "0a857524bdc2a307b532b257e64ecee2d66603827420bd9ff0a4bd80d4b412c4"
+    }
+  ],
+  "baseline": {
+    "path": "benchmarks/results/c71-h100-inference-01-2026-10-09-2a31625f849d.json",
+    "sha256": "08ef6e338070be943e874d3525d786f5f7c568aaeb25b253c8e9fac1c4619298"
+  },
+  "canonical_certificates_verified": 0,
+  "comparison": {
+    "after_inference_seconds": 90.593679528,
+    "after_sampled_temporary_peak_bytes": 1267047936,
+    "before_inference_seconds": 90.615329151,
+    "before_sampled_temporary_peak_bytes": 1474276864,
+    "inference_delta_seconds": -0.021649623,
+    "sampled_peak_reduction_bytes": 207228928,
+    "sampled_peak_reduction_fraction": 0.14056310117880275,
+    "scope": "One complete scalar inference per configuration; identical native counts and public outputs. No timing improvement established. Sampled peak difference is not a complete physical peak or a proof of the runtime allowance; monitor versions differ but neither run retried smaps reads."
+  },
+  "component_complete": true,
+  "credit": false,
+  "date": "2026-10-09",
+  "decision": "Select the initial stack256 configuration with exact observed value and fail-closed initialization. Canonical04 starts fresh from W/AES/journals; no state or correlation reuse.",
+  "git_dirty": false,
+  "git_sha": "a32a6c3286b556b43f8ede0b1a2ae39b5d7ebb2d",
+  "launch": {
+    "argv": [
+      "/workspace/c71-h100-20261009/c71_canonical_reference_scalar_reuse",
+      "inference-cuda",
+      "/workspace/c71-h100-20261009/gamma-inputs/candidate.json",
+      "/workspace/c71-h100-20261009/gamma-inputs/tables.bin",
+      "/workspace/c71-h100-20261009/weights/gemma-4-31b-5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89.packed.i16",
+      "/workspace/c71-h100-20261009/inference-03/journals",
+      "2147483648",
+      "/workspace/c71-h100-20261009/libc71_device_runner_stack256.so",
+      "0"
+    ],
+    "argv_encoded_bytes": 418,
+    "argv_path_capacity_bound_bytes": 4096,
+    "binary_sha256": "5b524bd7333c86cd656df4c585982d0be54721424fe3559770b2cfe1bbd3a5db",
+    "binary_source_git_sha": "2a31625f849d",
+    "canonical_certificates_verified": 0,
+    "correlations": "none in inference component; no protocol credit",
+    "diagnostic_timeout_seconds": 1800,
+    "gamma_reused": true,
+    "git_dirty": false,
+    "initial_accepted_kv": "empty",
+    "library_sha256": "88f3138effc9af42068e77aa3b4bf2c5d0d6c7b634c9608900da50aa94a6b0c2",
+    "library_source_git_sha": "a32a6c3286b556b43f8ede0b1a2ae39b5d7ebb2d",
+    "monitor_label": "inference",
+    "prepared_epoch": 1791583273.956377,
+    "response_target_seconds": 65,
+    "rust_sources_identical": true,
+    "source_git_sha": "a32a6c3286b556b43f8ede0b1a2ae39b5d7ebb2d"
+  },
+  "monitor": {
+    "authorized_end_epoch": 1791601722.0,
+    "close_reserve_seconds": 1800,
+    "command": [
+      "bash",
+      "-c",
+      "ulimit -S -v unlimited; exec \"$@\"",
+      "c71-inference",
+      "/workspace/c71-h100-20261009/c71_canonical_reference_scalar_reuse",
+      "inference-cuda",
+      "/workspace/c71-h100-20261009/gamma-inputs/candidate.json",
+      "/workspace/c71-h100-20261009/gamma-inputs/tables.bin",
+      "/workspace/c71-h100-20261009/weights/gemma-4-31b-5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89.packed.i16",
+      "/workspace/c71-h100-20261009/inference-03/journals",
+      "2147483648",
+      "/workspace/c71-h100-20261009/libc71_device_runner_stack256.so",
+      "0"
+    ],
+    "compute_end_epoch": 1791599922.0,
+    "exit_code": 0,
+    "gpu_uuid": "GPU-9f6b4728-e7d8-ff40-d9f1-e1cec5dd2b3a",
+    "incomplete_samples": 20,
+    "label": "inference",
+    "mode": "canonical",
+    "observed_payload_peak_bytes": 692827993,
+    "payload_limit_bytes": 5905580032,
+    "physical_complete_peak": false,
+    "physical_temporary_limit_bytes": 6174015488,
+    "resource_failure": null,
+    "sampled_host_rss_peak_bytes": 61652623360,
+    "sampled_stable_temporary_peak_bytes": 1267047936,
+    "sampled_whole_gpu_peak_bytes": 62420680704,
+    "samples": 474,
+    "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+    "sampling_target_seconds": 0.2,
+    "smaps_read_failures": 0,
+    "stable_samples": 454,
+    "start_unix_seconds": 1791583273.9925313,
+    "wall_seconds": 206.15436408482492
+  },
+  "native_cleanup": {
+    "allocations": 3641220,
+    "arena_bytes": 0,
+    "cleanup_failed": 0,
+    "d2d_bytes": 235161600,
+    "d2h_bytes": 4743280,
+    "fences": 3668558,
+    "h2d_bytes": 61418645112,
+    "host_owner_bytes": 42088,
+    "launches": 1185820,
+    "live_capacity_bytes": 0,
+    "logical_bytes": 0,
+    "peak_capacity_bytes": 593899520,
+    "peak_reserved_bytes": 61988590080,
+    "releases": 3640917,
+    "stopped": 0,
+    "weights_bytes": 0,
+    "weights_loaded_bytes": 61394690560,
+    "weights_sealed": 1,
+    "zeroed_bytes": 68180960
+  },
+  "native_cleanup_identical": true,
+  "native_counters_identical": true,
+  "native_cumulative": {
+    "allocations": 3641220,
+    "arena_bytes": 591277824,
+    "cleanup_failed": 0,
+    "d2d_bytes": 235161600,
+    "d2h_bytes": 4743280,
+    "fences": 3668557,
+    "h2d_bytes": 61418645112,
+    "host_owner_bytes": 42088,
+    "launches": 1185820,
+    "live_capacity_bytes": 591277824,
+    "logical_bytes": 591276752,
+    "peak_capacity_bytes": 593899520,
+    "peak_reserved_bytes": 61988590080,
+    "releases": 3640917,
+    "stopped": 0,
+    "weights_bytes": 61394690560,
+    "weights_loaded_bytes": 61394690560,
+    "weights_sealed": 1,
+    "zeroed_bytes": 68180960
+  },
+  "phase_intervals": [
+    {
+      "complete": true,
+      "end_ns": 202216315679,
+      "phase": "command_total",
+      "role": "coordinator",
+      "slot": null,
+      "start_ns": 820377,
+      "wall_ns": 202215495302
+    },
+    {
+      "complete": true,
+      "end_ns": 81656132761,
+      "phase": "global_initialization",
+      "role": "coordinator",
+      "slot": null,
+      "start_ns": 2117892,
+      "wall_ns": 81654014869
+    },
+    {
+      "complete": true,
+      "end_ns": 7420506721,
+      "phase": "read_and_compile_public",
+      "role": "prover",
+      "slot": null,
+      "start_ns": 2734956,
+      "wall_ns": 7417771765
+    },
+    {
+      "complete": true,
+      "end_ns": 7442976985,
+      "phase": "public_distribution",
+      "role": "coordinator",
+      "slot": null,
+      "start_ns": 7424464307,
+      "wall_ns": 18512678
+    },
+    {
+      "complete": true,
+      "end_ns": 14873452779,
+      "phase": "compile_received_public",
+      "role": "verifier",
+      "slot": null,
+      "start_ns": 7444438525,
+      "wall_ns": 7429014254
+    },
+    {
+      "complete": true,
+      "end_ns": 81654923658,
+      "phase": "load_packed_w",
+      "role": "prover",
+      "slot": null,
+      "start_ns": 15797384860,
+      "wall_ns": 65857538798
+    },
+    {
+      "complete": true,
+      "end_ns": 109138573374,
+      "phase": "native_global_residency",
+      "role": "prover",
+      "slot": null,
+      "start_ns": 81657614059,
+      "wall_ns": 27480959315
+    },
+    {
+      "complete": true,
+      "end_ns": 201246981398,
+      "phase": "preparation_including_inference",
+      "role": "prover",
+      "slot": 0,
+      "start_ns": 109140811889,
+      "wall_ns": 92106169509
+    }
+  ],
+  "phase_seconds": {
+    "inference": 90.593679528,
+    "preparation_including_inference": 92.106168322
+  },
+  "private_bundle": {
+    "bytes": 5384315,
+    "files": 170,
+    "manifest_sha256": "006a2f3666fb188a142069a2564a5217a475dd7d16dd99731f29d97525d9e5bd",
+    "path": "artifact/c7.1-pod/h100-final-stack256-20261009T220500Z"
+  },
+  "public_token_comparison": {
+    "all_150_tokens_equal": true,
+    "golden": {
+      "actual_sha256": "18e31d2acf4e12c5edb3270e8df64a6e68aac756de27e8c62474089027136872",
+      "all_150_tokens_equal": true,
+      "expected_sha256": "18e31d2acf4e12c5edb3270e8df64a6e68aac756de27e8c62474089027136872",
+      "golden_path": "artifact/c7.1-pod/integer-complete-20261007T144500Z/integer-2-attention-budgeted.json",
+      "golden_sha256": "f4148f30beca4bb3afb0446f07853d271c88a1bb307016c53c336bdb68bfcaf0",
+      "inference_report_sha256": "e0907dd9b8d2fe97689afdfb4992456f64e1a85b5fe17d53d0a9d1c629314f72",
+      "scope": "Public O=0 tokens only; not intermediate A trace equality or proof acceptance"
+    },
+    "token_u32le_sha256": "18e31d2acf4e12c5edb3270e8df64a6e68aac756de27e8c62474089027136872"
+  },
+  "run": "inference-03",
+  "schema": "volta-c71-h100-stack256-validation-v1",
+  "scope": "O=0 inference component; no commitment, PCG, proof, verification or continuation",
+  "validation": {
+    "all_15_real_cuda_passed": true,
+    "checks": [
+      {
+        "exit_code": 0,
+        "label": "build-cuda-stack256",
+        "sampled_host_rss_peak_bytes": 249167872,
+        "wall_seconds": 21.00944073498249
+      },
+      {
+        "exit_code": 0,
+        "label": "build-parity-stack256",
+        "sampled_host_rss_peak_bytes": 268992512,
+        "wall_seconds": 3.0017208475619555
+      },
+      {
+        "exit_code": 0,
+        "label": "build-rust-stack256",
+        "sampled_host_rss_peak_bytes": 2934300672,
+        "wall_seconds": 428.03052604198456
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "stack256-parity-01",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 194154496,
+        "wall_seconds": 3.6025038193911314
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "stack256-parity-02",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 146632704,
+        "wall_seconds": 0.8006009124219418
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "stack256-parity-03",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 150843392,
+        "wall_seconds": 1.6014617197215557
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "stack256-parity-04",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 146059264,
+        "wall_seconds": 1.4008489213883877
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "stack256-parity-05",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 146944000,
+        "wall_seconds": 1.4013280905783176
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "stack256-parity-06",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 139366400,
+        "wall_seconds": 1.601438943296671
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "stack256-parity-07",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 138014720,
+        "wall_seconds": 0.8005591556429863
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "stack256-parity-08",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 225882112,
+        "wall_seconds": 2.601500613614917
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "stack256-parity-09",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 142565376,
+        "wall_seconds": 1.4014403335750103
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "stack256-parity-10",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 135835648,
+        "wall_seconds": 1.4013118594884872
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "stack256-parity-11",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 140673024,
+        "wall_seconds": 1.0006502978503704
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "stack256-parity-12",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 230629376,
+        "wall_seconds": 2.6018611136823893
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "stack256-parity-13",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 229941248,
+        "wall_seconds": 2.602007746696472
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "stack256-parity-14",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 136142848,
+        "wall_seconds": 1.0011111367493868
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "stack256-parity-15",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 200613888,
+        "wall_seconds": 2.201951676979661
+      },
+      {
+        "exit_code": 0,
+        "label": "stack256-nonlinear-cuda",
+        "sampled_host_rss_peak_bytes": 90734592,
+        "wall_seconds": 0.6004835907369852
+      }
+    ],
+    "nonlinear_real_cuda_passed": true,
+    "ptxas_functions": 92,
+    "ptxas_max_stack_bytes": 216,
+    "ptxas_spill_bytes": 0
+  }
+}

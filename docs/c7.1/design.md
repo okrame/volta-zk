@@ -149,8 +149,11 @@ Il [terzo trial](../c7.1-history/h100-monitor-stack-2026-10-09.md), su binario
 scalare `2a31625`, termina dopo 572,209 s per copertura W incompleta in
 una lettura smaps, dopo PCS W 436,687 s e prima del completamento del setup.
 Il monitor ora conserva e limita le riletture senza allentare il cap fisico.
-La candidata riserva iniziale CUDA di 256 B libera 207,618 MB nel solo
-contesto vuoto: validazione reale e misura canonica seguono separatamente.
+La [riserva iniziale CUDA di 256 B](../c7.1-history/h100-stack256-2026-10-09.md)
+è selezionata dopo 15/15 CUDA e inferenza esatta a 90,594 s. Il massimo
+temporaneo campionato scende di 207,229 MB a 1,267 GB, senza credito al
+picco completo o a un guadagno di tempo. `canonical-04` è in corso da W
+con journal e AES freschi.
 Γ, causalità, replay e garanzie restano invariati. O=0/150/300 non sono verificati.
 Il precedente timeout CPU dopo
 circa 41 minuti rimane il fallimento di quella schedule da 1.024 scansioni,

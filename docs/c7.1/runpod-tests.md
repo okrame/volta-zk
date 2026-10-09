@@ -48,11 +48,14 @@ con W completato e setup incompleto; la causa della lettura non è provata.
 Il monitor corretto conserva letture fallite, richiede copertura completa,
 ammette al massimo due riletture per campione/64 fallimenti per run e
 continua a imporre il cap fisico, senza credito al picco dei campioni recuperati.
-La riserva iniziale CUDA di 256 B richiede nuova compilazione sm_90,
-15/15 parità reali e diagnostico numerico prima della selezione canonica.
+La [riserva iniziale CUDA di 256 B](../c7.1-history/h100-stack256-2026-10-09.md)
+è selezionata dopo nuova compilazione sm_90, 15/15 parità reali e diagnostico
+O=0 esatto: 90,594 s e massimo temporaneo campionato 1.267.047.936 B,
+207.228.928 B meno della baseline, senza credito al picco completo.
 Si riusa il binario scalare solo dopo verifica dei sorgenti Rust identici;
 libreria, monitor e binario riportano ciascuno la propria SHA di build.
-Il prossimo trial riparte da W con journal e correlazioni nuovi.
+`canonical-04` è in corso dalle 22:05:09 UTC: riparte da W con journal
+e correlazioni nuovi, monitor `7f9c812` e libreria `a32a6c3`, timeout 7.200 s.
 Deadline e guard della campagna restano invariati.
 
 La precedente campagna chiusa conserva il proprio fallimento nel commitment

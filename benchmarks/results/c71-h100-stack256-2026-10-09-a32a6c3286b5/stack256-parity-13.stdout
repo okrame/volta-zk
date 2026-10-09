@@ -1,0 +1,8 @@
+
+running 1 test
+test c71_matrix::b12::replay::tests::c71_b12_native_hardware_residual_weight_whir_chain ... C71_NATIVE_RESIDUAL_QUERY_FULL_WIRE {"backend":"explicit_native_owner","canonical_bytes":2284920,"credit":false,"dimension":10,"native":{"allocations":2171,"arena_bytes":0,"cleanup_failed":0,"d2d_bytes":46931968,"d2h_bytes":1728448,"fences":2744,"h2d_bytes":16239938,"host_owner_bytes":42088,"launches":47178,"live_capacity_bytes":0,"logical_bytes":0,"peak_capacity_bytes":568576,"peak_reserved_bytes":570618,"releases":2171,"stopped":0,"weights_bytes":2042,"weights_loaded_bytes":2042,"weights_sealed":1,"zeroed_bytes":1577592},"native_extension_queries":true,"wire_fs_rng_original_mac_equal":true}
+C71_NATIVE_RESIDUAL_QUERY_W_CHAIN {"credit":false,"dimension":10,"full_weight_retention":false,"gpu_execution":true,"initial_commitment":"CPU reference","initial_queries":"resident sealed W","native":{"allocations":2171,"arena_bytes":0,"cleanup_failed":0,"d2d_bytes":46931968,"d2h_bytes":1728448,"fences":2744,"h2d_bytes":16239938,"host_owner_bytes":42088,"launches":47178,"live_capacity_bytes":0,"logical_bytes":0,"peak_capacity_bytes":568576,"peak_reserved_bytes":570618,"releases":2171,"stopped":0,"weights_bytes":2042,"weights_loaded_bytes":2042,"weights_sealed":1,"zeroed_bytes":1577592},"residual_state_and_extension_queries":"native owner","seconds":2.066922794}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 600 filtered out; finished in 2.53s
+

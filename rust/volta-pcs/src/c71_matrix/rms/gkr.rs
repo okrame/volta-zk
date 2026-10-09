@@ -1169,6 +1169,10 @@ fn prove_impl(
     let replay_heap = Cell::new(0usize);
     let replay_input_heap = Cell::new(0usize);
     let round_auth_heap = Cell::new(0usize);
+    // The canonical RMS dispatcher has mixed public programs. Single-program
+    // statistic and pattern consumers retain their existing memory schedule.
+    let packed_replay = pattern_prefix.is_none() && s.programs.len() > 1;
+    let replay_scratch = RefCell::new(ReplayLayerScratch::default());
     let selector_zero_bits: u64 = s
         .assignments
         .iter()
@@ -1183,7 +1187,9 @@ fn prove_impl(
     for depth in (1..widths.len()).rev() {
         let width = widths[depth - 1];
         let (previous, selectors, following, mut rounds) = if sourcewise {
-            let replay = RefCell::new(patterns::PackedReplay::new_validated(s.programs, depth - 1, width)?);
+            let replay = if packed_replay {
+                Some(RefCell::new(patterns::PackedReplay::new_validated(s.programs, depth - 1, width)?))
+            } else { None };
             let replay_prefix = Cell::new(0usize);
             let replay_group = Cell::new(None);
             let selector_point = point.clone();
@@ -1207,6 +1213,30 @@ fn prove_impl(
                 if s.assignments.get(cell).is_none() {
                     return Err("dummy RMS cell replayed".into());
                 }
+                let Some(replay) = &replay else {
+                    let p = s.assignments.get(cell).unwrap();
+                    let program = &s.programs[p];
+                    let frame = read_frame(cell);
+                    let mut scratch = replay_scratch.borrow_mut();
+                    let inputs = scratch.inputs(program.ports);
+                    inputs[1] = 1;
+                    for bit in 0..program.ports - 2 {
+                        inputs[2 + bit] = u64::from((frame[bit / 8] >> (bit % 8)) & 1);
+                    }
+                    let selected = (depth - 1).min(program.levels.len());
+                    let work = program.replay_layer_reuse(&mut scratch, 1, selected)?;
+                    replay_calls.set(replay_calls.get() + 1);
+                    replay_and.set(replay_and.get() + work.and_gates);
+                    replay_xor.set(replay_xor.get() + work.xor_gates);
+                    replay_copy.set(replay_copy.get() + work.copy_gates);
+                    replay_heap.set(replay_heap.get().max(work.peak_two_vector_capacity_bytes));
+                    replay_input_heap.set(replay_input_heap.get().max(scratch.input_capacity_bytes()));
+                    out.fill(Fp3::ZERO);
+                    for (value, bit) in out.iter_mut().zip(scratch.selected().iter().copied()) {
+                        *value = Fp3::ONE.mul_bool(bit == 1);
+                    }
+                    return Ok(());
+                };
                 let n = s.assignments.len();
                 let leaves = 1usize << replay_prefix.get();
                 let active = n / leaves;
@@ -1304,14 +1334,16 @@ fn prove_impl(
                 following.push(r);
                 rounds.push(wire);
             }
-            let packed = replay.borrow().work();
-            replay_calls.set(replay_calls.get() + packed.program_replays);
-            replay_and.set(replay_and.get() + packed.dag_word_and);
-            replay_xor.set(replay_xor.get() + packed.dag_word_xor);
-            replay_heap.set(replay_heap.get().max(
-                packed.plan_build_capacity_upper_bytes.max(
-                    packed.plan_capacity_bytes + packed.scratch_moving_capacity_upper_bytes)));
-            source_work.packed_replay.accumulate(packed);
+            if let Some(replay) = &replay {
+                let packed = replay.borrow().work();
+                replay_calls.set(replay_calls.get() + packed.program_replays);
+                replay_and.set(replay_and.get() + packed.dag_word_and);
+                replay_xor.set(replay_xor.get() + packed.dag_word_xor);
+                replay_heap.set(replay_heap.get().max(
+                    packed.plan_build_capacity_upper_bytes.max(
+                        packed.plan_capacity_bytes + packed.scratch_moving_capacity_upper_bytes)));
+                source_work.packed_replay.accumulate(packed);
+            }
             cell_protocol_capacity_peak_bytes = cell_protocol_capacity_peak_bytes.max(
                 (point.capacity()
                     + weights.capacity()
@@ -1421,6 +1453,7 @@ fn prove_impl(
     }
     // Each packed replay plan/scratch dropped at the end of its cell phase,
     // before index edges and before the disjoint byte LUT allocation.
+    drop(replay_scratch);
     let gkr_layers_capacity_bytes = layers_heap_capacity_bytes(&layers, layers.capacity());
     let gkr_triples_capacity_bytes = triples.capacity() * core::mem::size_of::<[Auth; 3]>();
     let products = range::prove_products(&triples, rows.next().unwrap(), fs);
@@ -1524,8 +1557,9 @@ fn prove_impl(
     let index_phase_owned_capacity_bytes = (source_work.index_phase_owned_heap_peak_bytes
         + round_auth_heap.get())
     .max(next_weights_transition_capacity_peak_bytes)
-        + source_work.boolean_replay_heap_peak_bytes
-        + source_work.boolean_input_heap_peak_bytes
+        + if packed_replay { 0 } else {
+            source_work.boolean_replay_heap_peak_bytes + source_work.boolean_input_heap_peak_bytes
+        }
         + cell_round_records_capacity_bytes;
     let index = SourceCapacitySnapshot::new(
         program_inner_capacity_bytes,
@@ -1738,6 +1772,81 @@ pub(in super::super) fn verify(
 mod tests {
     use super::*;
     use rand_010::RngExt;
+
+    #[test]
+    fn c71_b12_packed_mixed_gkr_complete_wire_mac_and_endpoint() {
+        let programs: Vec<_> = (0..3).map(|p| {
+            let product_bits = if p == 1 { 16 } else { 32 };
+            Circuit {
+                ports: product_bits + 66, product_bits, valid: 0,
+                coefficients: [0; 3], arithmetic_bits: 1, raw_gates: 3,
+                levels: vec![vec![
+                    Gate { op: Op::Xor, x: 2, y: 2 + product_bits + 48 },
+                    Gate { op: if p == 1 { Op::And } else { Op::Copy }, x: 1, y: 1 },
+                ], vec![Gate { op: Op::Xor, x: 0, y: 1 }]],
+            }
+        }).collect();
+        let assignments = [Some(0), Some(1), None, Some(2), Some(1), Some(2), Some(0), None];
+        let frames: Vec<_> = assignments.iter().map(|&p|
+            p.map_or([255;12], |p| frame(0, 0, 0, p != 1))).collect();
+        let root = C61Commitment::new(vec![[19;32]]);
+        let statement = Statement {
+            root: &root, profile: b"reduced original mixed GKR", view: [20;32],
+            attempt: AttemptContext { session: [21;32], capacity: [22;32], slot: 0,
+                predecessor: [0;32], nonce: [23;32] },
+            programs: &programs, assignments: Assignments::dense(&assignments),
+        };
+        let count = statement.required().unwrap();
+        let delta = Fp3::new(Fp::new(5), Fp::new(7), Fp::new(11));
+        let mut rng = MatrixRng::from_seed([127;32]);
+        let rows: Vec<_> = (0..count).map(|_|
+            Auth::new(from_p3(rng.random::<E>()), from_p3(rng.random::<E>()))).collect();
+        let keys: Vec<_> = rows.iter().map(|a| Key::new(a.m + delta*a.x)).collect();
+        let start = || Fs::new(b"packed mixed same original GKR", 100_000);
+        let (mut packed_fs, mut dense_fs, mut verify_fs) = (start(), start(), start());
+        let mut packed_rows = rows.clone().into_iter();
+        let mut dense_rows = rows.clone().into_iter();
+        let read = |i: usize| {
+            assert!(assignments[i].is_some(), "padding getter forbidden");
+            frames[i]
+        };
+        let started = std::time::Instant::now();
+        let (proof, point, original, work) = prove_sourcewise(
+            &statement, read, &mut packed_fs, &mut packed_rows).unwrap();
+        let packed_ns = started.elapsed().as_nanos();
+        let started = std::time::Instant::now();
+        let (dense, dense_point, dense_original) = prove_dense(
+            &statement, read, &mut dense_fs, &mut dense_rows).unwrap();
+        let dense_ns = started.elapsed().as_nanos();
+        let (mut packed_wire, mut dense_wire) = (Vec::new(), Vec::new());
+        crate::c71_matrix::wire::Wire::write(&proof, &mut packed_wire);
+        crate::c71_matrix::wire::Wire::write(&dense, &mut dense_wire);
+        assert_eq!(packed_wire, dense_wire);
+        assert_eq!(point, dense_point);
+        assert_eq!((original.x,original.m),(dense_original.x,dense_original.m));
+        assert_eq!(packed_fs.digest(),dense_fs.digest());
+        assert_eq!(packed_rows.len(),0);
+        assert_eq!(dense_rows.len(),0);
+        let mut verify_rows = keys.clone().into_iter();
+        let (verified_point, verified) = verify(
+            &statement, &proof, delta, &mut verify_fs, &mut verify_rows).unwrap();
+        assert_eq!(verified_point,point);
+        assert_eq!(verified.k,original.m+delta*original.x);
+        assert_eq!(verify_fs.digest(),packed_fs.digest());
+        assert_eq!(verify_rows.len(),0);
+        assert_eq!(work.packed_replay.original_frames,6*3*2);
+        assert!(work.cell_rounds.iter().any(|r|r.boolean_first_round_gate_products_saved>0));
+        assert_eq!(packed_fs.fp3(),dense_fs.fp3());
+        let mut bad = proof;
+        bad.layers[0].terminal[3] += Fp3::ONE;
+        assert!(verify(&statement,&bad,delta,&mut start(),&mut keys.into_iter()).is_err());
+        println!("C71_RMS_PACKED_GKR_WIRE {}",serde_json::json!({
+            "cells":8,"programs":3,"correlations":count,"wire_bytes":packed_wire.len(),
+            "packed_prove_ns":packed_ns,"dense_prove_ns":dense_ns,"work":work,
+            "exact_wire_FS_RNG_original_MAC":true,"PCS_composition_excluded":true,
+            "credit":false,"GPU_execution":false
+        }));
+    }
 
     #[test]
     fn c71_b12_boolean_first_cell_round_exact_all_gate_patterns() {
@@ -2296,6 +2405,7 @@ mod tests {
         changed_input: (usize, [u8; 12]),
     ) -> (usize, usize) {
         let c = assignments.len().ilog2() as usize;
+        let packed_replay = programs.len() > 1;
         let n = 1usize << ((c + 4).div_ceil(2)).max(5);
         let dimension = 2 * n.ilog2() as usize;
         let mut observed = (0, 0);
@@ -2388,7 +2498,7 @@ mod tests {
                 assigned[program] += 1;
             }
             let census = work_census(programs, &assigned, c).unwrap();
-            if c == 0 {
+            if c == 0 && packed_replay {
                 assert_eq!(
                     census["cell_first_logical_frame_callbacks"].as_u64().unwrap(),
                     source_work.boolean_replay_calls
@@ -2398,9 +2508,11 @@ mod tests {
                     source_work.packed_replay.original_scalar_gate_equivalent
                 );
             }
-            assert_eq!(source_work.packed_replay.original_frames,
-                source_work.cell_rounds.iter().map(|work| work.row_source_callbacks).sum::<u64>()
-                + if c == 0 { assigned.iter().sum::<u64>() * (widths.len()-1) as u64 } else { 0 });
+            if packed_replay {
+                assert_eq!(source_work.packed_replay.original_frames,
+                    source_work.cell_rounds.iter().map(|work| work.row_source_callbacks).sum::<u64>()
+                    + if c == 0 { assigned.iter().sum::<u64>() * (widths.len()-1) as u64 } else { 0 });
+            }
             assert!(source_work.packed_replay.dag_word_operations
                 <= source_work.packed_replay.original_scalar_gate_equivalent);
             assert!(source_work.cell_rounds.iter().all(|work| work.owned_heap_peak_bytes

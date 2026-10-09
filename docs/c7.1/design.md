@@ -91,7 +91,8 @@ non attribuiscono prestazioni o picco fisico H100.
 | Query extension A/W | Tre componenti PCS caricate nello stesso passaggio e resti residenti in tutti gli stadi; A legge le plane trattenute, senza ricostruzioni originali aggiunte; sole valutazioni finali D2H |
 | Accumulo W Tensor Core | Candidata limb16 esatta e confronto esplicito sul medesimo owner; ordinario rimane predefinito |
 | QK/PV | Default scalare esatto; candidata MMA con prefisso causale comune e bordo scalare non selezionata |
-| Resto della prova | Fattori pubblici, rigenerazione Merkle delle aperture, GKR non-range/MAC, Seed6 reale AES, codec, verifica e journal CPU; RMS canonico ancora privo di consumer accelerato |
+| RMS misto | Replay Booleano CPU a 64 lane con DAG per depth; primo round esatto e cache compatta delle geometrie pubbliche. Selezione solo senza pattern prefix e con più programmi; coefficienti Fp3 ed endpoint restano CPU |
+| Resto della prova | Fattori pubblici, rigenerazione Merkle delle aperture, GKR/MAC, Seed6 reale AES, codec, verifica e journal CPU; tempi completi da misurare |
 
 [canonical_device.rs](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_device.rs)
 possiede la sessione numerica: stessa Arc W del commitment, un solo
@@ -136,8 +137,10 @@ riprende un'installazione interrotta. La campagna precedente è chiusa.
 Il goal locale prepara **l'intero percorso crittografico per H100 80 GB**,
 baseline `9033c64`. Si conclude quando codice, parità ridotte, benchmark
 rappresentativi, conto completo e procedure sono pronti, prima della
-campagna hardware. Il goal è ancora attivo; nuova H100 e durata
-richiedono nuova autorizzazione.
+campagna hardware. La preparazione locale è conclusa: il
+[record conclusivo](../../benchmarks/results/c71-crypto-rms-local-2026-10-09-abd2de09efb4.json)
+conserva parità, benchmark e ledger. I target hardware restano aperti.
+Nuova H100 e durata richiedono nuova autorizzazione.
 
 Il [checkpoint S1 e Query E](../c7.1-history/crypto-residual-query-2026-10-09.md)
 collega owner e caller fino alle query extension di tutti gli stadi.
@@ -147,22 +150,32 @@ La schedule S1 non-query è preservata e il commitment iniziale A resta
 a 512 ricostruzioni. Il [checkpoint W e profilo residuo](../c7.1-history/crypto-local-convergence-2026-10-09.md)
 aggiunge query iniziali W, retirement numerico prima dell'hash A e Writer
 canonico di capacità fissa. Il profilo sul Γ ammesso quantifica anche il
-grande replay Booleano/GKR RMS CPU: preparare soltanto la PCS non chiude il
-target della risposta. Fattori, FFT dispari, range e producer restano costi
+grande replay Booleano/GKR RMS CPU, ora aggiornato dal
+[checkpoint RMS](../c7.1-history/crypto-rms-close-2026-10-09.md).
+Preparare soltanto la PCS non chiude il target della risposta.
+Fattori, FFT dispari, range e producer restano costi
 separati; almeno 581 scan complete dell'A corrente precedono le richieste
 parziali e gli altri consumer.
 
-Il [conto tipato aggiornato](../../benchmarks/results/c71-crypto-capacity-local-2026-10-09-d4215fafd878.json) enumera 653 fasi e le 11
-classi di allocazione. Nessun subtotal modellato supera il payload di
-5.905.580.032 B; il massimo è la query S2 A3, 5.878.675.986 B,
-con 26.904.046 B residui. Rimane condizionato alle capacità dei path/argv
+Il [conto tipato conclusivo](../../benchmarks/results/c71-crypto-rms-local-2026-10-09-abd2de09efb4.json) enumera 653 fasi e le 11
+classi di allocazione, compresi cache e workspace RMS aggiornati.
+Il massimo modellato è 5.878.734.834 B,
+con 26.845.198 B residui nel payload di 5.905.580.032 B.
+Rimane condizionato alle capacità dei path/argv
 ≤4.096 B ed alle identità Γ/layout registrate; `joint_admitted:false`
 conserva il confine rispetto al picco fisico non misurato.
 Il [checkpoint capacità](../c7.1-history/crypto-capacity-close-2026-10-09.md) chiude i bound tipati di profili,
 wire/decoder, forme, telemetria, setup AES e compilatore RMS. Preflight
 pubblico prima di W/history e compattazione KV preservano byte/FS/MAC;
 le batch P/V appartengono a fasi successive, non simultanee.
-RMS resta da accelerare sugli stessi circuiti. La catena AES composta e
+RMS conserva gli stessi circuiti: `PackedReplay` usa 64 lane ed il DAG
+per depth; la cache riduce analiticamente le compilazioni 4.293→1.908.
+Il primo round esatto elimina 128.288.785.794.560 moltiplicazioni dal
+core coefficienti di 972.294.988.954.860, pari al 13,19443%; rimangono
+844.006.203.160.300 moltiplicazioni Fp3 CPU. I 998.927.195.904 callback
+del checkpoint per risposta non diminuiscono. Benchmark CPU ridotti con
+scale nonzero verificano il replay, senza attribuire tempi al Γ ammesso
+o alla H100. La catena AES composta e
 un test KV completo rimangono incompleti a 60 s locali; non ereditano
 crediti dai componenti positivi. Valutare TMA, fusioni e CUDA Graphs
 su costi misurati. Il confronto W ordinario/Tensor e la selezione QK/PV
@@ -180,10 +193,11 @@ Gli obblighi prestazionali già quantificati restano visibili: A iniziale
 512 ricostruzioni; sali prescan/replay almeno 274.877.906.944 B XOF W e
 137.438.953.472 B A per risposta, anche dopo eliminazione degli upload
 sali; D15 W/A non cached e un test CPU lookup/GKR/WHIR superano 60 s
-locali. Cache di riferimento da 16 MiB solo nelle fixture composte
-non risolvono tali timeout in produzione. Gli screen W/A nominati sono
-4.618.167.208 / 5.585.161.864 B prima degli altri owner host: il secondo
-lascia 320.418.168 B al payload, senza ammissione del picco completo.
+locali. Anche i test RMS c0 reale e mixed421 con PCS conservano timeout
+a 60 s; non estenderli o trasferire loro il credito delle fixture ridotte.
+Cache di riferimento da 16 MiB solo nelle fixture composte non risolvono
+tali timeout in produzione. Il ledger conclusivo sostituisce gli screen
+parziali; il picco fisico completo rimane da verificare.
 
 **Premesse residue.** I lemmi Lean richiamati in [security](security.md)
 non raffinano implementazione CUDA, scheduling, gather, immutabilità
@@ -218,6 +232,7 @@ locali sono `credit:false`, senza compilazione o esecuzione CUDA.
 | [S1 e query extension sul common owner](../c7.1-history/crypto-residual-query-2026-10-09.md) | Route canonica, parità WHIR D10 A/W e guard privati; query iniziali W ancora CPU, conto nominato non ammesso, nessuna compilazione/esecuzione CUDA |
 | [Query W, profilo del caller e audit di convergenza](../c7.1-history/crypto-local-convergence-2026-10-09.md) | 14 filtri Rust e tre test Python passano; RMS sul Γ ammesso quantificato parzialmente, timeout della catena AES conservato, quattro classi di capacità aperte |
 | [Capacità tipate e preflight originali](../c7.1-history/crypto-capacity-close-2026-10-09.md) | Parità lineare D10 esatta; 653 fasi con bound condizionati, picco fisico e accelerazione RMS ancora aperti |
+| [Replay e geometrie RMS](../c7.1-history/crypto-rms-close-2026-10-09.md) | Replay64 su scale nonzero, parità dei conteggi e primo round esatto; fixture GKR completa senza PCS con wire/FS/RNG/MAC, nessun tempo H100 |
 | [Regole operative](../c7.1-history/operating-rules-2026-10-08.md), [temporanei](../c7.1-history/temporary-memory-2026-10-04.md) | Ragioni delle decisioni; autorizzazioni correnti definite nel [runbook](runpod-tests.md#autorizzazione-e-limiti) |
 
 ## Contratto delle risorse

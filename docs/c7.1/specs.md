@@ -1109,14 +1109,16 @@ di query, S1 e cache iniziali A1..A3; il
 [record del checkpoint](../../benchmarks/results/c71-crypto-residual-query-local-2026-10-09-9a5da712a258.json) lega il backend `s1-prepared`
 alle shape correnti di tutti gli stadi extension nativi. È uno screen
 nominato con `joint_admitted:false`, non un
-conto completo. Il [conto tipato aggiornato](../../benchmarks/results/c71-crypto-capacity-local-2026-10-09-d4215fafd878.json) enumera 653 fasi.
-A3 accumulo è 5.834.526.966 B; il massimo query S2 A3 è
-5.878.675.986 B, lasciando 26.904.046 B al payload. Tutte le 11 classi
+conto completo. Il [conto tipato conclusivo](../../benchmarks/results/c71-crypto-rms-local-2026-10-09-abd2de09efb4.json) comprende
+le capacità e i lifetime RMS aggiornati. Il massimo è
+5.878.734.834 B, lasciando 26.845.198 B al payload.
+Tutte le 11 classi
 hanno termini espliciti: profili/layout/Arc/tabelle, fattori query CPU,
 aperture già trattenute, AES/VOLE/journal, prove/codec/framing,
 GKR/range, EQ/PowerBlocks, forme originali, wrapper/telemetria,
 temporanei finali bounded e nuove maschere/pad del base case.
-Si contano sei profili reali Γ (49.103.484 B); le forme P/V sono
+Si contano sei profili reali Γ (49.104.156 B nel census aggiornato,
+cache Vec conteggiata separatamente); le forme P/V sono
 alternative perché il certificato completo viene trasmesso dopo il
 ritorno del prover. Il costruttore KV compatta anche le forme storiche;
 la prevalidazione pubblica di entrambe le batch prima di W/history
@@ -1126,6 +1128,11 @@ validazione restano senza clamp: superarvi MAX non prova un rifiuto reale.
 Setup MR19/guard/cGGM aggiunge un upper di 2.263.972 B oltre ai seed;
 compilazione/pruning RMS è al più 723.826.724 B, stato preparato
 457.659.280 B. I temporanei compiler muoiono prima di CompactFrames.
+La cache RMS aggiunge al più 58.176 B di heap per sei profili pinned;
+l'inline aggiornato è già incluso nel census dei descrittori. Durante
+il solo RMS il packed replay aggiunge l'upper di 387.537.052 B e i
+record coefficienti/realloc 1.081.344 B; non si sommano ai picchi query
+dopo il loro rilascio. Il record distingue upper e capacità misurate.
 Questi sono bound da sorgente su Γ/layout/toolchain fissati, non tempi.
 Restano la premessa path/argv ≤4.096 B del manifest e la misura fisica;
 `joint_admitted:false`. Nessuna ricostruzione A è aggiunta.
@@ -1365,13 +1372,22 @@ FFT, coda scalare, prefisso BMMA e coefficienti byte, senza sovrapposizioni.
 Il [profilo del caller](../../scripts/c71_residual_profile.py) riusa il ledger
 legato all'ammissione Γ e verifica la selezione `prove_sourcewise(true,None)`.
 159 programmi, profondità massima 99 e 347.937.024 celle vive implicano per
-risposta 998.927.195.904 callback del checkpoint, 4,85×10^16 valutazioni
-Booleane di replay e 9,72×10^14 moltiplicazioni Fp3 del core dopo pruning.
-Sono sottoconti di sorgente, senza tempo/credito GPU; i callback non sono
-nuove ricostruzioni A. L'endpoint byte resta sourcewise CPU. Non c'è un
-consumer RMS nativo già selezionato; il target 65 s resta strutturalmente
-aperto. Concedere quattro round gratuiti al sintetico a scale zero non
-lo rende fattibile e non sostituisce questo conto sul Γ corrente.
+risposta 998.927.195.904 callback del checkpoint, invariati. Il
+[checkpoint RMS](../c7.1-history/crypto-rms-close-2026-10-09.md) seleziona
+`PackedReplay` CPU a 64 lane e DAG per depth solo quando
+`pattern_prefix.is_none() && programs.len()>1`; i percorsi singoli
+statistic/pattern conservano la schedule precedente. Frame, ordine dei
+programmi/celle, padding ed endpoint originali non cambiano. Le
+4,85×10^16 operazioni Booleane sono ora equivalenti del replay letterale,
+non istruzioni della valutazione packed. Il primo round esatto rimuove
+128.288.785.794.560 moltiplicazioni dal core di 972.294.988.954.860
+(13,19443%): residuo 844.006.203.160.300 moltiplicazioni Fp3 CPU.
+La cache privata conserva solo chiavi pubbliche esatte e massimi delle
+width, ricontrolla tutte le guardie originali e riusa il conteggio;
+4.293→1.908 compilazioni è un conto analitico della run canonica.
+Nessun Circuit viene trattenuto fra le PCS. L'endpoint byte resta
+sourcewise CPU. Questi sottoconti non sono tempi H100 né prova del
+target 65 s; i callback non sono nuove ricostruzioni A.
 
 Per il requisito a 65 s non usare il main-cell scalare EXP30
 `c71_gkr_main_cell_fused`, l'enumerazione letterale della tree byte,

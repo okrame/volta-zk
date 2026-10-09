@@ -791,3 +791,21 @@ vettori KV e trasferimento delle forme W conservano ordine, coefficienti,
 endpoint originali e byte; il test lineare completo confronta wire/FS/MAC.
 I bound tipati di memoria restano condizionati al manifest e distinti dal
 picco fisico: non scaricano le premesse formali o Seed6 sopra dichiarate.
+
+**Replay e preflight RMS.** Il
+[checkpoint RMS](../c7.1-history/crypto-rms-close-2026-10-09.md) valuta
+gli stessi DAG Booleani con 64 lane CPU, preservando l'ordine di ogni
+frame/cella, alias, padding e copia dei wire. La selezione riguarda solo
+`pattern_prefix.is_none() && programs.len()>1`; statistic e pattern
+singoli mantengono il percorso precedente. Il primo round esatto
+valuta lo stesso polinomio dei coefficienti, senza sfide anticipate,
+monete nuove o modifiche ai MAC. La fixture GKR completa confronta
+wire, transcript/RNG, consumo esatto ed endpoint sui MAC originali;
+il suo esito finale resta quello del [record](../../benchmarks/results/c71-crypto-rms-local-2026-10-09-abd2de09efb4.json).
+È una fixture senza PCS: non sostituisce la composizione PCS già
+verificata né concede nuovo credito alla catena reale che va in timeout.
+La cache di preflight contiene chiavi pubbliche confrontate esattamente
+e width derivate dal compilatore; ripete i controlli di contesto/layout,
+shape, Gamma e tentativo, senza riusare correlazioni o transcript.
+Queste parità locali non raffinano il runtime CUDA, non modificano Γ
+e non cambiano i lemmi formali congelati.

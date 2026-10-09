@@ -7,7 +7,10 @@
 
 I controlli locali usano input piccoli, un solo processo di test per volta,
 un worker Rayon e 60 s / 2 GiB per invocazione. La compilazione è mirata,
-con un solo job, nel target assoluto `rust/target`, senza incremental.
+con un solo job, 64 codegen unit, deadline 120 s e monitor del RSS
+aggregato dell'albero processi: Stop a 3 GiB. Usa il target assoluto
+`rust/target`, senza incremental. Il nuovo limite riguarda solo la build;
+i timeout dei test non autorizzano estensioni.
 Non eseguire il workspace completo, i pesi reali o i domini PCS D34/D35.
 Questi limiti sono locali; quelli CPU/CUDA RunPod sono nel
 [runbook](runpod-tests.md#autorizzazione-e-limiti).
@@ -60,29 +63,37 @@ cd "$C71_ROOT/rust"
 C71_RUST_HOST="$(rustc -vV | sed -n 's/^host: //p')"
 C71_LLD_DIR="$(rustc --print sysroot)/lib/rustlib/$C71_RUST_HOST/bin/gcc-ld"
 test -d "$C71_LLD_DIR"
-timeout -k 5s 60s cargo rustc --offline --locked -j 1 -p volta-pcs \
+timeout -k 5s 120s cargo rustc --offline --locked -j 1 -p volta-pcs \
   --features c71-seed6-reference --lib --profile test \
   --config profile.dev.package.volta-pcs.opt-level=0 \
-  --config profile.dev.package.volta-pcs.codegen-units=128 -- \
+  --config profile.dev.package.volta-pcs.codegen-units=64 -- \
   -Clink-arg=-fuse-ld=lld "-Clink-arg=-B$C71_LLD_DIR" -Clink-arg=-Wl,--threads=1
-cargo build --offline --locked -j 1 -p volta-pcs \
+timeout -k 5s 120s cargo build --offline --locked -j 1 -p volta-pcs \
   --features c71-b12-pcs --example c71_calibration
-cargo build --offline --locked -j 1 -p volta-pcs \
+timeout -k 5s 120s cargo build --offline --locked -j 1 -p volta-pcs \
   --features c71-seed6-reference --example c71_canonical_reference
 cd "$C71_ROOT"
 ```
 
 Eseguire da `rust` per caricare `rust/.cargo/config.toml`: dipendenze O2,
-crate test O0, 128 codegen unit, un job, incremental disabilitato e
+crate test O0, 64 codegen unit nel comando mirato, un job, incremental disabilitato e
 overflow checks conservati. `cargo rustc --lib --profile test` produce
 il binario unit-test e applica gli argomenti finali al solo crate scelto
 ([Cargo](https://doc.rust-lang.org/cargo/commands/cargo-rustc.html)).
 Il linker [LLD](https://lld.llvm.org/) è quello della toolchain già
 installata, con un thread; il percorso deriva da sysroot/host, senza
 dipendenze aggiunte o home del proprietario codificata nel comando.
-La compilazione ha AS non limitato e deadline 60 s, separata dai test
-AS 2 GiB/60 s. La motivazione, il costo della build completa e i timeout
-precedenti sono nel [checkpoint query](../c7.1-history/crypto-query-2026-10-09.md).
+La compilazione ha AS non limitato e deadline 120 s, separata dai test
+AS 2 GiB/60 s. Il
+[monitor archiviato](../../benchmarks/results/c71-crypto-rms-local-2026-10-09-abd2de09efb4/c71-build-monitor-120-20261009.py)
+esegue il comando passato dopo log/report, osserva RSS aggregato e
+arresta il gruppo a 3 GiB. Usarlo come wrapper: `timeout` da solo non
+impone lo stop di memoria. Le impostazioni archiviate sono della VM locale.
+La modifica operativa riduce i retry di build senza saturare la VM;
+il precedente limite 60 s non era un requisito del protocollo.
+I suoi timeout rimangono esiti storici immutabili nel
+[checkpoint query](../c7.1-history/crypto-query-2026-10-09.md) e nel
+[checkpoint RMS](../c7.1-history/crypto-rms-close-2026-10-09.md).
 Non attribuire al riuso di una build il costo di una nuova compilazione.
 
 Impostare `C71_PCS_TEST_BINARY` al percorso assoluto dell'eseguibile
@@ -243,7 +254,22 @@ l'esito conservato. Anche
 ha raggiunto 60 s dopo la correzione dei lifetime: il
 [record distinto](../../benchmarks/results/c71-crypto-retirement-local-2026-10-09-96b69ded52c1.json)
 conserva build/check dei claim e timeout, senza nuova parità composta.
-Profilo e accelerazione restano lavoro aperto.
+I residui prestazionali si misurano sull'hardware autorizzato; questi
+timeout conservano il proprio esito anche dopo le ottimizzazioni RMS.
+
+Il [checkpoint RMS](../c7.1-history/crypto-rms-close-2026-10-09.md) usa
+filtri separati, sempre AS 2 GiB/60 s e un thread. La nuova fixture
+`c71_b12_packed_mixed_gkr_complete_wire_mac_and_endpoint` verifica GKR
+senza PCS: 8 celle, 3 programmi, 2 depth, wire/FS/RNG/endpoint/MAC,
+consumo esatto e rifiuto del MAC alterato. Non estende il credito PCS.
+Il filtro `c71_ordinary_rms_packed_replay_mixed_nonzero_scales_exact_coefficients`
+separa plan build da replay+row su scale nonzero, senza Γ ammesso.
+`c71_b12_rms_cached_public_geometry_exact_mixed_recipes_and_contexts`
+confronta cache e compilatore originale, chiavi, contesti e limiti.
+Conservare i marker dei coefficienti del primo round, packed replay,
+geometrie e metadati nel [record finale](../../benchmarks/results/c71-crypto-rms-local-2026-10-09-abd2de09efb4.json). I timeout
+RMS c0 reale e mixed421 con PCS a 60 s sono negativi: nessun retry
+con cap esteso sulla VM.
 
 I controlli Python pertinenti si eseguono separatamente con gli stessi
 limiti: `tests/test_c71_dense_i16.py`, `tests/test_c71_range_native.py`,

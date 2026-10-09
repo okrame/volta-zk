@@ -12,8 +12,10 @@ e l'[indice delle evidenze](design.md#evidenze-e-decisioni) distinguono
 ammissione Γ, failure canonico e nuovi controlli locali.
 
 Il goal prepara in locale l'intero percorso crittografico per H100 80 GB,
-e si conclude prima della campagna. È ancora attivo; **nessuna nuova
-campagna è autorizzata**. Hardware e durata richiedono una nuova decisione.
+ed è concluso prima della campagna, con parità e conto conclusivo nel
+[record](../../benchmarks/results/c71-crypto-rms-local-2026-10-09-abd2de09efb4.json);
+**nessuna nuova campagna è autorizzata**.
+Hardware e durata richiedono una nuova decisione.
 La preparazione locale non autorizza riattivazione, nuovi pod o benchmark
 hardware. Γ si riusa dopo verifica di identità ed impatto compatibili.
 
@@ -26,13 +28,16 @@ collega anche coset/hash/sali extension, OOD, retention/fold A,
 contrazioni e query extension A/W al common owner. Le
 [query iniziali W](../c7.1-history/crypto-local-convergence-2026-10-09.md)
 sono ora residenti; fattori pubblici, Merkle delle aperture, GKR non-range/MAC,
-Seed6 AES e verifica restano CPU. RMS sul Γ ammesso è un collo strutturale
-quantificato, senza consumer accelerato selezionato.
+Seed6 AES e verifica restano CPU. Il
+[checkpoint RMS](../c7.1-history/crypto-rms-close-2026-10-09.md) seleziona
+replay64/DAG CPU per programmi misti senza pattern prefix, primo round
+esatto e cache compatta; i coefficienti Fp3 residui restano CPU.
 Il conto per fasi è nominato, `joint_admitted:false`; la
 [revisione locale dei lifetime](../c7.1-history/crypto-retirement-short-merkle-2026-10-09.md)
 conserva anche il timeout della prova composta.
-Il [conto locale tipato](../c7.1-history/crypto-capacity-close-2026-10-09.md) ha 653 fasi, massimo
-5.878.675.986 B e soli 26.904.046 B residui nel payload. Il manifest del
+Il [conto locale conclusivo](../../benchmarks/results/c71-crypto-rms-local-2026-10-09-abd2de09efb4.json) include cache/workspace
+RMS: massimo 5.878.734.834 B e 26.845.198 B residui
+nel payload. Il manifest del
 trial deve vincolare capacità dei path/argv ≤4.096 B e identità
 Γ/layout/toolchain applicabili; non trasformare questa premessa in
 un'allocazione gratuita. Ricontare nuove modifiche prima del trial;
@@ -270,9 +275,12 @@ Per W verificare il nuovo simbolo, packed sigillato, mapping/live prima
 dell'indirizzo e zero upload degli originali. Usare le vere query Merkle:
 512 foglie espandono sottoalberi da 4096 righe, fino a due batch q_eff=2^20.
 Misurare separatamente fattori CPU, remainder/FFT dispari, packing D2D,
-matrice finale e hash della rigenerazione. Per RMS registrare replay Booleano,
-coefficienti ed endpoint byte del caller selezionato sul Γ corrente;
-un profilo CUDA della PCS da solo non misura il servizio CPU GKR.
+matrice finale e hash della rigenerazione. Per RMS confrontare packed e
+letterale sugli stessi circuiti/assegnamenti nonzero del Γ ammesso:
+wire/FS/RNG, coefficienti r0, endpoint byte, padding e consumo monouso.
+Registrare separatamente plan build, replay Booleano64, coefficienti
+Fp3 ed endpoint del caller; i 998.927.195.904 callback per risposta
+sono invariati. Un profilo CUDA della PCS non misura il servizio CPU GKR.
 Per la closure lineare confrontare coefficienti/endpoints e intero wire
 dei MAC originali, contando 124 B e due fence del consumer per round
 separatamente dai producer. Verificare mapping W unico, scanner A
@@ -286,8 +294,10 @@ Per Query E ripetere Horner in tutti gli stadi, prefissi virtuali 0..2,
 ordinalità/generazione delle plane, lineage, pad e getter privati vietati.
 Misurare launch/lavoro del loader W parallelo, zero D2H degli originali,
 nessuna ricostruzione A aggiuntiva e publication/staging simultanei.
-Il ledger completo deve includere le classi ancora non quantificate
-nelle [specifiche](specs.md#pcs-residuale-e-query-extension-residenti).
+Il ledger completo deve riusare tutte le classi tipate e i lifetime
+delle [specifiche](specs.md#runner-cuda-sperimentale-e-conto-simultaneo),
+misurando allowance e picco fisico simultaneo, senza sommare subtree
+o scratch già ritirati.
 Per l'hash extension ripetere foglie/nodi/root contro BLAKE3 pinned,
 copertura logica 2R con output R e bande senza attraversamento di lane.
 Contare i batch W soltanto fino alla chiusura W; capacità di proof/codec,
@@ -307,6 +317,9 @@ Le candidate QK/PV richiedono compilazione e parità reali anche sulle
 letture causali per riga, con future già inizializzate; il default
 scalare rimane il confronto. Selezionare ordinario/Tensor e attention
 secondo misure rappresentative, senza inferire speedup dal driver host.
+Misurare separatamente installazione, setup, inferenza, prova e verifica;
+quantificare i colli residui, incluso il core RMS CPU. Valutare TMA,
+fusioni e CUDA Graphs solo con parità, risorse e beneficio misurati.
 
 ## Esperimento della prova
 

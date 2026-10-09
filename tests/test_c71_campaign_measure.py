@@ -306,6 +306,19 @@ def test_recovered_smaps_read_does_not_skip_physical_cap(campaign, monkeypatch):
     assert report['smaps_read_failures'] == 1
 
 
+def test_physical_stop_preserves_offending_sample_in_summary(campaign, monkeypatch):
+    campaign.mode = 'canonical'
+    campaign.progress = campaign.root / 'canonical.progress.jsonl'
+    monkeypatch.setattr(monitor.Progress, 'exemptions', lambda *_: (0, 0))
+    monkeypatch.setattr(monitor, 'host_tree', lambda *_:
+                        {os.getpid(): (0, monitor.PHYSICAL_LIMIT, 0)})
+    assert monitor.run(campaign) != 0
+    report = json.loads((campaign.root / 'logs/fixture.summary.json').read_text())
+    assert 'simultaneous' in report['resource_failure']
+    assert report['samples'] == report['stable_samples'] == 1
+    assert report['sampled_stable_temporary_peak_bytes'] == monitor.PHYSICAL_LIMIT + (100 << 20)
+
+
 def test_missing_cgroup_metrics_fail_before_launch(campaign, monkeypatch):
     (monitor.CGROUP / 'memory.events').unlink()
     def forbidden(*_args, **_kwargs):

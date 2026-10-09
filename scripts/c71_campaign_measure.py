@@ -413,16 +413,17 @@ def run(args):
                 writer.writerow([time.time(), time.monotonic() - before, rss, swap, used, free,
                                  host_w, device_w, temporary, int(transitioning), cgroup, disk, smaps_failures])
                 files['memory.csv'].flush()
-                if any(after > before for after, before in zip(cgroup_oom_events(), oom_before)):
-                    raise RuntimeError('resource stop: cgroup OOM event')
-                check_resources(args.mode, rss, swap, used, total, free, disk, host_w, device_w, transitioning)
                 samples += 1
                 incomplete += int(transitioning or smaps_failures > 0)
-                # A recovered read still enforces the physical cap above, but
+                # A recovered read still enforces the physical cap below, but
                 # its longer interval is excluded from stable-peak credit.
                 if not transitioning and not smaps_failures:
                     joint_peak = max(joint_peak, temporary or 0)
                 host_peak, gpu_peak = max(host_peak, rss), max(gpu_peak, used)
+                # Keep the offending sample in the summary as well as the CSV.
+                if any(after > before for after, before in zip(cgroup_oom_events(), oom_before)):
+                    raise RuntimeError('resource stop: cgroup OOM event')
+                check_resources(args.mode, rss, swap, used, total, free, disk, host_w, device_w, transitioning)
                 if min(stop_at - time.monotonic(), end - time.time()) <= 0:
                     raise TimeoutError('phase or authorized compute deadline reached')
                 time.sleep(max(0, min(SAMPLE_SECONDS - (time.monotonic() - before), stop_at - time.monotonic(), end - time.time())))

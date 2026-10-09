@@ -39,7 +39,7 @@ int main() {
     auto* failed=device<uint32_t>(1);
     auto reset=[&] { check(cudaMemsetAsync(failed,0,4,stream)); };
     auto flag=[&] { return read(failed,1,stream)[0]; };
-    for(const auto shape: {c71_dense::Shape{1,17,33},c71_dense::Shape{17,35,65},c71_dense::Shape{2,7,21504}}) {
+    for(const auto shape: {c71_dense::Shape{1,17,33},c71_dense::Shape{17,35,65},c71_dense::Shape{2,7,21504},c71_dense::Shape{100,128,256}}) {
         std::vector<int16_t> activations(size_t(shape.m)*shape.k),weights(size_t(shape.n)*shape.k);
         const int16_t extremes[]={-32767,-256,-129,-128,-1,0,1,127,128,255,256,32767};
         for(size_t index=0;index<activations.size();++index) activations[index]=extremes[(index*7+1)%12];
@@ -136,35 +136,35 @@ int main() {
     check(c71_rms_launch(stream,source,nullptr,nullptr,norm_statistic,output,norm,failed)); require(flag()!=0);
     check(cudaFree(norm_weights)); check(cudaFree(norm_product)); check(cudaFree(norm_statistic));
 
-    for(unsigned old:{0u,150u,300u}) {
-        const c71_nonlinear::Attention shape{2,0,31,old,2,4};
-        const unsigned columns=old+150,count=2*columns;
-        input.resize(2*32*4);
+    for(unsigned old:{0u,150u,300u}) for(unsigned batch:{2u,100u}) {
+        const c71_nonlinear::Attention shape{batch,0,31,old,2,4};
+        const unsigned columns=old+150,count=batch*columns;
+        input.resize(batch*32*4);
         for(size_t index=0;index<input.size();++index) input[index]=int16_t(int(index%3)-1);
         std::vector<int16_t> history(columns*2*4,INT16_MIN);
-        for(unsigned key=0;key<old+2;++key) for(unsigned column=0;column<8;++column) history[key*8+column]=int16_t(int((key+column)%5)-2);
+        for(unsigned key=0;key<old+batch;++key) for(unsigned column=0;column<8;++column) history[key*8+column]=int16_t(int((key+column)%5)-2);
         auto* tail=device<int16_t>(history.size()); upload(tail,history); upload(source,input);
         auto* raw=device<int64_t>(count); reset();
         check(c71_qk_launch(stream,source,tail,raw,shape,failed)); require(flag()==0);
         const auto scores=read(raw,count,stream);
-        for(unsigned row=0;row<2;++row) for(unsigned key=0;key<columns;++key) {
+        for(unsigned row=0;row<batch;++row) for(unsigned key=0;key<columns;++key) {
             int64_t expected=0;
             if(key<=old+row) for(unsigned lane=0;lane<4;++lane) expected+=int64_t(input[(row*32+31)*4+lane])*history[key*8+4+lane];
             require(scores[row*columns+key]==expected);
         }
         check(c71_dense_rne_launch(stream,raw,output,count,0,failed)); require(flag()==0);
-        auto* maxima=device<int16_t>(2); auto* differences=device<int16_t>(count);
-        auto* exponentials=device<int64_t>(count); auto* denominators=device<int64_t>(2);
+        auto* maxima=device<int16_t>(batch); auto* differences=device<int16_t>(count);
+        auto* exponentials=device<int64_t>(count); auto* denominators=device<int64_t>(batch);
         auto* probabilities=device<int16_t>(count); auto* counts=device<int64_t>(65535);
         std::vector<int32_t> exponent_table(65535);
         for(unsigned entry=0;entry<65535;++entry) exponent_table[entry]=(1<<30)/(entry+1);
         auto* exp_table=device<int32_t>(65535); upload(exp_table,exponent_table);
         check(cudaMemsetAsync(counts,0,65535*8,stream)); reset();
         check(c71_softmax_launch(stream,output,exp_table,maxima,differences,exponentials,denominators,probabilities,counts,shape,failed)); require(flag()==0);
-        const auto actual_maxima=read(maxima,2,stream),actual_differences=read(differences,count,stream),actual_probabilities=read(probabilities,count,stream);
-        const auto actual_exponentials=read(exponentials,count,stream),actual_denominators=read(denominators,2,stream);
+        const auto actual_maxima=read(maxima,batch,stream),actual_differences=read(differences,count,stream),actual_probabilities=read(probabilities,count,stream);
+        const auto actual_exponentials=read(exponentials,count,stream),actual_denominators=read(denominators,batch,stream);
         std::vector<int64_t> visits(65535,0);
-        for(unsigned row=0;row<2;++row) {
+        for(unsigned row=0;row<batch;++row) {
             const unsigned live=old+row+1;
             const int64_t maximum=*std::max_element(scores.begin()+row*columns,scores.begin()+row*columns+live);
             require(actual_maxima[row]==maximum); int64_t denominator=0;
@@ -183,10 +183,10 @@ int main() {
         }
         require(read(counts,65535,stream)==visits);
         const int16_t* head_probabilities[32]; std::fill(head_probabilities,head_probabilities+32,probabilities);
-        auto* product=device<int64_t>(256); reset();
+        auto* product=device<int64_t>(batch*128); reset();
         check(c71_pv_launch(stream,head_probabilities,tail,product,shape,failed)); require(flag()==0);
-        const auto actual_product=read(product,256,stream);
-        for(unsigned row=0;row<2;++row) for(unsigned head=0;head<32;++head) for(unsigned lane=0;lane<4;++lane) {
+        const auto actual_product=read(product,batch*128,stream);
+        for(unsigned row=0;row<batch;++row) for(unsigned head=0;head<32;++head) for(unsigned lane=0;lane<4;++lane) {
             int64_t expected=0;
             for(unsigned key=0;key<=old+row;++key) expected+=int64_t(actual_probabilities[row*columns+key])*history[key*8+(head/16)*4+lane];
             require(actual_product[(row*32+head)*4+lane]==expected);
@@ -218,5 +218,5 @@ int main() {
     check(c71_argmax_select_launch(stream,source,tokens,rows,columns,failed)); require(flag()!=0);
     check(cudaFree(tokens)); check(cudaFree(output)); check(cudaFree(source)); check(cudaFree(failed));
     check(cudaStreamDestroy(stream));
-    std::printf("C71_NONLINEAR_CUDA_PARITY {\"dense_cases\":3,\"pointwise_cases\":2,\"lookup_entries\":65535,\"rope_cases\":%u,\"argmax_rows\":3,\"rms_cases\":3,\"attention_contexts\":3,\"rejections\":10,\"gpu_execution\":true,\"credit\":false}\n",rope_cases);
+    std::printf("C71_NONLINEAR_CUDA_PARITY {\"dense_cases\":4,\"pointwise_cases\":2,\"lookup_entries\":65535,\"rope_cases\":%u,\"argmax_rows\":3,\"rms_cases\":3,\"attention_contexts\":3,\"attention_row_batches\":2,\"rejections\":13,\"gpu_execution\":true,\"credit\":false}\n",rope_cases);
 }

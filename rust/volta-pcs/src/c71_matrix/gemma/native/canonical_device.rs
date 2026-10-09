@@ -351,11 +351,20 @@ impl Session {
             replay: false,
         };
         let inference_started = std::time::Instant::now();
-        for token in 0..150 {
+        let mut token = 0;
+        while token < 150 {
+            // The whole prompt is known before preparation; generated tokens stay causal.
+            let count = if token == 0 && !replay { 100 } else { 1 };
             let mut decision = None;
             for (step, producer) in plan.steps.iter().enumerate() {
-                for row in plan.rows_at_token(producer, token)? {
-                    let (outputs, selected) = engine.produce(step, row, 1, &[tokens[token]])?;
+                let (rows, batch) = if count == 100 {
+                    prefill_rows(plan, producer)?
+                } else {
+                    (plan.rows_at_token(producer, token)?, 1)
+                };
+                for row in rows {
+                    let (outputs, selected) =
+                        engine.produce(step, row, batch, &tokens[token..token + count])?;
                     if !selected.is_empty()
                         && (selected.len() != 1 || decision.replace(selected[0]).is_some())
                     {
@@ -389,15 +398,17 @@ impl Session {
                 }
                 engine.release_sources(&release[step])?;
             }
-            if !engine.live.is_empty() || (99..149).contains(&token) != decision.is_some() {
+            let last_token = token + count - 1;
+            if !engine.live.is_empty() || (99..149).contains(&last_token) != decision.is_some() {
                 return engine.runtime.abort("native causal token coverage differs");
             }
             if let Some(next) = decision {
-                if replay && tokens[token + 1] != next {
+                if replay && tokens[token + count] != next {
                     return engine.runtime.abort("native replay changed public token");
                 }
-                tokens[token + 1] = next;
+                tokens[token + count] = next;
             }
+            token += count;
         }
         let histograms = engine.finish()?;
         let inference_ns = u64::try_from(inference_started.elapsed().as_nanos())
@@ -561,6 +572,16 @@ impl Session {
             .require_weights(&self.weights, layout)?;
         Ok(kernel::b12::replay::NativeWeights { runtime: self.runtime.clone(),
             weights: self.weights.clone(), layout, tiles: self.profiles[0].plan.pcs_weight_tiles() })
+    }
+}
+
+fn prefill_rows(plan: &Canonical, producer: &Producer) -> Result<(Vec<usize>, usize), String> {
+    let rows = plan.rows_at_token(producer, 0)?;
+    if rows.is_empty() {
+        // The output head has only the decision at prompt position 99.
+        Ok((plan.rows_at_token(producer, 99)?, 1))
+    } else {
+        Ok((rows, 100))
     }
 }
 
@@ -1157,10 +1178,22 @@ mod tests {
             let mut live = BTreeSet::new();
             let mut decisions = 0;
             let mut categories = BTreeSet::new();
-            for token in 0..150 {
+            let mut token = 0;
+            while token < 150 {
+                let count = if token == 0 { 100 } else { 1 };
                 for (step, producer) in plan.steps.iter().enumerate() {
-                    let rows = plan.rows_at_token(producer, token).unwrap();
-                    for row in rows {
+                    let (rows, batch) = if count == 100 {
+                        prefill_rows(&plan, producer).unwrap()
+                    } else {
+                        (plan.rows_at_token(producer, token).unwrap(), 1)
+                    };
+                    let actual: BTreeSet<_> =
+                        rows.iter().flat_map(|&first| first..first + batch).collect();
+                    let expected: BTreeSet<_> = (token..token + count)
+                        .flat_map(|token| plan.rows_at_token(producer, token).unwrap())
+                        .collect();
+                    assert_eq!(actual, expected, "prefill row coverage slot={slot} step={step}");
+                    for row in actual {
                         for key in input_keys(&plan, step, row).unwrap() {
                             assert!(
                                 live.contains(&key),
@@ -1179,7 +1212,7 @@ mod tests {
                             Producer::Qk(layer) => {
                                 assert_eq!(
                                     prefixes[&plan.sources.attention.layers[*layer].k],
-                                    token + 1
+                                    token + count
                                 );
                                 8
                             }
@@ -1187,7 +1220,7 @@ mod tests {
                             Producer::Pv(layer) => {
                                 assert_eq!(
                                     prefixes[&plan.sources.attention.layers[*layer].v],
-                                    token + 1
+                                    token + count
                                 );
                                 10
                             }
@@ -1205,11 +1238,11 @@ mod tests {
                             }
                             assert!(row < shape.rows);
                             if let Some(prefix) = prefixes.get_mut(&source) {
-                                assert_eq!(*prefix, token);
+                                assert_eq!(*prefix, row);
                                 *prefix += 1;
                             }
                             if let Some(prefix) = cuts.get_mut(&source) {
-                                assert_eq!(*prefix, token);
+                                assert_eq!(*prefix, row);
                                 *prefix += 1;
                             }
                             if last.get(&source).is_some_and(|&consumer| consumer > step) {
@@ -1220,6 +1253,7 @@ mod tests {
                     live.retain(|(source, _)| last[source] != step);
                 }
                 assert!(live.is_empty());
+                token += count;
             }
             assert_eq!(decisions, 50);
             assert_eq!(categories.len(), 13);
@@ -1314,6 +1348,38 @@ mod tests {
             assert_eq!(kv_bytes, 405_504_000);
             assert_eq!(cut_bytes, 98_380_800);
             assert_eq!(histograms.len(), 121);
+            // Initial prefill retains its inputs until their last consumer;
+            // the frozen replay shortcut does not apply to these live rows.
+            let mut prefill_live = BTreeMap::new();
+            let mut prefill_peak = 0;
+            for (step, producer) in plan.steps.iter().enumerate() {
+                let (rows, count) = prefill_rows(&plan, producer).unwrap();
+                for first in rows {
+                    let outputs: Vec<_> = plan
+                        .ports(producer)
+                        .1
+                        .into_iter()
+                        .filter(|id| !histograms.contains(id))
+                        .map(|id| {
+                            (id, align(count * sources[id].cols
+                                * if plan.bytes().widths[id] == 2 { 2 } else { 8 }))
+                        })
+                        .collect();
+                    prefill_peak = prefill_peak.max(
+                        prefill_live.values().sum::<usize>()
+                            + outputs.iter().map(|(_, size)| size).sum::<usize>(),
+                    );
+                    for (source, size) in outputs {
+                        if last.get(&source).is_some_and(|&end| end > step) {
+                            assert!(prefill_live.insert((source, first), size).is_none());
+                        }
+                    }
+                }
+                prefill_live.retain(|(source, _), _| last.get(source).is_some_and(|&end| end > step));
+            }
+            assert!(prefill_live.is_empty());
+            let prefill_upper = persistent + prefill_peak + 1024;
+            assert!(prefill_upper < 1 << 30);
             // Public padding has one output and at most one i16 input of ones.
             let padding = sources
                 .iter()
@@ -1343,6 +1409,7 @@ mod tests {
                     "checkpoint_capacity_bytes":cut_bytes, "histogram_capacity_bytes":histogram_bytes,
                     "table_capacity_bytes":tables, "persistent_device_bytes":persistent,
                     "replay_upper_bytes_including_persistent":upper,
+                    "initial_prefill_upper_bytes_including_persistent":prefill_upper,
                     "duplicate_histograms_included":true, "geometry_only":true,
                     "gpu_execution":false, "credit":false,
                     "host_allocations_at_geometry": kernel::census::simultaneous()

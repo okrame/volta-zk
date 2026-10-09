@@ -1,0 +1,14 @@
+
+running 3 tests
+test c71_seed6::guard::cggm::setup::tests::c71_seed6_one_channel_binds_geometry_before_ot ... FAILED
+test c71_seed6::guard::cggm::setup::tests::c71_seed6_one_channel_geometry_rejects_before_io_or_rng ... ok
+test c71_seed6::guard::cggm::setup::tests::c71_seed6_one_channel_setup_to_original_ea_macs ... FAILED
+
+failures:
+
+failures:
+    c71_seed6::guard::cggm::setup::tests::c71_seed6_one_channel_binds_geometry_before_ot
+    c71_seed6::guard::cggm::setup::tests::c71_seed6_one_channel_setup_to_original_ea_macs
+
+test result: FAILED. 1 passed; 2 failed; 0 ignored; 0 measured; 105 filtered out; finished in 0.00s
+

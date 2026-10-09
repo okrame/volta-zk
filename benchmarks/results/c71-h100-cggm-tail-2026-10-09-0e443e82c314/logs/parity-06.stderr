@@ -1,0 +1,4 @@
+
+thread 'c71_seed6::guard::cggm::setup::tests::c71_seed6_attempt_window_burns_then_streams_and_stops_on_every_failure' (119955) panicked at volta-pcg/src/c71_seed6/setup.rs:741:30:
+consumer panic
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

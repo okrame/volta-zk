@@ -1,0 +1,8 @@
+
+running 3 tests
+test c71_seed6::guard::cggm::tests::c71_seed6_guard_cggm_randomness_and_sampler_fail_closed ... ok
+test c71_seed6::guard::cggm::tests::c71_seed6_guard_cggm_rejects_shapes_codec_and_changed_private_path ... ok
+test c71_seed6::guard::cggm::tests::c71_seed6_guard_cggm_separate_roles_all_small_paths ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 105 filtered out; finished in 0.24s
+

@@ -1,0 +1,31 @@
+{
+  "authorized_end_epoch": 1791601722.0,
+  "close_reserve_seconds": 1800,
+  "command": [
+    "/workspace/volta-zk/rust/target/debug/deps/volta_pcg-98de2c0232ec729e",
+    "c71_seed6_coin_",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "compute_end_epoch": 1791599922.0,
+  "exit_code": 0,
+  "gpu_uuid": "GPU-9f6b4728-e7d8-ff40-d9f1-e1cec5dd2b3a",
+  "incomplete_samples": 1,
+  "label": "parity-07",
+  "mode": "calibration",
+  "observed_payload_peak_bytes": null,
+  "payload_limit_bytes": null,
+  "physical_complete_peak": false,
+  "physical_temporary_limit_bytes": null,
+  "resource_failure": null,
+  "sampled_host_rss_peak_bytes": 17149952,
+  "sampled_stable_temporary_peak_bytes": 0,
+  "sampled_whole_gpu_peak_bytes": 61740154880,
+  "samples": 1,
+  "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+  "sampling_target_seconds": 0.2,
+  "smaps_read_failures": 0,
+  "stable_samples": 0,
+  "start_unix_seconds": 1791590173.4460835,
+  "wall_seconds": 0.2002615872770548
+}

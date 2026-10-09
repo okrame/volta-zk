@@ -1,0 +1,9 @@
+
+running 3 tests
+test c71_seed6::guard::cggm::setup::tests::c71_seed6_attempt_window_burns_then_streams_and_stops_on_every_failure ... ok
+test c71_seed6::guard::cggm::setup::tests::c71_seed6_attempt_window_never_prefetches_the_next_reservation ... ok
+test c71_seed6::guard::cggm::setup::tests::c71_seed6_attempt_window_three_disjoint_intervals_and_durable_heads ... C71_SEED6_ATTEMPTS base_rows=9 disjoint_attempts=3 full_reservation_materialized=false batch_cap=4096 row_generated_after_burn=true acceptance_fixture=true proof=false
+ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 105 filtered out; finished in 0.01s
+

@@ -68,3 +68,5 @@ Benchmark, fonti in `sota` e milestone formali non sono modificati.
 | `docs/prototype-status.md` | [prototype-status.md](prototype-status.md) | solo navigazione aggiornata | `fb54cd257daf9560ea67db9bfdf5b05385f42c33cb2a281acf3c9be380bffc40` | `6001d43dac0c70c583f541d315dfdf74b76088cb270a3421bf648891faf90555` |
 
 - [Tree PCS A, sali strided e candidata limb16](crypto-a-tree-2026-10-08.md).
+
+- [H100: coda SHAKE cGGM differita, 9 ottobre 2026](h100-cggm-tail-2026-10-09.md).

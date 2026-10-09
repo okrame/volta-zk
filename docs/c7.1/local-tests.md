@@ -52,6 +52,11 @@ aggregato campionato 2.593.206.272 B; test e ripetizione pulita passano,
 quest'ultima in 6,610 s / AS 2 GiB. Nessun buffer canonico o hardware GPU.
 Produzione e upper replay restano invariati.
 
+La [coda SHAKE cGGM differita](../c7.1-history/h100-cggm-tail-2026-10-09.md)
+passa 17 test CPU sul pod e conserva output, scarti e correlazioni monouso.
+Il microbenchmark misura 1,475× sul componente; il setup completo con
+questa modifica non è misurato e `canonical-05` usa il binario precedente.
+
 ## Limiti e ambiente
 
 I controlli locali usano input piccoli, un solo processo di test per volta,

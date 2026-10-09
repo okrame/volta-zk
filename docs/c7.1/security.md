@@ -3,6 +3,11 @@
 [Design](design.md) · [Specifiche](specs.md) · [Test locali](local-tests.md) ·
 [Test su RunPod](runpod-tests.md) · [Archivio](../c7.1-history/README.md)
 
+La [coda SHAKE cGGM differita](../c7.1-history/h100-cggm-tail-2026-10-09.md)
+passa 17 test CPU sul pod e conserva output, scarti e correlazioni monouso.
+Il microbenchmark misura 1,475× sul componente; il setup completo con
+questa modifica non è misurato e `canonical-05` usa il binario precedente.
+
 ## Ambito e ipotesi
 
 I §§1–6 definiscono e dimostrano la composizione matematica

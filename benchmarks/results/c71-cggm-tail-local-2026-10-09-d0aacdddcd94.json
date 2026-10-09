@@ -1,0 +1,574 @@
+{
+  "schema": "c71-local-component-validation-v1",
+  "date": "2026-10-09",
+  "git_sha": "d0aacdddcd94f10bc8d3e3061781234ba087ea9e",
+  "git_dirty": true,
+  "validated_patch_commit": "0e443e82c314bfdc9dd966627ff6a55173907543",
+  "scope": "Small CPU cGGM sampling and reduced Seed6 setup tests; not a canonical run of record",
+  "complete": true,
+  "credit": false,
+  "build": {
+    "command": [
+      "cargo",
+      "test",
+      "--offline",
+      "--locked",
+      "-j",
+      "1",
+      "-p",
+      "volta-pcg",
+      "--features",
+      "c71-seed6-reference",
+      "--lib",
+      "--no-run"
+    ],
+    "cwd": "/home/okrame/projects/volta-zk/rust",
+    "exit_code": 0,
+    "wall_s": 49.44061581790447,
+    "max_rss_bytes": 554053632,
+    "sampled_aggregate_live_rss_peak_bytes": 603926528,
+    "sampled_processes": {
+      "6": {
+        "name": "timeout",
+        "max_rss_bytes": 1572864,
+        "cpu_ticks": 0,
+        "first_seen_s": 0.0009264168329536915,
+        "last_seen_s": 49.440512442961335
+      },
+      "7": {
+        "name": "cargo",
+        "max_rss_bytes": 49049600,
+        "cpu_ticks": 20,
+        "first_seen_s": 0.10626153368502855,
+        "last_seen_s": 49.33779702987522
+      },
+      "22": {
+        "name": "rustc",
+        "max_rss_bytes": 172687360,
+        "cpu_ticks": 16,
+        "first_seen_s": 0.30818909872323275,
+        "last_seen_s": 0.5115281636826694
+      },
+      "30": {
+        "name": "cc",
+        "max_rss_bytes": 2109440,
+        "cpu_ticks": 0,
+        "first_seen_s": 0.5116066639311612,
+        "last_seen_s": 0.5116078718565404
+      },
+      "31": {
+        "name": "collect2",
+        "max_rss_bytes": 1495040,
+        "cpu_ticks": 0,
+        "first_seen_s": 0.5116507466882467,
+        "last_seen_s": 0.5116517888382077
+      },
+      "32": {
+        "name": "ld",
+        "max_rss_bytes": 20135936,
+        "cpu_ticks": 4,
+        "first_seen_s": 0.511710830964148,
+        "last_seen_s": 0.5117120388895273
+      },
+      "34": {
+        "name": "build-script-bu",
+        "max_rss_bytes": 1720320,
+        "cpu_ticks": 0,
+        "first_seen_s": 0.6131620300002396,
+        "last_seen_s": 0.6131629468873143
+      },
+      "37": {
+        "name": "rustc",
+        "max_rss_bytes": 102072320,
+        "cpu_ticks": 1,
+        "first_seen_s": 0.6132312379777431,
+        "last_seen_s": 0.6132321548648179
+      },
+      "50": {
+        "name": "rustc",
+        "max_rss_bytes": 137011200,
+        "cpu_ticks": 5,
+        "first_seen_s": 0.7152426037937403,
+        "last_seen_s": 0.7152436459437013
+      },
+      "57": {
+        "name": "cc",
+        "max_rss_bytes": 2117632,
+        "cpu_ticks": 0,
+        "first_seen_s": 0.7153066038154066,
+        "last_seen_s": 0.7153078126721084
+      },
+      "58": {
+        "name": "collect2",
+        "max_rss_bytes": 1507328,
+        "cpu_ticks": 0,
+        "first_seen_s": 0.7153572286479175,
+        "last_seen_s": 0.7153587709181011
+      },
+      "59": {
+        "name": "ld",
+        "max_rss_bytes": 12152832,
+        "cpu_ticks": 0,
+        "first_seen_s": 0.715451770927757,
+        "last_seen_s": 0.7154524377547204
+      },
+      "65": {
+        "name": "rustc",
+        "max_rss_bytes": 226873344,
+        "cpu_ticks": 33,
+        "first_seen_s": 0.816908803768456,
+        "last_seen_s": 1.1208109017461538
+      },
+      "81": {
+        "name": "rustc",
+        "max_rss_bytes": 181960704,
+        "cpu_ticks": 4,
+        "first_seen_s": 1.2214437667280436,
+        "last_seen_s": 1.2214448917657137
+      },
+      "97": {
+        "name": "rustc",
+        "max_rss_bytes": 196915200,
+        "cpu_ticks": 9,
+        "first_seen_s": 1.4235528740100563,
+        "last_seen_s": 1.4235539990477264
+      },
+      "105": {
+        "name": "rustc",
+        "max_rss_bytes": 315006976,
+        "cpu_ticks": 128,
+        "first_seen_s": 1.5250405729748309,
+        "last_seen_s": 2.7411784660071135
+      },
+      "128": {
+        "name": "rustc",
+        "max_rss_bytes": 328744960,
+        "cpu_ticks": 124,
+        "first_seen_s": 2.842040540650487,
+        "last_seen_s": 4.063348394818604
+      },
+      "138": {
+        "name": "rustc",
+        "max_rss_bytes": 139792384,
+        "cpu_ticks": 7,
+        "first_seen_s": 4.164019762072712,
+        "last_seen_s": 4.164020844735205
+      },
+      "146": {
+        "name": "rustc",
+        "max_rss_bytes": 0,
+        "cpu_ticks": 0,
+        "first_seen_s": 4.164067178033292,
+        "last_seen_s": 4.164068427868187
+      },
+      "154": {
+        "name": "rustc",
+        "max_rss_bytes": 324419584,
+        "cpu_ticks": 150,
+        "first_seen_s": 4.2647296278737485,
+        "last_seen_s": 5.984311731066555
+      },
+      "176": {
+        "name": "cc",
+        "max_rss_bytes": 2101248,
+        "cpu_ticks": 0,
+        "first_seen_s": 5.780855373013765,
+        "last_seen_s": 5.984357106033713
+      },
+      "177": {
+        "name": "collect2",
+        "max_rss_bytes": 1495040,
+        "cpu_ticks": 0,
+        "first_seen_s": 5.7809018306434155,
+        "last_seen_s": 5.984398896805942
+      },
+      "178": {
+        "name": "ld",
+        "max_rss_bytes": 57450496,
+        "cpu_ticks": 22,
+        "first_seen_s": 5.780953663866967,
+        "last_seen_s": 5.984441688749939
+      },
+      "180": {
+        "name": "rustc",
+        "max_rss_bytes": 190943232,
+        "cpu_ticks": 33,
+        "first_seen_s": 6.085556596983224,
+        "last_seen_s": 6.392381405923516
+      },
+      "190": {
+        "name": "rustc",
+        "max_rss_bytes": 460804096,
+        "cpu_ticks": 1165,
+        "first_seen_s": 6.493402105756104,
+        "last_seen_s": 18.045723385643214
+      },
+      "230": {
+        "name": "rustc",
+        "max_rss_bytes": 274112512,
+        "cpu_ticks": 169,
+        "first_seen_s": 18.14833417069167,
+        "last_seen_s": 19.76738730678335
+      },
+      "258": {
+        "name": "rustc",
+        "max_rss_bytes": 319471616,
+        "cpu_ticks": 427,
+        "first_seen_s": 19.86852488387376,
+        "last_seen_s": 24.134466021787375
+      },
+      "298": {
+        "name": "rustc",
+        "max_rss_bytes": 553304064,
+        "cpu_ticks": 2488,
+        "first_seen_s": 24.235107098706067,
+        "last_seen_s": 49.33785248780623
+      },
+      "337": {
+        "name": "cc",
+        "max_rss_bytes": 2117632,
+        "cpu_ticks": 0,
+        "first_seen_s": 49.0331676248461,
+        "last_seen_s": 49.33791207196191
+      },
+      "338": {
+        "name": "collect2",
+        "max_rss_bytes": 1499136,
+        "cpu_ticks": 0,
+        "first_seen_s": 49.03323399974033,
+        "last_seen_s": 49.33796365465969
+      },
+      "339": {
+        "name": "ld",
+        "max_rss_bytes": 77905920,
+        "cpu_ticks": 29,
+        "first_seen_s": 49.0333473328501,
+        "last_seen_s": 49.33801861293614
+      }
+    },
+    "sample_interval_s": 0.1,
+    "clock_ticks_per_s": 100,
+    "deadline_s": 120,
+    "workers": 1,
+    "as_limit_mib": null,
+    "sampled_aggregate_rss_stop_bytes": 3221225472,
+    "memory_stop": false,
+    "user_s": 47.196177,
+    "system_s": 2.21304,
+    "log": "/tmp/c71-cggm-tail-local-20261009/build.log"
+  },
+  "first_validation": [
+    {
+      "filter": "cggm_h_",
+      "exit_code": 0,
+      "wall_seconds": 0.003331668209284544,
+      "command": [
+        "timeout",
+        "-k",
+        "5s",
+        "60s",
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcg-712df1950e470ed5",
+        "cggm_h_",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "deadline_seconds": 60,
+      "as_limit_bytes": 2147483648,
+      "passed": 3,
+      "failed": 0,
+      "ignored": 1
+    },
+    {
+      "filter": "punctured_accumulation_matches_original_coin_tree",
+      "exit_code": 0,
+      "wall_seconds": 0.22207858879119158,
+      "command": [
+        "timeout",
+        "-k",
+        "5s",
+        "60s",
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcg-712df1950e470ed5",
+        "punctured_accumulation_matches_original_coin_tree",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "deadline_seconds": 60,
+      "as_limit_bytes": 2147483648,
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "filter": "c71_seed6_guard_cggm_",
+      "exit_code": 0,
+      "wall_seconds": 0.2874998659826815,
+      "command": [
+        "timeout",
+        "-k",
+        "5s",
+        "60s",
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcg-712df1950e470ed5",
+        "c71_seed6_guard_cggm_",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "deadline_seconds": 60,
+      "as_limit_bytes": 2147483648,
+      "passed": 3,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "filter": "c71_seed6_one_channel_",
+      "exit_code": 101,
+      "wall_seconds": 0.002887250855565071,
+      "command": [
+        "timeout",
+        "-k",
+        "5s",
+        "60s",
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcg-712df1950e470ed5",
+        "c71_seed6_one_channel_",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "deadline_seconds": 60,
+      "as_limit_bytes": 2147483648,
+      "passed": 1,
+      "failed": 2,
+      "ignored": 0
+    }
+  ],
+  "socket_retry": {
+    "binary_sha256": "c3ac88c83202eea6392f0472c63867b88739caa06204968dd80f9ee3b18a46a8",
+    "checks": [
+      {
+        "filter": "c71_seed6_one_channel_",
+        "exit_code": 0,
+        "wall_seconds": 7.489153229165822,
+        "command": [
+          "timeout",
+          "-k",
+          "5s",
+          "60s",
+          "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcg-712df1950e470ed5",
+          "c71_seed6_one_channel_",
+          "--test-threads=1",
+          "--nocapture"
+        ],
+        "deadline_seconds": 60,
+        "as_limit_bytes": 2147483648,
+        "passed": 3,
+        "failed": 0,
+        "ignored": 0
+      },
+      {
+        "filter": "c71_seed6_journal_",
+        "exit_code": 0,
+        "wall_seconds": 7.434440297074616,
+        "command": [
+          "timeout",
+          "-k",
+          "5s",
+          "60s",
+          "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcg-712df1950e470ed5",
+          "c71_seed6_journal_",
+          "--test-threads=1",
+          "--nocapture"
+        ],
+        "deadline_seconds": 60,
+        "as_limit_bytes": 2147483648,
+        "passed": 2,
+        "failed": 0,
+        "ignored": 0
+      },
+      {
+        "filter": "c71_seed6_attempt_window_",
+        "exit_code": 0,
+        "wall_seconds": 0.0034425430931150913,
+        "command": [
+          "timeout",
+          "-k",
+          "5s",
+          "60s",
+          "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcg-712df1950e470ed5",
+          "c71_seed6_attempt_window_",
+          "--test-threads=1",
+          "--nocapture"
+        ],
+        "deadline_seconds": 60,
+        "as_limit_bytes": 2147483648,
+        "passed": 3,
+        "failed": 0,
+        "ignored": 0
+      },
+      {
+        "filter": "c71_seed6_coin_",
+        "exit_code": 0,
+        "wall_seconds": 0.0024622930213809013,
+        "command": [
+          "timeout",
+          "-k",
+          "5s",
+          "60s",
+          "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcg-712df1950e470ed5",
+          "c71_seed6_coin_",
+          "--test-threads=1",
+          "--nocapture"
+        ],
+        "deadline_seconds": 60,
+        "as_limit_bytes": 2147483648,
+        "passed": 2,
+        "failed": 0,
+        "ignored": 0
+      }
+    ],
+    "all_passed": true
+  },
+  "environment_failure_preserved": "First one-channel invocation failed creating UnixStream::pair with EPERM in sandbox. Same immutable test binary passed all three tests with socket-enabled execution; no automatic-approval rejection occurred.",
+  "checks": "Golden;257 independent full-frame comparisons;27 forced rejection/exhaustion cases;punctured tree;guard;one-channel setup;one-time journals;attempt windows;coins",
+  "limits": {
+    "test_timeout_seconds": 60,
+    "test_as_bytes": 2147483648,
+    "build_timeout_seconds": 120,
+    "build_rss_stop_bytes": 3221225472,
+    "workers": 1
+  },
+  "artifacts": [
+    {
+      "path": "benchmarks/results/c71-cggm-tail-local-2026-10-09-d0aacdddcd94/build.json",
+      "bytes": 6260,
+      "sha256": "fe428b4e1c6f9b5667bf77d86237f6564f770c321a6ec240202263bdb7559c63"
+    },
+    {
+      "path": "benchmarks/results/c71-cggm-tail-local-2026-10-09-d0aacdddcd94/build.log",
+      "bytes": 5607,
+      "sha256": "a2798b1e52544c66ad0658dd0e439c8d8e1bdfe37c97c4364ff20b6c37838787"
+    },
+    {
+      "path": "benchmarks/results/c71-cggm-tail-local-2026-10-09-d0aacdddcd94/socket-enabled/test-01.json",
+      "bytes": 426,
+      "sha256": "7c75baad9a495104a5562652a18d5fc743b01a934af05f4885c60bc6db854ab2"
+    },
+    {
+      "path": "benchmarks/results/c71-cggm-tail-local-2026-10-09-d0aacdddcd94/socket-enabled/test-01.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "benchmarks/results/c71-cggm-tail-local-2026-10-09-d0aacdddcd94/socket-enabled/test-01.stdout",
+      "bytes": 731,
+      "sha256": "6b89ffa96b9a2d34df8add6b578d24f0197c37b39d1b76b67dba3bc7253875d5"
+    },
+    {
+      "path": "benchmarks/results/c71-cggm-tail-local-2026-10-09-d0aacdddcd94/socket-enabled/test-02.json",
+      "bytes": 418,
+      "sha256": "36aee04b28394dfa235a2ff141c64b3693807b18b24e04dac3cdc9be624a243e"
+    },
+    {
+      "path": "benchmarks/results/c71-cggm-tail-local-2026-10-09-d0aacdddcd94/socket-enabled/test-02.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "benchmarks/results/c71-cggm-tail-local-2026-10-09-d0aacdddcd94/socket-enabled/test-02.stdout",
+      "bytes": 496,
+      "sha256": "541ee36dec769d7eb555afcd86c4260f854280cf9f2045b8597d9d410013f183"
+    },
+    {
+      "path": "benchmarks/results/c71-cggm-tail-local-2026-10-09-d0aacdddcd94/socket-enabled/test-03.json",
+      "bytes": 436,
+      "sha256": "ca4b397003d2eb46a1992fe0e2ff731967bf7aef7029a07bc9bf702b3f5accb7"
+    },
+    {
+      "path": "benchmarks/results/c71-cggm-tail-local-2026-10-09-d0aacdddcd94/socket-enabled/test-03.stderr",
+      "bytes": 275,
+      "sha256": "633b41b1816a088d54c0784670ccdfce7a92c8abe1e6089d57680ffe92578953"
+    },
+    {
+      "path": "benchmarks/results/c71-cggm-tail-local-2026-10-09-d0aacdddcd94/socket-enabled/test-03.stdout",
+      "bytes": 635,
+      "sha256": "f6d7558c3c7c805072fc0442d59aa00369abb1aca007e946b6b7a283c6ca5a52"
+    },
+    {
+      "path": "benchmarks/results/c71-cggm-tail-local-2026-10-09-d0aacdddcd94/socket-enabled/test-04.json",
+      "bytes": 416,
+      "sha256": "bf54d40434f1b59c3ff5e165f1f4c19c4c292bf3e28a95482dbd65fc8ad28454"
+    },
+    {
+      "path": "benchmarks/results/c71-cggm-tail-local-2026-10-09-d0aacdddcd94/socket-enabled/test-04.stderr",
+      "bytes": 218,
+      "sha256": "394953b257f38989837c0f1b6c1e7506d4fb1a8b66aa0ebc5a75662231de18dd"
+    },
+    {
+      "path": "benchmarks/results/c71-cggm-tail-local-2026-10-09-d0aacdddcd94/socket-enabled/test-04.stdout",
+      "bytes": 277,
+      "sha256": "91e172ce69f693c26aa36846b1839e43dcd1156ce389e3172d805ee3ff7ea318"
+    },
+    {
+      "path": "benchmarks/results/c71-cggm-tail-local-2026-10-09-d0aacdddcd94/socket-enabled/validation.json",
+      "bytes": 2150,
+      "sha256": "30fb7e05d60affb18b91951c88802b665849857d3079f73ceb12d2062b7765fc"
+    },
+    {
+      "path": "benchmarks/results/c71-cggm-tail-local-2026-10-09-d0aacdddcd94/test-01.json",
+      "bytes": 399,
+      "sha256": "ebeb2c429ef7f09317320d011f2601a89dbdf0fb173cfc3fc8bf7b0a3772292c"
+    },
+    {
+      "path": "benchmarks/results/c71-cggm-tail-local-2026-10-09-d0aacdddcd94/test-01.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "benchmarks/results/c71-cggm-tail-local-2026-10-09-d0aacdddcd94/test-01.stdout",
+      "bytes": 487,
+      "sha256": "5a7c0f97227d593941972f95228fdefa00a0afa1df7db858b233c8af4316e67f"
+    },
+    {
+      "path": "benchmarks/results/c71-cggm-tail-local-2026-10-09-d0aacdddcd94/test-02.json",
+      "bytes": 482,
+      "sha256": "17d9a06c339f9038a7726757f290ff9384947ee706f9f9505ad639397ed9562e"
+    },
+    {
+      "path": "benchmarks/results/c71-cggm-tail-local-2026-10-09-d0aacdddcd94/test-02.stderr",
+      "bytes": 77,
+      "sha256": "51b702d6d6848b1d67ca08126574bc0384ebc4f07727d85b040683ac5a6f0a80"
+    },
+    {
+      "path": "benchmarks/results/c71-cggm-tail-local-2026-10-09-d0aacdddcd94/test-02.stdout",
+      "bytes": 195,
+      "sha256": "db9c3344283b4060c38d8c899b392d24e9a5120106f716e08c5d475b81dabad5"
+    },
+    {
+      "path": "benchmarks/results/c71-cggm-tail-local-2026-10-09-d0aacdddcd94/test-03.json",
+      "bytes": 425,
+      "sha256": "520bc34cae4551ee7e3844b2907c9ca1c0d43755a904cd89633e3efc669c92b0"
+    },
+    {
+      "path": "benchmarks/results/c71-cggm-tail-local-2026-10-09-d0aacdddcd94/test-03.stderr",
+      "bytes": 259,
+      "sha256": "735eb5a18ecef136ff940f72c07ce6794371925f6b61ff7d4b7b74094605676f"
+    },
+    {
+      "path": "benchmarks/results/c71-cggm-tail-local-2026-10-09-d0aacdddcd94/test-03.stdout",
+      "bytes": 419,
+      "sha256": "38ec9611289458c09f96ef06231c2e96906a9bdf1d1bdad1afd59b9ab80eb694"
+    },
+    {
+      "path": "benchmarks/results/c71-cggm-tail-local-2026-10-09-d0aacdddcd94/test-04.json",
+      "bytes": 431,
+      "sha256": "6cbf660a297c54266b8e36865c478568edac393a161b594a8d892a2773abaab6"
+    },
+    {
+      "path": "benchmarks/results/c71-cggm-tail-local-2026-10-09-d0aacdddcd94/test-04.stderr",
+      "bytes": 625,
+      "sha256": "49531589ffd48767faf6b640e355755bf3a72f03ea4dd58b64d829d3cc6024de"
+    },
+    {
+      "path": "benchmarks/results/c71-cggm-tail-local-2026-10-09-d0aacdddcd94/test-04.stdout",
+      "bytes": 629,
+      "sha256": "0ecf6b9d46a5d2532533fa40e20915f9a9bbacf26bb6e652fe2e0b996735e29e"
+    }
+  ]
+}

@@ -1,0 +1,823 @@
+{
+  "schema": "c71-h100-cggm-tail-component-v1",
+  "date": "2026-10-09",
+  "git_sha": "0e443e82c314bfdc9dd966627ff6a55173907543",
+  "git_dirty": false,
+  "validation": {
+    "source_git_sha": "0e443e82c314bfdc9dd966627ff6a55173907543",
+    "git_dirty": false,
+    "binary_sha256": "037fcc17918cab8016beda8ede26ce4d445d049abd2cacf7fbe0e7a4ad849282",
+    "checks": [
+      {
+        "label": "build",
+        "summary": {
+          "authorized_end_epoch": 1791601722.0,
+          "close_reserve_seconds": 1800,
+          "command": [
+            "bash",
+            "-c",
+            "cd \"$C71_ROOT/rust\"; cargo test --offline --locked -j 1 -p volta-pcg --features c71-seed6-reference --lib --no-run"
+          ],
+          "compute_end_epoch": 1791599922.0,
+          "exit_code": 0,
+          "gpu_uuid": "GPU-9f6b4728-e7d8-ff40-d9f1-e1cec5dd2b3a",
+          "incomplete_samples": 0,
+          "label": "build",
+          "mode": "calibration",
+          "observed_payload_peak_bytes": null,
+          "payload_limit_bytes": null,
+          "physical_complete_peak": false,
+          "physical_temporary_limit_bytes": null,
+          "resource_failure": null,
+          "sampled_host_rss_peak_bytes": 553209856,
+          "sampled_stable_temporary_peak_bytes": 0,
+          "sampled_whole_gpu_peak_bytes": 61740154880,
+          "samples": 240,
+          "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+          "sampling_target_seconds": 0.2,
+          "smaps_read_failures": 0,
+          "stable_samples": 240,
+          "start_unix_seconds": 1791590109.6606357,
+          "wall_seconds": 48.02262413688004
+        }
+      },
+      {
+        "label": "parity-01",
+        "summary": {
+          "authorized_end_epoch": 1791601722.0,
+          "close_reserve_seconds": 1800,
+          "command": [
+            "/workspace/volta-zk/rust/target/debug/deps/volta_pcg-98de2c0232ec729e",
+            "cggm_h_",
+            "--test-threads=1",
+            "--nocapture"
+          ],
+          "compute_end_epoch": 1791599922.0,
+          "exit_code": 0,
+          "gpu_uuid": "GPU-9f6b4728-e7d8-ff40-d9f1-e1cec5dd2b3a",
+          "incomplete_samples": 1,
+          "label": "parity-01",
+          "mode": "calibration",
+          "observed_payload_peak_bytes": null,
+          "payload_limit_bytes": null,
+          "physical_complete_peak": false,
+          "physical_temporary_limit_bytes": null,
+          "resource_failure": null,
+          "sampled_host_rss_peak_bytes": 17096704,
+          "sampled_stable_temporary_peak_bytes": 0,
+          "sampled_whole_gpu_peak_bytes": 61740154880,
+          "samples": 1,
+          "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+          "sampling_target_seconds": 0.2,
+          "smaps_read_failures": 0,
+          "stable_samples": 0,
+          "start_unix_seconds": 1791590157.74282,
+          "wall_seconds": 0.2003076747059822
+        }
+      },
+      {
+        "label": "parity-02",
+        "summary": {
+          "authorized_end_epoch": 1791601722.0,
+          "close_reserve_seconds": 1800,
+          "command": [
+            "/workspace/volta-zk/rust/target/debug/deps/volta_pcg-98de2c0232ec729e",
+            "punctured_accumulation_matches_original_coin_tree",
+            "--test-threads=1",
+            "--nocapture"
+          ],
+          "compute_end_epoch": 1791599922.0,
+          "exit_code": 0,
+          "gpu_uuid": "GPU-9f6b4728-e7d8-ff40-d9f1-e1cec5dd2b3a",
+          "incomplete_samples": 0,
+          "label": "parity-02",
+          "mode": "calibration",
+          "observed_payload_peak_bytes": null,
+          "payload_limit_bytes": null,
+          "physical_complete_peak": false,
+          "physical_temporary_limit_bytes": null,
+          "resource_failure": null,
+          "sampled_host_rss_peak_bytes": 21352448,
+          "sampled_stable_temporary_peak_bytes": 0,
+          "sampled_whole_gpu_peak_bytes": 61740154880,
+          "samples": 1,
+          "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+          "sampling_target_seconds": 0.2,
+          "smaps_read_failures": 0,
+          "stable_samples": 1,
+          "start_unix_seconds": 1791590157.9884195,
+          "wall_seconds": 0.20028050802648067
+        }
+      },
+      {
+        "label": "parity-03",
+        "summary": {
+          "authorized_end_epoch": 1791601722.0,
+          "close_reserve_seconds": 1800,
+          "command": [
+            "/workspace/volta-zk/rust/target/debug/deps/volta_pcg-98de2c0232ec729e",
+            "c71_seed6_guard_cggm_",
+            "--test-threads=1",
+            "--nocapture"
+          ],
+          "compute_end_epoch": 1791599922.0,
+          "exit_code": 0,
+          "gpu_uuid": "GPU-9f6b4728-e7d8-ff40-d9f1-e1cec5dd2b3a",
+          "incomplete_samples": 0,
+          "label": "parity-03",
+          "mode": "calibration",
+          "observed_payload_peak_bytes": null,
+          "payload_limit_bytes": null,
+          "physical_complete_peak": false,
+          "physical_temporary_limit_bytes": null,
+          "resource_failure": null,
+          "sampled_host_rss_peak_bytes": 22073344,
+          "sampled_stable_temporary_peak_bytes": 0,
+          "sampled_whole_gpu_peak_bytes": 61740154880,
+          "samples": 2,
+          "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+          "sampling_target_seconds": 0.2,
+          "smaps_read_failures": 0,
+          "stable_samples": 2,
+          "start_unix_seconds": 1791590158.2302518,
+          "wall_seconds": 0.4007817581295967
+        }
+      },
+      {
+        "label": "parity-04",
+        "summary": {
+          "authorized_end_epoch": 1791601722.0,
+          "close_reserve_seconds": 1800,
+          "command": [
+            "/workspace/volta-zk/rust/target/debug/deps/volta_pcg-98de2c0232ec729e",
+            "c71_seed6_one_channel_",
+            "--test-threads=1",
+            "--nocapture"
+          ],
+          "compute_end_epoch": 1791599922.0,
+          "exit_code": 0,
+          "gpu_uuid": "GPU-9f6b4728-e7d8-ff40-d9f1-e1cec5dd2b3a",
+          "incomplete_samples": 0,
+          "label": "parity-04",
+          "mode": "calibration",
+          "observed_payload_peak_bytes": null,
+          "payload_limit_bytes": null,
+          "physical_complete_peak": false,
+          "physical_temporary_limit_bytes": null,
+          "resource_failure": null,
+          "sampled_host_rss_peak_bytes": 22986752,
+          "sampled_stable_temporary_peak_bytes": 0,
+          "sampled_whole_gpu_peak_bytes": 61740154880,
+          "samples": 36,
+          "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+          "sampling_target_seconds": 0.2,
+          "smaps_read_failures": 0,
+          "stable_samples": 36,
+          "start_unix_seconds": 1791590158.6803522,
+          "wall_seconds": 7.2035998199135065
+        }
+      },
+      {
+        "label": "parity-05",
+        "summary": {
+          "authorized_end_epoch": 1791601722.0,
+          "close_reserve_seconds": 1800,
+          "command": [
+            "/workspace/volta-zk/rust/target/debug/deps/volta_pcg-98de2c0232ec729e",
+            "c71_seed6_journal_",
+            "--test-threads=1",
+            "--nocapture"
+          ],
+          "compute_end_epoch": 1791599922.0,
+          "exit_code": 0,
+          "gpu_uuid": "GPU-9f6b4728-e7d8-ff40-d9f1-e1cec5dd2b3a",
+          "incomplete_samples": 0,
+          "label": "parity-05",
+          "mode": "calibration",
+          "observed_payload_peak_bytes": null,
+          "payload_limit_bytes": null,
+          "physical_complete_peak": false,
+          "physical_temporary_limit_bytes": null,
+          "resource_failure": null,
+          "sampled_host_rss_peak_bytes": 23027712,
+          "sampled_stable_temporary_peak_bytes": 0,
+          "sampled_whole_gpu_peak_bytes": 61740154880,
+          "samples": 36,
+          "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+          "sampling_target_seconds": 0.2,
+          "smaps_read_failures": 0,
+          "stable_samples": 36,
+          "start_unix_seconds": 1791590165.9390228,
+          "wall_seconds": 7.203255515545607
+        }
+      },
+      {
+        "label": "parity-06",
+        "summary": {
+          "authorized_end_epoch": 1791601722.0,
+          "close_reserve_seconds": 1800,
+          "command": [
+            "/workspace/volta-zk/rust/target/debug/deps/volta_pcg-98de2c0232ec729e",
+            "c71_seed6_attempt_window_",
+            "--test-threads=1",
+            "--nocapture"
+          ],
+          "compute_end_epoch": 1791599922.0,
+          "exit_code": 0,
+          "gpu_uuid": "GPU-9f6b4728-e7d8-ff40-d9f1-e1cec5dd2b3a",
+          "incomplete_samples": 1,
+          "label": "parity-06",
+          "mode": "calibration",
+          "observed_payload_peak_bytes": null,
+          "payload_limit_bytes": null,
+          "physical_complete_peak": false,
+          "physical_temporary_limit_bytes": null,
+          "resource_failure": null,
+          "sampled_host_rss_peak_bytes": 17166336,
+          "sampled_stable_temporary_peak_bytes": 0,
+          "sampled_whole_gpu_peak_bytes": 61740154880,
+          "samples": 1,
+          "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+          "sampling_target_seconds": 0.2,
+          "smaps_read_failures": 0,
+          "stable_samples": 0,
+          "start_unix_seconds": 1791590173.2014325,
+          "wall_seconds": 0.2003003042191267
+        }
+      },
+      {
+        "label": "parity-07",
+        "summary": {
+          "authorized_end_epoch": 1791601722.0,
+          "close_reserve_seconds": 1800,
+          "command": [
+            "/workspace/volta-zk/rust/target/debug/deps/volta_pcg-98de2c0232ec729e",
+            "c71_seed6_coin_",
+            "--test-threads=1",
+            "--nocapture"
+          ],
+          "compute_end_epoch": 1791599922.0,
+          "exit_code": 0,
+          "gpu_uuid": "GPU-9f6b4728-e7d8-ff40-d9f1-e1cec5dd2b3a",
+          "incomplete_samples": 1,
+          "label": "parity-07",
+          "mode": "calibration",
+          "observed_payload_peak_bytes": null,
+          "payload_limit_bytes": null,
+          "physical_complete_peak": false,
+          "physical_temporary_limit_bytes": null,
+          "resource_failure": null,
+          "sampled_host_rss_peak_bytes": 17149952,
+          "sampled_stable_temporary_peak_bytes": 0,
+          "sampled_whole_gpu_peak_bytes": 61740154880,
+          "samples": 1,
+          "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+          "sampling_target_seconds": 0.2,
+          "smaps_read_failures": 0,
+          "stable_samples": 0,
+          "start_unix_seconds": 1791590173.4460835,
+          "wall_seconds": 0.2002615872770548
+        }
+      },
+      {
+        "label": "benchmark",
+        "summary": {
+          "authorized_end_epoch": 1791601722.0,
+          "close_reserve_seconds": 1800,
+          "command": [
+            "/workspace/volta-zk/rust/target/debug/deps/volta_pcg-98de2c0232ec729e",
+            "cggm_h_streamed_codec_benchmark",
+            "--test-threads=1",
+            "--nocapture",
+            "--ignored"
+          ],
+          "compute_end_epoch": 1791599922.0,
+          "exit_code": 0,
+          "gpu_uuid": "GPU-9f6b4728-e7d8-ff40-d9f1-e1cec5dd2b3a",
+          "incomplete_samples": 1,
+          "label": "benchmark",
+          "mode": "calibration",
+          "observed_payload_peak_bytes": null,
+          "payload_limit_bytes": null,
+          "physical_complete_peak": false,
+          "physical_temporary_limit_bytes": null,
+          "resource_failure": null,
+          "sampled_host_rss_peak_bytes": 21184512,
+          "sampled_stable_temporary_peak_bytes": 0,
+          "sampled_whole_gpu_peak_bytes": 61740154880,
+          "samples": 2,
+          "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+          "sampling_target_seconds": 0.2,
+          "smaps_read_failures": 0,
+          "stable_samples": 1,
+          "start_unix_seconds": 1791590173.6889713,
+          "wall_seconds": 0.4003906324505806
+        }
+      }
+    ],
+    "all_passed": true,
+    "canonical_setup": false,
+    "credit": false,
+    "concurrent_work": "canonical05 with old saved binary; CPU component build/tests only, no CUDA context; overlap explicitly excluded from isolated performance claim",
+    "correlations": "fresh one-time reduced AES tests; no production session state imported"
+  },
+  "tests": [
+    {
+      "file": "parity-01.stdout",
+      "passed": 3,
+      "failed": 0,
+      "ignored": 1
+    },
+    {
+      "file": "parity-02.stdout",
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "file": "parity-03.stdout",
+      "passed": 3,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "file": "parity-04.stdout",
+      "passed": 3,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "file": "parity-05.stdout",
+      "passed": 2,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "file": "parity-06.stdout",
+      "passed": 3,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "file": "parity-07.stdout",
+      "passed": 2,
+      "failed": 0,
+      "ignored": 0
+    }
+  ],
+  "tests_passed": 17,
+  "samples": [
+    {
+      "after_squeezed_bytes_typical": 136,
+      "calls": 20000,
+      "candidate_slot_bytes": 192,
+      "canonical_setup": false,
+      "comparison_scope": "previous contiguous full tape versus streamed lazy tail",
+      "contiguous_ns": 21360164,
+      "credit": false,
+      "input_codec_heap_bytes_after": 0,
+      "input_codec_heap_bytes_before": 98,
+      "replica": 0,
+      "same_outputs": true,
+      "streamed_ns": 14674521
+    },
+    {
+      "after_squeezed_bytes_typical": 136,
+      "calls": 20000,
+      "candidate_slot_bytes": 192,
+      "canonical_setup": false,
+      "comparison_scope": "previous contiguous full tape versus streamed lazy tail",
+      "contiguous_ns": 21239228,
+      "credit": false,
+      "input_codec_heap_bytes_after": 0,
+      "input_codec_heap_bytes_before": 98,
+      "replica": 1,
+      "same_outputs": true,
+      "streamed_ns": 14482251
+    },
+    {
+      "after_squeezed_bytes_typical": 136,
+      "calls": 20000,
+      "candidate_slot_bytes": 192,
+      "canonical_setup": false,
+      "comparison_scope": "previous contiguous full tape versus streamed lazy tail",
+      "contiguous_ns": 21441819,
+      "credit": false,
+      "input_codec_heap_bytes_after": 0,
+      "input_codec_heap_bytes_before": 98,
+      "replica": 2,
+      "same_outputs": true,
+      "streamed_ns": 14514136
+    },
+    {
+      "after_squeezed_bytes_typical": 136,
+      "calls": 20000,
+      "candidate_slot_bytes": 192,
+      "canonical_setup": false,
+      "comparison_scope": "previous contiguous full tape versus streamed lazy tail",
+      "contiguous_ns": 21196227,
+      "credit": false,
+      "input_codec_heap_bytes_after": 0,
+      "input_codec_heap_bytes_before": 98,
+      "replica": 3,
+      "same_outputs": true,
+      "streamed_ns": 14452780
+    },
+    {
+      "after_squeezed_bytes_typical": 136,
+      "calls": 20000,
+      "candidate_slot_bytes": 192,
+      "canonical_setup": false,
+      "comparison_scope": "previous contiguous full tape versus streamed lazy tail",
+      "contiguous_ns": 21530534,
+      "credit": false,
+      "input_codec_heap_bytes_after": 0,
+      "input_codec_heap_bytes_before": 98,
+      "replica": 4,
+      "same_outputs": true,
+      "streamed_ns": 14454292
+    }
+  ],
+  "median_baseline_ns": 21360164,
+  "median_candidate_ns": 14482251,
+  "speedup": 1.4749201626183663,
+  "reduction_percent": 32.1997200021498,
+  "scope": "20,000 independent H calls, five alternating repetitions. Previous contiguous full-tape baseline versus streamed lazy-tail candidate; earlier streamed/full-tape benchmark showed no time improvement. CPU component overlaps canonical05 old-binary setup; neither isolated tail-only attribution nor measured full-setup gain.",
+  "decision": "Retain exact lazy-tail component after finite parity. Not used by canonical05; no new canonical run or full-setup speedup attributed.",
+  "sampling_contract": "Fresh SHAKE reader per H; same 98-byte domain frame; fixed 64-byte slots; 136 bytes actually read on usual third-slot first-candidate acceptance, else192; eight rejection trials and terminal exhaustion unchanged.",
+  "credit": false,
+  "canonical_setup_complete": false,
+  "physical_complete_peak": false,
+  "local_validation": "benchmarks/results/c71-cggm-tail-local-2026-10-09-d0aacdddcd94.json",
+  "private_bundle": {
+    "path": "artifact/c7.1-pod/h100-final-cggm-tail-20261009T235700Z",
+    "manifest_sha256": "fb789b58319d9bfcb82297b74fb1d9ad614b1ff6a64968abe586ff1dee4ec757"
+  },
+  "artifacts": [
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/benchmark.end",
+      "bytes": 18,
+      "sha256": "5693827f3bed81dd17b50a39ae19b4025b07bb0bd8ede4d5f7960139a2dbfda2"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/benchmark.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/benchmark.memory.csv",
+      "bytes": 517,
+      "sha256": "27baa73d943b26b3ac58ec1e0177c8b5046190cd06d63adafb261c9147eb8baa"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/benchmark.start",
+      "bytes": 19,
+      "sha256": "3afd53d5edf40b75f3d18b83abd9699246619f1bdd57ed0f43de490b1338327b"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/benchmark.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/benchmark.stdout",
+      "bytes": 1962,
+      "sha256": "40cd0d2c3cc35703628f6da60e01306218c5a58e1e6603ad4b645c3f32fa9995"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/benchmark.summary.json",
+      "bytes": 1545,
+      "sha256": "b8f332f09de08c7475a6dbd1aeb116931bcbaa1d74b9a89a249b0e42fc79fa3d"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/benchmark.time.txt",
+      "bytes": 853,
+      "sha256": "dc62260216c48c4626915eb79a02f9f9ad33b0d0e1d5871914e65f03df1e47d9"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/build.end",
+      "bytes": 19,
+      "sha256": "221284fa441c65b4df5727bf9886dfddd3fd05ef3719f29fe42de4b37847ef58"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/build.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/build.memory.csv",
+      "bytes": 26998,
+      "sha256": "680807b6ca2b85398cb2fc348d3744ff565c3026cca30a1d768646a9c4e7d739"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/build.start",
+      "bytes": 19,
+      "sha256": "7385575b29414d2f350467c1342250acaa28795f61b5163735713e53d0271e48"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/build.stderr",
+      "bytes": 5420,
+      "sha256": "0b610e0c9f8057d15f58131a4a55f7e830bc6a6feadc8d5df0e05dc5d84d18ef"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/build.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/build.summary.json",
+      "bytes": 1515,
+      "sha256": "56a8e9df31eeefec72ece355bceb9a07eb54ea4a4492b9e4efc9b0ded54d2329"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/build.time.txt",
+      "bytes": 857,
+      "sha256": "c188d4ac52fedd67ff4369f468db46f185d3d81b68d666e62181f22790d56c6f"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-01.end",
+      "bytes": 19,
+      "sha256": "cc02b3fbf6d07c1d0f862927e9aad71ab800bb07ad77ea3442a4b2e12a3739ad"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-01.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-01.memory.csv",
+      "bytes": 406,
+      "sha256": "daa3893d5dbe554cd74ee0673a6f17f9e45b38169f92380a189298e54f63a080"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-01.start",
+      "bytes": 17,
+      "sha256": "a63e7e634f7b319b6abaef37a08abb61ad19665df56507c9cf8798cca3735e8d"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-01.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-01.stdout",
+      "bytes": 487,
+      "sha256": "5a7c0f97227d593941972f95228fdefa00a0afa1df7db858b233c8af4316e67f"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-01.summary.json",
+      "bytes": 1502,
+      "sha256": "88ce19ef6f1cc5f33583454d46332655ea001793d5cbc82471f9ae673654ba62"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-01.time.txt",
+      "bytes": 819,
+      "sha256": "19d1ac91da70a1e2cbe4678903f034c667244f7d6a74848353194d8d52b9afe7"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-02.end",
+      "bytes": 19,
+      "sha256": "8ef2292eb1849679f4b46cc5ff24c6fa0cf0bebcb8005901eae67d431855c7aa"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-02.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-02.memory.csv",
+      "bytes": 407,
+      "sha256": "3ee75b90a9d57edd629c916b89e691a75c90835de3b1906072b342d883e07602"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-02.start",
+      "bytes": 19,
+      "sha256": "9067e0005f8abe3f1634d2ff7e6d3808d2877e0a30ee79735278c5aede039f0d"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-02.stderr",
+      "bytes": 77,
+      "sha256": "51b702d6d6848b1d67ca08126574bc0384ebc4f07727d85b040683ac5a6f0a80"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-02.stdout",
+      "bytes": 195,
+      "sha256": "1135e3361e580e6c5a5a81037b7b45c67062a8fdf1d5141d737044268a7fd575"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-02.summary.json",
+      "bytes": 1547,
+      "sha256": "de77805cfe0e2fd650407e116d687c69a85a8648667e50c7d1a908d2e7f99638"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-02.time.txt",
+      "bytes": 863,
+      "sha256": "b315d7b805819b82673a1aec4588bbec63c5cfea0f33e314ba85a9231647496f"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-03.end",
+      "bytes": 19,
+      "sha256": "e04841f3715fdc8f6c1304255341e4ca011a36c129cdec78b53c9a3b03cfe25e"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-03.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-03.memory.csv",
+      "bytes": 518,
+      "sha256": "05943564b51a547e5b0cd19da6c3e7e13dac7bb0385e2eef832bbd9461934a08"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-03.start",
+      "bytes": 19,
+      "sha256": "3bb9cd7a0985b0c9599725b749703e7a0d486552b3dcf13a1a3972e8abad4734"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-03.stderr",
+      "bytes": 259,
+      "sha256": "735eb5a18ecef136ff940f72c07ce6794371925f6b61ff7d4b7b74094605676f"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-03.stdout",
+      "bytes": 419,
+      "sha256": "b06929517a1275badf38371b96074fc03fb2a8df95f3c0c50d2226fa8bbf6c27"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-03.summary.json",
+      "bytes": 1518,
+      "sha256": "cb2e788e72f9186e02d1d70e4437946db0a094d38866c0bb409e3def353a486f"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-03.time.txt",
+      "bytes": 834,
+      "sha256": "226346a691d9530a70c6e0cb0d09dada1ce7f5e86b7fdb52a9f7e0c91226e2ec"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-04.end",
+      "bytes": 18,
+      "sha256": "d3bdcccc81148538295c2655efe568cf88b34a5359c82d5a031a711231ef82bf"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-04.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-04.memory.csv",
+      "bytes": 4265,
+      "sha256": "d3ea8cdc6a11c969263951ad0afdff1057c15e565080ed7ff5b7364f2114a81d"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-04.start",
+      "bytes": 19,
+      "sha256": "2095b326e20edeb4b5adb76c901cfd6ee77725e946833def47327b232b0854e5"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-04.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-04.stdout",
+      "bytes": 731,
+      "sha256": "64d2f1eb0fd15e3fd211a0d1da1eac3daff3efa9f1f53644694deae8eb27925e"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-04.summary.json",
+      "bytes": 1521,
+      "sha256": "3d4510683cdb2044e5c0dc5fe7bb70daf5e71509e39a8b9b4e8260827281cb58"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-04.time.txt",
+      "bytes": 838,
+      "sha256": "4cd40d659129f6b214e904d4e3744d36a6e0ce559998d06f42ca19248dd62f48"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-05.end",
+      "bytes": 18,
+      "sha256": "9e1af3d8d04b28c1768fb97260e870faf2972988e5007035fbd418f961517ae4"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-05.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-05.memory.csv",
+      "bytes": 4265,
+      "sha256": "15a99649bcd28bc8ea03c8b3c6af52e1bc9bba4384805886f93de44df1572c90"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-05.start",
+      "bytes": 19,
+      "sha256": "6e2a48aa52b9f01c9fe83f63db8209bd9eb4d857e48aff17373afab0554fcc21"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-05.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-05.stdout",
+      "bytes": 496,
+      "sha256": "71356b1598978e81cf86184936d01b2aacad0fe1d4e769a1c95fdc10d0f82526"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-05.summary.json",
+      "bytes": 1516,
+      "sha256": "269175da4e1857789766fc71dd52f12564707807dda9665f93ec7f90ddef464a"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-05.time.txt",
+      "bytes": 836,
+      "sha256": "e733a3ddded2b8cc72269f6d9846637aeca2a9ff6707bd6220b915ede30b8454"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-06.end",
+      "bytes": 19,
+      "sha256": "d161e395e5168b9f806d874dddac677a56ebfba98b798cec88e70b6bb0e865af"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-06.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-06.memory.csv",
+      "bytes": 406,
+      "sha256": "3b436fde617521d3a9193766ab349137f19a8e11889a1359acc6019ed8ce6df7"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-06.start",
+      "bytes": 19,
+      "sha256": "a332cdee8252aec4f61511f1f7fa398d71471f460130872c2bf5a5359b497cc0"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-06.stderr",
+      "bytes": 274,
+      "sha256": "98eca9a7ee371d330f257f29b5e26692586e9aae1cd3eaef1c33d257c84e9d9d"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-06.stdout",
+      "bytes": 635,
+      "sha256": "53970dc7db8580890e00c9c461c92f6555c679fc083692c200f8135c27df2174"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-06.summary.json",
+      "bytes": 1522,
+      "sha256": "3957d24bef6d995956084676baabedce2b8991cee75391068b692f68c4fd10a0"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-06.time.txt",
+      "bytes": 841,
+      "sha256": "d3771664c4b965d2fdab8165a30ddec993b4a4f5395c2d8621cba9aea7d819fb"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-07.end",
+      "bytes": 19,
+      "sha256": "4047be84509388c7f53d75cce7713b924e81b567f8baa230a021c9f125b26492"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-07.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-07.memory.csv",
+      "bytes": 406,
+      "sha256": "71ac829b577dbb236f4d3207b4f474e5013ba01325693e397e9cd03aeb3fa3e3"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-07.start",
+      "bytes": 19,
+      "sha256": "56832b9baf1ca52f9240d48dd65f6e92a9bc58ed85fec8a86aa88e2450213da4"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-07.stderr",
+      "bytes": 218,
+      "sha256": "394953b257f38989837c0f1b6c1e7506d4fb1a8b66aa0ebc5a75662231de18dd"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-07.stdout",
+      "bytes": 277,
+      "sha256": "91e172ce69f693c26aa36846b1839e43dcd1156ce389e3172d805ee3ff7ea318"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-07.summary.json",
+      "bytes": 1512,
+      "sha256": "06cb6cbf5a74391f4152fb585a121e24c6091bec7181930ddfe4ac0b2791a54f"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/logs/parity-07.time.txt",
+      "bytes": 829,
+      "sha256": "1b2a87d7a04ce8156d4b35c26942c8733f1354cafe384bd598c153f496b56824"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-cggm-tail-2026-10-09-0e443e82c314/validation.json",
+      "bytes": 16359,
+      "sha256": "44667a337e5044f87ae37ac2e5eb05d5f7da416179ca06e9105e44fe952938eb"
+    }
+  ]
+}

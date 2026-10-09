@@ -1,0 +1,20 @@
+{
+  "filter": "c71_seed6_attempt_window_",
+  "exit_code": 0,
+  "wall_seconds": 0.0034425430931150913,
+  "command": [
+    "timeout",
+    "-k",
+    "5s",
+    "60s",
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcg-712df1950e470ed5",
+    "c71_seed6_attempt_window_",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "deadline_seconds": 60,
+  "as_limit_bytes": 2147483648,
+  "passed": 3,
+  "failed": 0,
+  "ignored": 0
+}

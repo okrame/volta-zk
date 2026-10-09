@@ -1,0 +1,8 @@
+
+running 2 tests
+test c71_seed6::guard::cggm::setup::tests::c71_seed6_journal_burns_before_rng_and_cannot_retry_or_reopen ... ok
+test c71_seed6::guard::cggm::setup::tests::c71_seed6_journal_real_setup_owns_the_live_lifetime ... C71_SEED6_JOURNAL record_kind=5 burn_before_RNG=true one_live_owner=true no_retry_or_reopen=true base_rows=6 per_attempt_pool=true acceptance_fixture=true proof=false
+ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 106 filtered out; finished in 7.08s
+

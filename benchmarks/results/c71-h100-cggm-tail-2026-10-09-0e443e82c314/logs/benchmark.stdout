@@ -1,0 +1,11 @@
+
+running 1 test
+test c71_ea_lpn::tests::cggm_h_streamed_codec_benchmark ... C71_CGGM_CODEC {"after_squeezed_bytes_typical":136,"calls":20000,"candidate_slot_bytes":192,"canonical_setup":false,"comparison_scope":"previous contiguous full tape versus streamed lazy tail","contiguous_ns":21360164,"credit":false,"input_codec_heap_bytes_after":0,"input_codec_heap_bytes_before":98,"replica":0,"same_outputs":true,"streamed_ns":14674521}
+C71_CGGM_CODEC {"after_squeezed_bytes_typical":136,"calls":20000,"candidate_slot_bytes":192,"canonical_setup":false,"comparison_scope":"previous contiguous full tape versus streamed lazy tail","contiguous_ns":21239228,"credit":false,"input_codec_heap_bytes_after":0,"input_codec_heap_bytes_before":98,"replica":1,"same_outputs":true,"streamed_ns":14482251}
+C71_CGGM_CODEC {"after_squeezed_bytes_typical":136,"calls":20000,"candidate_slot_bytes":192,"canonical_setup":false,"comparison_scope":"previous contiguous full tape versus streamed lazy tail","contiguous_ns":21441819,"credit":false,"input_codec_heap_bytes_after":0,"input_codec_heap_bytes_before":98,"replica":2,"same_outputs":true,"streamed_ns":14514136}
+C71_CGGM_CODEC {"after_squeezed_bytes_typical":136,"calls":20000,"candidate_slot_bytes":192,"canonical_setup":false,"comparison_scope":"previous contiguous full tape versus streamed lazy tail","contiguous_ns":21196227,"credit":false,"input_codec_heap_bytes_after":0,"input_codec_heap_bytes_before":98,"replica":3,"same_outputs":true,"streamed_ns":14452780}
+C71_CGGM_CODEC {"after_squeezed_bytes_typical":136,"calls":20000,"candidate_slot_bytes":192,"canonical_setup":false,"comparison_scope":"previous contiguous full tape versus streamed lazy tail","contiguous_ns":21530534,"credit":false,"input_codec_heap_bytes_after":0,"input_codec_heap_bytes_before":98,"replica":4,"same_outputs":true,"streamed_ns":14454292}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 107 filtered out; finished in 0.22s
+

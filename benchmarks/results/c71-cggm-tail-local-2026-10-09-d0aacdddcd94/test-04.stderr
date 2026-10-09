@@ -1,0 +1,7 @@
+
+thread 'c71_seed6::guard::cggm::setup::tests::c71_seed6_one_channel_binds_geometry_before_ot' (20) panicked at volta-pcg/src/c71_seed6/setup.rs:536:67:
+called `Result::unwrap()` on an `Err` value: Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'c71_seed6::guard::cggm::setup::tests::c71_seed6_one_channel_setup_to_original_ea_macs' (22) panicked at volta-pcg/src/c71_seed6/setup.rs:464:68:
+called `Result::unwrap()` on an `Err` value: Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" }

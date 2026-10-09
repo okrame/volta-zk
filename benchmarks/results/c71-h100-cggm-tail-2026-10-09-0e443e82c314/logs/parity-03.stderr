@@ -1,0 +1,2 @@
+C71_GUARD_CGGM heights=1..7 roles_separate=true beta_zero=true split_checks=true full_bootstrap=false
+seed6_cggm_native_sizes {"complete_physical_peak":false,"receiver_pending":736,"receiver_split_pending":856,"sender_pending":720,"sender_split_pending":840}

@@ -1,0 +1,86 @@
+{
+  "binary_sha256": "c3ac88c83202eea6392f0472c63867b88739caa06204968dd80f9ee3b18a46a8",
+  "checks": [
+    {
+      "filter": "c71_seed6_one_channel_",
+      "exit_code": 0,
+      "wall_seconds": 7.489153229165822,
+      "command": [
+        "timeout",
+        "-k",
+        "5s",
+        "60s",
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcg-712df1950e470ed5",
+        "c71_seed6_one_channel_",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "deadline_seconds": 60,
+      "as_limit_bytes": 2147483648,
+      "passed": 3,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "filter": "c71_seed6_journal_",
+      "exit_code": 0,
+      "wall_seconds": 7.434440297074616,
+      "command": [
+        "timeout",
+        "-k",
+        "5s",
+        "60s",
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcg-712df1950e470ed5",
+        "c71_seed6_journal_",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "deadline_seconds": 60,
+      "as_limit_bytes": 2147483648,
+      "passed": 2,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "filter": "c71_seed6_attempt_window_",
+      "exit_code": 0,
+      "wall_seconds": 0.0034425430931150913,
+      "command": [
+        "timeout",
+        "-k",
+        "5s",
+        "60s",
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcg-712df1950e470ed5",
+        "c71_seed6_attempt_window_",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "deadline_seconds": 60,
+      "as_limit_bytes": 2147483648,
+      "passed": 3,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "filter": "c71_seed6_coin_",
+      "exit_code": 0,
+      "wall_seconds": 0.0024622930213809013,
+      "command": [
+        "timeout",
+        "-k",
+        "5s",
+        "60s",
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcg-712df1950e470ed5",
+        "c71_seed6_coin_",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "deadline_seconds": 60,
+      "as_limit_bytes": 2147483648,
+      "passed": 2,
+      "failed": 0,
+      "ignored": 0
+    }
+  ],
+  "all_passed": true
+}

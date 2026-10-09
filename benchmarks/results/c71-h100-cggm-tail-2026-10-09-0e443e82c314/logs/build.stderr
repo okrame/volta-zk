@@ -1,0 +1,178 @@
+   Compiling volta-pcg v0.0.0 (/workspace/volta-zk-cuda-84890fd/rust/volta-pcg)
+warning: variant `Shape` is never constructed
+   --> volta-pcg/src/c71_seed6.rs:123:5
+    |
+120 | enum Seed6Error {
+    |      ---------- variant in this enum
+...
+123 |     Shape,
+    |     ^^^^^
+    |
+    = note: `Seed6Error` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: struct `ProverRows` is never constructed
+   --> volta-pcg/src/c71_seed6.rs:128:8
+    |
+128 | struct ProverRows<'a> {
+    |        ^^^^^^^^^^
+
+warning: struct `VerifierRows` is never constructed
+   --> volta-pcg/src/c71_seed6.rs:136:8
+    |
+136 | struct VerifierRows<'a> {
+    |        ^^^^^^^^^^^^
+
+warning: struct `CompressedRows` is never constructed
+   --> volta-pcg/src/c71_seed6.rs:191:8
+    |
+191 | struct CompressedRows {
+    |        ^^^^^^^^^^^^^^
+
+warning: function `buffer_report` is never used
+   --> volta-pcg/src/c71_seed6.rs:228:4
+    |
+228 | fn buffer_report(output: &CompressedRows) -> Seed6Buffers {
+    |    ^^^^^^^^^^^^^
+
+warning: struct `Seed6Buffers` is never constructed
+   --> volta-pcg/src/c71_seed6.rs:243:8
+    |
+243 | struct Seed6Buffers {
+    |        ^^^^^^^^^^^^
+
+warning: function `prover_accumulators` is never used
+   --> volta-pcg/src/c71_seed6.rs:256:4
+    |
+256 | fn prover_accumulators(rows: ProverRows<'_>) -> Result<ProverCheck, Seed6Error> {
+    |    ^^^^^^^^^^^^^^^^^^^
+
+warning: function `verifier_accumulator` is never used
+   --> volta-pcg/src/c71_seed6.rs:271:4
+    |
+271 | fn verifier_accumulator(rows: VerifierRows<'_>) -> Result<VerifierCheck, Seed6Error> {
+    |    ^^^^^^^^^^^^^^^^^^^^
+
+warning: function `check_then_compress` is never used
+   --> volta-pcg/src/c71_seed6.rs:318:4
+    |
+318 | fn check_then_compress(
+    |    ^^^^^^^^^^^^^^^^^^^
+
+warning: method `heap_bytes` is never used
+   --> volta-pcg/src/c71_seed6/equality.rs:156:8
+    |
+ 86 | impl<State> Prepared<State> {
+    | --------------------------- method in this implementation
+...
+156 |     fn heap_bytes(&self) -> usize {
+    |        ^^^^^^^^^^
+
+warning: function `check_remaining` is never used
+   --> volta-pcg/src/c71_seed6/guard.rs:285:4
+    |
+285 | fn check_remaining(p: &ProverFinished, v: &GuardAccepted) {
+    |    ^^^^^^^^^^^^^^^
+
+warning: fields `work` and `random_candidates` are never read
+  --> volta-pcg/src/c71_seed6/cggm.rs:24:5
+   |
+19 | struct SenderPending {
+   |        ------------- fields in this struct
+...
+24 |     work: Work,
+   |     ^^^^
+25 |     random_candidates: u64,
+   |     ^^^^^^^^^^^^^^^^^
+
+warning: field `work` is never read
+  --> volta-pcg/src/c71_seed6/cggm.rs:34:5
+   |
+28 | struct ReceiverPending {
+   |        --------------- field in this struct
+...
+34 |     work: Work,
+   |     ^^^^
+
+warning: field `work` is never read
+  --> volta-pcg/src/c71_seed6/cggm.rs:40:5
+   |
+37 | struct SplitPending<State> {
+   |        ------------ field in this struct
+...
+40 |     work: Work,
+   |     ^^^^
+
+warning: method `terms` is never used
+  --> volta-pcg/src/c71_seed6/expand.rs:43:8
+   |
+25 | impl Stream {
+   | ----------- method in this implementation
+...
+43 |     fn terms(&mut self) -> Result<(Vec<EaTerm>, Work), Error> {
+   |        ^^^^^
+
+warning: methods `next_row` and `heap_bytes` are never used
+   --> volta-pcg/src/c71_seed6/expand.rs:122:19
+    |
+102 | impl Sender {
+    | ----------- methods in this implementation
+...
+122 |     pub(super) fn next_row(&mut self) -> Result<[u64; 3], Error> {
+    |                   ^^^^^^^^
+...
+217 |     pub(super) fn heap_bytes(&self) -> usize {
+    |                   ^^^^^^^^^^
+
+warning: methods `next_row` and `heap_bytes` are never used
+   --> volta-pcg/src/c71_seed6/expand.rs:254:19
+    |
+222 | impl Receiver {
+    | ------------- methods in this implementation
+...
+254 |     pub(super) fn next_row(&mut self) -> Result<[u64; 4], Error> {
+    |                   ^^^^^^^^
+...
+303 |     pub(super) fn heap_bytes(&self) -> usize {
+    |                   ^^^^^^^^^^
+
+warning: field `seed6_work` is never read
+  --> volta-pcg/src/c71_seed6/real.rs:91:9
+   |
+86 | pub(super) struct RealProverOutput {
+   |                   ---------------- field in this struct
+...
+91 |     pub seed6_work: Seed6Work,
+   |         ^^^^^^^^^^
+
+warning: field `seed6_work` is never read
+   --> volta-pcg/src/c71_seed6/real.rs:101:9
+    |
+ 96 | pub(super) struct RealVerifierOutput {
+    |                   ------------------ field in this struct
+...
+101 |     pub seed6_work: Seed6Work,
+    |         ^^^^^^^^^^
+
+warning: field `work` is never read
+   --> volta-pcg/src/c71_seed6/real.rs:117:9
+    |
+114 | pub(super) struct ProverReservation {
+    |                   ----------------- field in this struct
+...
+117 |     pub work: ReservationWork,
+    |         ^^^^
+
+warning: field `work` is never read
+   --> volta-pcg/src/c71_seed6/real.rs:123:9
+    |
+120 | pub(super) struct VerifierReservation {
+    |                   ------------------- field in this struct
+...
+123 |     pub work: ReservationWork,
+    |         ^^^^
+
+warning: `volta-pcg` (lib) generated 21 warnings
+   Compiling volta-mac v0.0.0 (/workspace/volta-zk-cuda-84890fd/rust/volta-mac)
+    Finished `test` profile [optimized] target(s) in 47.97s
+  Executable unittests src/lib.rs (/workspace/volta-zk/rust/target/debug/deps/volta_pcg-98de2c0232ec729e)

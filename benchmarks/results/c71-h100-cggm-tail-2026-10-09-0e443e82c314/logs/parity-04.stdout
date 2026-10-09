@@ -1,0 +1,11 @@
+
+running 3 tests
+test c71_seed6::guard::cggm::setup::tests::c71_seed6_one_channel_binds_geometry_before_ot ... ok
+test c71_seed6::guard::cggm::setup::tests::c71_seed6_one_channel_geometry_rejects_before_io_or_rng ... ok
+test c71_seed6::guard::cggm::setup::tests::c71_seed6_one_channel_setup_to_original_ea_macs ... C71_SEED6_SETUP_AUDIT role=sender heap_bytes=[256, 256, 384] native_value_bytes=672
+C71_SEED6_SETUP_AUDIT role=receiver heap_bytes=[256, 256, 384] native_value_bytes=672
+C71_SEED6_ONE_CHANNEL main_rows=25 inverse_rows=6 base_rows=6 wire_bytes=390742 fresh_paths=true beta_from_original_seed=true durable_burn=false
+ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 105 filtered out; finished in 7.03s
+

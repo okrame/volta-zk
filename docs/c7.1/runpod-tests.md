@@ -3,6 +3,11 @@
 [Design](design.md) · [Specifiche](specs.md) · [Sicurezza](security.md) ·
 [Test locali](local-tests.md) · [Archivio](../c7.1-history/README.md)
 
+La [coda SHAKE cGGM differita](../c7.1-history/h100-cggm-tail-2026-10-09.md)
+passa 17 test CPU sul pod e conserva output, scarti e correlazioni monouso.
+Il microbenchmark misura 1,475× sul componente; il setup completo con
+questa modifica non è misurato e `canonical-05` usa il binario precedente.
+
 ## Stato e sequenza operativa
 
 Γ è ammesso e riusato dopo verifica degli input, dell'ammissione e dei tre

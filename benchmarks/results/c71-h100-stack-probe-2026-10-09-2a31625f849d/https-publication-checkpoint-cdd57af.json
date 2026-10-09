@@ -1,0 +1,57 @@
+{
+  "epoch": 1791581711.33276,
+  "transport": "anonymous Git HTTPS, credential.helper empty",
+  "checkout": "/workspace/volta-zk-cuda-84890fd",
+  "git_sha": "cdd57afd45643fc96c4c5f5b809c0e09941e913c",
+  "git_dirty": false,
+  "running_source_in_published_history": true,
+  "retired_prefill_source_in_published_history": true,
+  "files": [
+    {
+      "path": "docs/c7.1/design.md",
+      "sha256": "6e9b9e51de7581a4234030f46f26ed2c81653e97947b5043eceab63f8d77624e",
+      "bytes": 23987
+    },
+    {
+      "path": "docs/c7.1/local-tests.md",
+      "sha256": "5c5609c2e7801cd00cb7ad890785cba6e682ed2db0c6e14346dd202b25ac32ef",
+      "bytes": 52040
+    },
+    {
+      "path": "docs/c7.1/runpod-tests.md",
+      "sha256": "487c87b8dbee97d439c6f81b1ac760f216ee886f90de42aed04dee3e767e02d2",
+      "bytes": 50720
+    },
+    {
+      "path": "docs/c7.1/security.md",
+      "sha256": "155c119c6da93cc1d31f2b2420d8aefee14b10a4a098c34feffe839376f6bc54",
+      "bytes": 53315
+    },
+    {
+      "path": "docs/c7.1/specs.md",
+      "sha256": "1f11d30cf745d2cc0244b176dec6cd01a30928a5ce4a3fdefb16e0336e4d9366",
+      "bytes": 102224
+    },
+    {
+      "path": "benchmarks/results/c71-h100-prefill-2026-10-09-3e6c63a4250b.json",
+      "sha256": "fe2aed7d660f1e32537dbdddbdef6e2fc7b6f8552745431402f3c4facc573808",
+      "bytes": 24790
+    },
+    {
+      "path": "benchmarks/results/c71-h100-canonical-02-2026-10-09-3e6c63a4250b.json",
+      "sha256": "ec063d70e7119e5546fb87811752085e6fa3b0694680b5c7b77ba9c39e2220c3",
+      "bytes": 6092
+    }
+  ],
+  "earlier_source_archive_deviation": {
+    "description": "Prefill3e6c63a was transferred as a Git bundle over SSH after HTTPS publication, contrary to the runbook transport restriction. This receipt verifies the same exact published source through anonymous HTTPS in a separate clean checkout. No credentials transferred; numeric evidence stays tied to its original clean SHA. All subsequent code synchronization uses HTTPS only.",
+    "archives": [
+      {
+        "path": "/workspace/c71-prefill-3e6c63a.bundle",
+        "bytes": 2504,
+        "sha256": "d5aae3ecf855026763c8e38449c9ca15c0d21ba0b01723fe967966207467b91c"
+      }
+    ],
+    "reflog_bundle_entries": []
+  }
+}

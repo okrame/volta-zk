@@ -145,7 +145,12 @@ completa l'inferenza in 90,615 s, con tutti i token uguali al replay
 intero ammesso, senza prova o promozione KV. Il
 [batching del prompt](../c7.1-history/h100-prefill-2026-10-09.md) è esatto
 ma rallenta a 132,036 s (+45,71%), nonostante −65,98% lanci: è ritirato.
-Il trial fresco `canonical-03` usa il binario scalare validato `2a31625`;
+Il [terzo trial](../c7.1-history/h100-monitor-stack-2026-10-09.md), su binario
+scalare `2a31625`, termina dopo 572,209 s per copertura W incompleta in
+una lettura smaps, dopo PCS W 436,687 s e prima del completamento del setup.
+Il monitor ora conserva e limita le riletture senza allentare il cap fisico.
+La candidata riserva iniziale CUDA di 256 B libera 207,618 MB nel solo
+contesto vuoto: validazione reale e misura canonica seguono separatamente.
 Γ, causalità, replay e garanzie restano invariati. O=0/150/300 non sono verificati.
 Il precedente timeout CPU dopo
 circa 41 minuti rimane il fallimento di quella schedule da 1.024 scansioni,

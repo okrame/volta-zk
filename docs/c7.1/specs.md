@@ -1258,6 +1258,15 @@ l'owner Rust e i relativi descrittori rimangono memoria host da censire.
 Il loader controlla ABI 4 prima di creare un contesto e richiede i simboli
 di vista/abort; la precedente ABI 2 da 144 B è rifiutata prima di leggere
 il nuovo ledger, che aggiunge `d2d_bytes`.
+La [candidata H100 `a32a6c3`](../c7.1-history/h100-monitor-stack-2026-10-09.md)
+richiede e rilegge `cudaLimitStackSize=256` prima di creare lo stream;
+errore o valore diverso rende l'owner terminale. È una configurazione iniziale,
+non un bound fisico: il probe a contesto vuoto libera 207.618.048 B,
+mentre risparmio canonico e allowance completa richiedono misure separate.
+Il monitor esenta W solo con copertura smaps completa e contigua. Conserva
+letture fallite, consente due riletture per campione e al massimo 64 fallimenti
+per run; i campioni recuperati conservano il cap fisico ma non il credito al
+picco stabile. I limiti di payload e memoria fisica non cambiano.
 `produce_native` collega tutti i 13 tipi di producer, riusando i dispatcher
 di base e nonlineare e le route Norm/QK/softmax/PV. Verifica arità, presenza
 esatta di coda/istogramma e assenza di token estranei all'embedding;

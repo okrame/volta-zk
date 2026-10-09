@@ -23,6 +23,11 @@ passa dieci regressioni, 15/15 CUDA e i casi aggiuntivi a 100 righe,
 ma rallenta l'inferenza completa. La variante e i suoi test sono
 conservati in `3e6c63a` e nel record; il codice selezionato torna
 identico a `2a31625`, con la precedente validazione applicabile.
+La [correzione successiva del monitor](../c7.1-history/h100-monitor-stack-2026-10-09.md)
+passa 35 test: copertura smaps contigua, massimo due riletture/64 fallimenti,
+snapshot privati e cap fisico conservato. Due test Python del runtime nativo
+passano con la riserva iniziale CUDA a 256 B e tre errori terminali simulati.
+Questi risultati locali non sostituiscono la nuova parità sulla libreria reale.
 
 ## Limiti e ambiente
 

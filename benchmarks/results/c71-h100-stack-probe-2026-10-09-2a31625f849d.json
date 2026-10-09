@@ -1,0 +1,83 @@
+{
+  "artifacts": [
+    {
+      "bytes": 687,
+      "path": "benchmarks/results/c71-h100-stack-probe-2026-10-09-2a31625f849d/cuda-stack-runtime-probe.memory.csv",
+      "sha256": "b1a804c8fe401054615f96d729e418da9dab314a9332af287364fe1cbc3fc141"
+    },
+    {
+      "bytes": 692,
+      "path": "benchmarks/results/c71-h100-stack-probe-2026-10-09-2a31625f849d/cuda-stack-runtime-probe.stdout",
+      "sha256": "793f7e07422ba76de0027c97a2671c6c20017ac7049e7b264396761ca41e787c"
+    },
+    {
+      "bytes": 1276,
+      "path": "benchmarks/results/c71-h100-stack-probe-2026-10-09-2a31625f849d/cuda-stack-runtime-probe.summary.json",
+      "sha256": "47c0b748bde3e91534e97e9d45359f8c35ce9c6ae115ac1e678c1b9ad6a76843"
+    },
+    {
+      "bytes": 795,
+      "path": "benchmarks/results/c71-h100-stack-probe-2026-10-09-2a31625f849d/cuda-stack-runtime-probe.time.txt",
+      "sha256": "961a68accb72036c1fa743c9787166ee044851f1f9bbe00b5aafafa95672d66e"
+    },
+    {
+      "bytes": 2212,
+      "path": "benchmarks/results/c71-h100-stack-probe-2026-10-09-2a31625f849d/https-publication-checkpoint-cdd57af.json",
+      "sha256": "ea38011ff2c5ea6e11ae7ce0d575346bb848205f27d7927e8dcae39116775fdd"
+    },
+    {
+      "bytes": 1116,
+      "path": "benchmarks/results/c71-h100-stack-probe-2026-10-09-2a31625f849d/stack-runtime-probe.py",
+      "sha256": "33f036ba6ecfada47ce0b41914c15d32a9e84911bcf000f6dfe52db4c47d79a5"
+    }
+  ],
+  "candidate_git_sha": "a32a6c3",
+  "candidate_local_native_python_tests_passed": 2,
+  "candidate_terminal_stack_failure_cases": 3,
+  "compiled_max_stack_bytes": 216,
+  "compiled_sm90_function_count": 92,
+  "compiled_spill_bytes": 0,
+  "credit": false,
+  "date": "2026-10-09",
+  "default_stack_bytes": 1024,
+  "empty_context_freed_bytes": 207618048,
+  "git_dirty": false,
+  "git_sha": "2a31625f849d653aacd8e6c702400491d2928ce6",
+  "hardware_candidate_validation": "pending in a new record",
+  "initial_stack_request_bytes": 256,
+  "private_bundle": {
+    "bytes": 821418,
+    "files": 27,
+    "manifest_sha256": "87611c5ed63abdfd185f07ce8ddfc58b72f8b58830537c9d2c7b4e0947d1f2fc",
+    "path": "artifact/c7.1-pod/h100-final-canonical03-20261009T214700Z"
+  },
+  "published_checkpoint_git_sha": "cdd57afd45643fc96c4c5f5b809c0e09941e913c",
+  "runtime_api_reference": "https://docs.nvidia.com/cuda/archive/12.8.1/cuda-runtime-api/group__CUDART__DEVICE.html",
+  "samples": [
+    {
+      "epoch": 1791581936.0452168,
+      "global_free_bytes": 84465025024,
+      "global_total_bytes": 85017493504,
+      "label": "default",
+      "stack_limit_bytes": 1024
+    },
+    {
+      "epoch": 1791581936.0464869,
+      "global_free_bytes": 84672643072,
+      "global_total_bytes": 85017493504,
+      "label": "requested256",
+      "stack_limit_bytes": 256
+    },
+    {
+      "epoch": 1791581936.0472329,
+      "global_free_bytes": 84465025024,
+      "global_total_bytes": 85017493504,
+      "label": "restored",
+      "stack_limit_bytes": 1024
+    }
+  ],
+  "schema": "volta-c71-h100-stack-probe-v1",
+  "scope_correction": "The original stdout incorrectly says during canonical CPU setup with another resident W. The probe actually ran at21:38:56UTC, after canonical03 terminated at21:33:44UTC. No other model was resident. Separate empty context only, no C7.1 kernels, no canonical savings or full runtime allowance claim.",
+  "source_scope": "Standalone preserved Python probe; main checkout at2a31625, independent HTTPS publication checkout atcdd57af; no C7.1 kernels executed.",
+  "transport_deviation": "The already HTTPS-published prefill3e commit was also sent to the pod as a Git bundle over SSH, contrary to the active transport rule. No credentials were sent. Prefill was withdrawn. Independent anonymous HTTPS checkoutcdd57af verifies both build ancestors and7publishedfiles; subsequent source sync uses HTTPS only."
+}

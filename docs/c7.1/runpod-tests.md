@@ -42,10 +42,18 @@ CUDA e lookup con marker passano. Massimo temporaneo stabile campionato
 parità e confronto esatto, ma impiega 132,036 s: è ritirata. Il trial
 automatico `canonical-02` è stato interrotto tramite monitor dopo
 68,277 s durante il caricamento, prima di commitment/setup/journal.
-`canonical-03` è in corso dalle 21:24:12 UTC su sorgenti pulite `2a31625`
-e binario scalare salvato, hash e compatibilità verificati: nuovo W,
-setup AES e journal, timeout diagnostico 7.200 s. Non riusa stato
-del trial interrotto. Deadline e guard della campagna restano invariati.
+Il [trial `canonical-03`](../c7.1-history/h100-monitor-stack-2026-10-09.md)
+termina alle 21:33:44 UTC dopo 572,209 s per lettura smaps senza copertura W,
+con W completato e setup incompleto; la causa della lettura non è provata.
+Il monitor corretto conserva letture fallite, richiede copertura completa,
+ammette al massimo due riletture per campione/64 fallimenti per run e
+continua a imporre il cap fisico, senza credito al picco dei campioni recuperati.
+La riserva iniziale CUDA di 256 B richiede nuova compilazione sm_90,
+15/15 parità reali e diagnostico numerico prima della selezione canonica.
+Si riusa il binario scalare solo dopo verifica dei sorgenti Rust identici;
+libreria, monitor e binario riportano ciascuno la propria SHA di build.
+Il prossimo trial riparte da W con journal e correlazioni nuovi.
+Deadline e guard della campagna restano invariati.
 
 La precedente campagna chiusa conserva il proprio fallimento nel commitment
 W; il suo pod spento e le sue autorizzazioni non descrivono questa campagna.

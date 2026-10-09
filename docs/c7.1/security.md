@@ -31,6 +31,12 @@ ha uguaglianza dei 150 token pubblici e parità finita CUDA. Il
 Le sue parità non sostituiscono il raffinamento generale o la verifica
 del certificato. Il trial interrotto non ha creato setup/journal;
 il successivo riparte con capacità fresche e non importa stato.
+Il [terzo trial](../c7.1-history/h100-monitor-stack-2026-10-09.md) brucia
+la capacità prima dell'interruzione del monitor durante setup. Le riletture
+limitate del solo procfs non ritentano operazioni del protocollo né recuperano
+sessioni. La configurazione iniziale dello stack CUDA mantiene errori terminali
+e richiede parità reale; non modifica MAC, NoPeek, correlazioni o l'allowance
+fisica da dimostrare.
 
 Il teorema richiede almeno 78 bit per ciascun vantaggio completo.
 Si lavora nel modello dell'oracolo casuale classico, con lavoro e memoria

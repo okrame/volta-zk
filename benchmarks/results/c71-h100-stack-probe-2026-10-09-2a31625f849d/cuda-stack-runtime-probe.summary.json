@@ -1,0 +1,29 @@
+{
+  "authorized_end_epoch": 1791601722.0,
+  "close_reserve_seconds": 1800,
+  "command": [
+    "bash",
+    "-c",
+    "ulimit -S -v unlimited; exec python3 \"$C71_RUN/stack-runtime-probe.py\""
+  ],
+  "compute_end_epoch": 1791599922.0,
+  "exit_code": 0,
+  "gpu_uuid": "GPU-9f6b4728-e7d8-ff40-d9f1-e1cec5dd2b3a",
+  "incomplete_samples": 1,
+  "label": "cuda-stack-runtime-probe",
+  "mode": "calibration",
+  "observed_payload_peak_bytes": null,
+  "payload_limit_bytes": null,
+  "physical_complete_peak": false,
+  "physical_temporary_limit_bytes": null,
+  "resource_failure": null,
+  "sampled_host_rss_peak_bytes": 98668544,
+  "sampled_stable_temporary_peak_bytes": 0,
+  "sampled_whole_gpu_peak_bytes": 24117248,
+  "samples": 4,
+  "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption is a smaps residency lower bound; device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+  "sampling_target_seconds": 0.2,
+  "stable_samples": 3,
+  "start_unix_seconds": 1791581935.5502307,
+  "wall_seconds": 0.800886319950223
+}

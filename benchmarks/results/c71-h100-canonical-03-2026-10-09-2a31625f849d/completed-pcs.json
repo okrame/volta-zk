@@ -1,0 +1,123 @@
+[
+  {
+    "complete": true,
+    "geometry": {
+      "candidate_capacity": 16777216,
+      "cosets": 4096,
+      "cut": 4096,
+      "rows": 1048576,
+      "samples": 17179869184
+    },
+    "kind": "end",
+    "phase": "pcs_salts_prescan_gpu",
+    "wall_ns": 641427176,
+    "work": {
+      "chunks": 1025,
+      "completed_samples": 17179869184,
+      "computed_xof_blocks": 2147484673,
+      "logical_candidate_bytes": 137438953496,
+      "native": {
+        "allocations": 5,
+        "arena_bytes": 10486016,
+        "cleanup_failed": 0,
+        "d2d_bytes": 0,
+        "d2h_bytes": 16822316,
+        "fences": 1256,
+        "h2d_bytes": 61394690728,
+        "host_owner_bytes": 42088,
+        "launches": 4100,
+        "live_capacity_bytes": 10486016,
+        "logical_bytes": 10485928,
+        "peak_capacity_bytes": 27297024,
+        "peak_reserved_bytes": 61421987584,
+        "releases": 2,
+        "stopped": 0,
+        "weights_bytes": 61394690560,
+        "weights_loaded_bytes": 61394690560,
+        "weights_sealed": 1,
+        "zeroed_bytes": 0
+      },
+      "native_d2h_bytes": 16822316,
+      "native_fences": 1027,
+      "native_h2d_bytes": 168,
+      "native_launches": 4100
+    }
+  },
+  {
+    "complete": true,
+    "geometry": {
+      "columns": 128,
+      "columns_in_ring": 8,
+      "columns_per_fft": 4,
+      "cosets": 4096,
+      "cosets_per_scan": 32,
+      "groups": 128,
+      "height": 4294967296,
+      "rows": 1048576
+    },
+    "kind": "end",
+    "phase": "pcs_w_resident",
+    "wall_ns": 436040469635,
+    "work": {
+      "analytic_fft_butterflies": 5497558138880,
+      "completed_groups": 128,
+      "equivalent_source_scans": 128,
+      "fft_base_cells": 549755813888,
+      "leaf_hashes": 4294967296,
+      "logical_source_bytes": 7858520391680,
+      "native": {
+        "allocations": 5405,
+        "arena_bytes": 0,
+        "cleanup_failed": 0,
+        "d2d_bytes": 0,
+        "d2h_bytes": 92337676,
+        "fences": 6680,
+        "h2d_bytes": 61396389832,
+        "host_owner_bytes": 42088,
+        "launches": 162713,
+        "live_capacity_bytes": 0,
+        "logical_bytes": 0,
+        "peak_capacity_bytes": 3745182208,
+        "peak_reserved_bytes": 65139872768,
+        "releases": 5405,
+        "stopped": 0,
+        "weights_bytes": 61394690560,
+        "weights_loaded_bytes": 61394690560,
+        "weights_sealed": 1,
+        "zeroed_bytes": 274877923840
+      },
+      "native_d2h_bytes": 75515360,
+      "native_fences": 5424,
+      "native_h2d_bytes": 1699104,
+      "native_launches": 158613,
+      "node_hashes": 4294967295,
+      "ordinary_signed_products": 125736326266880,
+      "pad_field_products": 805306368,
+      "source_visits": 3929260195840
+    }
+  },
+  {
+    "complete": true,
+    "geometry": {
+      "base_columns": 128,
+      "coset_rows": 1048576,
+      "cosets": 4096,
+      "cut": 4096,
+      "height": 4294967296,
+      "native_kind": "weights"
+    },
+    "kind": "end",
+    "phase": "pcs_commitment",
+    "wall_ns": 436687032239,
+    "work": {
+      "completed_cosets": 4096,
+      "coset_cells": 549755813888,
+      "leaf_hashes": 4294967296,
+      "native_owner_capacity_high_water_bytes": 3745182208,
+      "node_hashes": 4294967295,
+      "retained_digest_bytes": 67108832,
+      "retained_salt_offset_bytes": 8388608,
+      "salt_candidate_bytes": 274877906992
+    }
+  }
+]

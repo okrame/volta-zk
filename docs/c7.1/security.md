@@ -15,6 +15,10 @@ La [campagna H100](../c7.1-history/h100-components-2026-10-09.md) verifica
 parità finita della libreria CUDA e seleziona l'accumulo W limb16 esatto;
 non chiude il raffinamento CUDA né la composizione Seed6. Mantiene NoPeek,
 MAC originali, AES reale e correlazioni monouso, inclusi i nuovi trial.
+Il [commitment W H100 completo](../c7.1-history/h100-w-setup-2026-10-09.md)
+e la parità del codec SHAKE cGGM sono evidenze di implementazione distinte
+dall'accettazione del run e dal trasferimento dei bound a Seed6; quest'ultimo
+rimane aperto. L'assorbimento incrementale conserva il frame byte per byte.
 
 Il teorema richiede almeno 78 bit per ciascun vantaggio completo.
 Si lavora nel modello dell'oracolo casuale classico, con lavoro e memoria

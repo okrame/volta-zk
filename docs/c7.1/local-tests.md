@@ -8,6 +8,10 @@ due correzioni di compilazione CUDA e una correzione della race `/proc`
 nel monitor: sette test FFT e 29 test del monitor passano localmente.
 I 15 test sulla libreria reale sono risultati RunPod, separati da questi
 controlli locali e senza credito di prova canonica completa.
+Il [codec cGGM](../c7.1-history/h100-w-setup-2026-10-09.md) ha inoltre test
+ridotti di frame/golden/coin/albero e setup/lifetime, eseguiti sul pod CPU
+con 64 GiB AS e 60 s per filtro. Non sono esecuzioni locali né una prova
+canonica completa; il benchmark non dimostra un guadagno temporale.
 
 ## Limiti e ambiente
 

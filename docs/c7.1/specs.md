@@ -1448,6 +1448,11 @@ riferimento CPU opt-in. Geometria canonica: t=675, h=19, ell=11,
 N=353.894.400, capacità 70.778.880. Il setup usa un seed Fp6 principale
 da 17.553 righe e uno a ruoli inversi da 2.025. MR19/P-521, COPE AES,
 check e compressione precedono il seal e qualsiasi output.
+Il [checkpoint H100](../c7.1-history/h100-w-setup-2026-10-09.md) elimina il
+buffer heap da 98 B per `cggm_h` tramite assorbimento incrementale degli
+stessi byte, conservando 192 B di output e tutti gli slot di rejection.
+Parità finita e setup ridotto passano; nessun guadagno di tempo del setup
+completo è ancora misurato. Il conto conservativo delle capacità resta valido.
 
 Il guard verifica i cammini sui MAC originali; il primo split cGGM è
 indipendente. Le coin di split e F_EQ rispettano commitment prima

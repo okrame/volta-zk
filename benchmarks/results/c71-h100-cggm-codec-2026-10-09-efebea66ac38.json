@@ -1,0 +1,351 @@
+{
+  "analytic_setup_hash_calls": {
+    "four_passes": 1415547900,
+    "receiver_each_pass": 353880900,
+    "scope": "Code-derived hash-call count for the two cGGM and two split traversals; not a measured allocation count",
+    "sender_each_pass": 353893050
+  },
+  "artifacts": [
+    {
+      "bytes": 394,
+      "path": "benchmarks/results/c71-h100-cggm-codec-2026-10-09-efebea66ac38/cggm-codec-parity.stdout",
+      "sha256": "84897a5277405b075c4376e8687864a33a8caa425c8754e3f27f3af51b58a457"
+    },
+    {
+      "bytes": 1267,
+      "path": "benchmarks/results/c71-h100-cggm-codec-2026-10-09-efebea66ac38/cggm-codec-bench.stdout",
+      "sha256": "ad7dc020ec43f0dfbfcec026457a7ed79be254e8d0aed08a6864e1ed9ee0bb36"
+    },
+    {
+      "bytes": 277,
+      "path": "benchmarks/results/c71-h100-cggm-codec-2026-10-09-efebea66ac38/seed6-coins.stdout",
+      "sha256": "9c451822ae6522699c8ad43dd9311f7a1fb83019ee65096fad60df95039d6428"
+    },
+    {
+      "bytes": 195,
+      "path": "benchmarks/results/c71-h100-cggm-codec-2026-10-09-efebea66ac38/cggm-tree-parity.stdout",
+      "sha256": "ee3190f6993d9a45f78e190ff643e0a086c9d963c609b961787ae39663820f22"
+    },
+    {
+      "bytes": 527,
+      "path": "benchmarks/results/c71-h100-cggm-codec-2026-10-09-efebea66ac38/seed6-reduced-setup.stdout",
+      "sha256": "6e707cd53f68735cff8ba839147af278c33c5186098fce70f82a633979f8fdd1"
+    },
+    {
+      "bytes": 383,
+      "path": "benchmarks/results/c71-h100-cggm-codec-2026-10-09-efebea66ac38/seed6-reduced-lifetime.stdout",
+      "sha256": "15fd00153e2c856ac1299a0bbbbe98ba05de81a92b0f51190181222179f4f4dd"
+    }
+  ],
+  "canonical_credit": false,
+  "capacity": "No new persistent buffers; removes the 98-byte transient heap frame. Existing conservative setup upper still applies. Stack/runtime refinement and physical complete peak remain unproven.",
+  "date": "2026-10-09",
+  "git_dirty": false,
+  "git_sha": "efebea66ac387b7a20172f38f623a0807648c60e",
+  "input_codec_heap_capacity_after_bytes": 0,
+  "input_codec_heap_capacity_before_bytes": 98,
+  "median_contiguous_ns": 21112024,
+  "median_streamed_ns": 21112312,
+  "private_bundle": {
+    "bytes": 14045592,
+    "files": 218,
+    "manifest_sha256": "4c3ac393c42e7c70c4aed0637ac91ca98652fe0f1f0f4242b696aab64386e74e",
+    "path": "artifact/c7.1-pod/h100-w-cggm-20261009T201100Z"
+  },
+  "ratio_of_medians": 0.9999863586707131,
+  "samples": [
+    {
+      "calls": 20000,
+      "canonical_setup": false,
+      "contiguous_ns": 21157950,
+      "credit": false,
+      "input_codec_heap_bytes_after": 0,
+      "input_codec_heap_bytes_before": 98,
+      "replica": 0,
+      "same_outputs": true,
+      "streamed_ns": 20839957
+    },
+    {
+      "calls": 20000,
+      "canonical_setup": false,
+      "contiguous_ns": 21016484,
+      "credit": false,
+      "input_codec_heap_bytes_after": 0,
+      "input_codec_heap_bytes_before": 98,
+      "replica": 1,
+      "same_outputs": true,
+      "streamed_ns": 20887758
+    },
+    {
+      "calls": 20000,
+      "canonical_setup": false,
+      "contiguous_ns": 21112024,
+      "credit": false,
+      "input_codec_heap_bytes_after": 0,
+      "input_codec_heap_bytes_before": 98,
+      "replica": 2,
+      "same_outputs": true,
+      "streamed_ns": 21112312
+    },
+    {
+      "calls": 20000,
+      "canonical_setup": false,
+      "contiguous_ns": 21200540,
+      "credit": false,
+      "input_codec_heap_bytes_after": 0,
+      "input_codec_heap_bytes_before": 98,
+      "replica": 3,
+      "same_outputs": true,
+      "streamed_ns": 21267612
+    },
+    {
+      "calls": 20000,
+      "canonical_setup": false,
+      "contiguous_ns": 20855728,
+      "credit": false,
+      "input_codec_heap_bytes_after": 0,
+      "input_codec_heap_bytes_before": 98,
+      "replica": 4,
+      "same_outputs": true,
+      "streamed_ns": 21150553
+    }
+  ],
+  "schema": "volta-c71-cggm-codec-component-v1",
+  "scope": "Standalone CPU hash component with default allocator; canonical-01 continues on 26c4c89 with original codec. Timing indistinguishable at this scale; no full-setup speedup claim.",
+  "speedup_demonstrated": false,
+  "tests": [
+    {
+      "failed": 0,
+      "ignored": 1,
+      "label": "cggm-codec-parity",
+      "passed": 2,
+      "summary": {
+        "authorized_end_epoch": 1791601722.0,
+        "close_reserve_seconds": 1800,
+        "command": [
+          "/workspace/volta-zk/rust/target/debug/deps/volta_pcg-98de2c0232ec729e",
+          "cggm_h_",
+          "--test-threads=1",
+          "--nocapture"
+        ],
+        "compute_end_epoch": 1791599922.0,
+        "exit_code": 0,
+        "gpu_uuid": "GPU-9f6b4728-e7d8-ff40-d9f1-e1cec5dd2b3a",
+        "incomplete_samples": 1,
+        "label": "cggm-codec-parity",
+        "mode": "calibration",
+        "observed_payload_peak_bytes": null,
+        "payload_limit_bytes": null,
+        "physical_complete_peak": false,
+        "physical_temporary_limit_bytes": null,
+        "resource_failure": null,
+        "sampled_host_rss_peak_bytes": 17207296,
+        "sampled_stable_temporary_peak_bytes": 0,
+        "sampled_whole_gpu_peak_bytes": 61948821504,
+        "samples": 1,
+        "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption is a smaps residency lower bound; device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+        "sampling_target_seconds": 0.2,
+        "stable_samples": 0,
+        "start_unix_seconds": 1791576418.7700818,
+        "wall_seconds": 0.20032751187682152
+      }
+    },
+    {
+      "failed": 0,
+      "ignored": 0,
+      "label": "cggm-codec-bench",
+      "passed": 1,
+      "summary": {
+        "authorized_end_epoch": 1791601722.0,
+        "close_reserve_seconds": 1800,
+        "command": [
+          "/workspace/volta-zk/rust/target/debug/deps/volta_pcg-98de2c0232ec729e",
+          "cggm_h_streamed_codec_benchmark",
+          "--test-threads=1",
+          "--nocapture",
+          "--ignored"
+        ],
+        "compute_end_epoch": 1791599922.0,
+        "exit_code": 0,
+        "gpu_uuid": "GPU-9f6b4728-e7d8-ff40-d9f1-e1cec5dd2b3a",
+        "incomplete_samples": 0,
+        "label": "cggm-codec-bench",
+        "mode": "calibration",
+        "observed_payload_peak_bytes": null,
+        "payload_limit_bytes": null,
+        "physical_complete_peak": false,
+        "physical_temporary_limit_bytes": null,
+        "resource_failure": null,
+        "sampled_host_rss_peak_bytes": 21209088,
+        "sampled_stable_temporary_peak_bytes": 0,
+        "sampled_whole_gpu_peak_bytes": 61948821504,
+        "samples": 2,
+        "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption is a smaps residency lower bound; device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+        "sampling_target_seconds": 0.2,
+        "stable_samples": 2,
+        "start_unix_seconds": 1791576419.0157773,
+        "wall_seconds": 0.4003505241125822
+      }
+    },
+    {
+      "failed": 0,
+      "ignored": 0,
+      "label": "seed6-coins",
+      "passed": 2,
+      "summary": {
+        "authorized_end_epoch": 1791601722.0,
+        "close_reserve_seconds": 1800,
+        "command": [
+          "/workspace/volta-zk/rust/target/debug/deps/volta_pcg-98de2c0232ec729e",
+          "c71_seed6_coin_",
+          "--test-threads=1",
+          "--nocapture"
+        ],
+        "compute_end_epoch": 1791599922.0,
+        "exit_code": 0,
+        "gpu_uuid": "GPU-9f6b4728-e7d8-ff40-d9f1-e1cec5dd2b3a",
+        "incomplete_samples": 1,
+        "label": "seed6-coins",
+        "mode": "calibration",
+        "observed_payload_peak_bytes": null,
+        "payload_limit_bytes": null,
+        "physical_complete_peak": false,
+        "physical_temporary_limit_bytes": null,
+        "resource_failure": null,
+        "sampled_host_rss_peak_bytes": 17186816,
+        "sampled_stable_temporary_peak_bytes": 0,
+        "sampled_whole_gpu_peak_bytes": 61948821504,
+        "samples": 1,
+        "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption is a smaps residency lower bound; device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+        "sampling_target_seconds": 0.2,
+        "stable_samples": 0,
+        "start_unix_seconds": 1791576419.4630344,
+        "wall_seconds": 0.20028956420719624
+      }
+    },
+    {
+      "failed": 0,
+      "ignored": 0,
+      "label": "cggm-tree-parity",
+      "passed": 1,
+      "summary": {
+        "authorized_end_epoch": 1791601722.0,
+        "close_reserve_seconds": 1800,
+        "command": [
+          "/workspace/volta-zk/rust/target/debug/deps/volta_pcg-98de2c0232ec729e",
+          "punctured_accumulation_matches_original_coin_tree",
+          "--test-threads=1",
+          "--nocapture"
+        ],
+        "compute_end_epoch": 1791599922.0,
+        "exit_code": 0,
+        "gpu_uuid": "GPU-9f6b4728-e7d8-ff40-d9f1-e1cec5dd2b3a",
+        "incomplete_samples": 0,
+        "label": "cggm-tree-parity",
+        "mode": "calibration",
+        "observed_payload_peak_bytes": null,
+        "payload_limit_bytes": null,
+        "physical_complete_peak": false,
+        "physical_temporary_limit_bytes": null,
+        "resource_failure": null,
+        "sampled_host_rss_peak_bytes": 21204992,
+        "sampled_stable_temporary_peak_bytes": 0,
+        "sampled_whole_gpu_peak_bytes": 61948821504,
+        "samples": 2,
+        "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption is a smaps residency lower bound; device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+        "sampling_target_seconds": 0.2,
+        "stable_samples": 2,
+        "start_unix_seconds": 1791576419.7092574,
+        "wall_seconds": 0.4003163892775774
+      }
+    },
+    {
+      "failed": 0,
+      "ignored": 0,
+      "label": "seed6-reduced-setup",
+      "passed": 1,
+      "summary": {
+        "authorized_end_epoch": 1791601722.0,
+        "close_reserve_seconds": 1800,
+        "command": [
+          "/workspace/volta-zk/rust/target/debug/deps/volta_pcg-98de2c0232ec729e",
+          "c71_seed6_one_channel_setup_to_original_ea_macs",
+          "--test-threads=1",
+          "--nocapture"
+        ],
+        "compute_end_epoch": 1791599922.0,
+        "exit_code": 0,
+        "gpu_uuid": "GPU-9f6b4728-e7d8-ff40-d9f1-e1cec5dd2b3a",
+        "incomplete_samples": 0,
+        "label": "seed6-reduced-setup",
+        "mode": "calibration",
+        "observed_payload_peak_bytes": null,
+        "payload_limit_bytes": null,
+        "physical_complete_peak": false,
+        "physical_temporary_limit_bytes": null,
+        "resource_failure": null,
+        "sampled_host_rss_peak_bytes": 22548480,
+        "sampled_stable_temporary_peak_bytes": 0,
+        "sampled_whole_gpu_peak_bytes": 61948821504,
+        "samples": 36,
+        "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption is a smaps residency lower bound; device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+        "sampling_target_seconds": 0.2,
+        "stable_samples": 36,
+        "start_unix_seconds": 1791576496.324865,
+        "wall_seconds": 7.203651748597622
+      }
+    },
+    {
+      "failed": 0,
+      "ignored": 0,
+      "label": "seed6-reduced-lifetime",
+      "passed": 1,
+      "summary": {
+        "authorized_end_epoch": 1791601722.0,
+        "close_reserve_seconds": 1800,
+        "command": [
+          "/workspace/volta-zk/rust/target/debug/deps/volta_pcg-98de2c0232ec729e",
+          "c71_seed6_journal_real_setup_owns_the_live_lifetime",
+          "--test-threads=1",
+          "--nocapture"
+        ],
+        "compute_end_epoch": 1791599922.0,
+        "exit_code": 0,
+        "gpu_uuid": "GPU-9f6b4728-e7d8-ff40-d9f1-e1cec5dd2b3a",
+        "incomplete_samples": 0,
+        "label": "seed6-reduced-lifetime",
+        "mode": "calibration",
+        "observed_payload_peak_bytes": null,
+        "payload_limit_bytes": null,
+        "physical_complete_peak": false,
+        "physical_temporary_limit_bytes": null,
+        "resource_failure": null,
+        "sampled_host_rss_peak_bytes": 22335488,
+        "sampled_stable_temporary_peak_bytes": 0,
+        "sampled_whole_gpu_peak_bytes": 61948821504,
+        "samples": 35,
+        "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption is a smaps residency lower bound; device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+        "sampling_target_seconds": 0.2,
+        "stable_samples": 35,
+        "start_unix_seconds": 1791576503.587337,
+        "wall_seconds": 7.003721131011844
+      }
+    }
+  ],
+  "unchanged": [
+    "98-byte encoded frame",
+    "192-byte SHAKE output and rejection slots",
+    "domain separation",
+    "coin index order",
+    "fresh random sampling",
+    "one-use lifetime",
+    "original MAC"
+  ],
+  "validation": {
+    "binary": "/workspace/volta-zk/rust/target/debug/deps/volta_pcg-98de2c0232ec729e",
+    "binary_sha256": "2d7f585194ed2d631db994af67c94dbaffbd3dd412726a0a79222376d73b1da4",
+    "git_dirty": false,
+    "passed": true,
+    "source_git_sha": "efebea66ac387b7a20172f38f623a0807648c60e"
+  }
+}

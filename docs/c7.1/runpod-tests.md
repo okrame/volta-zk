@@ -16,8 +16,13 @@ obbligatoria. Nessun altro hardware o tempo è autorizzato.
 Il [checkpoint componenti](../c7.1-history/h100-components-2026-10-09.md)
 registra compilazione sm_90, 15 test CUDA reali passati, benchmark W/FFT/RMS,
 correzioni operative e fallimenti conservati. W Tensor è selezionato dopo
-parità e rapporto 5,663× su W sintetica da 256 MiB; ricompilazione e nuova
-parità precedono il trial. Installazione W e O=0/150/300 restano da misurare.
+parità e rapporto 5,663× su W sintetica da 256 MiB. Ricompilazione e seconda
+parità 15/15 passano. Il [trial canonico](../c7.1-history/h100-w-setup-2026-10-09.md)
+su `26c4c89` completa PCS W in 360,301 s e installazione in 404,340 s,
+con massimo temporaneo campionato 4.559.179.264 B; setup reale in corso,
+O=0/150/300 ancora non verificati. Timeout diagnostico 7.200 s, target 65 s.
+Il successivo codec cGGM `efebea6` è validato separatamente e non è il
+binario del trial corrente.
 La precedente campagna chiusa conserva il proprio fallimento nel commitment
 W; il suo pod spento e le sue autorizzazioni non descrivono questa campagna.
 

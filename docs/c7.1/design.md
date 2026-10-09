@@ -76,8 +76,8 @@ causale, replay A, PCS/range/GKR, verifica e promozione per O=0/150/300.
 È un percorso misto GPU/CPU. La tabella descrive l'integrazione corrente.
 La [campagna H100 del 9 ottobre](../c7.1-history/h100-components-2026-10-09.md)
 ha compilato sm_90 e passato i 15 test CUDA reali. I benchmark sono
-componenti ridotti; risposta canonica e picco fisico completo restano da
-misurare. Gli ingressi di test e il lancio
+componenti ridotti. Il [commitment W completo](../c7.1-history/h100-w-setup-2026-10-09.md)
+termina in 360,301 s; risposta canonica e picco fisico completo restano aperti. Gli ingressi di test e il lancio
 sorvegliato sono nel
 [runbook](runpod-tests.md#preparazione-operativa-della-campagna).
 
@@ -119,8 +119,8 @@ della riserva e il completamento canonico sono aperti.
 La telemetria misura wall annidati, traffico applicativo, census ai
 confini delle fasi, ledger cumulativo CUDA e RSS/HWM. Non sommare picchi
 separati o contatori cumulativi. Il monitor esterno applica deadline e
-arresti fisici campionati; CPU-time, HBM e allowance devono ancora essere
-misurati sulla H100. Non sono acquisiti certificati canonici o misure
+arresti fisici campionati. Per l'installazione W sono disponibili campioni
+simultanei host/HBM; allowance e picchi completi restano da dimostrare. Non sono acquisiti certificati canonici o misure
 D34/D35 complete della prova. La
 [parità H100 precedente](../../benchmarks/results/c71-h100-corrected-parity-2026-10-04-d3c2fa95eaf7.json)
 riguarda operatori sintetici e MAC originali, non il percorso ottimizzato.
@@ -133,16 +133,18 @@ modifiche; si ripete la calibrazione solo quando l'ammissione pertinente
 è invalidata. È l'unico Γ ammesso finora, non un optimum prestazionale
 dimostrato. Cambiare scale può semplificare i circuiti ma cambia la
 relazione numerica; la ricerca di un altro Γ è distinta dal goal corrente.
-La diagnostica canonica rimane **incompleta**: timeout nel
-commitment W CPU dopo circa 41 minuti, prima delle risposte. La schedule
-misurata tentava 1.024 scansioni W, circa 62,87 TB logici, oltre a sali,
-FFT e Merkle. La CLI ricostruisce il commitment a ogni avvio e non
-riprende un'installazione interrotta. La campagna precedente è chiusa.
+La [campagna H100 corrente](../c7.1-history/h100-w-setup-2026-10-09.md)
+ha completato PCS W in 360,301 s e l'installazione W in 404,340 s,
+con 128 scansioni/7,859 TB logici. Il setup Seed6/AES è in corso;
+O=0/150/300 non sono ancora verificati. Il precedente timeout CPU dopo
+circa 41 minuti rimane il fallimento di quella schedule da 1.024 scansioni,
+non lo stato del commitment H100 corrente. La CLI ricostruisce W a ogni
+avvio e non riprende installazioni o sessioni interrotte.
 
-Il goal locale prepara **l'intero percorso crittografico per H100 80 GB**,
-baseline `9033c64`. Si conclude quando codice, parità ridotte, benchmark
-rappresentativi, conto completo e procedure sono pronti, prima della
-campagna hardware. Il
+Il goal corrente esegue la campagna H100 autorizzata, entro otto ore
+provider e con guard indipendente, secondo il [runbook](runpod-tests.md).
+La baseline `c7e05cf` include le correzioni operative `24b54d4`.
+Il
 [checkpoint locale](../../benchmarks/results/c71-crypto-rms-local-2026-10-09-abd2de09efb4.json)
 conserva parità, benchmark e ledger. La successiva revisione del passaggio
 alla H100 ha aggiunto ingressi di test espliciti sulla libreria reale,
@@ -196,7 +198,11 @@ crediti dai componenti positivi. Valutare TMA, fusioni e CUDA Graphs
 su costi misurati. Il confronto W ordinario/Tensor sulla H100 giustifica
 la selezione Tensor
 nel Tree; il [record componenti](../../benchmarks/results/c71-h100-components-2026-10-09-d00d46308029.json)
-conserva i campioni esatti e i loro limiti. QK/PV rimane scalare.
+conserva i campioni esatti e i loro limiti. QK/PV rimane scalare. Il codec cGGM ora
+assorbe direttamente lo stesso frame SHAKE, eliminando il buffer heap
+per nodo; [parità e benchmark](../c7.1-history/h100-w-setup-2026-10-09.md)
+non dimostrano un guadagno temporale. Il trial canonico corrente usa ancora
+il codec precedente; non attribuire alla modifica i suoi tempi.
 
 Le geometrie fisiche W CUDA 32 coset/otto colonne, CPU W quattro coset
 ed A quattro coset sono modificabili con equivalenza esatta e nuovo

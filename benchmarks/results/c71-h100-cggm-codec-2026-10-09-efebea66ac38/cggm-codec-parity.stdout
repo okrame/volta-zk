@@ -1,0 +1,8 @@
+
+running 3 tests
+test c71_ea_lpn::tests::cggm_h_matches_python_reference_vectors ... ok
+test c71_ea_lpn::tests::cggm_h_streamed_codec_benchmark ... ignored, explicit CPU component benchmark on authorized hardware
+test c71_ea_lpn::tests::cggm_h_streamed_codec_preserves_full_frame_and_work ... ok
+
+test result: ok. 2 passed; 0 failed; 1 ignored; 0 measured; 104 filtered out; finished in 0.00s
+

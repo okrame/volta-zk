@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+    "c71_b12_rms_cached_public_geometry_exact_mixed_recipes_and_contexts",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 2.6813581748865545,
+  "max_rss_bytes": 44314624,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 2.640571,
+  "system_s": 0.03999,
+  "log": "/tmp/c71-rms-final-geometry-20261009.log"
+}

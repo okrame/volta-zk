@@ -1,0 +1,17 @@
+Traceback (most recent call last):
+  File "/home/okrame/projects/volta-zk/scripts/c71_temporary_ledger.py", line 948, in <module>
+    print(json.dumps(ledger(args.logs, args.backend, args.query_record, args.linear_record, args.lifetime_record), indent=2, sort_keys=True))
+                     ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/okrame/projects/volta-zk/scripts/c71_temporary_ledger.py", line 937, in ledger
+    return ledger_native(directory, query_record, linear_record, backend == 's1-prepared', lifetime_record)
+  File "/home/okrame/projects/volta-zk/scripts/c71_temporary_ledger.py", line 518, in ledger_native
+    complete_capacity = (complete_prepared_phases(phases, directory, common, persistent,
+                         ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                         replay, initial, extensions, stages, owner) if proposed_s1 else None)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/okrame/projects/volta-zk/scripts/c71_temporary_ledger.py", line 612, in complete_prepared_phases
+    cap, tele, forms, wire = prepared_capacity_markers(directory)
+                             ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/home/okrame/projects/volta-zk/scripts/c71_temporary_ledger.py", line 564, in prepared_capacity_markers
+    raise ValueError('one final typed CAPACITY and TELEMETRY marker required')
+ValueError: one final typed CAPACITY and TELEMETRY marker required

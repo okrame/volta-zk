@@ -1,0 +1,153 @@
+C7.1 — checklist finita di chiusura del goal locale
+Lettura al 2026-10-09, HEAD 5cd16ec70b40c203fc1521ed237df3a1d9abd389.
+Solo lettura di documenti/codice; nessuna esecuzione, compilazione o nuova
+misura. I riferimenti alle prove appartengono ai record già esistenti.
+
+CRITERIO DEL GOAL
+design.md:136–140 definisce il risultato locale: codice, parità ridotte,
+benchmark rappresentativi, conto completo e procedure pronti PRIMA della
+campagna. runpod-tests.md:333–335 esclude esplicitamente dai gate locali
+parità hardware, tempo H100 e picco fisico; anche 65 s non è un gate
+preventivo per l'esperimento diagnostico. Preparazione locale non significa
+misura canonica completata, né impone di rendere nativo ogni operatore CPU.
+
+GIÀ CHIUSO LOCALMENTE — non riaprire queste integrazioni
+
+[x] Telemetria durevole e XOF: fasi/progresso/lavoro/trasferimenti/census;
+    buffering sequenziale conserva stream, seek e replay. Stato e prove:
+    design.md:75–110; checkpoint crypto-components-2026-10-09.md.
+    Rimane la misura del costo XOF canonico, non un nuovo adapter da scrivere.
+
+[x] Commitment iniziale W: scan, accumuli Goldilocks, FFT finite, hash
+    incrementale e Merkle sul common owner; 32 coset/8 colonne, 128 scan
+    equivalenti analitiche anziché 1.024. Runner selezionato:
+    canonical_runner.rs:387 new_native_weights; design.md:75–110 e
+    checkpoint crypto-w-tree-2026-10-08.md. Il Tensor a limb esatti esiste
+    come confronto esplicito; il default ordinario resta selezionato.
+    Questa è parità ridotta/contabilità, non uno speedup H100 misurato.
+
+[x] Producer residente A → PCS iniziale, query iniziali residenti e MAC
+    originali: canonical_state.rs:578 new_native_source, :583 retain_first_fold;
+    istogramma fuso e scanner trusted conservano copertura e ordine byte.
+    Le 512 ricostruzioni iniziali restano invariate; nessun blocco-colonne W
+    è stato trasferito implicitamente ad A. Checkpoint crypto-query-2026-10-09.md
+    e record c71-crypto-query-local-2026-10-09-46d295ef4ea6.json.
+
+[x] S1/successori e query extension A/W sono collegati alla produzione.
+    replay.rs:1664 passa self.native_original.clone() al backend; :1861–1863
+    sceglie State::new_native; Code::rows_typed sceglie rows_native_extension.
+    Singleton/OOD/coset, sali, FFT/hash paired, retention A tardiva, fold,
+    contrazioni e le tre componenti PCS v^3=v+1 sono integrate. Retention
+    e aperture riusano le stesse ricostruzioni A, senza getter privato.
+    Record c71-crypto-residual-query-local-2026-10-09-9a5da712a258.json:
+    WHIR D10 A/W, wire/FS/RNG/MAC esatti e negativi di owner/lifetime/NoPeek.
+    Non usare le vecchie righe storiche «query iniziali W ancora CPU» o
+    «S1 non selezionato» come descrizione dello stato corrente.
+
+[x] Query iniziali W sono già selezionate, con reader del packed sealed
+    e resti residenti, senza upload di finestre signed W. Checkpoint
+    crypto-local-convergence-2026-10-09.md, richiamato in design.md:147–150,
+    e runpod-tests.md:318–321. Non serve un secondo collegamento W/S1.
+    Il caller rigenera subtree Merkle di cut 4.096: le 512 query PCS non
+    equivalgono a soltanto 512 valutazioni isolate. Fattori pubblici e
+    rigenerazione/hash delle aperture CPU restano costi dichiarati.
+
+[x] Closure lineare originale residente: una scan per round, coefficienti
+    e endpoint MAC u^3=2 originali, consumo monouso dopo successo terminale,
+    owner e mapping W riusati. Record
+    c71-crypto-linear-local-2026-10-09-31280382f681.json e test di parità
+    D10 aggiornati nel checkpoint capacità. Nessun shortcut PCS o nuovo MAC.
+
+[x] Memoria locale completa come bound condizionato: record
+    c71-crypto-capacity-local-2026-10-09-d4215fafd878.json, 653 fasi/11 classi;
+    massimo modellato 5.878.675.986 B, payload 5.905.580.032 B,
+    residuo 26.904.046 B. Bound profili/codec/forme/report/setup AES/RMS
+    chiusi; condizioni esplicite path/argv <=4.096 B e identità Γ/layout.
+    joint_admitted:false evita di attribuire credito al picco fisico.
+
+[x] Confini scientifici e di sicurezza dichiarati: Γ ammesso pinned riusato;
+    NoPeek, sali/pad/root/transcript, basi PCS/MAC distinte, causalità QK/PV,
+    fail-closed, AES reale e correlazioni monouso. security.md:678–786
+    distingue questi controlli ridotti dalle assunzioni di replay/determinismo
+    e dai refinements CUDA/Seed6 non dimostrati. Non inventare un nuovo gate
+    Lean per la chiusura locale: eventuali assunzioni restano visibili.
+
+PRIMA DI DICHIARARE ACHIEVED — solo chiusure concrete del lavoro corrente
+
+[ ] Concludere il blocco RMS selezionato con UNA verifica locale mirata
+    della modifica in lavorazione e relativo benchmark/contabilità.
+    Il caller resta prove_impl(..., true, None), rms/gkr.rs:1544–1550;
+    la nuova specializzazione Boolean del primo round è in :874.
+    Controllo necessario: programmi misti e gate Copy/Not/Xor/And,
+    sfide 0/1/Fp3 completo, coefficienti/endpoint/wire/FS/MAC e consumo
+    identici; misurare lavoro e temporanei contro l'oracolo precedente.
+    Motivo: design.md:163 dice che RMS resta da accelerare sugli stessi
+    circuiti; questa è l'unica linea di codice residua esplicitamente
+    indicata come accelerazione aperta, non un difetto PCS/S1.
+    La candidata r1 consegnata separatamente non è una nuova obbligazione:
+    applicarla richiederebbe la stessa verifica; non è necessaria solo
+    perché esiste una proposta.
+
+[ ] Congelare il risultato del blocco RMS con provenance pulita e aggiornare
+    SOLO i conti che la modifica cambia. Fonte pre-modifica:
+    specs.md:1365–1373, 159 programmi/depth99/347.937.024 celle vive,
+    998.927.195.904 callback, circa 4,85e16 valutazioni Booleane e
+    9,72e14 moltiplicazioni Fp3 per risposta. La specializzazione r0 riduce
+    il costo aritmetico del primo round, non il numero di replay/callback.
+    Un record deve distinguere riduzione realmente verificata e costo
+    residuo sul Γ; nessuna promessa che r0 chiuda 65 s. Ricalcolare ledger
+    solo se sono aggiunti temporanei/capacità, mantenendo tutti i lifetime.
+    Motivo: ogni integrazione richiede parità, benchmark e risorse prima
+    del credito locale; i conti precedenti non misurano la nuova modifica.
+
+Non emerge un altro adapter PCS/S1/W da implementare. Non emerge un obbligo
+locale di aggiungere TMA, fusioni, CUDA Graphs, Tensor default o un backend
+RMS completamente GPU prima del diagnostico: sono opzioni guidate dal
+profilo, con il costo RMS ancora esplicito. Il target della risposta rimane
+aperto; preparare la campagna e dichiarare il goal locale concluso non
+equivale a dichiarare raggiunto il target. Se il blocco RMS corrente è già
+stato verificato/registrato da root dopo questa lettura, le due voci sono
+soddisfatte dallo stesso checkpoint, senza creare una seconda campagna locale.
+
+RICHIEDE H100 / NON BLOCCA IL GOAL LOCALE
+
+[ ] Compilare/collegare l'intera libreria CUDA e verificare l'esecuzione reale
+    delle route selezionate, prima della prova completa: Fp3/Fp di base,
+    FFT naturale/dispari/inversa, sali seek/replay, pad/suffix/root,
+    packed W/biased A, query duplicate/ordine/live corti, S1/Query E,
+    fault/NoPeek/cleanup. Prove host/fake già esistenti non sostituiscono
+    CUDA. Procedura pronta: runpod-tests.md, sezioni di build e diagnostico;
+    local-tests.md contiene lista unità/simboli mandatory ABI4.
+
+[ ] Misurare HBM/host insieme, W immutabile residente e overhead fisici
+    driver/context/staging/stack/socket/allocator, nelle fasi e O=0/150/300.
+    Il conto condizionato sopra non è una misura di residenza e il margine
+    modellato è solo 26,9 MB. Legare nel manifest path/argv <=4.096 e Γ/layout,
+    senza spill/fallback o aumento dei tetti. runpod-tests.md:326–335.
+
+[ ] Misurare separatamente installazione, setup, inferenza, prova e verifica;
+    per ciascuna separare AES/PCG-VOLE e recompilazione RMS, replay Boolean,
+    contrazioni di campo, fattori PCS CPU, scan/coset/FFT/hash, rigenerazione
+    Merkle, D2D/D2H, sincronizzazioni e wire/codec/verificatore. Il profilo
+    locale dà conti e componenti rappresentativi, non i cinque tempi canonici.
+    Confrontare W ordinario/Tensor e QK/PV scalar/MMA dopo parità; scegliere
+    TMA/fusioni/Graphs soltanto su un costo misurato utile. Runbook già pronto.
+
+[ ] Completare la catena AES reale composta e il test KV completo ora
+    incompleti a 60 s, senza ereditare credito dai componenti positivi e
+    senza allargare i limiti VM. design.md:163–166 e local-tests.md:449
+    separano le prove Seed6 numeriche ridotte già positive dalla composizione
+    canonica; la suite hardware/CPU autorizzata deve preservare quei fallimenti.
+    Non sono evidenza di una nuova mancanza di collegamento PCS.
+
+[ ] Eseguire le risposte canoniche con completamento/verifica/promozione,
+    raccogliere anche il mancato target <=65 s e quantificare il collo RMS
+    residuo. Risultati fisici e nuove candidate non si deducono dai fake.
+    Nuovo hardware e durata richiedono nuova autorizzazione esplicita.
+
+ESITO DELLA LETTURA
+La preparazione PCS/commitment/query/closure e il conto locale non richiedono
+ulteriori collegamenti. La chiusura locale residua è il checkpoint esatto e
+misurato del blocco RMS corrente, con costo residuo e limiti della prova
+completa dichiarati; non una riapertura del goal fino a raggiungere 65 s
+in locale. Tutte le misure fisiche elencate appartengono alla futura H100.

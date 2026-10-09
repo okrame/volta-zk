@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+    "c71_b12_boolean_first_cell_round_exact_all_gate_patterns",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 0.0065662008710205555,
+  "max_rss_bytes": 9895936,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 0.003909,
+  "system_s": 0.001967,
+  "log": "/tmp/c71-rms-final-first-20261009.log"
+}

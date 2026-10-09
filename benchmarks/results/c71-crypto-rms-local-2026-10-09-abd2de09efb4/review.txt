@@ -1,0 +1,45 @@
+Replay-only candidate; sourcewise coefficient/gate/index/FS/MAC code untouched.
+Only patterns.rs changed in shadow. PackedReplay reuses existing ReplayPlan DAG,
+never patterns::build/histograms/prefix/BMMA/byte contraction. Circuit original
+Gate levels remain borrowed and immutable. All original output wires are kept.
+
+API (all pub(super)):
+ PackedReplay::new(programs:&[Circuit], selected_depth:usize, width:usize)->Result
+ load(cells:&[(usize,Option<usize>)]<=64, read:&Fn(usize)->[u8;12])->Result
+ planes()->&[u64]; row(lane,&mut[Fp3])->Result; work()->PackedReplayWork.
+Root owns gkr.rs integration and original-ordinal cache mapping. The caller must
+supply the same original public program assignment for each source index.
+New calls width geometry shared validator before compilation, max421 programs.
+Mixed159 cardinality/ordinal fixture is synthetic/cheap and explicitly separate
+from benchmark geometry real weighted5376/256, unweighted256/512, nonzero scales.
+Numeric benchmark frames generated via Integer::row, before any FS or MAC access.
+
+Load reads each assigned frame once in EXACT supplied ordinal order; None padding
+never accesses getter. Per-program u64 live masks disjoint; OR restores original
+lane positions. A failed load invalidates lane access and clears output. Getter
+must read fixed numerical checkpoint, independent of FS/unused correlations.
+
+Counters: frames/batches/padding, used-program replays, exact DAG AND/XOR/total
+word ops, original scalar Gate equivalent, original public Gate visits in build.
+Memory: retained plans/depth counts; constructor old/new upper with HashMap
+bucket/key/value/control layout and Vec old/new, per-program needed/map/aliases;
+actual scratch capacity and twice-scratch moving upper; fixed768B frame stack.
+Borrowed original Circuit/assignment/input list remain external owner components.
+All plans only for ONE selected depth, scratch shared across programs; no N*W
+trace or domain-sized private allocation. HashMap layout bound assumes pinned
+std/hashbrown max7/8 bucket load and control tail<=32B, explicit review premise.
+
+Reduced exact filter:
+ c71_ordinary_rms_packed_replay_mixed_nonzero_scales_exact_coefficients
+Literal Circuit replay, 0/1/31/32/33/64 lanes, mixed/padding, width/depth/ragged,
+late program ordinal159, invalid assignment/65-lane rejection, original exact
+Fp3 coefficient rounds for prefix zero/one and nonzero, numeric nonzero scales.
+Literal and packed CPU replay/row elapsed times are emitted with reused scratch,
+plan build timed separately, only when root runs the fixture. The four real
+nonzero-scale geometries are representative, not the admitted Gamma159.
+No test/build executed here. Full wire/MAC test must follow root integration.
+
+Bound work: for each batch and each present program p, word Gate work=DAG_p;
+scalar literal work=sum_p(live_lanes_p*sum original levels_p). At most64 replay
+lanes per word, but64 distinct programs loses packing gain. Existing frame
+callbacks/GKR gate-field work/byte endpoint remain. No H100/65s claim.

@@ -1,0 +1,16 @@
+{
+  "command": [
+    "python3",
+    "scripts/c71_residual_profile.py"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 0.16591933369636536,
+  "max_rss_bytes": 41226240,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 0.12010699999999999,
+  "system_s": 0.041231,
+  "log": "/tmp/c71-rms-final-residual-20261009.log"
+}

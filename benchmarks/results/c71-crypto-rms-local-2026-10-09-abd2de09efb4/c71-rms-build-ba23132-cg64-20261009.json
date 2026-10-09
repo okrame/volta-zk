@@ -1,0 +1,81 @@
+{
+  "command": [
+    "cargo",
+    "rustc",
+    "--offline",
+    "--locked",
+    "-j1",
+    "-p",
+    "volta-pcs",
+    "--features",
+    "c71-seed6-reference",
+    "--lib",
+    "--profile",
+    "test",
+    "--config",
+    "profile.dev.package.volta-pcs.opt-level=0",
+    "--config",
+    "profile.dev.package.volta-pcs.codegen-units=64",
+    "--",
+    "-Clink-arg=-fuse-ld=lld",
+    "-Clink-arg=-B/home/okrame/.rustup/toolchains/stable-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/bin/gcc-ld",
+    "-Clink-arg=-Wl,--threads=1"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk/rust",
+  "exit_code": 0,
+  "wall_s": 56.311391808092594,
+  "max_rss_bytes": 2565701632,
+  "sampled_aggregate_live_rss_peak_bytes": 2606694400,
+  "sampled_processes": {
+    "5": {
+      "name": "timeout",
+      "max_rss_bytes": 1564672,
+      "cpu_ticks": 0,
+      "first_seen_s": 0.001184212975203991,
+      "last_seen_s": 56.311218933202326
+    },
+    "6": {
+      "name": "cargo",
+      "max_rss_bytes": 52998144,
+      "cpu_ticks": 14,
+      "first_seen_s": 0.10262158419936895,
+      "last_seen_s": 56.21036284696311
+    },
+    "17": {
+      "name": "rustc",
+      "max_rss_bytes": 2552131584,
+      "cpu_ticks": 5514,
+      "first_seen_s": 0.20325524220243096,
+      "last_seen_s": 56.21040505589917
+    },
+    "87": {
+      "name": "cc",
+      "max_rss_bytes": 2117632,
+      "cpu_ticks": 0,
+      "first_seen_s": 55.40225416002795,
+      "last_seen_s": 56.10921901091933
+    },
+    "88": {
+      "name": "collect2",
+      "max_rss_bytes": 1499136,
+      "cpu_ticks": 0,
+      "first_seen_s": 55.40234774397686,
+      "last_seen_s": 56.109256635885686
+    },
+    "89": {
+      "name": "rust-lld",
+      "max_rss_bytes": 593457152,
+      "cpu_ticks": 78,
+      "first_seen_s": 55.402435411233455,
+      "last_seen_s": 56.1092951358296
+    }
+  },
+  "sample_interval_s": 0.1,
+  "clock_ticks_per_s": 100,
+  "deadline_s": 60,
+  "workers": 1,
+  "as_limit_mib": null,
+  "user_s": 50.067895,
+  "system_s": 6.225871,
+  "log": "/tmp/c71-rms-build-ba23132-cg64-20261009.log"
+}

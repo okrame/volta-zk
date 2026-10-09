@@ -1,0 +1,7 @@
+
+running 1 test
+test c71_matrix::gemma::rms::caller::tests::c71_b12_rms_cached_public_geometry_exact_mixed_recipes_and_contexts ... C71_RMS_COMPACT_GEOMETRY {"cache_heap_capacity_bytes":1560,"cached_calls":64,"cached_ns":451669,"distinct_programs":3,"exact_original_count":true,"height":93,"ordinary_calls":2,"ordinary_ns":876938067,"required_fp3":8154,"retained_circuit_bytes":0,"scope":"reduced public mixed nonzero recipes; no GPU or canonical timing credit"}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 581 filtered out; finished in 2.68s
+

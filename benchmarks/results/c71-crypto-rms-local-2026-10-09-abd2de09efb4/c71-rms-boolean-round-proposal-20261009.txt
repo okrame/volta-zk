@@ -1,0 +1,159 @@
+C7.1 RMS Boolean round proposal — 2026-10-09
+Read-only source proposal; no build, test, hardware or performance credit.
+Base HEAD: 5cd16ec70b40c203fc1521ed237df3a1d9abd389; root's first-round branch is independent work.
+
+Decision
+--------
+The smallest exact step beyond root's Boolean r0 branch is a bounded LUT for
+r1, optionally r2 only after the representative benchmark. It supports arbitrary
+mixed programs using GLOBAL original-row bit patterns, leaves the selected
+layered circuit/assignment/selector polynomial untouched and reads no extra A.
+It reduces7 Fp3 products/non-Copy gate to3 in those rounds. Replay calls are
+unchanged. A separate64-lane replay step can reduce callbacks, but must not be
+silently credited to this LUT. Neither step closes the65-second target alone.
+
+Selected algebra and why single-program patterns cannot just be enabled
+-----------------------------------------------------------------------
+rms/gkr.rs::prove_sourcewise calls prove_impl(...,true,None), so patterns::build
+is not selected. source_cell_round<true> folds Boolean rows, then for each
+program p applies its gate polynomial to the SAME global folded lo/hi rows,
+and multiplies the sum by that program's folded selector. It does not fold
+only the rows originally assigned to p. Thus after any nontrivial fold,
+selector p multiplies rows supplied by other programs q/r: those mixed terms
+are part of the original circuit proof, not errors that can be discarded.
+Sources: rms/gkr.rs:756-903 baseline source_cell_round; :1192-1202 invocation;
+::prove_sourcewise at baseline1503-1509 (lines shift with root's r0 patch).
+
+patterns.rs:349-473 currently rejects programs.len()!=1 at :367-368. Its masks
+simultaneously describe selected-program and live-value positions. For mixed
+programs these are DIFFERENT: M_p[j]=[assignment(j)=p] versus L[j]=[some program
+assigned]. A correct mixed histogram needs separate M_p/L and global bitplanes
+merged from disjoint program replay masks; its classes depend at least on
+(program, selector mask, live mask). Every p gate must use bits from ALL q rows
+at the original global wire indices. Reusing only p's replay/mask loses cross
+terms. The existing scalar selectors Vec in Prefix must also become indexed
+by program/mask. That is a larger change than the LUT.
+
+Existing histogram payload is36*(sum_Copy size +sum_nonCopy size^2)
+ +24*(size^2+size) per mask, where size=sum_tiles2^tilebits (patterns.rs:232-245).
+For16 positions/five-bit tiles, size=98; for one-bit tiles,size=32. Separate
+program/mask classes multiply those costs. The existing1 GiB component cap
+(:388) is not permission to allocate it jointly with RMS/proof state. No pinned
+mixed-program admission follows from the single-program EXP30 fixture or the
+special mask0x7fff native aggregate at :458-470.
+
+Exact LUT derivation, including mixed programs and challenge0/1
+--------------------------------------------------------------
+Let r=challenges.len(), L=2^r, beta_j=Eq(challenges,j). Each original row is
+Boolean. For one suffix cell pair, encode each GLOBAL wire w as2L bits:
+ m_w =sum_j b_lo[j,w]*2^j +sum_j b_hi[j,w]*2^(L+j).
+Unassigned cells and out-of-range wires contribute zero bits, exactly like the
+existing scratch row; original cells assigned to any program contribute their
+actual replay_layer selected bits. Width is the existing common width.
+Define subset(s)=sum_{j:s_j=1} beta_j,
+ x(m)=subset(m & ((1<<L)-1)),
+ dx(m)=subset(m>>L)-x(m).
+For pair(m_x,m_y), precompute AND polynomial
+ [x*y, x*dy+dx*y, dx*dy].
+XOR uses that same table and only addition/subtraction:
+ [x+y-2f0, dx+dy-2f1, -2f2].
+Copy keeps[x,dx,0], as before. Accumulate gate_weight*fj for each of3 coefficients
+of a non-Copy gate, then the original six selector products per supported
+program; keep original coefficient/wire ordering and terminal lo/hi/selectors.
+No inversion, alternative field or statistical approximation occurs. These
+Fp3 are the ORIGINAL MAC field u^3=2, not the PCS E field v^3=v+1.
+
+For r1: L2,16 wire patterns,256 pairs,18,432 B AND LUT.
+For r2: L4,256 wire patterns,65,536 pairs,4,718,592 B AND LUT.
+r>=3 would require2^32 pairs for this complete LUT: explicitly keep the ordinary
+sourcewise path there. Preserve the generic BOOLEAN_ROWS=false path untouched.
+Compute beta once by division-free Eq recurrence; its at most4 entries can also
+replace repeated prefix_weight calls in these rounds without increasing reads.
+No producer gets beta/challenges/LUT: they remain consumer-local arithmetic.
+
+Minimal implementation seam and resources
+----------------------------------------
+Only rms/gkr.rs::source_cell_round<true>, private LUT helpers, and existing
+reduced tests/work counters. No proof/config/transcript/verifier/default change.
+While existing row replay fills scratch, OR each Boolean bit into a single
+Vec<u8> of common width using position j+side*L. r1 uses4 bits, r2 uses8.
+Current lo/hi folds remain unchanged initially, preserving the terminal return
+and making the new LUT an independently checkable coefficient optimization.
+Use table only in selected r1/r2; prefer r1 first. A public-work gate can skip
+r2 if binary gate iterations cannot amortize65,536 entries. Do not use private
+row values to choose geometry, and do not allocate a general pattern cache.
+
+Additional requested-layout heap, with exact final capacities:
+ AND[M*M][3Fp3] =72M^2, pair[M][x,dx] =48M,
+ subset[2^L] =24*2^L, beta[L] =24L, bit-pattern[width] =width,
+ where M=2^(2L). Thus r1=19,344+width<=35,728 B;
+ r2=4,731,360+width<=4,747,744 B at width<=16,384.
+Vec descriptors are inline; allocator/stack remains separately counted. Include
+these arrays in SourceCellWork.owned_heap_peak_bytes and SourceCapacityWork.cell
+and named_heap_capacity_peak_bytes; global census already enforces actual heap.
+Build a fresh per-round LUT and drop it when returning coefficients, BEFORE
+round_prove/authentication and the next round's allocation: no r1/r2 old+new
+moving overlap. Existing lo/hi/scratch/selector vectors and replay scratch are
+additional, not included in the numbers above. No host/device transfer is added
+by this CPU proposal; a future GPU port needs its own table upload/arena census.
+
+Work change and limits
+----------------------
+The table needs4M^2 Fp3 products once per round/depth plus tiny Eq setup:
+ r1 1,024; r2 262,144. Saves exactly4 products per non-Copy gate-cell
+iteration, replacing7 with3. Copy2 and supported-program selector6 remain.
+Amortization in product count: non-Copy gate iterations>M^2. Track table-build
+products separately; do not count it as a measured time improvement.
+For ideal geometric suffix support, r1 removes(4/7)*(1/4)=1/7 of the original
+binary-gate product total; r2 removes1/14, beyond root's r0 change. This is
+illustrative, not a pinned claim: support/program mix and replay/prefix/Eq
+costs differ. The recorded9.72e14 Fp3 core estimate must be recomputed with
+actual public per-round gate support before attributing a pinned reduction.
+Original frames, Boolean replay calls and Boolean gate evaluations stay exactly
+the same for the LUT. Their huge pinned cost remains structurally open.
+
+Independent reduced parity and representative local benchmark
+-------------------------------------------------------------
+Reuse sourcewise_cell_coefficients_match_dense_folds_without_cell_wire_matrix
+and sourcewise_real_boolean_replay_matches_dense_coefficients_at_selected_depths
+(rms/gkr.rs baseline1695/1920) as independent ordinary oracles. Add LUT-helper
+exhaustive256/65,536 pair comparisons against direct polynomial computation for
+AND/XOR and directCopy, at prefix challenges0,1 and non-base Fp3 extension limbs.
+Compare complete four cubic coefficients and terminal lo/hi/selectors on two or
+three mixed programs of differing depths/ports, assignments interleaved so a
+cell pair contains p and q, width padding, all-live/short/zero padding, and
+source callback errors. Verify expected row/read counts are unchanged.
+
+Compose small full proof against the prior ordinary route: exact wire,
+transcript/FS, next RNG state, original endpoint Auth.x/Auth.m, verifier outcome
+and exact one-use correlation count. Include mixed-program first/last-cell
+boundaries; single-program patterns parity alone cannot validate this seam.
+Keep sourcewise generic extension-row test unchanged (BOOLEAN_ROWS=false).
+
+One finite local benchmark, root-run only, AS2 GiB/60s, one worker; cold build
+separate. Use fixed public tiny mixed circuits and pre-existing deterministic
+Boolean frames (e.g.4096/16384 cells,width<=128, selected depths); compare ordinary
+then LUT r1/r2 with coefficients parity and repeated nonzero field challenges.
+Emit elapsed/component replay time, frame/read/replay counts, gate iterations,
+ordinary products, table-build products, saved products, LUT/pattern capacities,
+global requested-layout delta/peak and processRSS/HWM. Gate-only precomputed
+Boolean-row benchmark may isolate arithmetic; identify it separately from real
+Circuit::replay_layer_reuse benchmark. No H100 credit, no whole-proof timing
+claim. Select the candidate only after parity/resource and representative
+component result; r2 can be deferred if memory/cache/table construction loses.
+
+Separate replay-count candidate (not part of the minimal LUT)
+------------------------------------------------------------
+Existing sourcewise row closure replays one cell with mask1 at every checkpoint
+(gkr.rs baseline1136-1159), while the dense reduced oracle already packs64
+cells/program (1075-1093). A bounded64-lane replay_layer_reuse producer can group
+program masks, merge disjoint selected bitplanes, and consume those Boolean
+bits with the same Eq weights. It needs staged cells/folds or a prefix-oriented
+batch schedule, so preserving arbitrary mixed assignment and original replay
+coverage needs a separate implementation/parity census. Best case same-program
+lanes reduce calls by up to64; worstcase64 distinct programs gives no reduction.
+Prefix-only packing cannot improve the first six folds where leaves<64. Avoid
+claiming64x canonical improvement without actual public assignment grouping and
+per-depth gate accounting. It can reduce CPU callbacks but not the remaining
+per-gate Fp3 polynomial work. The committed circuit and original endpoints must
+remain identical in either implementation.

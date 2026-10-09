@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+    "c71_b12_replay_crosses_u64_and_profile_byte_boundaries_in_one_ranged_pcs",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 124,
+  "wall_s": 60.007484004832804,
+  "max_rss_bytes": 128663552,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 59.928009,
+  "system_s": 0.053659,
+  "log": "/tmp/c71-rms-ba23132-mixed421-20261009.log"
+}

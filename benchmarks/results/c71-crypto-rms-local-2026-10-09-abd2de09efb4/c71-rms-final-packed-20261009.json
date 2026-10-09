@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+    "c71_ordinary_rms_packed_replay_mixed_nonzero_scales_exact_coefficients",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 2.4802980008535087,
+  "max_rss_bytes": 43520000,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 2.4262639999999998,
+  "system_s": 0.053321999999999994,
+  "log": "/tmp/c71-rms-final-packed-20261009.log"
+}

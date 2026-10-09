@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+    "c71_b12_single_cell_sourcewise_matches_dense_proof_and_endpoint",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 124,
+  "wall_s": 60.00670608691871,
+  "max_rss_bytes": 138022912,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 59.657421,
+  "system_s": 0.332312,
+  "log": "/tmp/c71-rms-ba23132-single-20261009.log"
+}

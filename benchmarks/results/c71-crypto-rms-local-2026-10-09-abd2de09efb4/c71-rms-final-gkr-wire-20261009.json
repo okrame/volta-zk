@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+    "c71_b12_packed_mixed_gkr_complete_wire_mac_and_endpoint",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 2.653325056657195,
+  "max_rss_bytes": 122204160,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 2.629674,
+  "system_s": 0.021880999999999998,
+  "log": "/tmp/c71-rms-final-gkr-wire-20261009.log"
+}

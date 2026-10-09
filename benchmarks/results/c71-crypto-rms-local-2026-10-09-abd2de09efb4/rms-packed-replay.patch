@@ -1,0 +1,303 @@
+--- a/rust/volta-pcs/src/c71_matrix/rms/gkr/patterns.rs
++++ b/rust/volta-pcs/src/c71_matrix/rms/gkr/patterns.rs
+@@ -108,6 +108,175 @@
+     fn bytes(&self) -> usize {
+         self.nodes.capacity() * std::mem::size_of::<Gate>()
+             + self.outputs.capacity() * std::mem::size_of::<usize>()
++    }
++}
++
++/// Replay-only adapter for the ordinary mixed-program sourcewise prover.
++/// Input cell ordinals retain the caller's order; each output bit has that
++/// same ordinal. No histogram, contraction, challenge or MAC is available.
++#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize)]
++pub(super) struct PackedReplayWork {
++    pub batches: u64,
++    pub original_frames: u64,
++    pub padding_lanes: u64,
++    pub program_replays: u64,
++    pub dag_word_operations: u64,
++    pub dag_word_and: u64,
++    pub dag_word_xor: u64,
++    pub original_scalar_gate_equivalent: u64,
++    pub plan_capacity_bytes: usize,
++    pub plan_build_capacity_upper_bytes: usize,
++    pub plan_build_original_gate_visits: u64,
++    pub scratch_moving_capacity_upper_bytes: usize,
++    pub fixed_frame_stack_bytes: usize,
++    pub scratch_capacity_bytes: usize,
++}
++
++pub(super) struct PackedReplay<'a> {
++    programs: &'a [Circuit],
++    plans: Vec<ReplayPlan>,
++    counts: Vec<[u64;3]>,
++    masks: Vec<u64>,
++    inputs: Vec<u64>,
++    values: Vec<u64>,
++    selected: Vec<u64>,
++    planes: Vec<u64>,
++    lanes: usize,
++    work: PackedReplayWork,
++}
++
++fn plans_capacity_header(count: usize) -> usize {
++    count * (std::mem::size_of::<ReplayPlan>() + std::mem::size_of::<[u64;3]>())
++}
++
++impl<'a> PackedReplay<'a> {
++    pub(super) fn new(programs: &'a [Circuit], depth: usize, width: usize) -> Result<Self, String> {
++        let widths = super::widths(programs)?;
++        if widths.get(depth) != Some(&width) {
++            return Err("packed ordinary RMS replay layer shape differs".into());
++        }
++        let mut plans = Vec::with_capacity(programs.len());
++        let mut counts = Vec::with_capacity(programs.len());
++        let mut build_peak = 0;
++        let mut build_visits = 0;
++        let mut previous_plan_bytes = 0;
++        for program in programs {
++            let selected = depth.min(program.levels.len());
++            let raw = program.levels[..selected].iter().map(Vec::len).sum::<usize>();
++            let widest = std::iter::once(program.ports)
++                .chain(program.levels[..selected].iter().map(Vec::len)).max().unwrap();
++            // Every layered gate can create at most one HashMap entry/node.
++            // Pinned std HashMap load<=7/8; bucket payload key24+value8 plus
++            // control byte, SIMD control tail and alignment. Triple payload
++            // bounds moving old/new hash/Vec tables; no hidden fixed allowance.
++            let buckets = if raw == 0 { 0 } else { ((8 * raw + 6) / 7).max(4).next_power_of_two() };
++            let hash = buckets * (std::mem::size_of::<((Op,usize,usize),usize)>() + 1) + 32;
++            let vec_nodes = (2 * raw + 4) * std::mem::size_of::<Gate>();
++            let builder = 3 * hash + 4 * vec_nodes
++                + (program.ports + raw) * (1 + std::mem::size_of::<usize>())
++                + (4 * widest + 4) * std::mem::size_of::<usize>();
++            build_peak = build_peak.max(previous_plan_bytes + builder);
++            build_visits += raw as u64;
++            let plan = ReplayPlan::new(program, selected)?;
++            previous_plan_bytes += plan.bytes();
++            counts.push([plan.nodes.iter().filter(|g|g.op==Op::And).count() as u64,
++                plan.nodes.iter().filter(|g|g.op==Op::Xor).count() as u64,raw as u64]);
++            plans.push(plan);
++        }
++        let plan_capacity_bytes = plans.capacity() * std::mem::size_of::<ReplayPlan>()
++            + plans.iter().map(ReplayPlan::bytes).sum::<usize>()
++            + counts.capacity() * std::mem::size_of::<[u64;3]>();
++        let masks = vec![0; programs.len()];
++        let planes = vec![0; width];
++        let mut replay = Self { programs, plans, counts, masks, inputs:Vec::new(),
++            values:Vec::new(), selected:Vec::new(), planes, lanes:0,
++            work:PackedReplayWork { plan_capacity_bytes,
++                plan_build_capacity_upper_bytes:build_peak
++                    + plans_capacity_header(programs.len()),
++                plan_build_original_gate_visits:build_visits as u64,
++                fixed_frame_stack_bytes:64*12,
++                ..PackedReplayWork::default() } };
++        replay.account_scratch();
++        let width_bytes = widths.capacity() * std::mem::size_of::<usize>();
++        replay.work.plan_build_capacity_upper_bytes = replay.work.plan_build_capacity_upper_bytes
++            .max(plan_capacity_bytes + replay.work.scratch_capacity_bytes) + width_bytes;
++        Ok(replay)
++    }
++
++    fn account_scratch(&mut self) {
++        let bytes = (self.masks.capacity() + self.inputs.capacity() + self.values.capacity()
++            + self.selected.capacity() + self.planes.capacity()) * std::mem::size_of::<u64>();
++        self.work.scratch_capacity_bytes = self.work.scratch_capacity_bytes.max(bytes);
++        self.work.scratch_moving_capacity_upper_bytes = self.work.scratch_moving_capacity_upper_bytes.max(2 * bytes);
++    }
++
++    /// Getter bytes must come from the fixed numerical checkpoint and must
++    /// not depend on this invocation schedule, FS or unused correlations.
++    /// The caller supplies the original public assignment for every ordinal.
++    pub(super) fn load(
++        &mut self,
++        cells: &[(usize, Option<usize>)],
++        read: &impl Fn(usize) -> [u8; 12],
++    ) -> Result<(), String> {
++        self.lanes = 0; // no previous result can survive a rejected load
++        self.planes.fill(0);
++        self.masks.fill(0);
++        if cells.len() > 64 || cells.iter().any(|(_, p)| p.is_some_and(|p| p >= self.programs.len())) {
++            return Err("packed ordinary RMS replay assignment differs".into());
++        }
++        // Fixed 768B stack; frame reads happen once and in original list order.
++        // Public padding is never passed to the numerical getter.
++        let mut frames = [[0u8;12];64];
++        for (lane, &(cell, program)) in cells.iter().enumerate() {
++            if let Some(p) = program {
++                frames[lane] = read(cell);
++                self.masks[p] |= 1u64 << lane;
++                self.work.original_frames += 1;
++            } else { self.work.padding_lanes += 1; }
++        }
++        for p in 0..self.programs.len() {
++            let live = self.masks[p];
++            if live == 0 { continue; }
++            let program = &self.programs[p];
++            self.inputs.resize(program.ports, 0);
++            self.inputs.fill(0);
++            self.inputs[1] = live;
++            for (lane, (_, assignment)) in cells.iter().enumerate() {
++                if *assignment != Some(p) { continue; }
++                for bit in 0..program.ports - 2 {
++                    self.inputs[2+bit] |= u64::from((frames[lane][bit/8] >> (bit%8)) & 1) << lane;
++                }
++            }
++            self.plans[p].replay(program, &self.inputs, live, &mut self.values, &mut self.selected)?;
++            if self.selected.len() > self.planes.len() || self.selected.iter().any(|&v| v & !live != 0) {
++                return Err("packed ordinary RMS replay output differs".into());
++            }
++            for (out, &plane) in self.planes.iter_mut().zip(&self.selected) { *out |= plane; }
++            self.work.program_replays += 1;
++            self.work.dag_word_operations += self.plans[p].nodes.len() as u64;
++            self.work.dag_word_and += self.counts[p][0];
++            self.work.dag_word_xor += self.counts[p][1];
++            self.work.original_scalar_gate_equivalent += u64::from(live.count_ones()) * self.counts[p][2];
++            self.account_scratch();
++        }
++        self.lanes = cells.len();
++        self.work.batches += 1;
++        Ok(())
++    }
++
++    pub(super) fn planes(&self) -> &[u64] { &self.planes }
++    pub(super) fn work(&self) -> PackedReplayWork { self.work }
++
++    /// Compatibility seam for the original scalar coefficient callback.
++    /// A batch coefficient loop can read planes directly to avoid Fp3 rows.
++    pub(super) fn row(&self, lane: usize, out: &mut [Fp3]) -> Result<(), String> {
++        if lane >= self.lanes || out.len() != self.planes.len() {
++            return Err("packed ordinary RMS replay row shape differs".into());
++        }
++        for (value, &plane) in out.iter_mut().zip(&self.planes) {
++            *value = if plane >> lane & 1 == 1 { Fp3::ONE } else { Fp3::ZERO };
++        }
++        Ok(())
+     }
+ }
+ 
+@@ -646,3 +815,124 @@
+         out
+     }
+ }
++
++#[cfg(test)]
++mod ordinary_packed_tests {
++    use super::*;
++
++    fn numeric_frames(columns: usize, ex: i32, ew: i32, ey: i32, weighted: bool) -> Vec<[u8;12]> {
++        let integer = super::super::super::Integer::new(columns, ex, ew, ey, weighted).unwrap();
++        let input = (0..columns).map(|i| ((i*13+7)%63) as i64-31).collect::<Vec<_>>();
++        let weight = (0..columns).map(|i| ((i*7+3)%7) as i16-3).collect::<Vec<_>>();
++        let (s,p,y) = integer.row(&input, weighted.then_some(&weight)).unwrap();
++        (0..64).map(|lane| {
++            let mut frame = [0u8;12];let mut offset=0;
++            for (value,width) in [(p[lane%columns],if weighted {4}else{2}),(s,6),(y[lane%columns],2)] {
++                let biased=(value+(1i64<<(8*width-1))) as u64;
++                for bit in 0..width {frame[offset+bit]=(biased>>(8*bit)) as u8;}
++                offset+=width;
++            }
++            frame
++        }).collect()
++    }
++
++    #[test]
++    fn c71_ordinary_rms_packed_replay_mixed_nonzero_scales_exact_coefficients() {
++        let configurations=[(5376,-2,1,-1,true),(256,1,-1,-2,true),
++            (256,-2,0,-1,false),(512,-3,0,-2,false)];
++        let programs=configurations.iter().map(|&(n,x,w,y,p)|super::super::super::compile(n,x,w,y,p).unwrap()).collect::<Vec<_>>();
++        let frames=configurations.iter().map(|&(n,x,w,y,p)|numeric_frames(n,x,w,y,p)).collect::<Vec<_>>();
++        let geometry=super::super::widths(&programs).unwrap();
++        let assignments=(0..64).map(|i| (i%11!=7).then_some(i%programs.len())).collect::<Vec<_>>();
++        let input = |cell:usize| {
++            let p=assignments[cell].unwrap();let mut bits=vec![0u64;programs[p].ports];bits[1]=1;
++            for b in 0..programs[p].ports-2 {bits[b+2]=u64::from(frames[p][cell][b/8]>>(b%8)&1);}
++            bits
++        };
++        for depth in [0usize,1,7,32,geometry.len()-2,geometry.len()-1] {
++            let width=geometry[depth];let started=std::time::Instant::now();
++            let mut packed=PackedReplay::new(&programs,depth,width).unwrap();
++            let plan_build_ns=started.elapsed().as_nanos();
++            let mut literal_scratch=ReplayLayerScratch::default();
++            let (mut packed_replay_ns,mut literal_replay_ns,mut literal_boolean_ops)=(0u128,0u128,0u64);
++            for count in [0usize,1,31,32,33,64] {
++                let cells=(0..count).map(|i| {let c=(i*17+3)%64;(c,assignments[c])}).collect::<Vec<_>>();
++                let seen=std::cell::RefCell::new(Vec::new());
++                let started=std::time::Instant::now();
++                packed.load(&cells,&|cell| {seen.borrow_mut().push(cell);frames[assignments[cell].unwrap()][cell]}).unwrap();
++                packed_replay_ns+=started.elapsed().as_nanos();
++                assert_eq!(*seen.borrow(),cells.iter().filter_map(|&(c,p)|p.map(|_|c)).collect::<Vec<_>>());
++                for (lane,&(cell,p)) in cells.iter().enumerate() {
++                    let mut actual=vec![Fp3::ZERO;width];let started=std::time::Instant::now();
++                    packed.row(lane,&mut actual).unwrap();packed_replay_ns+=started.elapsed().as_nanos();
++                    let mut expected=vec![Fp3::ZERO;width];
++                    if let Some(p)=p {
++                        let started=std::time::Instant::now();
++                        let bits=literal_scratch.inputs(programs[p].ports);bits[1]=1;
++                        for b in 0..programs[p].ports-2 {bits[b+2]=u64::from(frames[p][cell][b/8]>>(b%8)&1);}
++                        let work=programs[p].replay_layer_reuse(&mut literal_scratch,1,depth.min(programs[p].levels.len())).unwrap();
++                        for (v,&b) in expected.iter_mut().zip(literal_scratch.selected()) {*v=if b==1 {Fp3::ONE}else{Fp3::ZERO};}
++                        literal_replay_ns+=started.elapsed().as_nanos();
++                        literal_boolean_ops+=work.and_gates+work.xor_gates+work.copy_gates;
++                    }
++                    assert_eq!(actual,expected,"depth{depth},cell{cell}");
++                }
++                let allowed=if count==64 {u64::MAX}else{(1u64<<count)-1};
++                assert!(packed.planes().iter().all(|&p|p&!allowed==0));
++            }
++            assert_eq!(packed.work().dag_word_operations,packed.work().dag_word_and+packed.work().dag_word_xor);
++            assert!(packed.work().dag_word_operations<=packed.work().original_scalar_gate_equivalent);
++            assert_eq!(literal_boolean_ops,packed.work().original_scalar_gate_equivalent);
++            println!("C71_ORDINARY_RMS_PACKED_REPLAY {}",serde_json::json!({"depth":depth,"work":packed.work(),"frames_fixed_before_any_FS":true,"weighted_and_unweighted_nonzero_exponents":true,"admitted_gamma_used":false,
++                "plan_build_ns":plan_build_ns,"packed_replay_and_row_ns":packed_replay_ns,"literal_replay_and_row_ns":literal_replay_ns,
++                "literal_scratch_capacity_bytes":literal_scratch.replay_capacity_bytes()+literal_scratch.input_capacity_bytes(),
++                "benchmark_scope":"CPU replay component; reused scratch, build separate, no kernel speed claim", "credit":false,"GPU_execution":false}));
++            let before=packed.work().original_frames;
++            assert!(packed.load(&[(0,Some(programs.len()))],&|_|panic!("invalid assignment getter")).is_err());
++            assert!(packed.row(0,&mut vec![Fp3::ZERO;width]).is_err());
++            assert_eq!(packed.work().original_frames,before);
++            assert!(packed.load(&vec![(0,None);65],&|_|panic!("oversized getter")).is_err());
++        }
++        // Cardinality/ordinal boundary only: these cheap layered circuits are
++        // not a numerical Gamma benchmark (the real nonzero scales above are).
++        let many=(0..159).map(|p|Circuit {ports:if p%2==0 {98}else{82},
++            product_bits:if p%2==0 {32}else{16},valid:0,coefficients:[3,5,7],
++            arithmetic_bits:1,raw_gates:3,levels:vec![
++                vec![Gate{op:Op::And,x:2,y:3},Gate{op:Op::Xor,x:4,y:5}],
++                vec![Gate{op:Op::Xor,x:0,y:1}]]}).collect::<Vec<_>>();
++        let mut packed=PackedReplay::new(&many,2,1).unwrap();
++        let cells=(0..64).map(|i|(i,Some((i*17+5)%159))).collect::<Vec<_>>();
++        packed.load(&cells,&|i|[(i*13+7) as u8;12]).unwrap();
++        for (lane,&(cell,p)) in cells.iter().enumerate() {
++            let program=&many[p.unwrap()];let mut inputs=vec![0;program.ports];inputs[1]=1;
++            for b in 0..program.ports-2 {inputs[b+2]=u64::from(((cell*13+7) as u8>>(b%8))&1);}
++            let (literal,_)=program.replay_layer(&inputs,1,2).unwrap();
++            assert_eq!((packed.planes()[0]>>lane)&1,literal[0]);
++        }
++        assert!(packed.work().program_replays>1);
++        // Original source coefficient algorithm; helper supplies ONLY Boolean
++        // replay rows. Exact Fp3 trial polynomials remain the literal oracle.
++        let count=8;let point=[signed(3),signed(7),signed(11)];let selector_weights=eq(&point);
++        for depth in [1usize,7,geometry.len()-1] {
++            let width=geometry[depth-1];let weights=(0..geometry[depth]).map(|i|signed(i as i64+2)).collect::<Vec<_>>();
++            for prefix in [vec![],vec![Fp3::ZERO],vec![Fp3::ONE,signed(13)]] {
++                let active=count>>prefix.len();let half=active/2;let leaves=1<<prefix.len();
++                let mut cells=Vec::new();
++                for cell in 0..half {for side in 0..2 {for pre in 0..leaves {
++                    let source=cell+side*half+pre*active;cells.push((source,assignments[source]));
++                }}}
++                let mut packed=PackedReplay::new(&programs,depth-1,width).unwrap();
++                packed.load(&cells,&|c|frames[assignments[c].unwrap()][c]).unwrap();
++                let mut lane=[0usize;8];for (i,&(c,_)) in cells.iter().enumerate(){lane[c]=i;}
++                let selector=|c:usize|Ok(assignments[c].map(|p|(p,selector_weights[c])));
++                let actual=super::super::source_cell_coefficients::<true>(&programs,depth,width,count,&prefix,
++                    &|c,out|packed.row(lane[c],out),&selector,&weights,&mut SourceCellWork::default()).unwrap();
++                let expected=super::super::source_cell_coefficients::<true>(&programs,depth,width,count,&prefix,
++                    &|c,out| {let p=assignments[c].unwrap();let(v,_)=programs[p].replay_layer(&input(c),1,(depth-1).min(programs[p].levels.len()))?;
++                        out.fill(Fp3::ZERO);for(x,b)in out.iter_mut().zip(v){*x=if b==1{Fp3::ONE}else{Fp3::ZERO};}Ok(())},
++                    &selector,&weights,&mut SourceCellWork::default()).unwrap();
++                assert_eq!(actual,expected);
++            }
++        }
++    }
++}

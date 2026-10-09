@@ -1,0 +1,14 @@
+{
+  "base": "5cd16ec70b40c203fc1521ed237df3a1d9abd389",
+  "patch_sha256": "60775e8a7b5312c5405240ee2b9b8ab9955189a868aa7b4740ce2876f2ff4f23",
+  "files": [
+    {
+      "path": "rust/volta-pcs/src/c71_matrix/rms/gkr/patterns.rs",
+      "bytes": 43047,
+      "sha256": "29e87118d9fd251d7a6743f5917feb18482f82acc8b5bf7871ddf078491ac053"
+    }
+  ],
+  "build_executed": false,
+  "test_executed": false,
+  "live_edits": false
+}

@@ -1,0 +1,135 @@
+C7.1 compact RMS reservation geometry — 2026-10-09
+Status: FROZEN_TMP_SOURCE_AND_TESTS, awaiting root integration/build/tests.
+No live edit, build, test execution, canonical/private allocation, hardware,
+provider operation or documentation change was made by this author.
+
+Patch: compact-rms-geometry.patch
+SHA256: 0b4b63d7b5dd4aaf08bf14a9f1f1a6cdba1e01146fabb9d2814db0feb12e8b9e
+Only three source files:
+  rust/volta-pcs/src/c71_matrix/gemma/profile.rs
+  rust/volta-pcs/src/c71_matrix/gemma/rms/caller.rs
+  rust/volta-pcs/src/c71_matrix/rms/gkr.rs
+Base captured against clean HEAD 5cd16ec70b40c203fc1521ed237df3a1d9abd389.
+Base SHA256 respectively:
+  77e92f909c97a66497bb35a448a041ff93d960a059816edb9cfcbdf12e81d328
+  0cf63d903bb220d1ba33ed10ed4a7aaf125a17d25bfa26e0c8a313b21bf8c59c
+  69c7b5e86629ff3985d2e0d1982e92d9c628b4ce7628ae0637dfb213cffcd4e3
+Root independently edited live gkr.rs after capture. This patch adds public
+geometry/count helper wrappers by correlation_count; it does not change the
+existing widths()/required(), GKR runtime, bind(), proof, verifier, patterns
+or transcript. Merge these additive hunks with root's own GKR changes.
+
+Concrete selected CPU reduction
+------------------------------
+The canonical runner compiles public metadata independently for P and V:
+  canonical_runner.rs:274-275,292-293 => six Canonical profiles.
+Each Recipes::compile validates 159 public RMS circuits and discards them:
+  profile.rs:34-46,333 onward => six admission sets.
+Public::from_shared computes three complete required counts:
+  canonical_state.rs:50-145,92 => three P + three V sets.
+Prover::new recomputes Public::from_shared to compare its supplied table
+identity with Public's original identity: canonical_state.rs:485-493 =>
+three further required sets. This identity check is preserved.
+prove_body/verify_body recompute complete required before using rows:
+  canonical_prove.rs:54,canonical_verify.rs:71 => three P + three V sets.
+Actual prove_rms/verify_rms each call prepare: caller.rs:381,442 before patch
+=> six sets of complete circuits, which remain necessary for live GKR.
+
+Without optional work_census/ledger commands, current selected runner:
+  6 admission + 9 setup required + 6 body required + 6 live RMS =27 sets
+  27*159=4,293 RMS circuit compilations.
+This minimal patch reuses the already admitted compact public geometry in
+Recipes::required. It removes all 15 required-only sets:
+  remaining6 admission +6 live RMS =12*159=1,908 compilations.
+  eliminated2,385 circuit compilations =55.56% of these RMS compile calls.
+This is an exact analytic call count, not measured CPU speedup. GKR public
+wiring validation is newly performed once per circuit during admission to
+seal the summary, then no longer performed for the 15 required-only sets:
+net nine full gate-validation set visits are removed. Live GKR validation
+is unchanged. The separate EXP30 ratio compile/required path is unchanged.
+Optional work_census and the original rms_required method remain explicit
+oracles and still compile circuits. No blanket global cache is introduced.
+
+Implementation and protocol parity
+----------------------------------
+RequiredGeometry owns only sorted exact keys (columns,[ex,ew,ey],weighted)
+and max dyadic layer widths. Its private fields cannot be populated by a
+certificate. During Recipes admission it compiles one circuit at a time,
+applies the former Recipes envelope plus the existing full GKR widths()
+validator, merges max widths, then drops that circuit. No Circuit is stored.
+Recipes::required calls rms_required_with_geometry. This repeats every
+former prepare context guard using a helper shared with the original
+prepare: actual cells/nonempty<=D29, norms1..421, exact parameters length,
+actual auxiliary and weight layouts, one root each, nonzero quantization,
+nonempty Gamma and valid Attempt. It reconstructs the exact sorted unique
+key set and compares it directly with cached keys. No digest substitutes
+for equality. It computes count using the actual current cell dimension
+and repeats all statistic_statement.required() shape/context validations.
+The full reservation, roots, row counts, assignments and FS are not cached.
+
+prepare's existing first-occurrence keys/program ordering and per-norm
+assignment are preserved. The sorted geometry order is used for the
+commutative maximum width/count only and never for GKR bind serialization.
+Actual prove/verify use the original full circuits and their original MACs.
+No FS event, phase, random request, Gamma, PCG row, correlation reservation,
+NoPeek/producer API, root or proof/transcript byte format changes.
+Production fails closed when geometry is absent. Only the existing cfg(test)
+capacity-only constructor intentionally leaves None and keeps the original
+required oracle; it cannot select the production path.
+
+Complete incremental allocation/lifetime contribution
+----------------------------------------------------
+Each retained summary has two Vec headers (48B inline) plus keys and widths.
+Key size=24B on the pinned64bit build, maximum421 keys; maximum129 widths.
+Growth upper per summary:2*K*24+2*129*8 requested heap bytes.
+  pinned six summaries K159:6*(7632+2064)=58,176 B heap.
+  general six summaries K421:6*(20208+2064)=133,632 B heap.
+No 457,616,928B public circuit payload is retained across phases/slots.
+The cfg(test) metadata-only capacity constructor still stores None; its
+global census includes the new48B inline per Arc<Canonical> after rebuild,
+but NOT production's two Vec heaps. Root must add the finite58,176B pinned
+heap upper separately, or measure genuine compiler admission later. It must
+not call the metadata-only census a production summary heap measurement.
+
+Each required call's exact-key BTreeSet is temporary, sequential on the
+selected runner; using the existing conservative32-byte K/V BTree node upper
+832B bounds its24-byte-key nodes. For159 keys, nodes<=159+1+ilog2(159)+2=169,
+so <=140,608B temporary heap. For421 keys:<=432*832=359,424B.
+The existing statistic required transient remains unchanged. These replace
+the removed full RMS compiler/prepare workspace for reservation-only calls.
+Summary construction's local width Vec and any resize old/new allocation
+are bounded by the129-width geometry; they occur with only the current
+circuit, before W installation/private preparation, and must be included
+with the existing source-only compiler upper. Summary keys/tree can coexist
+temporarily during collection; their bounded terms above cover that overlap.
+
+Suggested root validation, already authored but NOT executed
+----------------------------------------------------------
+New reduced test:
+c71_b12_rms_cached_public_geometry_exact_mixed_recipes_and_contexts
+Uses actual toy-plan weighted and unweighted RMS with mixed nonzero public
+exponents. Oracle is the original complete-circuit prepare/required, not a
+duplicate cached count formula. Checks equal max widths/counts, direct
+first-occurrence program assignments, reuse calls, changed recipe keys,
+bad roots/Gamma/quantization/Attempt/layout, invalid cell envelope and
+statistic rows, changed cell dimension with parity, cardinality>421/empty,
+and invalid cached geometry includingD30. No witness/FS/coins enter cache.
+It emits C71_RMS_COMPACT_GEOMETRY with reduced ordinary2 versus cached64
+timing calls, retained heap capacity and retained_circuit_bytes=0. Those
+timings become evidence only after root runs the authored test.
+Existing reduced full-component regression:
+c71_b12_gemma_rms_dispatch_joins_p0_local_v_rne_and_both_original_roots
+Existing canonical preflight test compiles Recipes normally (Some geometry)
+and still computes its independent rms_required oracle before complete
+Recipes::required; run only within root's authorized local resource limits.
+No pinned full159 program execution is requested for this patch authoring.
+
+Remaining deliberate repeats
+---------------------------
+Admission still validates all three profiles independently in each role.
+The six live RMS prove/verify segments still compile their full circuits and
+drop them after that segment. Persisting a457MB circuit cache across Pproof,
+PCS, exchange and Vverification would increase tight PCS memory phases and
+is not selected. Reuse of per-program summaries across public slot admission
+could remove four additional sets, but would touch more constructors and is
+outside this minimal implementation/checkpoint. No new admission is claimed.

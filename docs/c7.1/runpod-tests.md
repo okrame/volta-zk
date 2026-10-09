@@ -5,122 +5,35 @@
 
 ## Stato e sequenza operativa
 
-Γ è **ammesso** per le identità pinned dal
-[record del 7 ottobre](../../benchmarks/results/c71-gamma-admission-2026-10-07-868a3e8.json):
-due replay interi identici, confronto indipendente completo, 450 token,
-3.471 sorgenti A per contesto e 120 sorgenti KV finali da 450 righe.
-La [diagnostica della prova](../../benchmarks/results/c71-cuda-experiment-2026-10-07-868a3e8.json)
-è **INCOMPLETA**, exit 124 dopo 2.461,09 s nel commitment W, prima delle
-risposte. Nessun certificato canonico o tempo completo della prova è acquisito.
-Il runner `experiment-cuda` è misto: inferenza/replay/range e commitment
-iniziali W/A e relativo sampler GPU; PCS successive/GKR non-range/Seed6/
-verifica CPU. Le [risorse misurate e le priorità](design.md#risultati-attuali-e-prossime-ottimizzazioni)
-sono riassunte nel design. La campagna precedente è chiusa e il pod è spento.
+Γ è ammesso sul workload pinned; la diagnostica canonica precedente è
+incompleta nel commitment W, prima delle risposte. La campagna è chiusa,
+il pod spento. Lo [stato del percorso](design.md#stato-di-implementazione-e-lavoro-necessario)
+e l'[indice delle evidenze](design.md#evidenze-e-decisioni) distinguono
+ammissione Γ, failure canonico e nuovi controlli locali.
 
-Il goal locale dell'8 ottobre prepara l'intero percorso crittografico e
-si conclude prima della campagna H100. Hardware e durata richiedono nuova
-autorizzazione. I controlli telemetria/XOF sono in
-[local-tests](local-tests.md#controlli-nativi-della-costruzione-corrente);
-la prima integrazione conserva la geometria W/A corrente.
+Il goal prepara in locale l'intero percorso crittografico per H100 80 GB,
+e si conclude prima della campagna. È ancora attivo; **nessuna nuova
+campagna è autorizzata**. Hardware e durata richiedono una nuova decisione.
+La preparazione locale non autorizza riattivazione, nuovi pod o benchmark
+hardware. Γ si riusa dopo verifica di identità ed impatto compatibili.
 
-Il [primo checkpoint locale](../../benchmarks/results/c71-crypto-preparation-local-2026-10-08-04ab8ed1c4ce.json)
-ha telemetria/XOF integrati e parità ridotte positive. Il lavoro locale
-successivo ha integrato W/A residenti; prosegue con i confronti esatti,
-mentre il goal è ancora
-attivo e non autorizza riattivazione, nuovi pod o una campagna.
+Il runner `experiment-cuda` è misto: inferenza/replay/range A e commitment
+iniziali W/A con sali residenti; extension PCS, query/resti/S1, GKR
+non-range/MAC, Seed6 AES e verifica dichiarati CPU. La FFT naturale
+[validata sul common owner](../c7.1-history/crypto-transform-2026-10-09.md)
+è una primitiva; il caller query A non è ancora collegato nel checkpoint.
+Accumulo W ordinario e QK/PV scalari rimangono default; le candidate Tensor/MMA
+sono confronti espliciti. Parità host e driver simulato non attribuiscono
+compilazione sm_90, parità CUDA, prestazioni o picco fisico H100.
 
-Il [passo hash W](../c7.1-history/crypto-w-hash-2026-10-08.md) prepara
-foglie incrementali e Merkle GPU nello stesso owner, con sali a finestre.
-Il runner CUDA seleziona ora la catena nel Tree W, con lifecycle/aperture
-integrati e parità locale. Il frontier strided è verificato come
-componente condiviso, senza esecuzione CUDA. Nella campagna autorizzata compilare anche
-`cuda/c71_pcs_hash.cu`; librerie antecedenti prive dei simboli PCS sono
-rifiutate. La parità host non è esecuzione CUDA o misura H100.
-Il [checkpoint pulito W hash](../../benchmarks/results/c71-crypto-w-hash-local-2026-10-08-0bf5814bf9c4.json)
-conserva root naturali/strided, sali e arresti verificati localmente.
-Il [passo accumuli/FFT](../c7.1-history/crypto-w-scan-fft-2026-10-08.md)
-prepara e verifica la catena W→accumuli→FFT→hash/Merkle nelle fixture:
-128 colonne/32 coset, pad originali e rifiuti terminali. Il
-passo [Tree W](../c7.1-history/crypto-w-tree-2026-10-08.md) integra la
-catena nel runner CUDA; il passo A successivo è descritto sotto.
-Nella futura build aggiungere anche `cuda/c71_pcs_weight.cu`; le FFT
-riusano `cuda/c71_fft.cuh`. Restano da verificare compilazione sm_90,
-parità hardware, picchi fisici e tempi. Nessun riavvio hardware finché
-il goal locale non è pronto e hardware/durata nuovamente autorizzati.
-Il [record locale pulito](../../benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db.json)
-verifica componenti e arresti con driver simulato; non compila CUDA,
-non misura H100. W CUDA seleziona 128 scansioni (analitiche sul pinned),
-il riferimento CPU resta a 1.024 e A resta a 512 ricostruzioni. La parità
-composta completa usa soltanto nel test una tabella di righe di riferimento
-da 16 MiB; il test distinto Tree confronta il getter effettivo. Il D15
-non cached supera ancora 60 s locali ed è un obbligo prestazionale aperto.
-Il conto W corregge con nuova evidenza il secondo flag simultaneo (+256 B);
-non modifica i record precedenti e non concede credito di picco completo.
-Il [record pulito Tree](../../benchmarks/results/c71-crypto-w-tree-local-2026-10-08-6b3535856cc5.json)
-conserva la selezione del runner e tutta la provenienza locale; dodici
-test Rust e nove Python positivi. Il [receipt](../c7.1-history/crypto-w-tree-evidence-2026-10-08.md)
-delimita le fixture e i fallimenti. Il Tree A è ora integrato sotto; confronto Tensor Core e costi
-residui di sampler/aperture/prova restano lavoro del goal locale.
-
-Il [componente A residente](../c7.1-history/crypto-a-source-2026-10-08.md)
-prepara scanner, accumuli su quattro coset/tutte le colonne, istogramma
-fuso, pad/FFT e foglie complete senza download di righe. Tre geometrie
-e 28 arresti sono verificati con driver host; il passo successivo lo
-seleziona nel Tree/runner A senza modificare le 512 ricostruzioni.
-La nuova build completa deve includere anche `cuda/c71_pcs_source.cu`:
-assenza dei cinque nuovi simboli è terminale, anche per un owner W.
-Le transazioni A/sali portano l'owner host a37.288 B; lo screen A
-aggiornato lascia320.418.168 B
-per gli altri owner host, prima della verifica del budget simultaneo
-integrato e del picco fisico. Nessun credito H100 o autorizzazione di
-hardware/durata segue da questi controlli.
-Il [record pulito A](../../benchmarks/results/c71-crypto-a-source-local-2026-10-08-98ac67808e29.json)
-e il [receipt](../c7.1-history/crypto-a-source-evidence-2026-10-08.md)
-conservano provenienza, regressioni W e limiti del componente.
-
-Il [Tree A](../c7.1-history/crypto-a-tree-2026-10-08.md) è selezionato nel runner CUDA e il
-[record pulito](../../benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013.json) ha 18 test Rust/12 Python positivi. Prova
-composta W/A con cache iniziale solo nella fixture, getter effettivi
-verificati separatamente e timeout uncached A conservato. Sali strided
-batched e un fence duplicato sono ottimizzati con parità locale. La
-candidata limb16 è emulata contro i128 e ora collegata al confronto
-sullo stesso owner, senza selezione nel runner. La futura libreria deve
-includere anche `cuda/c71_pcs_weight_tensor.cu`: i due nuovi simboli ABI4
-sono obbligatori. Il [checkpoint del 9 ottobre](../c7.1-history/crypto-components-2026-10-09.md)
-ha closure lineare a una scan per round, componente GPU XOF esatta e
-candidata QK/PV corretta per causalità per-riga, tutte verificate in host.
-Il [passo owner/Tree XOF](../c7.1-history/crypto-salts-owner-2026-10-09.md)
-è integrato con parità stream/root/aperture/transcript/MAC; il
-[record pulito](../../benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2.json)
-conserva21 Rust/11 Python positivi e un timeout60s CPU lookup/GKR/WHIR.
-La libreria completa deve includere `cuda/c71_pcs_salts.cu`: tutti i sei
-nuovi simboli sono obbligatori. Nella campagna autorizzata verificare
-anche prefix/scatter e replay CUDA reali, seek/rejection/cap e flag/fence.
-Restano query/S1/closure GPU, profilo
-GKR/range e selezione QK/PV secondo misura, conto simultaneo completo.
-Il goal resta attivo: non riattivare pod
-o hardware. Γ resta riutilizzabile dopo i controlli normali di identità;
-la campagna futura misurerà separatamente installazione, setup,
-inferenza, prova e verifica, dopo nuova autorizzazione di hardware/durata.
-
-Il [diagnostico W](../../cuda/c71_pcs_weight_compare.cpp) è pronto per
-la futura campagna: compilare e linkare contro la libreria CUDA reale,
-confrontare tutte le word canoniche postFFT e tutti i digest con oracle
-indipendente, una warmup e tre rep in ordine alternato per gruppo.
-La W sintetica da4MiB, R64/Q256, è un componente che entra in L2 e ha pochi
-CTA: i suoi tempi non sostituiscono il benchmark W pinned. Il diagnostico
-rifiuta il driver test. Non lanciarlo prima della nuova autorizzazione.
-Le candidate sali e attention richiedono anche compilazione sm_90 e
-controlli reali di seek/cap, basi, pad, root e letture causali prima
-della selezione; il default ordinario/scalare rimane il confronto.
-
-Percorso principale: preparazione locale → autorizzazione della nuova
-campagna → verifica dell'ambiente e riuso di Γ → parità e misure delle
-fasi ottimizzate → esperimento O=0/150/300 → conservazione e arresto.
-La [calibrazione](#campagna-di-calibrazione) è un ramo condizionale,
-necessario quando l'ammissione pertinente viene invalidata. Le misure
-ridotte indipendenti possono precederla; la prova completa richiede Γ ammesso.
-Cronache, pod, deadline, proroghe e stime superate sono nel
+Percorso principale: completare codice/test/screen locali → autorizzare
+hardware e durata → verificare ambiente e riusare Γ → parità CUDA e
+misure rappresentative con conto simultaneo → esperimento O=0/150/300 →
+conservare esiti e arrestare il pod. La campagna misurerà separatamente
+installazione W, setup di sessione, inferenza, prova e verifica. La
+[calibrazione](#campagna-di-calibrazione) è un ramo condizionale, richiesto
+quando l'ammissione pertinente è invalidata; la prova completa richiede
+Γ ammesso. Cronache, pod/deadline e stime superate rimangono nel
 [runbook storico](../c7.1-history/runpod-tests-2026-10-07.md).
 
 ## Autorizzazione e limiti
@@ -320,12 +233,34 @@ I cambi di geometria sono ammessi con parità e conto completo secondo il
 Prima di usare credenziali eseguire `scripts/runpod_harness.sh local-secret-preflight`;
 un eventuale `.env` deve essere regolare, posseduto dall'utente e `0600`.
 
+La futura libreria completa segue la
+[build locale](local-tests.md#collegamento-del-runner-cuda), includendo
+hash, weight, Tensor, source e sali PCS oltre all'owner. Simboli ABI4
+mancanti sono terminali, senza fallback. Verificare CUDA reali di
+prescan prefix/scatter, replay sali, seek/rejection/cap, cursor finali,
+flag/fence, basi, pad e root. Verificare anche FFT naturali pari/dispari,
+inverse e segmenti batch; le fixture host non eseguono quei kernel.
+
+Il [diagnostico W](../../cuda/c71_pcs_weight_compare.cpp) si compila e
+linka contro la libreria CUDA reale, rifiutando il driver di test.
+Confronta tutte le word canoniche postFFT e tutti i digest contro oracle
+indipendente; una warmup e tre rep alternate per gruppo, stesso owner e
+input, misurano accumulo+FFT+fence con contatori e memoria completi.
+W sintetica da 4 MiB, R64/Q256, 128 colonne e gruppi 0/4064 sono un
+componente che entra in L2: quei tempi non sostituiscono W pinned.
+Non eseguire prima dell'autorizzazione hardware/durata.
+
+Le candidate QK/PV richiedono compilazione e parità reali anche sulle
+letture causali per riga, con future già inizializzate; il default
+scalare rimane il confronto. Selezionare ordinario/Tensor e attention
+secondo misure rappresentative, senza inferire speedup dal driver host.
+
 ## Esperimento della prova
 
 Il comando è ora `c71_canonical_reference experiment-cuda`. Gli esempi
 `c71_matrix` e `c71_calibration` non lo sostituiscono. L'esperimento usa
 la pipeline mista dichiarata, distinguendo commitment iniziali residenti
-da sampler, aperture e PCS successive CPU.
+da aperture e PCS successive CPU; il sampler iniziale è residente.
 Usare le
 [build mirate](local-tests.md#compilazione-mirata) e la
 [build della libreria CUDA](local-tests.md#collegamento-del-runner-cuda).
@@ -348,9 +283,11 @@ invariati NoPeek, MAC originali, margine arena 256 MiB, margine globale
 1 GiB e stop su esaurimento senza spill dinamico.
 
 Gli esperimenti GPU confrontano prima gli operatori con il diagnostico
-di parità sopra e il range con il riferimento host/nativo. FFT, resti/PQ
-e hash salato sono ancora CPU in questo runner; non rivendicare la loro
-accelerazione. Poi si misurano le fasi rappresentative con i
+di parità sopra e il range con il riferimento host/nativo. Accumuli,
+FFT e hash salato dei commitment iniziali sono residenti; extension PCS,
+query/resti/PQ e S1 restano CPU nel checkpoint validato. La nuova
+primitiva FFT non implica il collegamento del caller query. Poi si
+misurano le fasi rappresentative con i
 loro stati simultaneamente vivi. Un kernel veloce da solo non dimostra
 il tempo completo. CUDA richiesto ma non disponibile deve produrre errore,
 senza un percorso CPU sostitutivo. La produzione usa PCG reale/AES.

@@ -534,9 +534,10 @@ e il [registro](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_state
 collegano schedule, verifica e promozione dopo journal durevoli. Il runner
 misto conserva gli stessi messaggi, polinomi e MAC originali. La presenza
 del codice e i test finiti non sono un lemma Lean di raffinamento o una
-prova della composizione Seed6. Restano da verificare Γ reale, pipeline
-canonica positiva, getter su tutti gli operatori/alias e copertura dei MAC
-originali nei certificati prodotti.
+prova della composizione Seed6. Γ reale è ammesso sul workload pinned; il suo riuso richiede identità e
+impatto compatibili. Restano da verificare pipeline canonica positiva,
+getter su tutti gli operatori/alias e copertura dei MAC originali nei
+certificati prodotti.
 
 Scanner e reader emettono soltanto valori dello snapshot immutabile,
 senza monete PCS o correlazioni. Lo scanner richiede una sola emissione
@@ -629,120 +630,83 @@ aperte di composizione e raffinamento rimangono quelle dichiarate sopra.
 
 ### Riduzione dei temporanei e confine del claim
 
-La [foglia incrementale W](../c7.1-history/crypto-w-hash-2026-10-08.md)
-conserva il dominio B12, i byte little-endian di 128 valori e quattro
-sali, counter/flag dei chunk e root BLAKE3. Il CV incompleto non è un
-digest pubblicabile: ordine e copertura dei blocchi/bande e flag del
-device precedono la pubblicazione. Nessun cambiamento a NoPeek, MAC,
-PCG AES o correlazioni; i producer non ricevono nuove monete. La parità
-del codice host condiviso non dimostra il raffinamento CUDA. La fixture
-strided ricompone il frontier con lo stesso seek dei sali e confronta
-root dei sottoalberi e root naturale. L'import nel Tree W è ora
-selezionato dal backend CUDA, sul medesimo owner/Arc/layout originali.
-Il [passo accumuli/FFT W](../c7.1-history/crypto-w-scan-fft-2026-10-08.md)
-verifica come componente la composizione dei prodotti signed esatti,
-pad originali, FFT e foglie/Merkle, con modulo i128 indipendente e
-parità Rust/C++ condivisa. La base Goldilocks è originale; non converte
-le basi Fp3 PCS/MAC. Bound signed <2^87, riduzione, mapping, lifecycle
-e scheduling restano privi di lemma Lean di raffinamento CUDA; gli
-arresti per alias, copertura, owner, binding, launch/fence/flag e i test
-finiti non ne costituiscono una prova generale. Il
-[passo Tree](../c7.1-history/crypto-w-tree-2026-10-08.md) confronta root,
-pad, sali, aperture e lavoro con getter originale; il test composto
-verifica l'intera prova serializzata, transcript/RNG e MAC originali con
-una tabella di righe iniziali soltanto nella fixture. Non prova i tempi
-del replay non cached, che supera 60 s locali, né parità hardware.
-Errori di identità, geometria, copertura o CUDA arrestano l'owner comune
-senza fallback; il callback numerico non riceve monete PCS. La divisione
-diretta per piccoli divisori monici usa le stesse basi Fp3 e coefficienti;
-non introduce sfide, MAC o un lemma di raffinamento dell'implementazione.
-Il [record pulito Tree](../../benchmarks/results/c71-crypto-w-tree-local-2026-10-08-6b3535856cc5.json)
-conserva parità, otto arresti senza getter/fallback e prefissi durevoli
-dei timeout; non considera il test ignored un pass. La fixture composta
-usa MAC ideal già fissati; il runner mantiene il PCG reale AES originale.
-Il [record pulito accumuli/FFT](../../benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db.json)
-conserva tutti i confronti del componente, 24 arresti e i 33 generatori
-Goldilocks originali, incluso il dominio 2^32. Non estende credito,
-trust model o lemmi ai kernel GPU o alla PCS integrata.
-Il [record pulito](../../benchmarks/results/c71-crypto-w-hash-local-2026-10-08-0bf5814bf9c4.json)
-conserva parità, contabilità congiunta, UBSan e 27 arresti. Non scarica
-le ipotesi B12, Seed6 o di raffinamento generale CUDA già dichiarate.
+Le ottimizzazioni conservano enunciato e distribuzione crittografica.
+Le [evidenze e decisioni](design.md#evidenze-e-decisioni) distinguono
+componenti, integrazioni e risultati completi; i record conservano anche
+failure e timeout. Nessuna parità finita o misura locale scarica le
+premesse B12, Seed6, determinismo o raffinamento CUDA dichiarate sopra.
 
-Il budget congiunto e i rilasci non cambiano enunciato o distribuzione
-crittografica: il gruppo valuta gli stessi coset nei punti originali, i
-pad mantengono gli indici originali e Merkle usa lo stesso stream di sali.
-Le aperture contigue conservano ordine, duplicati e path potati. S1 può
-essere ridimensionato solo dopo consumo/rilascio del predecessore e
-registrazione del successore: non si modifica un oracolo ancora apribile.
-I test ridotti confrontano byte, root, sali, transcript e MAC originali.
-Preparatore, scan e gather non ricevono monete PCS, transcript o Seed6.
+**Hash e accumuli W.** La foglia incrementale conserva dominio B12,
+byte little-endian dei 128 valori e quattro sali, counter/flag dei chunk
+e root BLAKE3. CV e frontier incompleti non sono digest pubblicabili:
+ordine/copertura dei blocchi, bande e gruppi, fence e flag precedono la
+pubblicazione. Il merge strided ricompone la stessa root naturale e il
+Tree mantiene Arc/layout W, pad, sali e getter originali. La somma signed
+<2^87 e la riduzione Goldilocks sono identità controllate con modulo i128
+indipendente; non cambiano basi Fp3 e non hanno un lemma Lean di
+raffinamento del kernel o dello scheduling. La candidata Tensor limb16
+è non selezionata; il confronto bitwise sul common owner non autentica
+nuovi valori e non espone campi al verificatore.
 
-Il [consumer A residente](../c7.1-history/crypto-a-source-2026-10-08.md)
-usa gli stessi byte biased degli originali numerici. Ordine fisico delle
-emissioni e somme modulari non modificano i coefficienti Goldilocks;
-pad, generatori, sali e encoding delle foglie sono originali. Il producer
-riceve solo un sink di buffer/tessere, senza monete PCS, transcript o
-correlazioni. Gli accumuli e conteggi pending non sono leggibili, e solo
-copertura, FFT e flag completi permettono pubblicazione. Errori del sink,
-shape, owner, codec o CUDA arrestano l'owner comune. A rimane riapribile
-nei prefissi accettati; la promozione non ne vieta il replay storico.
-L'istogramma privato è fuso nel primo replay, senza nuovi MAC o scansioni.
-Parità su tre geometrie e 28 rifiuti con driver simulato non sono una prova
-dei CAS o del scheduling CUDA o un nuovo lemma Lean; quel record
-precede l'integrazione Tree descritta sotto. Rimangono tutte le premesse di determinismo/immutabilità, B12 e
-Seed6 già dichiarate; PCG AES, correlazioni monouso e NoPeek sono invariati.
-Il [record pulito A](../../benchmarks/results/c71-crypto-a-source-local-2026-10-08-98ac67808e29.json)
-conserva codec/campi/digest, errori terminali e regressioni W, senza credito
-di composizione del Tree A o di esecuzione CUDA.
+**Producer A e copertura.** Il sink residente consuma gli stessi byte
+biased degli originali numerici; l'ordine fisico delle emissioni e le
+somme modulari esatte mantengono i coefficienti. Producer e preparatore
+ricevono solo buffer/layout/sink, senza monete PCS, transcript o
+correlazioni. Accumuli/conteggi restano pending fino a copertura, pad,
+FFT e flag completi. Il C ABI controlla span, stato e conteggio; unicità
+e partizione degli indici sono precondizioni dello scanner Rust fidato,
+con negativi di righe duplicate/omesse. L'istogramma è fuso nel primo
+replay, senza MAC o scansioni aggiuntivi. Il Tree conserva cut, ordine,
+root/cache ed aperture; la promozione non impedisce replay storico.
 
-Il [passo Tree A](../c7.1-history/crypto-a-tree-2026-10-08.md) importa root/cache con lo stesso sampler,
-cut, pad e ordine originale. La partizione è garantita dallo scanner
-fidato con copertura delle righe; il C ABI non attesta autonomamente
-l'unicità. Errori o scan incompleta precedono finish e sono terminali.
-Il producer continua a ricevere solo buffer e layout, senza monete PCS.
-Il [record locale](../../benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013.json) confronta prove composte W/A, transcript,
-RNG e MAC originali con cache di righe solo nella fixture; aperture del
-getter effettivo sono verificate separatamente. Il timeout uncached A
-non concede credito di completamento. Salts4 conserva l'esatto sampler
-con rejection/cap; il fence eliminato segue un fence già valido e non
-allenta free-failure. La candidata limb16 non cambia protocollo o
-producer ed è non selezionata; parità signed i128 finita non prova CUDA.
-Premesse B12/Seed6/raffinamento, NoPeek, PCG AES reale e correlazioni
-monouso rimangono tutte in vigore. Nessun lemma congelato cambia.
+**Monete private.** Buffer sequenziale, batch strided e sampler GPU
+conservano dominio originale incluso NUL, stream LE, rejection, seek,
+clone MMCS e cap 2^40. Prescan parte dal cursore logico e avanza l'host
+una sola volta dopo successo; il prefetch non altera il cursore pubblico
+del sampler. La capability owner-bound è opaca e non clonabile, senza
+lettura/upload/rilascio generico. Seed, token e puntatori privati non
+arrivano ai producer o alla telemetria. Replay e hash condividono il flag
+sticky; consumo e cursori finali devono coincidere col prescan, prima
+del ritiro privato e della lettura digest. La gerarchia CUDA prescan
+rimane da verificare su hardware. PCG reale AES e correlazioni monouso
+non sono sostituiti dal sampler di sali PCS.
 
-Il [checkpoint del 9 ottobre](../c7.1-history/crypto-components-2026-10-09.md)
-confronta closure lineare, stream XOF e confronto Tensor sull'owner.
-La scan originale numerica riceve solo il sink; EQ/sfide restano nel
-consumer. Le tre correlazioni di ciascun round si consumano solo dopo
-scansione riuscita; la riserva/burn della sessione resta3D+2 e monouso.
-Range/count non sostituiscono l'unicità dello scanner fidato. Forme,
-wire, endpoint originali, MAC e transcript sono confrontati esattamente.
-Il seed aggiunto al sampler rimane nello stato privato, senza serializzazione
-o telemetria. Il [passo owner/Tree](../c7.1-history/crypto-salts-owner-2026-10-09.md)
-collega il prescan dal cursore logico corrente e avanza il sampler host
-una sola volta, preservando clone MMCS, rejection e cap. Il token privato
-non è clonabile o leggibile tramite API generiche; il producer numerico
-riceve solo buffer/layout originali e sink. Replay/hash condividono il
-flag sticky e pubblicano dopo controllo di consumo e cursori. Salts/pad/
-root/aperture/wire/transcript/MAC sono confrontati nel
-[record pulito](../../benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2.json),
-con 31 rifiuti owner e 16 Tree, senza cambiare PCG AES o correlazioni.
-Il timeout60s del test CPU lookup/GKR/WHIR è conservato e non è un pass.
-I test dei helper non dimostrano scheduling GPU o raffinamento generale.
-La base PCS v³=v+1 non può essere sostituita dalla base MAC u³=2.
+**Aperture, FFT e closure.** Il raggruppamento valuta gli stessi punti;
+aperture contigue conservano ordine, duplicati e path potati. Divisione
+per piccoli divisori monici e FFT naturali diretta/inversa mantengono
+coefficienti ed endpoint originali. La normalizzazione inversa è una
+sola moltiplicazione per 1/N; twiddle sono legati a lunghezza/orientamento,
+con buffer distinti e guard owner/span/stato. Le primitive FFT base
+Goldilocks non reinterpretano PCS v³=v+1 come MAC u³=2: un caller di
+estensione deve conservare separatamente le tre componenti originali.
+La lettura bounded di word base nega le fasi sali private. Il
+[checkpoint FFT](../c7.1-history/crypto-transform-2026-10-09.md) valida
+la primitiva, senza validare query A o S1 residenti.
 
-Il modello QK/PV precedente leggeva KV fino al massimo causale del tile,
-pur annullando gli output futuri. È inadatto al vincolo per-riga del §6;
-il default scalare non era stato cambiato. La correzione usa solo il
-prefisso comune MMA e un bordo scalare per output. Il [record distinto](../../benchmarks/results/c71-attention-causal-local-2026-10-09-29a257b4476b.json)
-verifica letture con guard per-riga anche su future già inizializzate,
-con 18 rifiuti marker. Il record precedente resta immutabile; parità
-numerica da sola non scarica causalità. Le candidate restano non selezionate.
+S1 si ridimensiona soltanto dopo consumo/rilascio del predecessore e
+registrazione del successore; nessun oracolo ancora apribile è modificato.
+La closure lineare scansiona originali una volta per round, con EQ/sfide
+nel consumer e solo sink nel producer. Le tre correlazioni del round
+si consumano dopo scansione riuscita; riserva/burn 3D+2, wire, endpoint,
+MAC e transcript rimangono invariati. Range/count non provano unicità.
+Le fixture composte usano MAC ideal fissati e cache di riferimento da
+16 MiB solo nel test; produzione mantiene PCG AES e getter senza cache.
+Timeout uncached W/A e CPU lookup/GKR/WHIR non sono pass.
 
-Il contatore comprende entrambi i ruoli e le capacità mantenute, compreso
-old+new durante realloc. Il rifiuto di allocazione o una free/fence CUDA
-fallita è terminale; non produce promozione, spill o fallback. Soltanto W
-packed è esclusa. La riserva fisica di 256 MiB non è un lemma Lean né
-una misura: il bound complessivo è condizionato alla sua sufficienza su
-H100. Non trasferire i risultati locali a parità CUDA o completezza
-canonica; le ipotesi formali/compositive già aperte restano in vigore.
+**Causalità attention.** La candidata precedente leggeva KV fino al
+massimo causale del tile, annullando gli output futuri: viola il contratto
+per-riga del §6. Il default scalare era invariato. La
+[correzione distinta](../../benchmarks/results/c71-attention-causal-local-2026-10-09-29a257b4476b.json)
+usa MMA sul prefisso comune e bordo scalare per output; guard di lettura
+coprono anche future KV/Pi già inizializzate. Il record del finding
+rimane immutabile. La candidata resta non selezionata e la sola parità
+numerica non dimostra causalità o scheduling GPU.
+
+**Memoria e terminalità.** Entrambi i ruoli, capacità mantenute e
+old+new durante realloc sono nel medesimo contatore; soltanto il payload
+W packed è escluso. Errori di identità/geometria/copertura, launch,
+fence, budget e cleanup sono terminali: niente promozione, spill,
+seconda arena o fallback. La riserva fisica di 256 MiB è un'ipotesi da
+verificare sulla H100, non un lemma o una misura. Bound di allocazione,
+subtotal analitici e test ridotti non provano completamento canonico,
+picco fisico o prestazioni. I lemmi congelati non cambiano.

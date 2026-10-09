@@ -71,261 +71,122 @@ non trasferisce automaticamente i bound B12 al programma completo.
 
 ## Stato di implementazione e lavoro necessario
 
-Il runner esplicito `experiment-cuda` collega ora tutti i 13 producer,
-inferenza token-causale, replay A, PCS/range/GKR, verifica e promozione
-per O=0/150/300. È un prototipo **misto GPU/CPU**, con
-owner CUDA a rilascio fisico, coset raggruppati, aperture contigue e S1
-ridimensionato. Un contatore comune copre le allocazioni dei due ruoli.
-Il massimo ammesso dal contatore è 5.905.580.032 B; aggiungendo la riserva
-esplicita di 256 MiB per runtime/allocator/stack si ottengono
-6.174.015.488 B e 256 MiB di margine sul tetto. Questa riserva è ancora
-un'ipotesi fisica da verificare, non una misura H100. Un limite che rifiuta
-allocazioni non dimostra da solo il completamento del caso canonico.
+Il runner esplicito `experiment-cuda` collega i 13 producer, inferenza
+causale, replay A, PCS/range/GKR, verifica e promozione per O=0/150/300.
+È un percorso misto GPU/CPU. Il seguente stato riguarda l'ultimo
+checkpoint locale validato; integrazione software e parità ridotta
+non attribuiscono prestazioni o picco fisico H100.
+
+| Parte | Stato e confine |
+|---|---|
+| Telemetria e XOF | Integrati: fasi e avanzamento durevoli, lavoro/trasferimenti/census, buffering sequenziale da 4 KiB con stream/seek/replay originali |
+| Commitment iniziale W | Integrato nel Tree/runner: accumuli esatti, FFT, foglie incrementali e Merkle sul common owner; 32 coset/otto colonne, 128 scansioni analitiche sul pinned |
+| Commitment iniziale A | Producer residenti collegati alla PCS, quattro coset/tutte le 128 colonne, istogramma fuso nel primo replay; 512 ricostruzioni conservate, nessun download per riga nel commitment |
+| Sali iniziali W/A | Prescan e replay selezionati sullo stream comune, cursore logico e cap originali; niente bande host/upload sali |
+| FFT naturale diretta/inversa | Primitiva integrata nell'owner con parità indipendente; caller query A, fattori/resti e S1 ancora CPU nel checkpoint validato |
+| Closure lineare | Una scan originale per round CPU, D·live visite; versione GPU ancora da collegare |
+| Accumulo W Tensor Core | Candidata limb16 esatta e confronto esplicito sul medesimo owner; ordinario rimane predefinito |
+| QK/PV | Default scalare esatto; candidata MMA con prefisso causale comune e bordo scalare non selezionata |
+| Resto della prova | Extension PCS, query/resti/contrazioni, GKR non-range/MAC, Seed6 reale AES, codec, verifica e journal dichiarati CPU |
 
 [canonical_device.rs](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_device.rs)
-possiede la sessione numerica: stessa Arc W del commitment, un runtime
-con stream/arena, tabelle, una generazione di checkpoint/istogrammi e KV
-append-only con capacità condivisa per 450 token. Il preparatore non
-riceve transcript, correlazioni o monete PCS. I getter/scanner leggono
-quegli originali o li rigenerano dalle stesse ricette/tabelle e token.
-Le viste storiche conservano il limite causale. Il registro autorizza il
-predecessore; la promozione numerica segue completamento verificato e
-journal durevoli su entrambi i ruoli. Errori, panic o CUDA assente sono
-terminali: nessun fallback di inferenza, retry o seconda arena.
+possiede la sessione numerica: stessa Arc W del commitment, un solo
+runtime/stream/arena, tabelle, una generazione di checkpoint/istogrammi
+ed una capacità KV per 450 token. Matrix usa quattro MMA INT8 esatte,
+Norm soglie u128 e gli altri producer la semantica canonica. Producer e
+preparatore non ricevono transcript, monete PCS o correlazioni; le viste
+storiche mantengono il prefisso causale. Errori, panic, CUDA assente e
+cleanup falliti sono terminali, senza retry o fallback.
 
-Matrix usa quattro MMA INT8 con correzioni e raw i64; Norm usa soglie
-quadrate u128 esatte; QK/PV sono attualmente dot product interi scalari,
-non MMA. RNE, Affine/Gate, embedding, GELU/softcap, RoPE, EXP30 e argmax
-usano originali e codec canonici. Il gather A produce finestre residenti
-per il range sullo stesso owner. I commitment iniziali W/A usano accumuli,
-FFT e hash/Merkle residenti. Restano **esplicitamente CPU** monete/sali PCS,
-extension PCS, query/resti e contrazioni, GKR non-range/MAC, Seed6 reale AES,
-codec, verificatore e journal. Le righe/finestre originali richieste da
-questi consumer sono scaricate in staging bounded; non si tratta di una
-PCS interamente GPU o di assenza assoluta di D2H. Il gather range W rimane CPU,
-con upload signed per finestre fino a 256 MiB. La
-[contabilità del percorso misto](specs.md#runner-cuda-sperimentale-e-conto-simultaneo)
-distingue payload, capacità riservate, trasferimenti e picchi da misurare.
+I consumer CPU usano staging privato bounded. Il range A è residente;
+il gather range W usa ancora upload signed per finestre fino a 256 MiB.
+La PCS completa non è ancora residente. Il
+[conto tecnico](specs.md#runner-cuda-sperimentale-e-conto-simultaneo)
+distingue capacità, trasferimenti e stati simultanei: tetto payload
+5.905.580.032 B, più riserva fisica esplicita di 256 MiB, totale
+condizionato 6.174.015.488 B e ulteriori 256 MiB di margine. La sufficienza
+della riserva e il completamento canonico sono aperti.
 
-Il runner registra wall annidati, traffico applicativo nei due sensi,
-census simultanei ai confini delle fasi, ledger cumulativo CUDA e RSS/HWM
-dell'intero processo. Non sommare picchi o contatori cumulativi. Nel backend
-nativo l'intervallo di inferenza include cattura KV/checkpoint/istogrammi;
-il resto della risposta include replay/prova e attesa della verifica.
-Monitor esterni restano necessari per CPU-time, campionamento HBM e kill.
-Non sono acquisiti certificati canonici o misure D34/D35 della prova.
-
-Il codice del runner è compilato e verificato su componenti ridotti;
-la [parità H100](../../benchmarks/results/c71-h100-corrected-parity-2026-10-04-d3c2fa95eaf7.json)
-conferma operatori sintetici e MAC originali, senza certificati canonici.
-I fallimenti e le revisioni precedenti restano nei
-[record originali](../../benchmarks/results/) e nell'[archivio](../c7.1-history/README.md).
+La telemetria misura wall annidati, traffico applicativo, census ai
+confini delle fasi, ledger cumulativo CUDA e RSS/HWM. Non sommare picchi
+separati o contatori cumulativi. Monitor esterni devono ancora misurare
+CPU-time, HBM e arresti. Non sono acquisiti certificati canonici o misure
+D34/D35 complete della prova. La
+[parità H100 precedente](../../benchmarks/results/c71-h100-corrected-parity-2026-10-04-d3c2fa95eaf7.json)
+riguarda operatori sintetici e MAC originali, non il percorso ottimizzato.
 
 ## Risultati attuali e prossime ottimizzazioni
 
 Γ è **ammesso** per modello, byte W, workload, semantica, scale, tabelle
-e ricette pinned: il [record di ammissione](../../benchmarks/results/c71-gamma-admission-2026-10-07-868a3e8.json)
-chiude i cinque controlli. Due replay interi hanno `responses` identiche:
-450 token, 3.471 sorgenti A per contesto, 120 sorgenti KV finali con
-450 righe. Il confronto indipendente completo dura 1.819,70 s; replay
-con traccia e confronto richiedono 3.324,18 s esterni. Il pilot FP64
-completo dura 853,58 s, 928,84 s esterni. La parità floating misurata sul
-prefisso rispetta il bound dichiarato e conserva scale/token, ma non è
-bitwise né un confronto floating dell'intero workload. L'ammissione si
-fonda sui replay interi e sul confronto indipendente esatto.
+e ricette pinned. Si riusa dopo verifica di identità e impatto delle
+modifiche; si ripete la calibrazione solo quando l'ammissione pertinente
+è invalidata. La diagnostica canonica rimane **incompleta**: timeout nel
+commitment W CPU dopo circa 41 minuti, prima delle risposte. La schedule
+misurata tentava 1.024 scansioni W, circa 62,87 TB logici, oltre a sali,
+FFT e Merkle. La CLI ricostruisce il commitment a ogni avvio e non
+riprende un'installazione interrotta. La campagna precedente è chiusa.
 
-La [diagnostica della prova](../../benchmarks/results/c71-cuda-experiment-2026-10-07-868a3e8.json)
-resta **INCOMPLETA**: exit 124, wall 2.461,09 s, prima delle risposte,
-senza journal o certificati. Il commitment iniziale W è CPU: 1.024
-scansioni, circa 62,87 TB di letture logiche, oltre a sali, FFT e Merkle.
-È condiviso fra le tre risposte dello stesso processo; la CLI lo
-ricostruisce a ogni avvio e non riprende installazioni parziali.
+Il goal locale prepara **l'intero percorso crittografico per H100 80 GB**,
+baseline `9033c64`. Si conclude quando codice, parità ridotte, benchmark
+rappresentativi, conto completo e procedure sono pronti, prima della
+campagna hardware. Il goal è ancora attivo; nuova H100 e durata
+richiedono nuova autorizzazione.
 
-La campagna del 7 ottobre è chiusa, con arresto del pod verificato.
-Massimi campionati: 126.148.050.944 B RSS+HBM e 290.287.030.272 B
-cgroup+HBM, quest'ultimo inclusivo di cache dei file e altri processi.
-Picco host del cgroup 228.069.777.408 B su 250.999.996.416 B; HBM
-62.605.230.080 B su 80 GB. Nessun OOM o swap; picco simultaneo completo
-e margine dell'arena della prova restano aperti. Il
-[runbook](runpod-tests.md#riuso-del-bundle) identifica i bundle da riusare.
-Le cronache, i tentativi falliti e le stime superate sono nel
-[design archiviato](../c7.1-history/design-2026-10-07.md) e nel
-[runbook archiviato](../c7.1-history/runpod-tests-2026-10-07.md).
+Le prossime integrazioni riguardano query A iniziali residenti e S1,
+poi aperture/closure/GKR/range e sincronizzazioni secondo il profilo.
+Le query usano già finestre bounded; il loro caller deve conservare
+batch, richieste e ricostruzioni. S1 conserva 35 passaggi non-query fino
+alla retention: evitare una seconda matrice device da 1 GiB o una doppia
+retention da 3,22 GB. Le primitive FFT naturali sono pronte, il caller
+non è ancora validato come residente. Valutare TMA, fusioni e CUDA Graphs
+su costi misurati. Il confronto W ordinario/Tensor e la selezione QK/PV
+richiedono compilazione, parità e misura GPU nella futura campagna.
 
-Il percorso principale riusa Γ dopo verifica delle identità e dell'impatto
-di eventuali modifiche; la calibrazione si ripete quando l'ammissione
-pertinente è invalidata. Le priorità sono telemetria durevole di sali,
-scansioni, FFT e Merkle, poi ottimizzazione del percorso PCS e delle
-ricostruzioni A sulla H100, con parità esatta e conto completo dei costi.
-Il [checkpoint locale telemetria/XOF](../../benchmarks/results/c71-crypto-preparation-local-2026-10-08-04ab8ed1c4ce.json)
-integra il buffering da 4 KiB: 5,95× sul sampler Goldilocks ARM, parità
-di stream/seek/snapshot/cap e catene WHIR ridotte con transcript/MAC
-originali. La fixture PCS aggiunge 1,57 ms per 60 record durevoli.
-Il positivo Seed6/AES ridotto termina in 50,29 s, con picco congiunto
-contato 116.430.690 B e nessun rifiuto. Sono componenti locali, non
-prestazioni H100, prova canonica o picco fisico completo. La
-[decisione e i prossimi passi](../c7.1-history/crypto-preparation-2026-10-08.md)
-distinguono questo primo checkpoint dall'intero goal ancora attivo.
+Le geometrie fisiche W CUDA 32 coset/otto colonne, CPU W quattro coset
+ed A quattro coset sono modificabili con equivalenza esatta e nuovo
+conto di scansioni/ricostruzioni, memoria e capacità simultanee. Non
+trasferire implicitamente il blocco di colonne W ad A. Sali/pad/root,
+ordine naturale, transcript, NoPeek e MAC originali devono rimanere
+invariati. Le geometrie escluse restano escluse per le loro premesse;
+riaprirle richiede risolvere e verificare la causa.
 
-Il goal dell'8 ottobre prepara **l'intero percorso crittografico H100**
-in locale: telemetria/XOF, commitment W residente, blocchi di colonne e
-accumuli esatti, producer A collegati alla PCS, quindi aperture/GKR/range/
-attention/sincronizzazioni secondo il profilo. Baseline `9033c64`;
-`47135ca` aggiunge sole istruzioni documentali. Il goal si conclude quando
-codice, parità ridotte, screen e procedure sono pronti, prima della nuova
-campagna. Hardware e durata richiedono nuova autorizzazione.
+Gli obblighi prestazionali già quantificati restano visibili: A iniziale
+512 ricostruzioni; sali prescan/replay almeno 274.877.906.944 B XOF W e
+137.438.953.472 B A per risposta, anche dopo eliminazione degli upload
+sali; D15 W/A non cached e un test CPU lookup/GKR/WHIR superano 60 s
+locali. Cache di riferimento da 16 MiB solo nelle fixture composte
+non risolvono tali timeout in produzione. Gli screen W/A nominati sono
+4.618.167.208 / 5.585.161.864 B prima degli altri owner host: il secondo
+lascia 320.418.168 B al payload, senza ammissione del picco completo.
 
-La prima integrazione usa buffering sequenziale XOF da 4 KiB e
-[telemetria durevole](specs.md#telemetria-durevole-del-percorso-crittografico).
-Snapshot strided senza buffer da 4 KiB; snapshot/seek al cursore logico.
-Il nuovo batch esatto dei quattro sali è descritto nel passo Tree A. Geometrie,
-scansioni W/A e parametri crittografici rimangono quelli correnti in questa
-modifica. Γ mantiene le identità ammesse: producer, scale, tabelle, ricette,
-W e workload non sono toccati da telemetria e buffering.
+**Premesse residue.** I lemmi Lean richiamati in [security](security.md)
+non raffinano implementazione CUDA, scheduling, gather, immutabilità
+fisica o composizione Seed6. Il replay assume determinismo dei kernel
+corretti su W/tabelle sigillati, token fissati e prefissi KV originali;
+controlla token rigenerati e copertura, senza un digest privato di tutta
+A confrontato a ogni replay. PCS usa v³=v+1, MAC u³=2; gli endpoint
+rimangono VOLE-autenticati sugli originali. Test finiti, driver simulato
+e compilazione sm_90 non scaricano queste premesse.
 
-Il [passo W hash](../c7.1-history/crypto-w-hash-2026-10-08.md) aggiunge
-compressione BLAKE3 condivisa e operazioni GPU di foglia incrementale e
-Merkle nello stesso owner. CV da 32 B/foglia, mezzo blocco pendente nel
-ring, sali a finestre e pubblicazione dopo controllo terminale. Il
-collegamento al Tree è ora selezionato per W in `experiment-cuda`. Il merge strided a gruppi
-ricompone l'ordine naturale con un frontier di sette livelli per 128
-gruppi di 32 coset, da verificare anche con gli accumuli residenti. La
-schedule A rimane separata; nessuna ricostruzione aggiuntiva è introdotta.
-Il subtotal 2 GiB valori + 1 GiB CV non comprende FFT, potenze, sali,
-frontier/cache, owner residente, host e riserva fisica.
-Il [record locale pulito hash W](../../benchmarks/results/c71-crypto-w-hash-local-2026-10-08-0bf5814bf9c4.json)
-ha cinque test Rust e undici controlli Python positivi, UBSan e 27
-rifiuti terminali verificati. Picco congiunto della fixture 9.361.975 B,
-RSS massimo dei test/compilatori discendenti 193.908.736 B. Non è un
-tempo o picco H100; quel record precede l'integrazione nel Tree.
+### Evidenze e decisioni
 
-Il [componente accumuli/FFT W](../c7.1-history/crypto-w-scan-fft-2026-10-08.md)
-collega nelle fixture W sigillato, accumuli interi esatti, FFT esistente
-in-place e hash/Merkle incrementali. Parità campo per campo e di tutti
-i digest su tre geometrie con 32 coset/128 colonne, inclusi 256
-contributi e 1.536 pad; 24 rifiuti terminali e modulo i128 indipendente
-su 526.336 prefissi. Il conto candidato comprende potenze basse da
-256 MiB, twiddle da 8 MiB e pad originali, senza duplicare il ring.
-Il [passo Tree W](../c7.1-history/crypto-w-tree-2026-10-08.md) integra
-la schedule nel runner CUDA: stessi getter/monete/pad, root e aperture
-ridotte esatte, con contatori host/device congiunti. Il confronto completo
-di transcript/MAC usa una tabella di righe iniziali di riferimento da
-16 MiB soltanto nella fixture; il test distinto di aperture esercita il
-getter di produzione. Il D15 non cached supera ancora 60 s locali ed è
-conservato come obbligo prestazionale, senza credito di completamento.
-128 scansioni W sono ora la schedule selezionata CUDA, ancora analitica
-per il workload pinned; A conserva 512 ricostruzioni. Confronto GPU Tensor Core
-e accelerazione delle aperture restano aperti; sampler e A→PCS iniziale
-sono integrati sotto. Nessun credito
-CUDA/H100 o nuova autorizzazione hardware. La somma signed <2^87 e
-la sua riduzione sono identità controllate localmente, senza lemma Lean
-di raffinamento dell'implementazione o dello scheduling CUDA.
-Il [record pulito accumuli/FFT W](../../benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db.json)
-conserva sette selezioni Rust e venti controlli Python positivi, parità
-di tutti i valori/foglie/livelli dei gruppi e 24 arresti. Picco payload
-congiunto ridotto 5.983.714 B; RSS massimo test/descendenti 235.655.168 B,
-compiler O0 2.465.947.648 B separato. Preserva anche build/fixture fallite
-e correzioni; nessun risultato completo W o H100 è acquisito.
+Questa è la mappa dei checkpoint; dettagli di fixture, RSS, tempi,
+fallimenti e provenienza rimangono nei record e nelle storie datate.
+Ogni nuova integrazione deve avere parità esatta ridotta, benchmark
+rappresentativo e conto completo prima della selezione. Le evidenze
+locali sono `credit:false`, senza compilazione o esecuzione CUDA.
 
-Le geometrie fisiche attuali (W CUDA 32 coset/otto colonne e 128 scansioni;
-riferimento CPU W quattro coset/1.024; A quattro coset/512)
-sono scelte implementative modificabili. Alternative richiedono
-equivalenza verificata, ordine di sali/pad/root e MAC originali preservato,
-NoPeek e nuovo conto completo di lavoro, memoria e capacità simultanee.
-I parametri crittografici e i vincoli di sicurezza/risorse restano invariati.
-Il [record pulito Tree W](../../benchmarks/results/c71-crypto-w-tree-local-2026-10-08-6b3535856cc5.json)
-conserva 12 test Rust e nove Python positivi, 94 artefatti e otto esiti
-negativi distinti, incluso il replay non cached oltre deadline. RSS massimo
-test/descendenti 206.602.240 B; compiler 2.464.067.584 B separato.
-Root/transcript locali non concedono tempi, picco fisico o parità H100.
-Il [componente A residente](../c7.1-history/crypto-a-source-2026-10-08.md)
-ha un [record pulito](../../benchmarks/results/c71-crypto-a-source-local-2026-10-08-98ac67808e29.json)
-con 13 test Rust e undici Python positivi, 62 artefatti e due errori di
-fixture conservati; massimo RSS test/descendenti 247.549.952 B.
-Il componente
-prepara il consumer PCS degli originali numerici: descrittori senza finestre
-range, accumuli di byte biased su quattro coset e tutte le 128 colonne,
-pad/FFT finiti e foglie/Merkle con le primitive W. L'istogramma byte è
-fuso nella prima ricostruzione. Parità ridotta di tutti i campi/digest su
-tre geometrie e 28 rifiuti terminali; il passaggio producer→sink non
-scarica righe originali. Quel record precede il collegamento al Tree/runner A, ora integrato nel
-passo successivo; le 512 ricostruzioni rimangono invariate. Il conto
-candidato aggiornato con sampler residente è 5.585.161.864 B con upper
-device replay e host nominati, prima degli altri owner host; restano
-320.418.168 B nel payload imposto,
-senza ammissione del picco completo. La VM non compila o esegue CUDA.
-Le transazioni A e sali portano l'owner host comune a 37.288 B;
-la stima W aggiornata è 4.618.167.208 B. I record precedenti restano immutati.
-Il [passo Tree A](../c7.1-history/crypto-a-tree-2026-10-08.md) seleziona il commitment residente anche
-nel runner CUDA, con istogramma fuso e getter originali per le aperture.
-Il [record pulito](../../benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013.json) conserva 18 test Rust/12 Python, 69 artefatti
-e cinque esiti negativi preliminari. Root, aperture, pad, istogramma e
-lavoro sono esatti; la prova composta W/A confronta transcript/RNG/MAC
-con una tabella iniziale del riferimento da 16 MiB solo nella fixture.
-Il getter effettivo è verificato separatamente; D15 A senza cache supera
-60 s come W, quindi resta obbligo aperto. RSS massimo test/descendenti
-250.183.680 B; Cargo pulito riusa il binario della build preliminare.
-Il batch strided dei sali migliora di 1,445× sullo stesso binario ARM;
-il percorso sequenziale già bufferizzato conserva il sampler ordinario
-perché il batch vi peggiora. Un fence duplicato per pubblicazione è
-eliminato preservando free-failure terminali. La candidata W Tensor Core
-limb16 ha parità host indipendente e shared da 8.448 B. Ora dispone del
-confronto sul medesimo owner; l'accumulo ordinario resta predefinito.
-
-L'audit [quantifica il costo dei sali](../c7.1-history/crypto-a-tree-2026-10-08.md#costi-residui-dal-codice): W
-prescan/replay almeno 274.877.906.944 B XOF, A la metà per risposta.
-Il [passo owner/Tree](../c7.1-history/crypto-salts-owner-2026-10-09.md)
-porta questo lavoro sullo stream comune, con 168 B di metadata H2D per
-commitment; elimina gli upload di sali da 128/64 GiB previsti dalla
-schedule host. Questo è un conto analitico, non un tempo H100.
-La nuova closure lineare esegue una scan originale
-per round, D·live visite, con EQ di prefisso bounded e indice pubblico
-dei Cube; evita getter del suffisso zero e tabelle del dominio completo.
-Il [checkpoint del 9 ottobre](../c7.1-history/crypto-components-2026-10-09.md)
-ha parità esatta di coefficienti, wire, transcript e MAC, errori prima
-delle correlazioni del round e telemetria di avanzamento. Tre misure D12
-locale danno 7,75× sul componente CPU; non è un tempo della prova o H100.
-Il sampler bounded è collegato all'owner e al Tree W/A. Prescan dal
-cursore logico corrente, avanzamento host una sola volta e replay sul
-flag hash originale mantengono stream/seek/cap; nessuna banda sali host.
-Il [record pulito](../../benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2.json)
-ha 21 test Rust e 11 Python positivi, 73 artefatti e un ulteriore timeout
-CPU lookup/GKR/WHIR a 60 s, conservato senza estensione del limite.
-Parità root/aperture/pad/istogramma e prove composte W/A con transcript
-e MAC originali sono verificate. La gerarchia prescan CUDA non è eseguita.
-La candidata QK/PV usa MMA sul prefisso causale comune e un bordo scalare:
-nessuna lettura futura per la singola riga, anche se già inizializzata.
-Parità host e guard di lettura sono verificati; resta non selezionata.
-Il finding precedente e la correzione sono conservati in record distinti.
-
-A residente copre il commitment iniziale. Le query iniziali usano già
-finestre originali bounded ma resti CPU; S1 mantiene 35 passaggi non-query
-fino alla retention e scarica righe numeriche. La prossima integrazione
-deve conservare batch, richieste e 512 ricostruzioni iniziali, senza una
-seconda matrice device da 1 GiB o doppia retention S1 da 3,22 GB.
-PCS usa la base cubica v³=v+1, distinta dalla base MAC u³=2.
-Query/S1, closure GPU, GKR/range, selezione QK/PV, conto simultaneo completo
-e valutazioni fusioni/Graphs/TMA rimangono lavoro del goal locale.
-Compilazione sm_90, parità e tempi hardware appartengono alla futura
-campagna. Nessuna nuova campagna è autorizzata.
-
-I fallimenti delle geometrie escluse restano validi per le loro premesse;
-riaprirle richiede risolvere e verificare la causa dell'esclusione.
-La [decisione dell'8 ottobre](../c7.1-history/operating-rules-2026-10-08.md)
-registra il motivo e l'autorizzazione a queste ottimizzazioni.
-
-**Premesse residue.** I lemmi Lean giustificano le identità richiamate in
-[security](security.md), non l'implementazione CUDA, la schedulazione,
-il gather, l'immutabilità fisica o la composizione Seed6. Il replay nativo
-assume determinismo dei kernel corretti su W/tabelle sigillati, token
-fissati e prefissi KV originali; controlla token rigenerati e copertura,
-ma non conserva un digest privato di tutta A per confrontare ogni replay.
-La PCS/MAC continua a terminare negli originali. Test finiti, driver
-simulato e compilazione sm_90 non scaricano queste premesse.
-
-Le regole permanenti per durata specifica della campagna, limiti AS,
-trial successivi, pubblicazione e conservazione sono definite una sola
-volta nel [runbook](runpod-tests.md#autorizzazione-e-limiti).
+| Evidenza | Ambito e limite |
+|---|---|
+| [Ammissione Γ](../../benchmarks/results/c71-gamma-admission-2026-10-07-868a3e8.json) | Due replay interi e confronto indipendente completo sul workload pinned; non certificati canonici |
+| [Diagnostica canonica](../../benchmarks/results/c71-cuda-experiment-2026-10-07-868a3e8.json) | Timeout iniziale W, prima delle risposte; [cronaca](../c7.1-history/design-2026-10-07.md) e [runbook datato](../c7.1-history/runpod-tests-2026-10-07.md) conservano risorse campionate e chiusura |
+| [Telemetria/XOF](../c7.1-history/crypto-preparation-2026-10-08.md) | Stream/seek/cap, JSONL durevole e positivo Seed6/AES ridotto |
+| [Hash W](../c7.1-history/crypto-w-hash-2026-10-08.md), [accumuli/FFT W](../c7.1-history/crypto-w-scan-fft-2026-10-08.md), [Tree W](../c7.1-history/crypto-w-tree-2026-10-08.md) | Incremental hash, valori/campi, root/aperture, transcript/MAC; timeout uncached conservato |
+| [Consumer A](../c7.1-history/crypto-a-source-2026-10-08.md), [Tree A](../c7.1-history/crypto-a-tree-2026-10-08.md) | Codec originale, producer→PCS, istogramma, root/aperture e prova composta; timeout uncached conservato |
+| [Closure/XOF/confronto Tensor](../c7.1-history/crypto-components-2026-10-09.md) | Componenti esatti e confronto owner; [correzione causale QK/PV](../../benchmarks/results/c71-attention-causal-local-2026-10-09-29a257b4476b.json) distinta dal finding iniziale |
+| [Sali owner/Tree](../c7.1-history/crypto-salts-owner-2026-10-09.md) | Stream privato, root/aperture/transcript/MAC e conto aggiornato; gerarchia CUDA non eseguita, timeout CPU conservato |
+| [FFT naturale owner](../c7.1-history/crypto-transform-2026-10-09.md) | Diretta/inversa esatte, geometria dispari e guard; primitiva integrata, query caller ancora CPU al source validato |
+| [Regole operative](../c7.1-history/operating-rules-2026-10-08.md), [temporanei](../c7.1-history/temporary-memory-2026-10-04.md) | Ragioni delle decisioni; autorizzazioni correnti definite nel [runbook](runpod-tests.md#autorizzazione-e-limiti) |
 
 ## Contratto delle risorse
 

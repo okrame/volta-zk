@@ -138,7 +138,8 @@ al primo confine operatore/blocco dopo un secondo. Il report finale
 conserva anche su errore tempi per ID operatore e contatori parziali;
 un kill conserva solo i campioni già scritti. Lettura/validazione,
 conversione W e dot espongono secondi-worker cumulativi, che possono
-sovrapporsi e non vanno sommati al wall. Non è ancora una misura sul pod.
+sovrapporsi e non vanno sommati al wall. Le misure hardware e la loro
+provenienza sono distinte dalle fixture locali.
 Il modo `profile --profile-tokens N` esegue un prefisso causale fissato
 del medesimo workload per confronti a lavoro uguale. Conserva osservazioni
 private e metriche, ma restituisce `complete:false`, `profile_only:true`
@@ -538,9 +539,10 @@ di letture/allocazioni comprende input i16, output raw e una seconda
 capacità raw per il trasferimento nelle righe vive dello scanner.
 Questa capacità aggiuntiva e i payload delle altre righe sono controlli
 locali, non il picco simultaneo completo. Il descrittore espone anche
-l'offset packed W. Il nuovo adapter Matrix/RNE usa questo descrittore
-sugli handle nativi, ma lo scanner complessivo rimane CPU: il percorso
-GPU non deve scaricare questi `Vec` come spill dello stato.
+l'offset packed W. L'adapter Matrix/RNE usa questo descrittore sugli handle nativi. Nel
+riferimento lo scanner resta CPU; `experiment-cuda` collega producer e
+scanner residenti al range ed al commitment A iniziale. Il percorso
+GPU non scarica questi `Vec` come spill dello stato.
 `Prepared::range_window` implementa il reader per
 finestre dyadic allineate, fino a 2 GiB, nell'ordine
 `[tail][prefisso folded][u Gram][sottoalbero]`. Seleziona le sorgenti
@@ -624,8 +626,9 @@ parziale dell'owner, non una misura fisica completa. Con `native_shared:true`
 è cumulativo dalla creazione dell'owner, non un delta per prova; il chiamante
 deve registrare i confini di fase senza sommare ripetutamente i picchi.
 Il test ridotto collega gather residente, range/GKR e PCS sui MAC originali
-due volte sullo stesso owner, senza nuovo H2D delle sorgenti. Il runner conserva
-la configurazione CPU esplicita precedente e non ammette ancora GPU E2E.
+due volte sullo stesso owner, senza nuovo H2D delle sorgenti. Il backend
+CPU di riferimento resta esplicito; `experiment-cuda` seleziona il
+percorso misto, senza certificati canonici o PCS interamente residente.
 
 Il primo scan completo del commitment byte conserva 256 contatori u64,
 con il suffisso esterno aggiunto al bin zero; l'istogramma è installato
@@ -722,194 +725,186 @@ sequenziale. Sampler, dominio, ordine dei byte e separazione delle monete
 rimangono invariati; nessuna Clone pubblica. Buffer, file/serializzazione
 e metadata sono temporanei conteggiati, con overhead fisico nella riserva.
 
-Il [record pulito](../../benchmarks/results/c71-crypto-preparation-local-2026-10-08-04ab8ed1c4ce.json)
-conserva stream/cap, sali/root/aperture, due catene WHIR esatte, costo del
-log, guard del budget e prova Seed6 reale O=0 ridotta. Snapshot trattenuto
-144 B senza buffer; buffer sequenziale 4.096 B; picco allocato congiunto
-del positivo ridotto 116.430.690 B. I 60 record della fixture occupano
-50.131 B su disco, scritti senza storia in memoria. Le shape W/A iniziali
-restano 1.024/512 scan; nessuna allocazione D34/D35 è stata eseguita.
+Lo snapshot strided corrente misura 176 B senza buffer; il buffer
+sequenziale da 4.096 B è conteggiato separatamente. Le
+[evidenze locali](design.md#evidenze-e-decisioni) conservano costo del
+log, guard budget, stream/cap e transcript/MAC, con prova Seed6/AES
+ridotta. I contatori di geometria seguono il backend: riferimento CPU
+W 1.024/A 512, commitment W CUDA 128; nessun dominio D34/D35 è stato
+eseguito nelle fixture locali.
 
 ### Runner CUDA sperimentale e conto simultaneo
 
-L'[estensione PCS dell'owner](../c7.1-history/crypto-w-hash-2026-10-08.md)
-mantiene ABI 4 e richiede i simboli `c71_pcs_*` aggiornati: assenza di un
-simbolo è terminale. I kind base, hash pending e digest sono distinti.
-Il ring da otto colonne conserva quattro valori pendenti; le chiamate
-hash seguono start, colonne 4,12,..116 e bande di sali contigue. Solo
-dopo l'ultima banda e il controllo del flag è ammessa la lettura di
-digest, fino a 64 MiB; nessun valore base/CV lascia l'owner attraverso
-questa API. Il nodo salato C7.1 usa due compressioni BLAKE3, la foglia
-128 colonne ne usa 18. Il launcher non crea un allocatore o uno stream.
-Il commitment iniziale W del runner CUDA usa ora questa catena residente;
-il riferimento CPU e le altre fasi PCS rimangono separati.
-Il [passo accumuli/FFT](../c7.1-history/crypto-w-scan-fft-2026-10-08.md)
-aggiunge tile W e potenze tipizzate, legati a W sigillato/Arc/layout e
-gruppo dei coset. Un warp condivide un coefficiente fra 32 coset;
-fino a 256 prodotti signed i16×u64 si accumulano esattamente in 128 bit,
-con unica riduzione Goldilocks, prima dei pad di campo originali.
-Le FFT in-place riusano i cinque passaggi esistenti sullo stream comune.
-Alias pad/ring e low/high, input incompleti, potenze di un altro gruppo,
-errori CUDA e flag terminali falliscono chiuso. I cinque nuovi simboli
-PCS sono obbligatori; non si esportano download di valori PCS. Tre
-fixture da 128 colonne verificano valori, foglie e livelli Merkle. Il
-[passo Tree](../c7.1-history/crypto-w-tree-2026-10-08.md) importa i digest
-nel cache originale: stesso prescan/seek dei sali, `cut=4096`, root e
-rigenerazione delle aperture. Scarica solo i livelli superiori limitati
-(67.108.832 B canonici) e flag, nessun valore intermedio W.
-Il [record pulito](../../benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db.json)
-lega sorgenti, binario, log e limiti; sette test Rust e venti controlli
-Python positivi. Payload congiunto ridotto 5.983.714 B, picco capacità
-native 1.719.040 B e owner host 37.064 B. Il componente resta separato
-da tempo/picco completo. La schedule CUDA W selezionata è 128 scansioni,
-mentre A conserva 512; nessuna ricostruzione A è introdotta dal blocco W.
-La riduzione per gruppi usa stride delle righe per unire coset fratelli;
-un frontier pending accetta solo gruppi consecutivi e non è leggibile.
-Con 4.096 coset raggruppati per 32, il frontier è 2^20×7×32 =
-234.881.024 B. Il ring viene rilasciato prima degli output Merkle,
-che hanno capacità separate. Il conto della schedule CPU corrente resta
-distinto e non si somma a questo candidato.
-Il [record del componente](../../benchmarks/results/c71-crypto-w-hash-local-2026-10-08-0bf5814bf9c4.json)
-riporta capacità e trasferimenti effettivamente contati dall'owner e
-Budget host/device attivo, senza W esentato nelle fixture. Il massimo
-payload osservato è 9.361.975 B, con zero rifiuti nelle parità; il solo
-scratch hash nativo massimo è 395.520 B, owner host 37.064 B separato.
-Gli output delle fixture non sono misure di un commitment W completo.
+Il runner misto usa un common owner e stream ordinato; il loader ABI4
+richiede tutti i simboli PCS correnti. Tipo, identità, span, capacità,
+alias, stato, W sigillato e binding dei coset precedono ogni operazione.
+Assenza di simboli, launch/fence/flag, budget e cleanup falliti sono
+terminali, senza fallback. Gli output restano pending fino a completamento.
+Gli [stati validati e le evidenze](design.md#evidenze-e-decisioni) sono
+nel design; qui sono definiti algoritmi e conto tecnico correnti.
 
-Il conto W aggiornato comprende due flag simultanei e current/metadata
-privati: 3.745.182.208 B device per ring/CV/potenze/twiddle/pad/frontier/
-sali/tile/flag. I subtotali precedenti restano nei record immutabili.
-I payload host nominati sono ora 87.195.304 B; con l'upper device replay
-di 785.789.696 B si ottiene un envelope conservativo di 4.618.167.208 B, prima degli altri
-owner host censiti dal budget. Non è un picco fisico né un'ammissione
-del percorso completo. `initial_native_peak_capacity_bytes` riporta il
-massimo storico dell'owner comune, non si somma al suo ledger cumulativo.
-Le aperture CPU dividono direttamente per divisori monici di grado ≤8;
-evitano lo shift separato dei pad quando il messaggio entra in un batch.
-Parità base/Fp3 e byte di prova sono controllati, senza cache di righe in
-produzione. Il confronto composto D15 usa una tabella di riferimento
-da 16 MiB soltanto nel test e verifica transcript/MAC/seek originali;
-la prova non cached resta oltre il limite locale di 60 s.
-Il [record pulito Tree](../../benchmarks/results/c71-crypto-w-tree-local-2026-10-08-6b3535856cc5.json)
-lega binario, sorgenti, log e conto del componente. La fixture W osserva
-2.699.776 B di capacità native e zero arena viva al termine; D2H 4.328 B
-di soli flag/cache digest. Budget applicato anche a host e tabella di test.
-Non attribuire queste dimensioni ridotte al pinned o al picco completo.
+#### Commitment W per colonne
 
-Il [consumer A residente](../c7.1-history/crypto-a-source-2026-10-08.md)
-aggiunge cinque simboli obbligatori all'ABI 4 e
-`cuda/c71_pcs_source.cu`. `SourceTile`/`SourceShape` misurano 56/40 B;
-kind 15/16 distinguono accumuli pending e conteggi byte pending. Una
-transazione fissa da 88 B per owner collega due buffer da 64 colonne,
-potenze e istogramma opzionale: l'owner host passa da 37.064 a 37.152 B.
-Le quattro accumulazioni modulari esatte consumano ogni byte originale
-una volta per ricostruzione, in qualunque ordine di emissione, con tutte
-le 128 colonne residenti. Il codec riusa bias e byte plane del gather;
-nessuna riga originale è scaricata dal nuovo scanner. Copertura completa,
-pad originali, FFT finita e flag precedono la conversione a valori base.
-L'istogramma fuso del primo gruppo pubblica solo 256 conteggi privati
-(2.048 B), senza ricostruzione aggiuntiva. La foglia completa riusa le
-18 compressioni B12 attraverso i due buffer; digest pending non leggibili
-fino a tutte le bande di sali e fence finale. C garantisce span, stato e
-conteggio; l'owner Rust delle tessere garantisce unicità e coordinate.
+Il ring conserva otto colonne su 32 coset, quattro valori pendenti per
+foglia. Hash segue start, colonne 4,12,..116 e bande di sali contigue.
+La foglia B12 da 128 valori usa 18 compressioni BLAKE3; il nodo salato
+ne usa due. CV incompleto e frontier pending non sono leggibili.
+Dopo copertura completa, fence/flag e ritiro sali è ammesso scaricare
+soltanto digest, fino a 64 MiB per chiamata hash; il Tree iniziale importa
+67.108.832 B di cache superiore complessiva e flag, senza word W.
 
-La geometria A conserva quattro coset e R=2^20: 512 ricostruzioni sul
-pinned. Valori 4.294.967.296 B, frontier 301.989.888 B, twiddle 8.388.608 B,
-pad 1.572.864 B e banda sali 2.097.152 B rimangono comuni alle fasi.
-Current/metadata sali aggiungono 8.388.864 B. Potenze/conteggi/flag portano
-l'accumulo a 4.650.965.536 B; dopo il loro rilascio, digest e flag portano
-l'hash a 4.751.622.656 B. Con upper replay device 785.789.696 B e host
-nominati 47.749.512 B, l'envelope conservativo è 5.585.161.864 B, prima
-degli altri owner host. La banda host sali è eliminata. Non sommare fasi o picchi
-storici; il budget addebita tutte le capacità effettive. Il componente è ora collegato al Tree/runner A CUDA; il riferimento CPU
-mantiene il consumer precedente.
-I tempi della fixture Rust O0/C++ O2 non sono un confronto di speedup.
-Il [record pulito A](../../benchmarks/results/c71-crypto-a-source-local-2026-10-08-98ac67808e29.json)
-conserva log, contatori, binario e sorgenti del componente e regressioni W.
-Il [passo Tree A](../c7.1-history/crypto-a-tree-2026-10-08.md) conserva la geometria originale e importa
-il cache di digest con controllo H foglie/H−1 nodi/128H celle e cursori
-dei sali. Il C ABI valida conteggio/span; unicità e partizione sono la
-precondizione del Prepared concreto, con negativi di righe duplicate/
-omesse. Width è il numero di byte emessi, indipendente da byte_first;
-i piani i48 4+2 sono confrontati nel Tree. I ridotti dominati dai pad
-ammettono il loro H originale maggiore di 16n; il canonico A resta 16n.
-La prova composta usa solo nella fixture 16 MiB di righe iniziali del
-riferimento; root/aperture del getter effettivo sono verificate a parte.
-Il [nuovo record](../../benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013.json) conserva 18 test Rust/12 Python, fallimenti e
-tracce durevoli. L'uncached A D15 supera 60 s e rimane ignored/obbligo.
+Tile/potenze sono legati a W sigillato, Arc/layout e gruppo coset.
+Un warp condivide ogni coefficiente fra 32 coset; fino a 256 prodotti
+signed i16×u64 si accumulano in 128 bit, bound signed <2^87, con unica
+riduzione Goldilocks prima dei pad di campo originali. La FFT in-place
+riusa i cinque passaggi esistenti. Pad/ring e low/high sono distinti;
+potenze di un altro gruppo o input incompleti falliscono chiuso.
+Il merge strided unisce coset fratelli in ordine naturale, accettando
+solo gruppi consecutivi. Con C=4096/32, frontier 2^20×7×32 =
+234.881.024 B. Il ring è rilasciato prima degli output Merkle separati.
 
-`PrivateRng::salts4` legge esattamente i candidati mancanti, filtra in
-ordine e conserva rejection/cap/seek. È selezionato solo nei snapshot
-strided; tre rep nello stesso binario danno rapporto 1,445, senza credito
-GPU. Il sampler sequenziale mantiene il buffering da 4 KiB originale.
-Il rilascio del flag dopo il fence valido non ripete la sincronizzazione,
-senza modificare la release pubblica o le free-failure terminali.
-La [candidata Tensor Core](../../cuda/c71_pcs_weight_tensor.cu) separata
-usa quattro limb16 biased, dot INT8 pack/compose esatto e correzione
-32768·sum_W; somma signed <2^87 e 8.448 B shared, nessun nuovo buffer
-globale. Il test host emula fragment/shuffle e confronta signed i128/%p.
-`c71_pcs_weight_tensor` usa le stesse ammissioni, W sigillato, FFT e flag
-dell'accumulo ordinario sullo stesso owner. `c71_pcs_compare_words` confronta
-tutte le word canoniche di due buffer completi distinti, senza download
-dei campi: solo 4 B di flag. Entrambi i simboli ABI4 sono obbligatori;
-assenza o errore è terminale. La selezione canonica resta ordinaria.
-Il diagnostico ridotto Q256/R64 è pronto e compilato come translation
-unit host, non linkato/eseguito. Mancano compilazione CUDA, registri/spill
-e prestazioni H100; W sintetica da 4 MiB non misura throughput canonico.
+La schedule selezionata W CUDA richiede 128 scansioni analitiche sul
+pinned, il riferimento CPU 1.024; A resta a 512 ricostruzioni. Le
+geometrie alternative non sono simultanee e non si sommano. Device W
+corrente: 3.745.182.208 B per ring/CV/potenze/twiddle/pad/frontier/sali/
+tile/due flag. Con host nominato 87.195.304 B e upper replay device
+785.789.696 B, envelope conservativo 4.618.167.208 B prima degli altri
+owner host censiti. Non è picco fisico o ammissione canonica.
+`initial_native_peak_capacity_bytes` è il massimo storico dell'owner,
+non un buffer da sommare al ledger cumulativo.
 
-Il [checkpoint del 9 ottobre](../c7.1-history/crypto-components-2026-10-09.md)
-seleziona una scan originale per round della closure lineare. EQ del
-prefisso è divisa in chunk ≤8 bit (≤256 celle ciascuno); i Cube residuali
-sono ordinati per ampiezza/intervallo e prendono in prestito i punti.
-Nessuna divisione, bitmap o array D34/D35: sfide 0/1, sovrapposizioni e
-ordine arbitrario dello scanner mantengono coefficienti ed endpoint.
-Copertura unica resta precondizione dello scanner concreto; il confine
-controlla live/range/conteggio ed errori prima delle tre correlazioni.
-Wire/FS/MAC e riserva 3D+2 sono invariati. Capacità, realloc e forme
-pubbliche sono nel budget; i 13.656 B della fixture D12 sono un conto del
-componente, non della prova. Visite D·live, senza leggere il tail zero.
+#### Producer residenti e commitment A
 
-La componente [sali GPU](../../cuda/c71_pcs_salts.cu) usa il dominio
-originale di 34 B incluso NUL e seed32, input66 B/descriptor112 B, XOF a 16 word LE,
-rejection Goldilocks e cap2^40. Prefix/mask bounded fino2^24 candidati
-conserva il cursore subito dopo il quarto accettato, anche oltre2^32.
-L'owner compatta descriptor/progress/flag/counter in 168 B, allineati256 B.
-Scratch prescan massimo allineato10.519.552 B; con starts/offsets/metadata
-richiede27.297.024 B W o23.102.720 B A. Scratch e offsets device sono
-ritirati dopo il fence valido, prima di ring/valori; current e metadata
-restano per replay e sono conteggiati nelle fasi hash.
-Lo stream corrente dopo clone MMCS, seek non allineati, replay e cap sono
-confrontati con il sampler Rust pinned; la gerarchia CUDA non è eseguita.
-Il [passo owner/Tree](../c7.1-history/crypto-salts-owner-2026-10-09.md)
-aggiunge sei simboli ABI4 obbligatori. `PrivateSalts` è una capability
-opaca, non clonabile e legata all'owner; kind17 non ammette allocazione,
-lettura/upload o rilascio pubblico. Il seed passa solo al consumer PCS,
-mai al producer numerico o alla telemetria. `with_private_rng` parte dal
-cursore logico corrente e `advance_to` scarta il prefetch senza cambiare
-stream/cap, avanzando una sola volta dopo prescan riuscito. Replay e hash
-condividono il flag sticky; una verifica/fence per gruppo, nessun upload
-sali o fence per banda. Current finale e bytes consumati devono coincidere
-col prescan; letture digest restano negate fino al completamento e al
-ritiro privato. Owner host37.288 B (+136), API Rust+48 B, Stats152 B.
-Il [record pulito](../../benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2.json)
-confronta tutti i digest/indici, root/aperture/pad/istogramma e prove W/A
-composte; 31 rifiuti owner, sei simboli mancanti e otto rifiuti per Tree.
-Il driver prescan è un oracolo sequenziale; non verifica la gerarchia CUDA.
-Il test CPU completo lookup/GKR/WHIR supera60s e resta un esito negativo.
-Gli envelope nominati non sono picchi completi o un'ammissione canonica.
+Cinque simboli source e `cuda/c71_pcs_source.cu` collegano il sink PCS
+agli originali numerici. `SourceTile`/`SourceShape` misurano 56/40 B;
+kind 15/16 distinguono accumuli e conteggi pending. Una transazione fissa
+da 88 B collega due buffer da 64 colonne, potenze ed istogramma opzionale.
+Quattro accumulazioni modulari esatte consumano ogni byte una volta per
+ricostruzione, su tutte le 128 colonne, in qualunque ordine di emissione.
+Il codec riusa bias/byte plane del gather, inclusi piani i48 4+2.
+Width conta byte emessi, indipendentemente da byte_first.
 
-Le candidate [QK/PV MMA](../../cuda/c71_attention_mma.cu) mantengono
-i16/PiQ14 originali e raw i64 esatti. QK usa N8 completamente nel prefisso
-comune del tile M16, poi dot scalari causali sul bordo; PV usa K32 comune
-e tail per output ≤46. Bound perM16: ≤232 dot QK scalari e ≤616 prodotti
-PV per lane, verificati su fixture che li raggiunge. Futuri già inizializzati
-non vengono letti; zero/staging/shared aggiuntivi, array interi nominali
-124 B/thread più raw8 B (registri/spill NVCC ancora ignoti). Le candidate
-rimangono non selezionate; header/fragment host non prova kernel CUDA.
+Producer→sink non scarica righe originali e non riceve monete PCS.
+Copertura, pad originali, FFT e flag precedono la conversione a base.
+C controlla span, stato e conteggio; unicità/partizione sono garantite
+dalle tessere Rust dello scanner concreto. L'istogramma byte fuso nel
+primo gruppo pubblica soltanto 256 conteggi privati/2.048 B senza replay
+aggiuntivo. La foglia completa riusa le primitive W; il Tree importa
+cache/root con controllo H foglie/H−1 nodi/128H celle e cursori sali.
+Ridotti dominati dai pad possono avere H>16n; il canonico A mantiene 16n.
 
-Il payload congiunto ridotto massimo è 4.965.787 B; nessun rifiuto nelle
-parità. Cargo pulito riusa il binario identico della build preliminare
-O0; le due provenienze sono esplicite, senza credito di nuova compilazione.
+A conserva quattro coset, R=2^20 e 512 ricostruzioni pinned. Valori
+4.294.967.296 B, frontier 301.989.888 B, twiddle 8.388.608 B, pad
+1.572.864 B e banda sali 2.097.152 B; current/metadata sali aggiungono
+8.388.864 B. Potenze/conteggi/flag portano l'accumulo a 4.650.965.536 B;
+dopo il loro rilascio, digest/flag portano l'hash a 4.751.622.656 B.
+Con upper replay device 785.789.696 B ed host nominato 47.749.512 B,
+envelope 5.585.161.864 B prima degli altri owner host. Il residuo
+320.418.168 B del payload non ammette il percorso completo; non sommare
+fasi o picchi storici. La banda host sali è eliminata. Il riferimento
+CPU resta distinto; l'istogramma e le 512 ricostruzioni non cambiano.
+
+#### XOF e capability sali
+
+Il sampler sequenziale mantiene buffering da 4 KiB; snapshot/seek sono
+al cursore logico, senza copiare il prefetch nel replay strided.
+`PrivateRng::salts4` legge solo candidati mancanti, filtra in ordine e
+preserva rejection/cap/seek; il batch è selezionato nei soli snapshot
+strided perché il sequenziale già bufferizzato peggiora nel confronto
+locale. La decisione e le misure sono nelle evidenze Tree A.
+
+Il sampler GPU mantiene dominio di 34 B incluso NUL, seed di 32 B/input di 66 B,
+descriptor di 112 B, XOF a 16 word LE, rejection Goldilocks e cap 2^40.
+Prefix/mask bounded fino a 2^24 candidati conserva il cursore subito dopo
+il quarto accettato, anche oltre 2^32. L'owner compatta descriptor,
+progress, flag e counter in 168 B, allineati a 256 B. Scratch prescan massimo
+10.519.552 B; con starts/offsets/metadata, 27.297.024 B W o 23.102.720 B A.
+Scratch ed offsets device sono ritirati dopo fence prima del ring;
+current e metadata rimangono nel conto delle fasi hash.
+
+Sei simboli sali obbligatori creano una capability `PrivateSalts` opaca,
+non clonabile e owner-bound. Kind17 non ammette allocazione, lettura,
+upload o rilascio pubblico. Seed e puntatori arrivano solo al consumer
+PCS, mai al producer numerico o alla telemetria. `with_private_rng`
+parte dal cursore logico corrente; `advance_to` invalida il prefetch ed
+avanza una sola volta dopo prescan riuscito, conservando stream/cap.
+Replay/hash condividono il flag sticky, una verifica/fence per gruppo,
+nessun H2D sali o fence per banda. Current finale e byte consumati devono
+coincidere col prescan; digest negati fino al ritiro privato. Il flag è
+rilasciato dopo fence valido senza ripeterlo; free-failure resta terminale.
+Owner host 37.288 B e Stats 152 B; la API Rust sali aggiunge 48 B.
+
+Il lavoro XOF logico prescan+replay resta almeno 256/128 GiB W/A; gli
+upload sali host 128/64 GiB sono sostituiti da 168 B H2D metadata per
+commitment. Il D2H di controllo minimo è 25.211.904/20.998.144 B, inclusi
+starts/offsets/current e 44 B per chunk/8 B per gruppo; rejection può
+aggiungere chunk. Sono conti analitici, non tempi o traffico fisico GPU.
+Il driver prescan sequenziale non verifica la gerarchia CUDA.
+
+#### Aperture e FFT naturale
+
+Le aperture CPU dividono direttamente per divisori monici di grado ≤8,
+evitando shift separato dei pad quando il messaggio entra in un batch.
+Mantengono base/Fp3 e byte di prova, senza cache di righe in produzione.
+Le prove composte ridotte usano 16 MiB di righe iniziali nel riferimento
+solo della fixture, col budget attivo; getter reali sono verificati
+separatamente. D15 W/A uncached e CPU lookup/GKR/WHIR superano 60 s locali:
+restano esiti negativi, non credito di completamento.
+
+La [FFT naturale](../c7.1-history/crypto-transform-2026-10-09.md) è una
+primitiva sul common owner, non il caller query A residente.
+`c71_pcs_transform_twiddles`, `c71_pcs_transform` e `c71_pcs_read_words`
+sono tre simboli ABI4 obbligatori, +24 B nella API Rust; nessun nuovo
+owner/buffer permanente. Log N da 1 a 24, batch≤2^20, word complessive≤2^28.
+Valori/scratch base completi e twiddle sono distinti, con binding di
+lunghezza/orientamento. Ordine naturale, inverse normalizzata una sola
+volta per 1/N; geometria dispari log>1 ricompone nello scratch e copia
+l'intero buffer D2D, addebitato anche prima di un successivo errore.
+
+Il segmento batch≤32.767 mantiene le due metà dispari entro grid.z≤65.535
+([limiti NVIDIA](https://docs.nvidia.com/cuda/cuda-programming-guide/05-appendices/compute-capabilities.html)).
+Shared massimo per riga 32.768 B, transpose 16.896 B. La lettura esplicita
+base è bounded a 2^20 word/8 MiB, controlla canonicità e nega fasi sali
+private. Per q=2^20, valori/scratch/due twiddle di 2q richiedono 67.108.864 B;
+sono esclusi fattori, finestra originale, low/high, pad, output host,
+Tree/replay e altri owner. Non è l'ammissione della query completa.
+PCS v³=v+1 e MAC u³=2 rimangono distinti; la trasformazione base non
+reinterpreta le componenti d'estensione. Il caller query e S1 sono
+ancora CPU nel checkpoint validato; le ricostruzioni non aumentano.
+
+#### Closure e candidate aritmetiche
+
+La closure lineare seleziona una scan originale per round, D·live visite,
+senza getter del suffisso zero. EQ del prefisso usa chunk ≤8 bit/256
+celle; Cube residuali ordinati per ampiezza/intervallo prendono i punti
+in prestito. Nessuna divisione, bitmap o array D34/D35; sfide 0/1,
+sovrapposizioni e ordine arbitrario conservano coefficienti/endpoint.
+Unicità è precondizione dello scanner; il confine controlla live/range/
+count ed errori prima delle tre correlazioni. Wire/FS/MAC e riserva 3D+2
+restano invariati; capacità/realloc/forme pubbliche sono nel budget.
+La componente è CPU; collegamento GPU ancora aperto.
+
+La [candidata Tensor W](../../cuda/c71_pcs_weight_tensor.cu) usa quattro
+limb16 biased, dot INT8 pack/compose esatto e correzione 32768·sum_W:
+somma signed <2^87, shared 8.448 B, nessun nuovo buffer globale.
+Il digit aritmetico −32768 è legale nella decomposizione, mentre il
+marcatore negli originali W resta vietato. `c71_pcs_weight_tensor` riusa
+ammissioni, W sigillato, FFT e flag dell'ordinario. Il confronto
+`c71_pcs_compare_words` verifica tutte le word canoniche di due buffer
+base completi distinti, senza download campi, solo 4 B di flag. Entrambi
+sono obbligatori ABI4; la selezione canonica resta ordinaria.
+Il diagnostico Q256/R64 con W sintetica da 4 MiB è compilato solo come unità
+host, non linkato/eseguito: non misura throughput pinned.
+
+Le [candidate QK/PV MMA](../../cuda/c71_attention_mma.cu) mantengono
+originali i16/PiQ14, raw i64 e RNE. QK usa N8 interamente nel prefisso
+comune M16, poi dot scalari causali; PV usa K32 comune e tail per output
+≤46. Per M16: ≤232 dot QK scalari e ≤616 prodotti PV per lane. Anche
+future già inizializzate non vengono lette. Nessuno staging/shared
+aggiuntivo; array interi nominali 124 B/thread più raw 8 B. Registri/spill,
+compilazione e prestazioni CUDA rimangono da verificare. Entrambe le
+candidate restano non selezionate; parità fragment/shuffle/i128 host
+non prova kernel o scheduling GPU.
 
 La CLI seleziona soltanto `reference-cpu` oppure `experiment-cuda`; la
 seconda aggiunge `LIBRARY DEVICE` agli stessi cinque argomenti di input.
@@ -959,8 +954,7 @@ del consumo. Il gather accetta viste nei prefissi KV, non celle future.
 Questi byte non passano al verificatore. Il range A resta residente;
 La finestra range A del runner scende da 2 GiB a 1 GiB: cambia il numero
 di finestre, non gli originali né la geometria del range.
-I commitment iniziali W/A sono residenti. PCS extension FFT/Merkle,
-monete/sali, aperture/resti/contrazioni,
+I commitment iniziali W/A sono residenti. PCS extension FFT/Merkle e relativi sali, aperture/resti/contrazioni,
 GKR non-range, MAC, PCG, codec e verifica
 restano CPU dichiarati, non fallback impliciti. La rigenerazione di una
 generazione storica rilascia quella precedente e riusa KV450 originale;
@@ -1030,7 +1024,8 @@ il nuovo ledger, che aggiunge `d2d_bytes`.
 `produce_native` collega tutti i 13 tipi di producer, riusando i dispatcher
 di base e nonlineare e le route Norm/QK/softmax/PV. Verifica arità, presenza
 esatta di coda/istogramma e assenza di token estranei all'embedding;
-non è ancora uno scanner o un preparatore GPU completo, né un fallback.
+il binding da solo non è un preparatore completo. Il runner
+`canonical_device` lo collega a scanner/replay GPU, senza fallback.
 `NonlinearTables` valida e carica tabelle i16, 60 EXP30 i32 e due finestre RoPE alle
 posizioni assolute del contesto: 23.954.072 B logici, 23.954.176 B allineati
 nella stessa arena. Il packing host temporaneo è ancora addebitabile,
@@ -1255,10 +1250,12 @@ Il requisito sul lavoro delle sorgenti è `c_source*N + P(q,h)`, con
 coefficiente uniforme indipendente da q/N; il solo callback dei resti
 non dimostra questo requisito per l'intera PCS. Si contano tutti i batch.
 
-Restano da includere workspace numerici e DFT, hash, spettri, copie,
-stato PCG/OT/Fp6, runtime e allocator simultaneamente vivi. Il conto
-fisico completo è aperto; un costo ignoto non vale zero. I tre contesti
-devono essere ricontati con Γ reale tramite `c71_calibrate.py ledger`.
+Il conto simultaneo deve comprendere workspace numerici e DFT, hash,
+spettri, copie, stato PCG/OT/Fp6, runtime e allocator. Il census addebita
+le allocazioni effettive; il picco fisico completo resta aperto e un
+costo ignoto non vale zero. Γ pinned è ammesso; dopo ogni ottimizzazione
+riconciliare il nuovo ledger dei tre contesti con `c71_calibrate.py ledger`
+e con il budget comune, senza ereditare tempi o picchi precedenti.
 Il benchmark della prova richiede anche integrazione canonica, input,
 SHA pulita, durata autorizzata, arresto e soglie dichiarate in
 [runpod-tests](runpod-tests.md), senza requisito di preventivo economico.

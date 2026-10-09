@@ -86,32 +86,28 @@ esplicito; non abilita un fallback CPU nel percorso di produzione.
 
 ### Collegamento del runner CUDA
 
-Il checkpoint comprende `canonical_device`, staging originale fenced,
-gather su prefissi KV inizializzati, metriche e selezione esplicita del
-backend. Dopo la build mirata, eseguire separatamente i filtri seguenti
-con il limite 60 s / 2 GiB e `--test-threads=1 --nocapture`:
+Dopo la build mirata, eseguire **un filtro per invocazione**, con 60 s /
+2 GiB AS e `--test-threads=1 --nocapture`. Le fixture native compilano
+un driver CUDA simulato; confrontano matematica e lifecycle, senza
+compilare/eseguire CUDA. I risultati datati, RSS e provenienza sono
+nell'[indice delle evidenze](design.md#evidenze-e-decisioni).
 
-```text
-c71_canonical_device_
-c71_canonical_resident
-c71_b12_windowed_native_original_staging
-c71_b12_windowed_native_shared
-c71_b12_windowed_native_byte
-c71_b12_windowed_native_signed
-c71_b12_windowed_native_failure
-c71_canonical_metrics_
-c71_canonical_runner_
-c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs
-```
+| Filtro | Significato |
+|---|---|
+| `c71_canonical_device_` | Schedule dei 150 token nei tre contesti, tutti i producer, prefissi/checkpoint; scanner numerico su catena ridotta, senza W reale |
+| `c71_canonical_resident` | Binding Arc/layout/runtime, originali, RNE e gather |
+| `c71_b12_windowed_native_original_staging` | Staging di soli originali inizializzati, fence e span |
+| `c71_b12_windowed_native_shared` | Range condiviso sui MAC originali e stesso owner |
+| `c71_b12_windowed_native_byte` | Byte/gather e codec originali |
+| `c71_b12_windowed_native_signed` | Range signed su originali |
+| `c71_b12_windowed_native_failure` | Errori terminali e assenza di fallback |
+| `c71_canonical_metrics_` | Wall/traffico/census, senza sommare picchi |
+| `c71_canonical_runner_` | Selezione backend, verifica/promozione e journal |
 
-La schedule usa tutti i 150 token nei tre contesti, controlla input vivi,
-KV causale, checkpoint, 50 decisioni e batch equivalenti (Norm finale:
-149 righe, non 150), senza W reale. Lo scanner numerico locale copre una
-catena Affine/RNE, getter/cache e finestre originali, non l'intero forward.
-I test range condiviso chiudono su PCS/MAC originali ridotti. Le socketpair
-del test runner richiedono l'eccezione locale se il sandbox le vieta;
-nessuna connessione esterna. Mantenere i log del rifiuto sandbox distinti
-da quelli della successiva esecuzione autorizzata.
+Le socketpair locali possono richiedere un'eccezione al sandbox; non
+usano rete esterna. Conservare il rifiuto sandbox e la successiva
+esecuzione separatamente. Norm finale ha 149 righe: i test della schedule
+non trasformano il batch in 150 per semplicità.
 
 Se il toolkit è disponibile, compilare libreria completa e diagnostico
 senza eseguirli; altrimenti la build CUDA si svolge sul pod autorizzato:
@@ -120,104 +116,64 @@ senza eseguirli; altrimenti la build CUDA si svolge sul pod autorizzato:
 nvcc -std=c++17 -O2 -arch=sm_90 --shared --cudart static -Xcompiler=-fPIC \
   cuda/c71_dense_i16.cu cuda/c71_range_native.cu cuda/c71_pcs_hash.cu \
   cuda/c71_pcs_weight.cu cuda/c71_pcs_weight_tensor.cu cuda/c71_pcs_source.cu \
-  cuda/c71_pcs_salts.cu \
-  cuda/c71_range_runtime.cpp \
+  cuda/c71_pcs_salts.cu cuda/c71_range_runtime.cpp \
   -o /tmp/libc71_device_runner.so
 nvcc -std=c++17 -O2 -arch=sm_90 --cudart static \
   cuda/c71_nonlinear_parity.cu cuda/c71_dense_i16.cu -o /tmp/c71_device_parity
 ```
 
-I controlli Python pertinenti sono `tests/test_c71_docs.py`,
-`tests/test_c71_dense_i16.py` e `tests/test_c71_range_native.py`, con i
-limiti sopra. La parità hardware e il tempo completo sono controlli del
-primo esperimento H100 autorizzato, non condizioni locali impossibili.
-Le selezioni Rust `c71_b12_native_incremental_hash_exact_roots_and_salt_bands`
-e `c71_b12_native_incremental_hash_coset_frontier_and_natural_root`, più
-`c71_b12_native_incremental_hash_rejections_and_fail_closed`, compilano
-un driver simulato e confrontano le funzioni hash condivise con B12
-Rust: 128 colonne, bordi, sali a bande, tutti i livelli Merkle, ordine
-naturale/strided, frontier di gruppi e rifiuti
-di tipo/ordine/copertura/owner/budget/launch/fence/aritmetica. Restano
-`gpu_execution:false`; il [conto del nuovo scratch](../c7.1-history/crypto-w-hash-2026-10-08.md)
-non è un picco completo W o una misura H100.
-Il [record pulito del componente W](../../benchmarks/results/c71-crypto-w-hash-local-2026-10-08-0bf5814bf9c4.json)
-conserva cinque selezioni Rust positive, nove controlli documentali e
-due controlli host dell'owner, limiti AS/deadline/RSS per invocazione,
-Budget attivo e UBSan. I log di sviluppo e una build annullata da cwd
-errato sono separati dalle misure pulite; usare sempre `cd rust` per
-caricare anche `rust/.cargo/config.toml` e riusare i flag/cache corretti.
-La policy della cache Cargo è descritta nella sezione
-[provenienza](#risultati-e-conservazione).
-Per [accumuli/FFT W](../c7.1-history/crypto-w-scan-fft-2026-10-08.md)
-eseguire separatamente `c71_b12_native_weight_columns_exact_signed_pads_fft_hash`
-e `c71_b12_native_weight_rejections_and_fail_closed`, poi il mapping
-`c71_b12_gemma_layout_matches_packed_addresses_and_physical_tensor_mles`.
-La prima fixture confronta ogni valore di 128 colonne su 32 coset, pad
-originali, foglie e livelli Merkle strided; la seconda verifica 24 arresti.
-`test_c71_range_native.py` confronta anche 526.336 prefissi di dot con
-modulo signed i128 indipendente sotto UBSan. La build mirata può usare
-`--config profile.dev.package.volta-pcs.opt-level=0` per il solo crate
-locale mantenendo le dipendenze O2, cache e un job; conservare anche le
-build fallite e distinguere RSS compiler dai test 60 s / 2 GiB AS.
-I tempi Rust O0/C++ O2 non sono un rapporto di accelerazione. Il driver
-simulato non compila o esegue CUDA; hardware resta una verifica del pod
-autorizzato. Per il [passo Tree W](../c7.1-history/crypto-w-tree-2026-10-08.md)
-eseguire separatamente `c71_b12_native_weight_tree_exact_roots_openings_and_work`,
-`c71_b12_native_weight_composed_full_chain_original_mac_and_transcript`,
-`c71_b12_native_weight_tree_fail_closed_without_scalar_fallback`,
-`c71_b12_native_weight_geometry_and_resource_envelope`,
-`c71_b12_query_small_remainders_exact_fp3_and_cost`,
-`c71_b12_query_remainder`, `c71_b12_query_split_zero_tail`,
-`c71_b12_query_byte_windows_full_chain` e `c71_canonical_runner`.
-Il confronto composto D15 usa una tabella di righe iniziali del riferimento
-da 16 MiB, conteggiata nel budget e assente in produzione; verifica l'intera
-prova, MAC e transcript. Root/aperture/lavoro del getter effettivo sono
-confrontati dal test Tree separato. Il filtro
-`c71_b12_native_weight_uncached_full_chain_performance_obligation` è
-ignored perché il test combinato D15 riferimento/prover/doppia verifica
-supera 60 s; non eseguirlo con `--ignored` o limite esteso. Conservare
-timeout e prefissi JSONL come failure, non conteggiare uno skip come pass.
-Il [record pulito Tree](../../benchmarks/results/c71-crypto-w-tree-local-2026-10-08-6b3535856cc5.json)
-conserva nove selezioni Rust (12 test) e nove controlli documentali passati.
-Il test `UnixStream::pair` ha richiesto l'eccezione locale al sandbox;
-EPERM originale e retry positivo sono entrambi conservati. RSS massimo
-test/descendenti 206.602.240 B; compiler O0 2.464.067.584 B separato.
-Per il [componente A](../c7.1-history/crypto-a-source-2026-10-08.md),
-eseguire il filtro `c71_b12_native_source_` (tre test: campi/FFT/hash,
-geometria/risorse e 28 errori terminali), poi
-`c71_b12_pcs_resident_source_tiles_original_biased_bytes` e
-`c71_canonical_device_replay_original_rows_windows_and_failure`.
-La fixture di producer usa solo Affine/RNE, non l'intera ricostruzione A:
-6.451.200 byte, 36 tessere, otto byte di flag e nessuna riga scaricata.
-Il componente confronta tutte le 128 colonne nei quattro coset, tre
-geometrie e fino a 1.536 pad/128 contributi; istogramma e due livelli
-Merkle strided sono esatti. Per regressioni del refactoring byte eseguire
-`c71_b12_range_window_permutation_and_intersections` e
-`c71_canonical_resident_byte`; per l'owner comune ripetere il filtro
-`c71_b12_native_weight_tree` e il conto W aggiornato. I tempi Rust O0/C++
-O2 non giustificano uno speedup. Il Tree/runner A CUDA seleziona ora queste primitive nel passo seguente;
-parità CUDA e conto simultaneo completo restano aperti.
-Il [record pulito A](../../benchmarks/results/c71-crypto-a-source-local-2026-10-08-98ac67808e29.json)
-conserva 13 test Rust/undici Python, 62 artefatti e due errori preliminari;
-RSS massimo test/compilatori discendenti 247.549.952 B, build completa
-preliminare 2.482.995.200 B separata. Il check Cargo pulito riusa lo stesso
-binario, con provenance e digest dichiarati. Ogni test è entro 60 s/2 GiB,
-un worker e processi seriali. Nessun test ignored è contato come pass.
-Per il [Tree A](../c7.1-history/crypto-a-tree-2026-10-08.md) eseguire separatamente i filtri:
+Il loader richiede tutti i simboli ABI4 correnti, comprese operazioni
+sali, confronto Tensor e FFT naturale. Una libreria incompleta fallisce
+prima dell'uso. Le FFT naturali sono definite nell'unità weight esistente.
+La build Rust mirata può usare
+`--config profile.dev.package.volta-pcs.opt-level=0` per il solo crate,
+con dipendenze O2, cache e un job. Eseguire da `rust` per caricare
+`rust/.cargo/config.toml`. AS 2 GiB si applica ai test, non alla
+compilazione; conservare RSS/deadline della build separati e nessun
+rapporto di speedup tra Rust O0 e C++ O2.
 
-```text
-c71_b12_native_source_tree
-c71_b12_native_source_composed_full_chain_original_mac_and_transcript
-c71_canonical_device_original_scan_coverage_rejects_duplicate_and_omitted_rows
-c71_b12_private_coins_
-```
+#### PCS iniziale, query e candidati
 
-Il primo filtro confronta root/aperture/istogramma/lavoro e otto arresti.
-Il [sampler nell'owner/Tree](../c7.1-history/crypto-salts-owner-2026-10-09.md)
-ha un [record pulito](../../benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2.json)
-con 21 Rust/11 Python positivi, 73 artefatti e un timeout CPU distinto.
-Eseguire separatamente i quattro filtri seguenti: il filtro complessivo
-compila sette fixture e si avvicina al limite locale60s.
+Ogni filtro della tabella si esegue separatamente. Evitare il prefisso
+complessivo source: ora comprende Tree e prove composte e può superare
+60 s. Tutti i confronti usano campi, sali/pad, root, byte del certificato,
+transcript e MAC originali, secondo l'ambito indicato.
+
+| Filtro | Significato |
+|---|---|
+| `c71_b12_native_incremental_hash_exact_roots_and_salt_bands` | Foglie di 128 colonne, sali a bande e tutti i livelli Merkle |
+| `c71_b12_native_incremental_hash_coset_frontier_and_natural_root` | Ordine naturale/strided e frontier dei gruppi |
+| `c71_b12_native_incremental_hash_rejections_and_fail_closed` | Tipo, ordine, copertura, owner, budget, launch/fence/aritmetica |
+| `c71_b12_native_weight_columns_exact_signed_pads_fft_hash` | Tutte le word di 128 colonne/32 coset, contributi/pad, FFT e digest |
+| `c71_b12_native_weight_rejections_and_fail_closed` | Guard accumuli W |
+| `c71_b12_gemma_layout_matches_packed_addresses_and_physical_tensor_mles` | Mapping indirizzi packed e MLE fisiche |
+| `c71_b12_native_weight_tree_exact_roots_openings_and_work` | Tree W col getter di produzione, root/aperture/lavoro |
+| `c71_b12_native_weight_composed_full_chain_original_mac_and_transcript` | Prova completa ridotta, reference cache soltanto nella fixture |
+| `c71_b12_native_weight_tree_fail_closed_without_scalar_fallback` | Tree W terminale senza getter/fallback su errore |
+| `c71_b12_native_weight_geometry_and_resource_envelope` | Scansioni e risorse W, flag simultanei inclusi |
+| `c71_b12_query_small_remainders_exact_fp3_and_cost` | Divisione monica, base/Fp3 e costo |
+| `c71_b12_query_remainder` | Resti delle aperture |
+| `c71_b12_query_split_zero_tail` | Split/padding senza getter del suffisso zero |
+| `c71_b12_query_byte_windows_full_chain` | Finestre byte nella catena PCS |
+| `c71_b12_native_source_four_cosets_fft_hash_original_bytes` | Tutte le 128 colonne su quattro coset, codec, pad/FFT/hash e istogramma |
+| `c71_b12_native_source_pending_coverage_owner_and_failure` | Pending, copertura/span, owner e errori A |
+| `c71_b12_native_source_geometry_and_resource_envelope` | Geometria A indipendente da W e conto simultaneo |
+| `c71_b12_pcs_resident_source_tiles_original_biased_bytes` | Producer Affine/RNE→sink PCS senza download per riga |
+| `c71_canonical_device_replay_original_rows_windows_and_failure` | Replay originale, finestre e terminalità |
+| `c71_b12_range_window_permutation_and_intersections` | Permutazione e selezione finestre byte |
+| `c71_b12_native_source_tree` | Tree A: root/aperture/istogramma/lavoro e guard terminali |
+| `c71_b12_native_source_composed_full_chain_original_mac_and_transcript` | Prova composta A con reference cache solo nel test |
+| `c71_canonical_device_original_scan_coverage_rejects_duplicate_and_omitted_rows` | Partizione unica delle emissioni A |
+| `c71_b12_sourcewise_linear` | Coefficienti/endpoint/FS/MAC della closure a una scan per round |
+| `c71_b12_original_scan_live_prefix_order_and_errors` | Ordine arbitrario, live/count, errori prima delle correlazioni |
+| `c71_b12_native_weight_tensor` | Confronto ordinario/Tensor postFFT/hash sullo stesso owner, guard e simbolo obbligatorio |
+| `c71_b12_native_pcs_compare_words` | Tutte le word canoniche, mismatch terminale e simbolo obbligatorio |
+| `c71_b12_native_transform_natural_forward_inverse_and_work` | DFT Rust indipendente, log pari/dispari, inverse, segmenti batch e conto D2D |
+| `c71_b12_native_transform_rejections_and_fail_closed` | Owner, tipo, span, alias, orientamento twiddle e errori terminali |
+| `c71_b12_native_transform_symbols_are_mandatory` | Rifiuto di ciascun simbolo FFT mancante |
+
+Per i sali eseguire separatamente i quattro filtri seguenti: il filtro
+aggregato compila più fixture e si avvicina al limite 60 s.
 
 ```text
 c71_b12_native_private_salts_owner_exact_stream_hash_and_work
@@ -226,80 +182,48 @@ c71_b12_native_private_salts_owner_rejections_and_fail_closed
 c71_b12_native_private_salts_owner_symbols_are_mandatory
 ```
 
-Verificano stream/offset/cap/tutti i digest, 31 rifiuti e sei simboli
-obbligatori. La fixture da131.072 foglie attraversa due bande con un solo
-fence hash, zero upload sali; i campi sintetici sono caricati solo nel test.
-Ripetere i Tree W/A, le prove composte e `geometry_and_resource_envelope`.
-Gli originali numerici non sono scaricati dal commitment iniziale; indici
-e contatori privati D2H sono conteggiati. Il driver prescan sequenziale
-non esegue prefix/scatter CUDA; toolkit assente in VM. Massimo RSS locale
-test/descendenti265.048.064 B; build55,42s/2.483.286.016 B separata.
-Il controllo aggiuntivo
+Confrontano stream/offset/cap, tutti i digest e il consumo esatto, anche
+attraverso due bande con un solo fence hash e zero upload sali. Ripetere
+Tree W/A e prove composte dopo modifiche comuni dell'owner. Il prescan
+del driver è sequenziale: non verifica prefix/scatter CUDA. Le letture
+bounded della primitiva FFT sono esplicite e non cambiano il vincolo
+senza D2H delle righe numeriche nel commitment iniziale.
+
+Le prove composte D15 usano 16 MiB di righe iniziali nel riferimento
+solo della fixture, conteggiati nel budget e assenti in produzione.
+Getter effettivi sono verificati dai test Tree separati. I filtri
+`c71_b12_native_weight_uncached_full_chain_performance_obligation` e
+`c71_b12_native_source_uncached_full_chain_performance_obligation`
+sono ignored dopo timeout a 60 s: non lanciarli con `--ignored` o limite
+esteso, non contare skip come pass. Anche
 `c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs` supera
-60s sullo stesso binario O0; conservarne timeout/prefisso e non estendere
-il limite o contarlo come pass. W/A composti passano entro il limite;
-non sono una misura della prova canonica completa.
-Il confronto composto usa 16 MiB di righe iniziali del riferimento solo
-nella fixture, come W. `c71_b12_native_source_uncached_full_chain_performance_obligation`
-è ignored dopo timeout a 60 s; non eseguire con `--ignored` o limite
-esteso e non contare lo skip come pass. Ripetere le tre componenti A
-in filtri separati: il filtro complessivo `c71_b12_native_source_` ora
-include anche il Tree/prova e può superare il limite locale.
-`tests/test_c71_pcs_tensor.py` confronta l'emulazione fragment/shuffle
-limb16 con modulo signed i128 indipendente, 720.896 output PCS e tutti
-i digit16. Non compila CUDA, testa guardie kernel o seleziona la candidata.
-Il [record pulito Tree A](../../benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013.json) conserva 18 test Rust/12 Python,
-69 artefatti, cinque negativi preliminari e tre tracce durevoli. RSS
-massimo test/compilatori discendenti 250.183.680 B; build completa
-preliminare 57,02 s/2.474.213.376 B separata. Cargo pulito è un riuso
-identico con digest, non una nuova compilazione completa.
+60 s sul binario O0 dell'ultimo checkpoint: il nome positivo non cambia
+l'esito conservato. Profilo e accelerazione restano lavoro aperto.
 
-Il [checkpoint del 9 ottobre](../c7.1-history/crypto-components-2026-10-09.md)
-aggiunge controlli da eseguire separatamente con gli stessi limiti:
+I controlli Python pertinenti si eseguono separatamente con gli stessi
+limiti: `tests/test_c71_dense_i16.py`, `tests/test_c71_range_native.py`,
+`tests/test_c71_pcs_tensor.py`, `tests/test_c71_attention_mma.py` e
+`tests/test_c71_fft_microbench.py`. Verificano packing/frammenti/shuffle,
+oracoli signed i128 indipendenti, modulo campo, padding e normalizzazione.
+Attention verifica future KV/Pi già inizializzate con guard per lettura
+ed i bound del bordo; conserva il finding precedente e la correzione in
+record distinti. Tensor e attention restano non selezionati. Questi test
+non compilano CUDA né provano scheduling/registri/spill hardware.
 
-```text
-c71_b12_sourcewise_linear
-c71_b12_original_scan_live_prefix_order_and_errors
-c71_b12_private_coins_
-c71_b12_native_weight_tensor
-c71_b12_native_pcs_compare_words
-```
-
-Sono coefficienti/endpoint/FS/MAC e errori prima delle correlazioni,
-56 vettori XOF e11 stream pinned, Tensor ordinario/postFFT/hash sullo
-stesso owner, simboli obbligatori e errori terminali. Non eseguono CUDA.
-`tests/test_c71_attention_mma.py` confronta fragment/shuffle/raw i128/RNE,
-future KV/Pi già inizializzate e guard per ogni lettura;18 rifiuti,
-bound232/46/616 raggiunti. La candidata resta non selezionata.
-Il [record componenti](../../benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2.json)
-conserva24 test Rust distinti (27 invocazioni),13 Python,68 artefatti,
-build fallita e finding causale della prima candidata. Il [record causale](../../benchmarks/results/c71-attention-causal-local-2026-10-09-29a257b4476b.json)
-chiude il finding sul nuovo source, senza riscrivere il precedente.
-RSS massimo componenti258.056.192 B; build preliminare56,91s/
-2.492.010.496 B distinta dal riuso Cargo pulito. Tutti i test sono seriali,
-60s/AS2GiB. Tre rep D12 riportano7,75× sul componente CPU rootO0,
-ordine old-then-scan; non è una misura H100 o della prova completa.
-
-Il diagnostico [confronto W](../../cuda/c71_pcs_weight_compare.cpp) compila
-con g++ `-c` senza toolkit, ma non è linkato/eseguito localmente. Quando
-il toolkit è disponibile compilare soltanto le candidate aggiuntive:
+Il [diagnostico W](../../cuda/c71_pcs_weight_compare.cpp) può essere
+compilato con g++ `-c` senza toolkit; non è linkato/eseguito localmente.
+Con toolkit disponibile, compilare anche la candidata attention:
 
 ```bash
-nvcc -std=c++17 -O2 -arch=sm_90 -c cuda/c71_pcs_salts.cu -o /tmp/c71_pcs_salts.o
 nvcc -std=c++17 -O2 -arch=sm_90 -c cuda/c71_attention_mma.cu -o /tmp/c71_attention_mma.o
 ```
 
-L'assenza del toolkit locale lascia la compilazione al pod autorizzato,
-senza richiedere hardware ora. Non ridurre i limiti delle query o aumentare
-ricostruzioni A per far passare una fixture o il conto memoria.
+La primitiva FFT è integrata nel common owner; il caller query A rimane
+CPU nel [checkpoint validato](../c7.1-history/crypto-transform-2026-10-09.md).
+La futura parità sm_90, il tempo completo e il picco fisico si verificano
+sulla H100 autorizzata. Non ridurre limiti query o aumentare implicitamente
+ricostruzioni A per far passare fixture o conto memoria.
 
-Il [record pulito del componente](../../benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db.json)
-ha sette selezioni Rust e venti controlli Python positivi, tra cui
-regressioni FFT/resti/potenze Fp3, mapping e replay originali. I 77
-artefatti conservano log/runner e fallimenti precedenti distinti:
-AS/deadline delle build, environment delle fixture e collisione di nome
-nel check C++ poi corretta. Max RSS test/descendenti 235.655.168 B;
-compiler della build mirata 2.465.947.648 B separato, un job.
 Eseguire separatamente ogni riga della tabella con il comando pytest
 limitato sopra. Impostare i due binari prima dei test che li richiedono.
 
@@ -368,13 +292,8 @@ valori, sali, padding, aperture duplicate e visite a 128 colonne, e misura
 il costo della registrazione. WHIR ridotto conserva transcript e MAC
 originali. Sono screen locali `credit:false`, senza credito H100.
 
-Il [checkpoint pulito](../../benchmarks/results/c71-crypto-preparation-local-2026-10-08-04ab8ed1c4ce.json)
-conserva 16 test Rust positivi inclusi guard budget e Seed6/AES ridotto,
-9 controlli documentali e audit delle 96 sorgenti del fork. Il rifiuto
-sandbox della socketpair precede il protocollo e resta nel proprio log;
-il retry con sola eccezione locale passa entro 60 s / 2 GiB. Il massimo
-RSS osservato nei filtri seriali è 134.553.600 B; per il retry AES resta
-disponibile il census congiunto, non un nuovo RSS/HBM completo.
+Le [evidenze datate](design.md#evidenze-e-decisioni) conservano anche
+rifiuti sandbox, retry locali ed esiti negativi, distinti dai pass.
 
 Eseguire un filtro alla volta:
 

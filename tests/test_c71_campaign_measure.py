@@ -41,6 +41,23 @@ def sample(**overrides):
     return values
 
 
+def test_process_sampling_skips_exited_processes_but_keeps_read_errors(monkeypatch):
+    monkeypatch.setattr(Path, 'iterdir', lambda _path: iter(map(Path, ('/proc/1', '/proc/2', '/proc/3'))))
+    def read(path):
+        if path.parent.name == '1':
+            raise FileNotFoundError('process exited before open')
+        if path.parent.name == '2':
+            raise ProcessLookupError('process exited during read')
+        return 'PPid: 0\nVmRSS: 4 kB\nVmSwap: 0 kB\n'
+    monkeypatch.setattr(Path, 'read_text', read)
+    assert monitor.process_rows() == {3: (0, 4096, 0)}
+    def denied(_path):
+        raise PermissionError('metrics unavailable')
+    monkeypatch.setattr(Path, 'read_text', denied)
+    with pytest.raises(PermissionError):
+        monitor.process_rows()
+
+
 def test_smaps_exempts_only_guaranteed_resident_whole_W_pages():
     smaps = ('1000-5000 rw-p 00000000 00:00 0\nRss: 12 kB\n'
              '9000-a000 r-xp 00000000 00:00 0\nRss: 4 kB\n')

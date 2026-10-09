@@ -37,7 +37,7 @@ def process_rows():
                 int(fields['PPid']), int(fields.get('VmRSS', '0 kB').split()[0]) * 1024,
                 int(fields.get('VmSwap', '0 kB').split()[0]) * 1024,
             )
-        except FileNotFoundError:
+        except (FileNotFoundError, ProcessLookupError):
             continue
     return rows
 

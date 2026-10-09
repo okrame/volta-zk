@@ -1,0 +1,243 @@
+{
+  "artifacts": [
+    {
+      "bytes": 83650,
+      "path": "benchmarks/results/c71-h100-canonical-04-2026-10-09-a32a6c3286b5/a-commitment-progress.json",
+      "sha256": "64231e36051058e1cc8f17a4cd53eb58df42d4053b982fe146f4f2962d97f750"
+    },
+    {
+      "bytes": 587498,
+      "path": "benchmarks/results/c71-h100-canonical-04-2026-10-09-a32a6c3286b5/canonical.memory.csv",
+      "sha256": "a069ccf396d941848ae701f097edab60dd75c4d9648a7f25810e25e90bff92e2"
+    },
+    {
+      "bytes": 0,
+      "path": "benchmarks/results/c71-h100-canonical-04-2026-10-09-a32a6c3286b5/canonical.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 0,
+      "path": "benchmarks/results/c71-h100-canonical-04-2026-10-09-a32a6c3286b5/canonical.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 2059,
+      "path": "benchmarks/results/c71-h100-canonical-04-2026-10-09-a32a6c3286b5/canonical.summary.json",
+      "sha256": "f98ff4d6d08ecfa7fbd5ac385c3346ae2e57dfa26959e815cc732ba885de92fc"
+    },
+    {
+      "bytes": 0,
+      "path": "benchmarks/results/c71-h100-canonical-04-2026-10-09-a32a6c3286b5/canonical.time.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 478,
+      "path": "benchmarks/results/c71-h100-canonical-04-2026-10-09-a32a6c3286b5/channels.json",
+      "sha256": "dcbef9e3a446490c6832ca02f2af62496bd21ddd71fc88c300486bde25d1ecc3"
+    },
+    {
+      "bytes": 4586,
+      "path": "benchmarks/results/c71-h100-canonical-04-2026-10-09-a32a6c3286b5/completed-pcs.json",
+      "sha256": "b7d658601a5a4a8b20e83a97784db54a30e4089e5594c1df85487160d88534c8"
+    },
+    {
+      "bytes": 48389,
+      "path": "benchmarks/results/c71-h100-canonical-04-2026-10-09-a32a6c3286b5/completed-phases.json",
+      "sha256": "678498132a2d69b9415707e3ff65c6543eac9dfcb5f6894c4b42b94789d2b1df"
+    },
+    {
+      "bytes": 495533,
+      "path": "benchmarks/results/c71-h100-canonical-04-2026-10-09-a32a6c3286b5/cpu-gpu-observations.jsonl",
+      "sha256": "da6ae07459d7099f3b4ddbe9a277e488aef216618d6d1a7e28587a5d550ceb51"
+    }
+  ],
+  "canonical_certificates_verified": 0,
+  "complete": false,
+  "credit": false,
+  "date": "2026-10-09",
+  "fresh_correlations": true,
+  "git_dirty": false,
+  "git_sha": "a32a6c3286b556b43f8ede0b1a2ae39b5d7ebb2d",
+  "journals": [
+    {
+      "bytes": 161,
+      "count": 70778880,
+      "digest_hex": "0000000000000000000000000000000000000000000000000000000000000000",
+      "kind": 5,
+      "role": "prover",
+      "setup": 1,
+      "sha256": "f4adf0eef046ecc69fec0a2953a1749b8dbf9d8d548bc2c6a5b8e9ecb497ad51",
+      "start": 0
+    },
+    {
+      "bytes": 161,
+      "count": 70778880,
+      "digest_hex": "0000000000000000000000000000000000000000000000000000000000000000",
+      "kind": 5,
+      "role": "verifier",
+      "setup": 1,
+      "sha256": "f4adf0eef046ecc69fec0a2953a1749b8dbf9d8d548bc2c6a5b8e9ecb497ad51",
+      "start": 0
+    }
+  ],
+  "launch": {
+    "argv": [
+      "/workspace/c71-h100-20261009/c71_canonical_reference_scalar_reuse",
+      "experiment-cuda",
+      "/workspace/c71-h100-20261009/gamma-inputs/candidate.json",
+      "/workspace/c71-h100-20261009/gamma-inputs/tables.bin",
+      "/workspace/c71-h100-20261009/weights/gemma-4-31b-5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89.packed.i16",
+      "/workspace/c71-h100-20261009/canonical-04/journals",
+      "2147483648",
+      "/workspace/c71-h100-20261009/libc71_device_runner_stack256.so",
+      "0"
+    ],
+    "argv_encoded_bytes": 419,
+    "argv_path_capacity_bound_bytes": 4096,
+    "binary_sha256": "5b524bd7333c86cd656df4c585982d0be54721424fe3559770b2cfe1bbd3a5db",
+    "binary_source_git_sha": "2a31625f849d",
+    "correlations": "fresh one-time real AES; no reuse",
+    "diagnostic_timeout_seconds": 7200,
+    "gamma_reused": true,
+    "git_dirty": false,
+    "initial_accepted_kv": "empty",
+    "library_sha256": "88f3138effc9af42068e77aa3b4bf2c5d0d6c7b634c9608900da50aa94a6b0c2",
+    "library_source_git_sha": "a32a6c3286b556b43f8ede0b1a2ae39b5d7ebb2d",
+    "monitor_label": "canonical",
+    "new_journals": true,
+    "prepared_epoch": 1791583509.951916,
+    "response_target_seconds": 65,
+    "rust_sources_identical": true,
+    "source_git_sha": "a32a6c3286b556b43f8ede0b1a2ae39b5d7ebb2d",
+    "validation": "inference-03 exact150 tokens; stack256-validation all15realCUDA; original scalar Rust source identical2a31625; monitor bounded complete-smaps rereads"
+  },
+  "monitor_original": {
+    "authorized_end_epoch": 1791601722.0,
+    "close_reserve_seconds": 1800,
+    "command": [
+      "bash",
+      "-c",
+      "ulimit -S -v unlimited; exec \"$@\"",
+      "c71-canonical",
+      "/workspace/c71-h100-20261009/c71_canonical_reference_scalar_reuse",
+      "experiment-cuda",
+      "/workspace/c71-h100-20261009/gamma-inputs/candidate.json",
+      "/workspace/c71-h100-20261009/gamma-inputs/tables.bin",
+      "/workspace/c71-h100-20261009/weights/gemma-4-31b-5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89.packed.i16",
+      "/workspace/c71-h100-20261009/canonical-04/journals",
+      "2147483648",
+      "/workspace/c71-h100-20261009/libc71_device_runner_stack256.so",
+      "0"
+    ],
+    "compute_end_epoch": 1791599922.0,
+    "exit_code": -9,
+    "gpu_uuid": "GPU-9f6b4728-e7d8-ff40-d9f1-e1cec5dd2b3a",
+    "incomplete_samples": 2,
+    "label": "canonical",
+    "mode": "canonical",
+    "observed_payload_peak_bytes": 5560858162,
+    "payload_limit_bytes": 5905580032,
+    "physical_complete_peak": false,
+    "physical_temporary_limit_bytes": 6174015488,
+    "resource_failure": "RuntimeError: resource stop: canonical simultaneous physical temporaries exceed allowance",
+    "sampled_host_rss_peak_bytes": 61741813760,
+    "sampled_stable_temporary_peak_bytes": 6138301952,
+    "sampled_whole_gpu_peak_bytes": 67189604352,
+    "samples": 4214,
+    "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+    "sampling_target_seconds": 0.2,
+    "smaps_read_failures": 0,
+    "stable_samples": 4212,
+    "start_unix_seconds": 1791583509.9897985,
+    "wall_seconds": 2720.7635542303324
+  },
+  "next_action": "Validate bounded runtime-memory changes on real CUDA and exact inference before any fresh canonical attempt; preserve physical cap and AES single use.",
+  "pcs_seconds": {
+    "pcs_commitment": 405.194766209,
+    "pcs_salts_prescan_gpu": 0.080485058,
+    "pcs_w_resident": 404.547848141
+  },
+  "phase_seconds": {
+    "coordinator/global_initialization": 81.808467882,
+    "coordinator/installation_distribution_and_journals": 0.000664383,
+    "coordinator/public_distribution": 0.019892643,
+    "prover/installation_w_commitment": 441.657392425,
+    "prover/load_packed_w": 65.933254006,
+    "prover/native_global_residency": 29.312298378,
+    "prover/preparation_including_inference": 87.349210613,
+    "prover/read_and_compile_public": 7.461774709,
+    "prover/registry_initialization": 9.896279726,
+    "prover/request_receive": 0.000124072,
+    "prover/seed6_setup": 1974.013031377,
+    "verifier/compile_received_public": 7.495344056,
+    "verifier/registry_initialization": 2.526e-06,
+    "verifier/seed6_setup": 1974.19946838
+  },
+  "physical_correction": {
+    "actual_sampled_stable_peak_bytes": 6190775808,
+    "csv_samples": 4215,
+    "excess_bytes": 16760320,
+    "limit_bytes": 6174015488,
+    "local_monitor_tests_passed": 36,
+    "monitor_fix_git_sha": "2ff8106",
+    "offending_row": {
+      "W_transition_incomplete": "0",
+      "cgroup_memory_current_bytes": "187654877184",
+      "disk_available_bytes": "121163681792",
+      "host_tree_rss_bytes": "61738119168",
+      "host_tree_swap_bytes": "0",
+      "resident_device_W_bytes": "61394690560",
+      "resident_host_W_lower_bound_bytes": "61394685952",
+      "sample_duration_seconds": "0.6541723534464836",
+      "sampled_temporary_bytes": "6190775808",
+      "smaps_read_failures": "0",
+      "unix_seconds": "1791586230.7535508",
+      "whole_gpu_free_bytes": "17776508928",
+      "whole_gpu_used_bytes": "67242033152"
+    },
+    "original_summary_excludes_offending_sample": true,
+    "original_summary_preserved": true,
+    "source": "canonical.memory.csv",
+    "stable_samples": 4213
+  },
+  "private_bundle": {
+    "bytes": 1802372,
+    "files": 17,
+    "manifest_sha256": "d92b4683aa3a2d465909704c4f4441f59c3cfb9f0971b7dfd299f13514a8e993",
+    "path": "artifact/c7.1-pod/h100-final-canonical04-20261009T225400Z"
+  },
+  "response_contexts": [
+    {
+      "old_tokens": 0,
+      "status": "physical_stop_during_A_commitment"
+    },
+    {
+      "old_tokens": 150,
+      "status": "not_started"
+    },
+    {
+      "old_tokens": 300,
+      "status": "not_started"
+    }
+  ],
+  "run": "canonical-04",
+  "schema": "volta-c71-h100-canonical-terminal-v1",
+  "scope": "Nested and concurrent intervals must not be summed. Preparation includes inference; standalone inference timing is not durably emitted before canonical acceptance. Standalone component measurements are separate. No accepted certificate, no complete physical peak.",
+  "session_resumable": false,
+  "setup_capacity_burned": true,
+  "terminal": {
+    "completed_a_groups": 0,
+    "exit_code": -9,
+    "failed_phase": "pcs_a_resident",
+    "manual_stop": false,
+    "observed_resource_cap_violation": true,
+    "preparation_complete": true,
+    "proof_complete": false,
+    "reason": "RuntimeError: resource stop: canonical simultaneous physical temporaries exceed allowance",
+    "setup_complete": true,
+    "timeout": false,
+    "total_a_groups": 512,
+    "verification_complete": false,
+    "wall_seconds": 2720.7635542303324
+  }
+}

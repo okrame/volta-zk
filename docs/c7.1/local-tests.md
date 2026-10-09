@@ -36,6 +36,10 @@ estende il test del reader con 2 MiB di input e controllo di tutti i valori
 e del digest. La prima build locale termina al timeout 120 s; il nuovo
 tentativo con dipendenze riusate passa in 55,833 s entro lo stesso limite.
 Il test passa anche sulla checkout pulita; nessun credito H100 ne deriva.
+Dopo lo [stop fisico canonico](../c7.1-history/h100-canonical-04-2026-10-09.md),
+`2ff8106` include nel riepilogo del monitor il campione che causa lo stop.
+Passano 36 test, incluso il primo campione già oltre cap; nessuna modifica
+al limite o al trattamento dei campioni smaps recuperati.
 
 ## Limiti e ambiente
 

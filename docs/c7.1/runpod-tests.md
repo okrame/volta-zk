@@ -54,13 +54,15 @@ O=0 esatto: 90,594 s e massimo temporaneo campionato 1.267.047.936 B,
 207.228.928 B meno della baseline, senza credito al picco completo.
 Si riusa il binario scalare solo dopo verifica dei sorgenti Rust identici;
 libreria, monitor e binario riportano ciascuno la propria SHA di build.
-`canonical-04` è in corso dalle 22:05:09 UTC: riparte da W con journal
-e correlazioni nuovi, monitor `7f9c812` e libreria `a32a6c3`, timeout 7.200 s.
-W è completato: PCS 405,195 s, installazione 441,657 s; setup in corso.
+Il [trial `canonical-04`](../c7.1-history/h100-canonical-04-2026-10-09.md)
+termina alle 22:50:30 UTC dopo 2.720,764 s per superamento fisico nel primo
+gruppo A: 6.190.775.808 B contro 6.174.015.488 B. W PCS 405,195 s,
+installazione 441,657 s, setup 1.974,199 s e preparazione O=0 87,349 s
+sono completi; A e certificati no. Nessun timeout. Journal freschi bruciati.
+`2ff8106` conserva anche il campione terminale nel riepilogo; 36 test passano.
 Il [probe procfs e la candidata `920e684`](../c7.1-history/h100-thp-candidate-2026-10-09.md)
-non modificano il trial attivo. La nuova richiesta THP richiede build
-compatibile, controlli pertinenti, parità CUDA e inferenza esatta dopo
-il suo esito terminale. Non attribuire al consiglio una residenza o un
+sono separati dal trial fallito. La nuova richiesta THP richiede build
+compatibile, controlli pertinenti, parità CUDA e inferenza esatta. Non attribuire al consiglio una residenza o un
 guadagno non osservati; non allentare monitor, cap o deadline.
 Deadline e guard della campagna restano invariati.
 

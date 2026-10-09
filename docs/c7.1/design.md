@@ -152,13 +152,17 @@ Il monitor ora conserva e limita le riletture senza allentare il cap fisico.
 La [riserva iniziale CUDA di 256 B](../c7.1-history/h100-stack256-2026-10-09.md)
 è selezionata dopo 15/15 CUDA e inferenza esatta a 90,594 s. Il massimo
 temporaneo campionato scende di 207,229 MB a 1,267 GB, senza credito al
-picco completo o a un guadagno di tempo. `canonical-04` è in corso da W
-con journal e AES freschi.
+picco completo o a un guadagno di tempo. Il
+[quarto trial](../c7.1-history/h100-canonical-04-2026-10-09.md) termina
+nel primo gruppo A: temporanee fisiche 6.190.775.808 B, 16.760.320 B
+oltre il limite. W e setup sono completi, preparazione O=0 87,349 s;
+nessun commitment A o certificato completo. Il payload sotto cap non
+basta a dimostrare l'allowance fisica.
 Il [probe procfs](../c7.1-history/h100-thp-candidate-2026-10-09.md) misura
 0,928 s per una lettura smaps di W su pagine da 4 KiB. La candidata
 `920e684` consiglia pagine grandi prima del caricamento e passa il test
 locale sui byte/digest; effetto fisico e prestazionale sulla H100 restano
-da validare in un nuovo run. Il trial attivo non la usa.
+da validare in un nuovo run. Il trial fallito non la usava.
 Γ, causalità, replay e garanzie restano invariati. O=0/150/300 non sono verificati.
 Il precedente timeout CPU dopo
 circa 41 minuti rimane il fallimento di quella schedule da 1.024 scansioni,

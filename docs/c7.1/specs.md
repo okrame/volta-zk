@@ -1269,6 +1269,10 @@ Il monitor esenta W solo con copertura smaps completa e contigua. Conserva
 letture fallite, consente due riletture per campione e al massimo 64 fallimenti
 per run; i campioni recuperati conservano il cap fisico ma non il credito al
 picco stabile. I limiti di payload e memoria fisica non cambiano.
+Il [trial successivo](../c7.1-history/h100-canonical-04-2026-10-09.md)
+raggiunge 6.190.775.808 B e termina sul cap di 6.174.015.488 B durante A,
+benché il payload nominato resti sotto cap. `2ff8106` include nel riepilogo
+anche il campione terminale già presente nel CSV; nessun limite cambia.
 La [candidata `920e684`](../c7.1-history/h100-thp-candidate-2026-10-09.md)
 applica `MADV_HUGEPAGE` prima del primo accesso alle sole pagine intere
 interne alla capacità posseduta di W. Errore terminale, nessuna copia o

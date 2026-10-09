@@ -37,13 +37,15 @@ limitate del solo procfs non ritentano operazioni del protocollo né recuperano
 sessioni. La configurazione iniziale dello stack CUDA mantiene errori terminali
 e [passa parità reale e inferenza esatta](../c7.1-history/h100-stack256-2026-10-09.md);
 non modifica MAC, NoPeek, correlazioni o l'allowance fisica da dimostrare.
-Il trial `canonical-04` ha capacità e journal freschi, senza importare
-lo stato dei trial precedenti.
+Il [trial `canonical-04`](../c7.1-history/h100-canonical-04-2026-10-09.md)
+termina sul cap fisico durante A, senza accettazione. I suoi journal e
+70.778.880 correlazioni prenotate per ruolo sono bruciati; nessuno stato
+viene importato nel prossimo trial.
 Il [consiglio Linux per le pagine W](../c7.1-history/h100-thp-candidate-2026-10-09.md)
 riguarda solo l'allocazione globale prima del caricamento: non legge
 monete o correlazioni, non cambia input o transcript e non concede una
 nuova esenzione di memoria. È una candidata operativa ancora da validare
-sulla H100, distinta dal trial attivo.
+sulla H100, distinta dal trial fallito.
 
 Il teorema richiede almeno 78 bit per ciascun vantaggio completo.
 Si lavora nel modello dell'oracolo casuale classico, con lavoro e memoria

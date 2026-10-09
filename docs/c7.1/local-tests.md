@@ -57,14 +57,33 @@ Le fonti congelate conservano i riferimenti originali secondo la
 
 ```bash
 cd "$C71_ROOT/rust"
-cargo test --offline --locked -j 1 -p volta-pcs \
-  --features c71-seed6-reference --lib --no-run
+C71_RUST_HOST="$(rustc -vV | sed -n 's/^host: //p')"
+C71_LLD_DIR="$(rustc --print sysroot)/lib/rustlib/$C71_RUST_HOST/bin/gcc-ld"
+test -d "$C71_LLD_DIR"
+timeout -k 5s 60s cargo rustc --offline --locked -j 1 -p volta-pcs \
+  --features c71-seed6-reference --lib --profile test \
+  --config profile.dev.package.volta-pcs.opt-level=0 \
+  --config profile.dev.package.volta-pcs.codegen-units=256 -- \
+  -Clink-arg=-fuse-ld=lld "-Clink-arg=-B$C71_LLD_DIR" -Clink-arg=-Wl,--threads=1
 cargo build --offline --locked -j 1 -p volta-pcs \
   --features c71-b12-pcs --example c71_calibration
 cargo build --offline --locked -j 1 -p volta-pcs \
   --features c71-seed6-reference --example c71_canonical_reference
 cd "$C71_ROOT"
 ```
+
+Eseguire da `rust` per caricare `rust/.cargo/config.toml`: dipendenze O2,
+crate test O0, 256 codegen unit, un job, incremental disabilitato e
+overflow checks conservati. `cargo rustc --lib --profile test` produce
+il binario unit-test e applica gli argomenti finali al solo crate scelto
+([Cargo](https://doc.rust-lang.org/cargo/commands/cargo-rustc.html)).
+Il linker [LLD](https://lld.llvm.org/) è quello della toolchain già
+installata, con un thread; il percorso deriva da sysroot/host, senza
+dipendenze aggiunte o home del proprietario codificata nel comando.
+La compilazione ha AS non limitato e deadline 60 s, separata dai test
+AS 2 GiB/60 s. La motivazione, il costo della build completa e i timeout
+precedenti sono nel [checkpoint query](../c7.1-history/crypto-query-2026-10-09.md).
+Non attribuire al riuso di una build il costo di una nuova compilazione.
 
 Impostare `C71_PCS_TEST_BINARY` al percorso assoluto dell'eseguibile
 `volta_pcs-…` stampato da Cargo, oppure riusato con digest, SHA di build
@@ -116,21 +135,25 @@ senza eseguirli; altrimenti la build CUDA si svolge sul pod autorizzato:
 nvcc -std=c++17 -O2 -arch=sm_90 --shared --cudart static -Xcompiler=-fPIC \
   cuda/c71_dense_i16.cu cuda/c71_range_native.cu cuda/c71_pcs_hash.cu \
   cuda/c71_pcs_weight.cu cuda/c71_pcs_weight_tensor.cu cuda/c71_pcs_source.cu \
-  cuda/c71_pcs_salts.cu cuda/c71_range_runtime.cpp \
+  cuda/c71_pcs_salts.cu cuda/c71_pcs_query.cu cuda/c71_linear_native.cu \
+  cuda/c71_range_runtime.cpp \
   -o /tmp/libc71_device_runner.so
 nvcc -std=c++17 -O2 -arch=sm_90 --cudart static \
   cuda/c71_nonlinear_parity.cu cuda/c71_dense_i16.cu -o /tmp/c71_device_parity
 ```
 
 Il loader richiede tutti i simboli ABI4 correnti, comprese operazioni
-sali, confronto Tensor e FFT naturale. Una libreria incompleta fallisce
+sali, confronto Tensor, FFT naturale e quattro operazioni query. Una libreria incompleta fallisce
 prima dell'uso. Le FFT naturali sono definite nell'unità weight esistente.
-La build Rust mirata può usare
-`--config profile.dev.package.volta-pcs.opt-level=0` per il solo crate,
-con dipendenze O2, cache e un job. Eseguire da `rust` per caricare
-`rust/.cargo/config.toml`. AS 2 GiB si applica ai test, non alla
-compilazione; conservare RSS/deadline della build separati e nessun
-rapporto di speedup tra Rust O0 e C++ O2.
+La unità lineare risolve i launcher del nuovo owner preparatorio; il
+caller è CPU al checkpoint query, mentre il nuovo collegamento
+`native_original` richiede un record distinto. Nel codice preparato le
+quattro API owner `c71_linear_begin(...)`, `c71_linear_source_tile(...)`,
+`c71_linear_weights(...)`, `c71_linear_finish(...)` richiedono verifica separata
+prima dell'uso. `c71_pcs_residual.cu` è un helper S1 preparatorio, senza
+consumer owner: non è necessario alla linkline corrente e non dà credito
+alla PCS extension. Conservare RSS/deadline della build separati e
+nessun rapporto di speedup tra Rust O0 e C++ O2.
 
 #### PCS iniziale, query e candidati
 
@@ -171,6 +194,11 @@ transcript e MAC originali, secondo l'ambito indicato.
 | `c71_b12_native_transform_natural_forward_inverse_and_work` | DFT Rust indipendente, log pari/dispari, inverse, segmenti batch e conto D2D |
 | `c71_b12_native_transform_rejections_and_fail_closed` | Owner, tipo, span, alias, orientamento twiddle e errori terminali |
 | `c71_b12_native_transform_symbols_are_mandatory` | Rifiuto di ciascun simbolo FFT mancante |
+| `c71_b12_native_query_exact_horner_windows_pads_and_resources` | Resti iniziali A contro Horner, finestre identiche, suffissi vivi/pad e risorse |
+| `c71_b12_native_query_reader_failure_without_host_fallback` | Reader unavailable/pending/foreign/errore terminale |
+| `c71_b12_native_query_rejections_and_fail_closed` | Owner/tipo/span/alias e guard query |
+| `c71_b12_native_query_private_phase_read_and_mandatory_symbols` | Letture private vietate e quattro simboli query obbligatori |
+| `c71_b12_native_query_composed_uncached_chain_original_mac_and_transcript` | Catena D10 uncached, query iniziali native e commitment iniziale CPU; wire/FS/RNG, MAC originali e due verificatori |
 
 Per i sali eseguire separatamente i quattro filtri seguenti: il filtro
 aggregato compila più fixture e si avvicina al limite 60 s.
@@ -218,8 +246,13 @@ Con toolkit disponibile, compilare anche la candidata attention:
 nvcc -std=c++17 -O2 -arch=sm_90 -c cuda/c71_attention_mma.cu -o /tmp/c71_attention_mma.o
 ```
 
-La primitiva FFT è integrata nel common owner; il caller query A rimane
-CPU nel [checkpoint validato](../c7.1-history/crypto-transform-2026-10-09.md).
+La FFT e il caller delle query iniziali A sono integrati nel common owner
+nel [checkpoint query](../c7.1-history/crypto-query-2026-10-09.md).
+Le fixture `tests/test_c71_linear_native.py` e
+`tests/test_c71_pcs_residual.py` controllano helper distinti MAC/PCS;
+il nuovo owner lineare e il caller S1 rimangono preparazione da verificare,
+non risultati di questo checkpoint. Non aggregare i cinque filtri query
+in una sola invocazione: ciascuno compila una fixture dinamica.
 La futura parità sm_90, il tempo completo e il picco fisico si verificano
 sulla H100 autorizzata. Non ridurre limiti query o aumentare implicitamente
 ricostruzioni A per far passare fixture o conto memoria.

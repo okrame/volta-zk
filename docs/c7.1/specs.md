@@ -419,7 +419,9 @@ ordine e duplicati. Il limite grande è collegato ma non eseguito: resti,
 albero dei fattori e matrice restituita sono buffer contigui. Ogni livello
 usa due spettri piatti; i resti discendono in due buffer contigui. La
 rigenerazione conserva un solo sottoalbero e copia soltanto i path richiesti.
-Questi restano algoritmi CPU, conteggiati nel budget comune. Il cap delle
+Fattori pubblici, query W/extension e rigenerazione Merkle restano CPU;
+le query iniziali A collegano lettore e resti residenti descritti sotto.
+Tutti sono conteggiati nel budget comune. Il cap delle
 query iniziali dimezzato può raddoppiare i batch: nessun credito di lavoro
 gratis. I punti dei claim GKR/PCS e i loro vettori rilasciano la capacità
 eccedente appena aggiunti al batch, preservando ordine e MAC.
@@ -442,7 +444,7 @@ del layout. Si separano payload, zeri pubblici e `X^M*pad` alle posizioni
 originali; i pad non vengono spostati. Gli oracoli successivi al fold
 mantengono l'intero supporto, senza ereditare zeri non dimostrati.
 
-Le query della A originale ricostruiscono ora finestre byte di due
+Le query della A originale ricostruiscono finestre byte di due
 colonne, con cap 256 MiB: il caso D34 ha colonne da 2^27 byte. I blocchi
 di ogni colonna sono consumati high-to-low nella stessa finestra già
 prodotta, inclusa la seconda colonna. Il callback legge soltanto il
@@ -454,8 +456,11 @@ usano ora gli stessi controlli di copertura per riga dello scanner iniziale.
 L'output è scritto direttamente nei limb base restituiti all'albero,
 senza una matrice `Coefficient` completa aggiuntiva. Al cap iniziale ciò
 rimuove una copia nominale da 2 GiB, non dimostra il picco completo.
-Il [checkpoint delle query](../c7.1-history/canonical-query-windows.md)
-separa le verifiche ridotte dal lavoro restante sui workspace.
+Il [checkpoint delle finestre](../c7.1-history/canonical-query-windows.md)
+conserva il percorso CPU precedente; il
+[caller residente](../c7.1-history/crypto-query-2026-10-09.md) riusa richieste,
+cap e ordine, senza D2H degli originali. Costruzione pubblica dei fattori
+e staging rimangono nel conto anche dopo questa integrazione.
 
 Coset, resti e correzione dei pad di colonne base usano elementi da 8 B;
 quelli extension da 24 B. La conversione base rifiuta coordinate extension
@@ -595,7 +600,7 @@ il debito ed evita di ritentare sul puntatore di proprietà incerta.
 Le fixture piccole possono passare un callback nullo; il loader Rust
 collega sempre il census comune. Il runner canonico impone il tetto
 congiunto sotto; il limite locale dell'owner non autorizza arene aggiuntive.
-Upload e download sono fenced; solo root/terminali e quattro coefficienti
+Upload e download sono fenced; nel percorso range solo root/terminali e quattro coefficienti
 possono tornare all'host, dopo il successo e il controllo dei limb.
 Errori di shape, handle, CUDA o fence fermano definitivamente il contesto.
 Il ledger conta prenotazione richiesta, capacità assegnate/picco, payload,
@@ -852,7 +857,8 @@ separatamente. D15 W/A uncached e CPU lookup/GKR/WHIR superano 60 s locali:
 restano esiti negativi, non credito di completamento.
 
 La [FFT naturale](../c7.1-history/crypto-transform-2026-10-09.md) è una
-primitiva sul common owner, non il caller query A residente.
+primitiva sul common owner; il successivo
+[checkpoint query](../c7.1-history/crypto-query-2026-10-09.md) collega il caller A iniziale.
 `c71_pcs_transform_twiddles`, `c71_pcs_transform` e `c71_pcs_read_words`
 sono tre simboli ABI4 obbligatori, +24 B nella API Rust; nessun nuovo
 owner/buffer permanente. Log N da 1 a 24, batch≤2^20, word complessive≤2^28.
@@ -869,8 +875,43 @@ private. Per q=2^20, valori/scratch/due twiddle di 2q richiedono 67.108.864 B;
 sono esclusi fattori, finestra originale, low/high, pad, output host,
 Tree/replay e altri owner. Non è l'ammissione della query completa.
 PCS v³=v+1 e MAC u³=2 rimangono distinti; la trasformazione base non
-reinterpreta le componenti d'estensione. Il caller query e S1 sono
-ancora CPU nel checkpoint validato; le ricostruzioni non aumentano.
+reinterpreta le componenti d'estensione. Extension, S1 e query W restano
+CPU nel checkpoint validato; le ricostruzioni non aumentano.
+
+Il reader `NativeQuery` collega le finestre originali al medesimo owner
+numerico. Resti high-to-low, shift dei pad e discesa dell'albero usano
+FFT base dirette/inverse e quattro API ABI4 obbligatorie:
+`c71_pcs_query_low`, `c71_pcs_query_remainder`, `c71_pcs_query_shift`,
+`c71_pcs_query_add` (+32 B nella API Rust). I fattori pubblici, reciproci
+e shift sono costruiti CPU e caricati; i pad rimangono privati al consumer.
+Il reader riceve soltanto runtime e intervallo pubblico originale, senza
+monete PCS. Restituisce byte residenti sigillati; errore, owner/tipo/span
+diverso o stato pending fermano la prova. Nessun getter o reader host
+sostitutivo. D2H contiene solo le colonne della matrice restituita e i
+flag di controllo già esistenti, mai i byte originali. Ordine/duplicati
+e tutti gli endpoint MAC rimangono quelli del riferimento.
+
+Per q=2^20 e 128 colonne, il subtotal device query è 1.125.647.872 B:
+fattori 704.643.072, twiddle allineati di tutti i livelli 67.110.400,
+shift opzionale 16.777.216, low/pad/resti/work/scratch 67.108.864,
+pad originali 1.572.864 e finestra byte 268.435.456 B. Si aggiunge un
+flag gather allineato da 256 B. Host: matrice finale 1.073.741.824 B e
+staging di una colonna 8.388.608 B. Il massimo H2D nominato per batch è
+722.993.152 B, D2H della matrice 1.073.741.824 B più 4 B per ogni flag
+finestra. Sono subtotal analitici, **non un'ammissione congiunta**:
+costruzione dei prodotti pubblici, conversioni/cache DFT CPU, Tree/replay,
+righe/sali/path già aperti, numerica, PCG/maschere, prove/codec, entrambi
+i ruoli e riserva fisica rimangono aggiuntivi. I temporanei native-query
+sono ritirati prima di rigenerare/copiare le righe del batch corrente;
+le righe dei batch precedenti rimangono vive. La retention S1 inizia solo
+dopo apertura/rilascio del predecessore A, quindi non coesiste con questo
+scratch. Questi lifetime non liberano implicitamente snapshot o cache.
+
+La parità contro Horner verifica richieste di finestre identiche al
+riferimento; il commitment iniziale A conserva 512 ricostruzioni.
+La catena D10 uncached verifica wire, FS/RNG, MAC originali e due
+verificatori, con commitment iniziale CPU ed extension ancora CPU.
+Tempi Rust O0/C++ O2 non consentono rapporti di speedup o stime H100.
 
 #### Closure e candidate aritmetiche
 
@@ -882,7 +923,11 @@ sovrapposizioni e ordine arbitrario conservano coefficienti/endpoint.
 Unicità è precondizione dello scanner; il confine controlla live/range/
 count ed errori prima delle tre correlazioni. Wire/FS/MAC e riserva 3D+2
 restano invariati; capacità/realloc/forme pubbliche sono nel budget.
-La componente è CPU; collegamento GPU ancora aperto.
+Il caller è CPU al checkpoint query. Helper CUDA, nuovo owner lineare e
+collegamento `native_original` sono preparazione successiva, senza
+record di convalida owner/caller. Anche `c71_pcs_residual.cuh/.cu` prepara aritmetica
+PCS v³=v+1, singleton/OOD, SoA e coset/fold senza selezione o consumo da
+parte dell'owner; non implica retention S1 GPU o cambi di lifetime.
 
 La [candidata Tensor W](../../cuda/c71_pcs_weight_tensor.cu) usa quattro
 limb16 biased, dot INT8 pack/compose esatto e correzione 32768·sum_W:
@@ -927,8 +972,8 @@ e conteggi originali. La copertura completa precede il seal di ogni finestra.
 | PCS iniziale CPU/A | Quattro coset 2^20×128×8 = 4.294.967.296 B insieme, inclusi quelli in attesa; frontier W riferimento/A 402.653.184 / 369.098.752 B, cursori sali 8.388.608 B; FFT, radici, pad, potenze e stato device restano conteggiati |
 | PCS iniziale W CUDA | Ring otto colonne/32 coset 2.147.483.648 B, CV 1.073.741.824 B e frontier 234.881.024 B; subtotal device del componente 3.745.182.208 B con sampler privato, senza sommare la schedule CPU alternativa |
 | PCS S1/S2 | S1: due coset 2^23×12×8; S2: due coset 2^21×12×8 con S1 da 3.221.225.472 B vivo. Dopo il rilascio del predecessore si applica il fold e `shrink_to_fit`; anche l'eventuale sovrapposizione vecchio+nuovo del realloc è addebitata |
-| Aperture PCS | Matrice contigua; fattori 32×q×(log2(q)+1) B, q≤2^20; due livelli di resti, FFT, staging e un solo sottoalbero rigenerato; nessun Vec per riga/fattore trattenuto |
-| Range/staging | Range A ≤1 GiB device nel runner; query A ≤256 MiB host più ≤256 MiB device; W staging signed ≤256 MiB; padding pubblico signed host ≤55.574.528 B; ogni copia vive nel medesimo conto |
+| Aperture PCS | Matrice contigua; query iniziali A native con subtotal e lifetime sopra, fattori pubblici CPU; W/extension CPU. q≤2^20, resti/FFT/staging e un solo sottoalbero rigenerato; righe/sali/path precedentemente aperti restano conteggiati |
+| Range/staging | Range A ≤1 GiB device; finestra originale query A ≤256 MiB device, senza copia byte host nel caller nativo (≤256 MiB host nel riferimento CPU); W staging signed ≤256 MiB, padding pubblico signed host ≤55.574.528 B; ogni copia rimane nel conto |
 | GKR, Seed6 e altro host | Compact RMS, EXP30/lookup, contrazioni, MAC originali, Seed6 reale dei due ruoli, tabelle/profili, certificati/codec e metadati passano dallo stesso allocatore; nessuno slot figurativo li rende gratuiti |
 
 Il [ledger eseguibile](../../scripts/c71_temporary_ledger.py) riconcilia
@@ -954,7 +999,8 @@ del consumo. Il gather accetta viste nei prefissi KV, non celle future.
 Questi byte non passano al verificatore. Il range A resta residente;
 La finestra range A del runner scende da 2 GiB a 1 GiB: cambia il numero
 di finestre, non gli originali né la geometria del range.
-I commitment iniziali W/A sono residenti. PCS extension FFT/Merkle e relativi sali, aperture/resti/contrazioni,
+I commitment iniziali W/A e le query iniziali A sono residenti. PCS
+extension FFT/Merkle e relativi sali, query W/extension, contrazioni,
 GKR non-range, MAC, PCG, codec e verifica
 restano CPU dichiarati, non fallback impliciti. La rigenerazione di una
 generazione storica rilascia quella precedente e riusa KV450 originale;

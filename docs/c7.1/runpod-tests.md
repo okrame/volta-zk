@@ -18,10 +18,11 @@ La preparazione locale non autorizza riattivazione, nuovi pod o benchmark
 hardware. Γ si riusa dopo verifica di identità ed impatto compatibili.
 
 Il runner `experiment-cuda` è misto: inferenza/replay/range A e commitment
-iniziali W/A con sali residenti; extension PCS, query/resti/S1, GKR
-non-range/MAC, Seed6 AES e verifica dichiarati CPU. La FFT naturale
-[validata sul common owner](../c7.1-history/crypto-transform-2026-10-09.md)
-è una primitiva; il caller query A non è ancora collegato nel checkpoint.
+iniziali W/A con sali residenti e
+[query iniziali A native](../c7.1-history/crypto-query-2026-10-09.md).
+Fattori pubblici, extension PCS/S1, query W, caller lineare,
+GKR non-range/MAC, Seed6 AES e verifica restano CPU al checkpoint validato.
+Nuovo owner lineare e helper S1 sono preparazione distinta da verificare.
 Accumulo W ordinario e QK/PV scalari rimangono default; le candidate Tensor/MMA
 sono confronti espliciti. Parità host e driver simulato non attribuiscono
 compilazione sm_90, parità CUDA, prestazioni o picco fisico H100.
@@ -235,11 +236,21 @@ un eventuale `.env` deve essere regolare, posseduto dall'utente e `0600`.
 
 La futura libreria completa segue la
 [build locale](local-tests.md#collegamento-del-runner-cuda), includendo
-hash, weight, Tensor, source e sali PCS oltre all'owner. Simboli ABI4
+hash, weight, Tensor, source, sali/query PCS e unità lineare oltre all'owner. Simboli ABI4
 mancanti sono terminali, senza fallback. Verificare CUDA reali di
 prescan prefix/scatter, replay sali, seek/rejection/cap, cursor finali,
 flag/fence, basi, pad e root. Verificare anche FFT naturali pari/dispari,
 inverse e segmenti batch; le fixture host non eseguono quei kernel.
+Per le query iniziali A confrontare tutte le valutazioni con Horner e
+gli stessi intervalli del reader, inclusi live parziale/zero, pad,
+duplicati ed ordine invertito. Richiedere zero D2H dei byte originali e
+riuso dello stesso owner; ripetere la catena uncached con wire/FS/RNG e
+MAC originali. Contare fattori/staging CPU, matrice finale, righe/sali/path
+già aperti e gli altri owner secondo [specs](specs.md#aperture-e-fft-naturale).
+Verificare il ritiro dello scratch query prima della rigenerazione del
+batch corrente e retention S1 solo dopo apertura del predecessore.
+Il nuovo owner lineare e helper S1 richiedono parità e conto propri prima
+della selezione; non ereditarli dal checkpoint query.
 
 Il [diagnostico W](../../cuda/c71_pcs_weight_compare.cpp) si compila e
 linka contro la libreria CUDA reale, rifiutando il driver di test.
@@ -259,8 +270,8 @@ secondo misure rappresentative, senza inferire speedup dal driver host.
 
 Il comando è ora `c71_canonical_reference experiment-cuda`. Gli esempi
 `c71_matrix` e `c71_calibration` non lo sostituiscono. L'esperimento usa
-la pipeline mista dichiarata, distinguendo commitment iniziali residenti
-da aperture e PCS successive CPU; il sampler iniziale è residente.
+la pipeline mista dichiarata, con commitment/query A iniziali residenti
+e PCS extension/query W ancora CPU; il sampler iniziale è residente.
 Usare le
 [build mirate](local-tests.md#compilazione-mirata) e la
 [build della libreria CUDA](local-tests.md#collegamento-del-runner-cuda).
@@ -284,9 +295,9 @@ invariati NoPeek, MAC originali, margine arena 256 MiB, margine globale
 
 Gli esperimenti GPU confrontano prima gli operatori con il diagnostico
 di parità sopra e il range con il riferimento host/nativo. Accumuli,
-FFT e hash salato dei commitment iniziali sono residenti; extension PCS,
-query/resti/PQ e S1 restano CPU nel checkpoint validato. La nuova
-primitiva FFT non implica il collegamento del caller query. Poi si
+FFT e hash salato dei commitment iniziali, lettore e resti delle query
+iniziali A sono residenti; fattori pubblici, extension PCS/S1 e query W
+restano CPU nel checkpoint validato. Poi si
 misurano le fasi rappresentative con i
 loro stati simultaneamente vivi. Un kernel veloce da solo non dimostra
 il tempo completo. CUDA richiesto ma non disponibile deve produrre errore,

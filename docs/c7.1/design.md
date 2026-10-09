@@ -73,8 +73,8 @@ non trasferisce automaticamente i bound B12 al programma completo.
 
 Il runner esplicito `experiment-cuda` collega i 13 producer, inferenza
 causale, replay A, PCS/range/GKR, verifica e promozione per O=0/150/300.
-È un percorso misto GPU/CPU. Il seguente stato riguarda l'ultimo
-checkpoint locale validato; integrazione software e parità ridotta
+È un percorso misto GPU/CPU. Il seguente stato distingue l'ultimo
+checkpoint locale validato dalla preparazione successiva; integrazione software e parità ridotta
 non attribuiscono prestazioni o picco fisico H100.
 
 | Parte | Stato e confine |
@@ -83,11 +83,12 @@ non attribuiscono prestazioni o picco fisico H100.
 | Commitment iniziale W | Integrato nel Tree/runner: accumuli esatti, FFT, foglie incrementali e Merkle sul common owner; 32 coset/otto colonne, 128 scansioni analitiche sul pinned |
 | Commitment iniziale A | Producer residenti collegati alla PCS, quattro coset/tutte le 128 colonne, istogramma fuso nel primo replay; 512 ricostruzioni conservate, nessun download per riga nel commitment |
 | Sali iniziali W/A | Prescan e replay selezionati sullo stream comune, cursore logico e cap originali; niente bande host/upload sali |
-| FFT naturale diretta/inversa | Primitiva integrata nell'owner con parità indipendente; caller query A, fattori/resti e S1 ancora CPU nel checkpoint validato |
-| Closure lineare | Una scan originale per round CPU, D·live visite; versione GPU ancora da collegare |
+| FFT naturale diretta/inversa | Primitiva integrata nell'owner con parità indipendente, usata dalle query iniziali A; extension e S1 restano CPU |
+| Query iniziali A | Reader residente e resti collegati al Tree/runner, con sole valutazioni finali D2H; costruzione dei fattori pubblici CPU, richieste e ricostruzioni originali |
+| Closure lineare | Una scan originale per round CPU al checkpoint query, D·live visite; helper, owner GPU e collegamento `native_original` preparati, da convalidare separatamente |
 | Accumulo W Tensor Core | Candidata limb16 esatta e confronto esplicito sul medesimo owner; ordinario rimane predefinito |
 | QK/PV | Default scalare esatto; candidata MMA con prefisso causale comune e bordo scalare non selezionata |
-| Resto della prova | Extension PCS, query/resti/contrazioni, GKR non-range/MAC, Seed6 reale AES, codec, verifica e journal dichiarati CPU |
+| Resto della prova | Extension PCS/S1, query W, contrazioni, GKR non-range/MAC, Seed6 reale AES, codec, verifica e journal dichiarati CPU; helper S1 preparatorio |
 
 [canonical_device.rs](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_device.rs)
 possiede la sessione numerica: stessa Arc W del commitment, un solo
@@ -98,7 +99,7 @@ preparatore non ricevono transcript, monete PCS o correlazioni; le viste
 storiche mantengono il prefisso causale. Errori, panic, CUDA assente e
 cleanup falliti sono terminali, senza retry o fallback.
 
-I consumer CPU usano staging privato bounded. Il range A è residente;
+I consumer CPU usano staging privato bounded. Range e query iniziali A sono residenti;
 il gather range W usa ancora upload signed per finestre fino a 256 MiB.
 La PCS completa non è ancora residente. Il
 [conto tecnico](specs.md#runner-cuda-sperimentale-e-conto-simultaneo)
@@ -132,13 +133,13 @@ rappresentativi, conto completo e procedure sono pronti, prima della
 campagna hardware. Il goal è ancora attivo; nuova H100 e durata
 richiedono nuova autorizzazione.
 
-Le prossime integrazioni riguardano query A iniziali residenti e S1,
-poi aperture/closure/GKR/range e sincronizzazioni secondo il profilo.
-Le query usano già finestre bounded; il loro caller deve conservare
-batch, richieste e ricostruzioni. S1 conserva 35 passaggi non-query fino
-alla retention: evitare una seconda matrice device da 1 GiB o una doppia
-retention da 3,22 GB. Le primitive FFT naturali sono pronte, il caller
-non è ancora validato come residente. Valutare TMA, fusioni e CUDA Graphs
+Le query iniziali A sono ora collegate al reader residente, con parità
+ridotta contro Horner e catena PCS uncached. I prossimi passi sono S1,
+closure lineare e poi aperture/GKR/range e sincronizzazioni secondo il
+profilo. S1 conserva 35 passaggi non-query fino alla retention: evitare
+una seconda matrice device da 1 GiB o una doppia retention da 3,22 GB.
+Helper S1 e nuovo owner lineare sono preparazione distinta dal checkpoint
+query validato, senza credito di integrazione. Valutare TMA, fusioni e CUDA Graphs
 su costi misurati. Il confronto W ordinario/Tensor e la selezione QK/PV
 richiedono compilazione, parità e misura GPU nella futura campagna.
 
@@ -186,6 +187,7 @@ locali sono `credit:false`, senza compilazione o esecuzione CUDA.
 | [Closure/XOF/confronto Tensor](../c7.1-history/crypto-components-2026-10-09.md) | Componenti esatti e confronto owner; [correzione causale QK/PV](../../benchmarks/results/c71-attention-causal-local-2026-10-09-29a257b4476b.json) distinta dal finding iniziale |
 | [Sali owner/Tree](../c7.1-history/crypto-salts-owner-2026-10-09.md) | Stream privato, root/aperture/transcript/MAC e conto aggiornato; gerarchia CUDA non eseguita, timeout CPU conservato |
 | [FFT naturale owner](../c7.1-history/crypto-transform-2026-10-09.md) | Diretta/inversa esatte, geometria dispari e guard; primitiva integrata, query caller ancora CPU al source validato |
+| [Query iniziali A residenti](../c7.1-history/crypto-query-2026-10-09.md) | Horner, richieste identiche e catena D10 uncached con wire/FS/RNG/MAC originali; extension/S1 e caller lineare ancora CPU |
 | [Regole operative](../c7.1-history/operating-rules-2026-10-08.md), [temporanei](../c7.1-history/temporary-memory-2026-10-04.md) | Ragioni delle decisioni; autorizzazioni correnti definite nel [runbook](runpod-tests.md#autorizzazione-e-limiti) |
 
 ## Contratto delle risorse

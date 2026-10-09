@@ -683,6 +683,18 @@ La lettura bounded di word base nega le fasi sali private. Il
 [checkpoint FFT](../c7.1-history/crypto-transform-2026-10-09.md) valida
 la primitiva, senza validare query A o S1 residenti.
 
+Il successivo [checkpoint query A](../c7.1-history/crypto-query-2026-10-09.md)
+collega il reader residente conservando gli stessi intervalli originali,
+ordine, duplicati, pad e endpoint MAC. Il reader numerico riceve soltanto
+runtime e intervallo pubblico: spettri query e pad PCS restano nel
+consumer. Valori originali non sono scaricati; solo la matrice finale
+passa al Tree prima dell'autenticazione Merkle. Errori, owner/span/tipo
+alterati o buffer pending sono terminali, senza reader/getter sostitutivo.
+La catena ridotta uncached conserva wire, FS/RNG e MAC originali con due
+verificatori; non dimostra parità CUDA o ammissione fisica. Extension/S1
+e caller lineare restano CPU al source validato: helper S1 e nuovo owner
+lineare preparatori non scaricano le relative premesse.
+
 S1 si ridimensiona soltanto dopo consumo/rilascio del predecessore e
 registrazione del successore; nessun oracolo ancora apribile è modificato.
 La closure lineare scansiona originali una volta per round, con EQ/sfide

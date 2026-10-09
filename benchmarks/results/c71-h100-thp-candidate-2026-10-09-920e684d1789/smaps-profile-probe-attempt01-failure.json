@@ -1,0 +1,6 @@
+{
+  "epoch": 1791584181.5927925,
+  "error": "KeyError: capacity_bytes",
+  "action": "read-only smaps profile probe",
+  "scope": "The diagnostic read ran, but metadata extraction used the wrong event field. No inference or protocol effect; corrected probe will use the actual schema."
+}

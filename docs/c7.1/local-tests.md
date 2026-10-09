@@ -31,6 +31,11 @@ La [validazione successiva sulla H100](../c7.1-history/h100-stack256-2026-10-09.
 passa i 15 test reali e il diagnostico nonlineare dopo ricompilazione sm_90;
 la nuova inferenza ha token e contatori nativi identici alla baseline.
 Questi sono risultati del pod, distinti dai test locali e dalla prova completa.
+La [candidata sulle pagine W](../c7.1-history/h100-thp-candidate-2026-10-09.md)
+estende il test del reader con 2 MiB di input e controllo di tutti i valori
+e del digest. La prima build locale termina al timeout 120 s; il nuovo
+tentativo con dipendenze riusate passa in 55,833 s entro lo stesso limite.
+Il test passa anche sulla checkout pulita; nessun credito H100 ne deriva.
 
 ## Limiti e ambiente
 

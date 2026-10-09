@@ -56,6 +56,12 @@ Si riusa il binario scalare solo dopo verifica dei sorgenti Rust identici;
 libreria, monitor e binario riportano ciascuno la propria SHA di build.
 `canonical-04` è in corso dalle 22:05:09 UTC: riparte da W con journal
 e correlazioni nuovi, monitor `7f9c812` e libreria `a32a6c3`, timeout 7.200 s.
+W è completato: PCS 405,195 s, installazione 441,657 s; setup in corso.
+Il [probe procfs e la candidata `920e684`](../c7.1-history/h100-thp-candidate-2026-10-09.md)
+non modificano il trial attivo. La nuova richiesta THP richiede build
+compatibile, controlli pertinenti, parità CUDA e inferenza esatta dopo
+il suo esito terminale. Non attribuire al consiglio una residenza o un
+guadagno non osservati; non allentare monitor, cap o deadline.
 Deadline e guard della campagna restano invariati.
 
 La precedente campagna chiusa conserva il proprio fallimento nel commitment

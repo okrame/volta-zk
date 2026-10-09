@@ -154,6 +154,11 @@ La [riserva iniziale CUDA di 256 B](../c7.1-history/h100-stack256-2026-10-09.md)
 temporaneo campionato scende di 207,229 MB a 1,267 GB, senza credito al
 picco completo o a un guadagno di tempo. `canonical-04` è in corso da W
 con journal e AES freschi.
+Il [probe procfs](../c7.1-history/h100-thp-candidate-2026-10-09.md) misura
+0,928 s per una lettura smaps di W su pagine da 4 KiB. La candidata
+`920e684` consiglia pagine grandi prima del caricamento e passa il test
+locale sui byte/digest; effetto fisico e prestazionale sulla H100 restano
+da validare in un nuovo run. Il trial attivo non la usa.
 Γ, causalità, replay e garanzie restano invariati. O=0/150/300 non sono verificati.
 Il precedente timeout CPU dopo
 circa 41 minuti rimane il fallimento di quella schedule da 1.024 scansioni,

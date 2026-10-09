@@ -1,0 +1,310 @@
+{
+  "artifacts": [
+    {
+      "bytes": 31017,
+      "path": "benchmarks/results/c71-h100-thp-candidate-2026-10-09-920e684d1789/canonical-04-completed-W.json",
+      "sha256": "ddc71e16565d81c4d6aa54ece1a7230dd32ca90f2f7af5abc7cd3c74ef84a45d"
+    },
+    {
+      "bytes": 759,
+      "path": "benchmarks/results/c71-h100-thp-candidate-2026-10-09-920e684d1789/canonical04-smaps-profile-probe.json",
+      "sha256": "dce39791610e280361328c368ec9a81ff212096de60df6f67d017d3d181d3757"
+    },
+    {
+      "bytes": 2025,
+      "path": "benchmarks/results/c71-h100-thp-candidate-2026-10-09-920e684d1789/https-publication-checkpoint-9d3f432.json",
+      "sha256": "aa00447201996d62ff98f607c2fc9e408464437d7029aaace6ea7b70e7ac0085"
+    },
+    {
+      "bytes": 2151,
+      "path": "benchmarks/results/c71-h100-thp-candidate-2026-10-09-920e684d1789/local-build-02.json",
+      "sha256": "98c969df2603aa4c814ce530cb4a20d9dd6e0951cd4a532217831a52cd75d6b7"
+    },
+    {
+      "bytes": 14061,
+      "path": "benchmarks/results/c71-h100-thp-candidate-2026-10-09-920e684d1789/local-build-02.log",
+      "sha256": "404e060c49412649c67a0b1fbbf57b7ea666ff8b97ee7ddca2d488fb81d762f7"
+    },
+    {
+      "bytes": 2337,
+      "path": "benchmarks/results/c71-h100-thp-candidate-2026-10-09-920e684d1789/local-build.json",
+      "sha256": "58c553c9fb01ab739275bea7e4d820ab39f24982107792331feee255e606f7a9"
+    },
+    {
+      "bytes": 14117,
+      "path": "benchmarks/results/c71-h100-thp-candidate-2026-10-09-920e684d1789/local-build.log",
+      "sha256": "2d3c347731bbc57d18829207af5b8ae3992c7cec6d51986c65462f83658a7d1e"
+    },
+    {
+      "bytes": 468,
+      "path": "benchmarks/results/c71-h100-thp-candidate-2026-10-09-920e684d1789/local-packed-test.json",
+      "sha256": "b063f0ca2a0245729d0aba6f37dffb238dc10ae220eb315de9d842e22894744e"
+    },
+    {
+      "bytes": 0,
+      "path": "benchmarks/results/c71-h100-thp-candidate-2026-10-09-920e684d1789/local-packed-test.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 247,
+      "path": "benchmarks/results/c71-h100-thp-candidate-2026-10-09-920e684d1789/local-packed-test.stdout",
+      "sha256": "0644af94ea47b87d023c2b417398071ddd8460bfdf25a44040852e582b315bf5"
+    },
+    {
+      "bytes": 286,
+      "path": "benchmarks/results/c71-h100-thp-candidate-2026-10-09-920e684d1789/smaps-profile-probe-attempt01-failure.json",
+      "sha256": "dd5ba26143a55b6d1db70d800d46217c1253822180950c08fea95213fc9ae8a1"
+    }
+  ],
+  "candidate": {
+    "change": "Request MADV_HUGEPAGE only on full pages inside owned packed W before first touch. Error is terminal; no kernel setting changed. Input values/hash, W capacity, Gamma, payload ledger, physical monitor and protocol unchanged.",
+    "hardware_validation_pending": true,
+    "huge_pages_not_guaranteed_by_advice": true,
+    "source_git_sha": "920e684d1789741dcc86d536e962b8dae8e25af9"
+  },
+  "credit": false,
+  "date": "2026-10-09",
+  "git_dirty": false,
+  "git_sha": "920e684d1789741dcc86d536e962b8dae8e25af9",
+  "hardware_probe_source_git_sha": "a32a6c3286b556b43f8ede0b1a2ae39b5d7ebb2d",
+  "local_validation": {
+    "binary_source_tree_scope": "9d3f432 plus only the runner change committed as920e684; no incompatible local binary reuse",
+    "build_source_git_dirty": true,
+    "builds": [
+      {
+        "as_limit_mib": null,
+        "clock_ticks_per_s": 100,
+        "command": [
+          "cargo",
+          "rustc",
+          "--offline",
+          "--locked",
+          "-j",
+          "1",
+          "-p",
+          "volta-pcs",
+          "--features",
+          "c71-seed6-reference",
+          "--lib",
+          "--profile",
+          "test",
+          "--config",
+          "profile.dev.package.volta-pcs.opt-level=0",
+          "--config",
+          "profile.dev.package.volta-pcs.codegen-units=64",
+          "--",
+          "-Clink-arg=-fuse-ld=lld",
+          "-Clink-arg=-B/home/okrame/.rustup/toolchains/stable-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/bin/gcc-ld",
+          "-Clink-arg=-Wl,--threads=1"
+        ],
+        "cwd": "/home/okrame/projects/volta-zk/rust",
+        "deadline_s": 120,
+        "exit_code": 124,
+        "log": "/tmp/c71-thp-local-20261009/build.log",
+        "max_rss_bytes": 1025282048,
+        "memory_stop": false,
+        "sample_interval_s": 0.1,
+        "sampled_aggregate_live_rss_peak_bytes": 2515763200,
+        "sampled_aggregate_rss_stop_bytes": 3221225472,
+        "sampled_processes": {
+          "123": {
+            "cpu_ticks": 7512,
+            "first_seen_s": 16.741678421851248,
+            "last_seen_s": 91.74417592771351,
+            "max_rss_bytes": 1009831936,
+            "name": "rustc"
+          },
+          "163": {
+            "cpu_ticks": 2825,
+            "first_seen_s": 91.84479234879836,
+            "last_seen_s": 120.04468538472429,
+            "max_rss_bytes": 2460971008,
+            "name": "rustc"
+          },
+          "27": {
+            "cpu_ticks": 0,
+            "first_seen_s": 0.0018190010450780392,
+            "last_seen_s": 120.0446348018013,
+            "max_rss_bytes": 1576960,
+            "name": "timeout"
+          },
+          "28": {
+            "cpu_ticks": 21,
+            "first_seen_s": 0.0018948758952319622,
+            "last_seen_s": 119.9436912140809,
+            "max_rss_bytes": 53215232,
+            "name": "cargo"
+          },
+          "39": {
+            "cpu_ticks": 0,
+            "first_seen_s": 0.20341121312230825,
+            "last_seen_s": 0.20341229578480124,
+            "max_rss_bytes": 1560576,
+            "name": "rustc"
+          },
+          "43": {
+            "cpu_ticks": 1201,
+            "first_seen_s": 0.3041151729412377,
+            "last_seen_s": 12.302398906089365,
+            "max_rss_bytes": 460611584,
+            "name": "rustc"
+          },
+          "83": {
+            "cpu_ticks": 428,
+            "first_seen_s": 12.40326736588031,
+            "last_seen_s": 16.640997420065105,
+            "max_rss_bytes": 319832064,
+            "name": "rustc"
+          }
+        },
+        "system_s": 2.032371,
+        "user_s": 89.775751,
+        "wall_s": 120.04499809397385,
+        "workers": 1
+      },
+      {
+        "as_limit_mib": null,
+        "clock_ticks_per_s": 100,
+        "command": [
+          "cargo",
+          "rustc",
+          "--offline",
+          "--locked",
+          "-j",
+          "1",
+          "-p",
+          "volta-pcs",
+          "--features",
+          "c71-seed6-reference",
+          "--lib",
+          "--profile",
+          "test",
+          "--config",
+          "profile.dev.package.volta-pcs.opt-level=0",
+          "--config",
+          "profile.dev.package.volta-pcs.codegen-units=64",
+          "--",
+          "-Clink-arg=-fuse-ld=lld",
+          "-Clink-arg=-B/home/okrame/.rustup/toolchains/stable-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/bin/gcc-ld",
+          "-Clink-arg=-Wl,--threads=1"
+        ],
+        "cwd": "/home/okrame/projects/volta-zk/rust",
+        "deadline_s": 120,
+        "exit_code": 0,
+        "log": "/tmp/c71-thp-local-20261009/build-02.log",
+        "max_rss_bytes": 2550669312,
+        "memory_stop": false,
+        "sample_interval_s": 0.1,
+        "sampled_aggregate_live_rss_peak_bytes": 2719260672,
+        "sampled_aggregate_rss_stop_bytes": 3221225472,
+        "sampled_processes": {
+          "101": {
+            "cpu_ticks": 0,
+            "first_seen_s": 54.71707866713405,
+            "last_seen_s": 55.629726144019514,
+            "max_rss_bytes": 1288728576,
+            "name": "rustc"
+          },
+          "102": {
+            "cpu_ticks": 0,
+            "first_seen_s": 54.81794341979548,
+            "last_seen_s": 55.629774518776685,
+            "max_rss_bytes": 1495040,
+            "name": "collect2"
+          },
+          "103": {
+            "cpu_ticks": 88,
+            "first_seen_s": 54.81798771210015,
+            "last_seen_s": 55.62985447701067,
+            "max_rss_bytes": 596316160,
+            "name": "rust-lld"
+          },
+          "19": {
+            "cpu_ticks": 0,
+            "first_seen_s": 0.000989497173577547,
+            "last_seen_s": 55.83255852293223,
+            "max_rss_bytes": 1560576,
+            "name": "timeout"
+          },
+          "20": {
+            "cpu_ticks": 12,
+            "first_seen_s": 0.10269096400588751,
+            "last_seen_s": 55.73183364421129,
+            "max_rss_bytes": 52953088,
+            "name": "cargo"
+          },
+          "31": {
+            "cpu_ticks": 5460,
+            "first_seen_s": 0.20337097393348813,
+            "last_seen_s": 55.73192406119779,
+            "max_rss_bytes": 2547077120,
+            "name": "rustc"
+          }
+        },
+        "system_s": 6.105252,
+        "user_s": 49.654427,
+        "wall_s": 55.83296102192253,
+        "workers": 1
+      }
+    ],
+    "clean_tree_test_repeated_after_commit": true,
+    "clean_tree_test_reported_seconds": 0.08,
+    "packed_fixture_bytes": 2097152,
+    "packed_test": {
+      "as_limit_bytes": 2147483648,
+      "binary_sha256": "6ca9c7f07cf101db838287d90ffc69203badf47c8c5115ef257d528f68f8ca32",
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+        "c71_canonical_runner_packed_input_checks_before_installation",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "credit": false,
+      "deadline_seconds": 60,
+      "exit_code": 0,
+      "gpu_execution": false,
+      "wall_seconds": 0.08842101320624352
+    },
+    "packed_test_failed": 0,
+    "packed_test_passed": 1,
+    "source_bytes_equal_committed_candidate": true
+  },
+  "operational_failure": {
+    "action": "read-only smaps profile probe",
+    "epoch": 1791584181.5927925,
+    "error": "KeyError: capacity_bytes",
+    "scope": "The diagnostic read ran, but metadata extraction used the wrong event field. No inference or protocol effect; corrected probe will use the actual schema."
+  },
+  "private_bundle": {
+    "bytes": 36154,
+    "files": 6,
+    "manifest_sha256": "60bd67a7b5a5898670fe87c24afdef4cd6d6c7b7564b3f2a99712500ceec4291",
+    "path": "artifact/c7.1-pod/h100-final-thp-probe-20261009T222500Z"
+  },
+  "probe": {
+    "THP_config": {
+      "/sys/kernel/mm/transparent_hugepage/defrag": "always defer defer+madvise [madvise] never",
+      "/sys/kernel/mm/transparent_hugepage/enabled": "always [madvise] never"
+    },
+    "W_mapping_metadata": [
+      {
+        "AnonHugePages": "0 kB",
+        "Anonymous": "59957304 kB",
+        "KernelPageSize": "4 kB",
+        "MMUPageSize": "4 kB",
+        "Rss": "59957304 kB",
+        "THPeligible": "0",
+        "VmFlags": "rd wr mr mw me ac sd",
+        "mapping_bytes": 61396279296
+      }
+    ],
+    "epoch": 1791584197.9206643,
+    "scope": "Read-only probe during CPU setup; two extra procfs reads including failed attempt01 may contend with mmap, not an isolated causal timing benchmark.",
+    "smaps_bytes": 109780,
+    "smaps_read_seconds": 0.9277007095515728
+  },
+  "profile_interpretation": "The measured smaps walk is expensive and observed benchmark threads sometimes wait in vm_mmap_pgoff or __vm_munmap. Contention is a profile hypothesis, not an isolated causal benchmark.",
+  "run_of_record": false,
+  "schema": "volta-c71-h100-thp-candidate-v1",
+  "scope": "Read-only procfs probe on active canonical04 plus local ARM64 candidate compilation and small-input test. Candidate not yet built or run on H100."
+}

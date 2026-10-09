@@ -1,0 +1,15 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+    "c71_canonical_runner_packed_input_checks_before_installation",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "exit_code": 0,
+  "wall_seconds": 0.08842101320624352,
+  "as_limit_bytes": 2147483648,
+  "deadline_seconds": 60,
+  "binary_sha256": "6ca9c7f07cf101db838287d90ffc69203badf47c8c5115ef257d528f68f8ca32",
+  "gpu_execution": false,
+  "credit": false
+}

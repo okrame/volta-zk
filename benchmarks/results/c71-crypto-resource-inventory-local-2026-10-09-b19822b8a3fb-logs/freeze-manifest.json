@@ -1,0 +1,36 @@
+{
+  "status": "SOURCE_INVENTORY_COMPLETE_JOINT_CAPACITY_CLOSURE_INCOMPLETE",
+  "source_baseline": "de339832280984a75f22d50e165cdf929cf82c13",
+  "later_source_inspected": "e55e1a7b4ad07ec0b44d4e970df816ffb15f02bf",
+  "credit": false,
+  "gpu_execution": false,
+  "build_or_test_by_this_agent": false,
+  "joint_admitted": false,
+  "goal_achieved": false,
+  "Gamma_reset_or_new_admission": false,
+  "main_payload_lifetime_formulas_finite_classes": [2, 3, 4, 6, 7, 10, 11],
+  "typed_capacity_closure_incomplete_classes": [1, 5, 8, 9],
+  "files": [
+    {
+      "path": "capacity-closeout.txt",
+      "sha256": "e4b941c549042dd2a3073e12235ece3aaa0689a6408addebe64e2a83d4a1381b",
+      "purpose": "All eleven classes: allocation sites, lifetimes, formulas, exact missing terms and source-only phase screens."
+    },
+    {
+      "path": "phase-retirement.patch",
+      "sha256": "019d6117ac701443cf0455b0dfe435d7166d5a7abcb353b915b117face760a4a",
+      "purpose": "Previously frozen retirement census proposal; root has since integrated its changes."
+    },
+    {
+      "path": "canonical-writer-capacity.patch",
+      "sha256": "c8d419cf1ccd2bf06ffa4092978272057f0dfbfedbc3ea811e29fb6380b3e371",
+      "purpose": "Previously frozen fixed-capacity wire/FS proposal; root reports clean integration and parity."
+    },
+    {
+      "path": "current-native-ledger.patch",
+      "sha256": "acacefae2ada41e4545666d82b31ddb5b7dc05c6972a01312a12ce87a354e56d",
+      "purpose": "Pending minimal ledger update: selected original W resident query, phase-local A producer padding and Writer96MiB."
+    }
+  ],
+  "ledger_caveat": "Pending minimal patch deliberately retains the conservative full replay common envelope outside initial A hash. Audit S2 persistent-only screen subtracts another194511872B only where no producer scan is active; do not compare those numbers as identical ledger phases. Writer96MiB becomes an explicitly named proof-phase part in the patch. Neither screen discharges all eleven classes."
+}

@@ -1,0 +1,349 @@
+C7.1 complete-inventory memory closeout — 2026-10-09, source audit only
+
+Scope and verdict
+=================
+This is the single engineering delivery for the requested eleven-class audit.
+It is NOT complete memory admission, a successful canonical run, GPU evidence,
+H100 performance evidence, or an achieved-goal assertion. No build/test/provider
+operation was run by this agent. The pinned Gamma is reused, not reset.
+
+Audited allocation/lifetime baseline: de339832280984a75f22d50e165cdf929cf82c13.
+Later source inspected: e55e1a7b4ad07ec0b44d4e970df816ffb15f02bf, which includes
+the initial-W native query selection and fixed canonical Writer capacity.
+Five active docs, including security's trusted canonical source producer, apply.
+None of the following arithmetic changes that trust boundary or the protocol.
+
+Hard total: 6,442,450,944 B. Joint host/device allocation payload: 5,905,580,032 B.
+Runtime/allocator/stack/driver allowance: 268,435,456 B; free margin: 268,435,456 B.
+Only immutable packed W payload is excluded. Vec capacities, both roles, moving
+realloc old+new and CUDA's 256-byte allocation alignment all count. The existing
+counter is fail-closed enforcement; it does not prove a canonical run will fit.
+No arbitrary allowances or unspecified free slots are assigned in this audit.
+
+Seven classes have finite main-payload formulas and phase lifetimes below.
+Four classes (1,5,8,9) still have undischarged typed-capacity terms. Consequently
+neither an eleven-class joint upper nor complete per-phase fit is established.
+No actual canonical overflow is demonstrated. Conservative generic bounds that
+exceed the payload are not evidence of actual pinned overflow.
+
+Actual lifetime corrections (no additional A reconstruction)
+============================================================
+canonical_device.rs:192-203 releases all replay live Rows in Engine.finish.
+scan_inner:765-766 releases the returned duplicate histograms; 770-788 emits
+the borrowed frozen generation or temporary public padding, then releases each
+padding Rows. scan_pcs_sources:930 calls this complete ordered producer scan.
+public_padding:574 creates the signed host vector, uploads it synchronously,
+then drops that host vector on return; its device Rows survive only the emit.
+
+replay.rs initial native A commitment: after the trusted scan, source_finish
+fences and retires its flag, then the histogram and low/high power buffers are
+released BEFORE pcs_full_hash_begin (currently around 1130-1151).
+Thus the hash phase has only 591,277,824 B numeric persistent state, not the
+785,789,696 B persistent-plus-replay envelope. The 194,511,872 B difference is
+not concurrent with hashing. Likewise public_padding_host_upper = 55,574,528 B
+is not concurrent with hashing, a W scan, or a retained A contraction/query.
+Keep it during A producer upload/scan; remove it from other named phases.
+This is lifetime analysis, not use of reduced fake maxarena as pinned evidence.
+
+Initial A commitment occurs in canonical_state.rs:562-609 BEFORE Response,
+Writer, current MatrixProof, attempt pool/correlations and proof/GKR/form batches
+are created. Previous proof buffers have retired. Both public profiles/tables,
+PCG idle contexts, installed root caches and accepted snapshots still exist.
+
+Corrected named screens (B; additional classes are still additional)
+==================================================================
+ A3 accumulate                         5,744,879,732
+ A3 hash                               5,595,450,452
+ A3 S2 predecessor query publication    5,541,498,164
+ W S1 short hash                        5,408,682,548
+ W S1 natural FFT                       5,408,741,780
+ Initial W query device                   857,338,880
+
+The hash numbers remove BOTH the replay difference and host padding; the
+accumulation number retains them. The initial W query number equals old
+1,125,647,872 minus its removed 268,435,456-byte byte window plus 126,464-byte
+sealed tile mapping. It is now selected, so the former CPU W query gap is stale.
+This replacement is device-only; other named query host pieces remain.
+
+Example source-derived S2 partial cross-check: 5,541,498,164 + fixed Writer
+100,663,296 + carried mask payload 108,231,968 + opening payload upper 40,218,304
++ PCG main payload 2,775,464 + SIX synthetic profile structural screens
+49,709,268 = 5,843,096,464. Remaining 62,483,568 B is NOT admission or a free slot:
+the profile term is not a completed six-role pinned metadata census, BTree node
+heap and classes 5/8/9 remain, and source code must justify actual overlaps.
+Do not append the query-construction 160q upper to publication: inverse/CPU DFT
+construction has retired before the private matrix/work allocation/publication.
+
+Class-by-class closed inventory
+==============================
+1. Profile/layout/tile/source/Arc/lock/vector descriptors and public tables
+-----------------------------------------------------------------------
+Present during A hash, every proof phase and setup. Six role-local profiles are
+compiled before W installation. One device geometry fixture reports profile
+host_layout_bytes 8,284,878 (same synthetic O=0/150/300 profile); multiplying
+by six gives 49,709,268 B as a STRUCTURAL SCREEN ONLY. It does not prove actual
+pinned six-profile Vec capacities or topology-independent equality.
+
+Table payload: two full serialized table payloads = 48,829,740 B. This is already
+named as 2*23,954,072 + 2*(24,414,870-23,954,072); no third table payload. Missing
+table Vec descriptors: 2*(1020*24 + sizeof(Tables) + digest64), counted on both
+roles. Public input/candidate serialization is bounded by 1 MiB and retires
+before the high crypto phases; do not retain the serialized Tables input too.
+Three Prepared row caches retain at most 3*262144*8 = 6,291,456 B; each clears its
+old cache before a new row allocation. Arc references do not duplicate payload.
+
+Exact remaining term: actual compile() nested capacity sum on all six pinned
+profiles, including Plan/Bytes/scalar tiles/by_scalar, source maps, ports,
+source/step/selected/retention vectors and nested Vec capacities; plus Entry /
+Generation / Prepared maps and Arc allocation headers. Formula is the actual
+capacity traversal sum, not logical len multiplied by an arbitrary growth cap.
+Each native Buffer Arc is bounded by the common owner's 512 slots. Rust
+BTreeMap nodes require their typed node size and live-node count (not 48-byte
+entry multiplication). A standalone SourceReplay count has max3471 source IDs,
+source rows at most8192, so its seen bool payload is at most28,434,432 B during
+scan only; maps/node metadata is another exact typed term. No such seen map
+exists during A hash. This class is NOT fully discharged numerically.
+
+2. Query products, reverse/inverse-series, conversion and CPU DFT caches
+---------------------------------------------------------------------
+replay.rs:121 multiply,139 inverse_series,188 query_tree_with. For degree q,
+at most 6q base coefficients cover inverse/multiply old+new intermediates;
+P3 radix2 cached twiddle replacement adds at most6q base words (max FFT2q).
+Points, current product tree, inverse/modulus spectra and conversion give a
+conservative total20q words = 160q B for construction payload. At q=2^20,
+167,772,160 B, replacing the existing named construction72q rather than adding
+160q to it. Nested descriptors: <=21 levels of Vec<QueryLevel> and <=22 DFT
+table descriptors, each explicitly sizeof-based. New/old FFT twiddle vectors
+coexist only during refresh. Native public factors may already exist while
+the next level is built; the device factors/twiddle allocation counts in the
+ledger remain. Private query matrix/work is allocated after the CPU DFT scope.
+Construction does not exist during A hash. This closes the main payload and
+its lifetime; typed metadata belongs to classes1/9, not an invisible allowance.
+
+3. Opened rows, salts, pruned paths, indices from previous batches
+----------------------------------------------------------------
+Retain batches across stages; current Tree regeneration is a separate lifetime.
+Use q<=512, N<=36 source+mask codes, sum base columns C<=392, sum log heights
+L<=737, individual log<=32. Three copies of rows/salts and growth, nested Vec
+descriptors, retained paths, indices, current temporary prune map/digests,
+current Observe wire and outer-level descriptors give respectively:
+6,586,368 + 2,654,208 + 24,150,016 + 294,912 + 3,145,728 + 3,330,048 + 57,024
+= 40,218,304 B main payload/Vec capacity. The current BTreeMap's typed node
+allocation is separate (class1/9), not silently included. Final-stage q is
+smaller. No opened batch exists during initial A hash. This formula is a
+canonical schedule upper, not a claim about arbitrary codec inputs.
+
+4. Real AES PCG, masks, fresh correlations, setup and journals, both roles
+------------------------------------------------------------------------
+Idle sender root contexts:675*48=32,400 B; idle receiver keys/alpha/beta/prefixes
+351,000 B; total383,400 B. Expansion uses BATCH4096,11 sparse terms per row.
+Both role term arrays plus output batch plus idle =2,775,464 B (2*4096*11*24
++4096*(32+24)+383,400); fixed small Ea/audit/context records require sizeof.
+Old Zeroizing correlation batch is cleared BEFORE next expansion. There is no
+full domain reservoir: domain353,894,400; capacity70,778,880 is finite issued
+correlation quota, not a RAM vector. Session setup has main17553 rows and inverse
+2025 rows; P arrays at most80n+336 B, V at most72n+288 B, with old main output
+coexisting with inverse setup. MR19 has384 fixed base-OT items: typed Point and
+encoded Point byte widths, not a per-domain array. COPE correction row is3072 B.
+Journals are direct File writes of57-byte events, limit2^20 events on disk.
+
+Carried masks for D34/D35:23 mask codes, sum width40, domain32768. Payload
+40*(32768*24+(2048+512+2048)*24)
++23*(32768*4*8+(2*32768-1)*32) =108,231,968 B. Fresh plus original at final phase
+is conservatively216,463,936 B, before small main/final reveal descriptors.
+RNG buffering is4096 sequential bytes per applicable clone; Tree strided states
+have no sequential buffer. XOF cap2^40 is a byte stream cap, not an allocation.
+During initial A hash there are only idle PCG contexts; no current proof mask,
+fresh PCG attempt reservoir or carried-mask trees yet. Main payload/lifetimes
+are finite; fixed typed context/descriptors fold into classes1/9.
+
+5. Writer, MatrixProof, encode/decode/send/receive capacity and reallocation
+-------------------------------------------------------------------------
+Writer::canonical protocol.rs:72 now allocates exact96 MiB once, keeps its
+capacity100,663,296 B and never reallocates under its existing length guard.
+This resolves its previous moving old+new/slack issue without changing wire/FS.
+Writer::put:92 still creates a component byte Vec and proof.write occurs BEFORE
+raw checks its length. Each frame/proof stays live until explicit drop. C61
+encode_linear caps complete encoded proof at16MiB D34/35 or8MiB otherwise; this
+cap is checked at completion, not every component allocation. V reserves its
+full certificate exactly, <=96MiB. P certificate and V receive can coexist, but
+P proof generation/native query workspace has already retired then.
+
+Exact remaining term: serialized component body capacity/old+new and decoder
+heap by actual component schema/honest pinned shape, plus longest co-live
+MatrixProof before encoded drop. The Wire Vec cap65536 and MIN_BYTES=1 on
+component structs do NOT imply heap<=wire_length; do not use that shortcut.
+Example p0 cohort (Fp3,Option<Proof>) retains its inline Proof/Option layout with
+an absent proof costing25 serialized bytes; the inline size must be measured
+as sizeof of the actual type (Vec niches affect Option layout), not assumed.
+Universal byte-ratio assumptions miss this. Honest RNE proof count892,
+original A targets4446, W targets775 and
+codecs/stages12 supply finite schema bounds, but this audit has not completed
+every nested decoder/body capacity and moving reallocation term. Its caller
+budget rejects overflow; rejection is not honest-case fit. This class remains
+OPEN. No current Writer/MatrixProof/body exists during initial A hash.
+
+6. GKR/RMS/EXP30/lookup/range/contraction work beyond numeric replay
+------------------------------------------------------------------
+Pinned Gamma public structural recipe (existing accepted Gamma, no rerun):
+artifact/c7.1-pod/ledger-20261007T150200Z/ledger-attention.json, SHA256
+478ef250fdb61db673b4d4efa86b3d3ce274081ca1e00653703bc6d8b0d74d7d.
+Admission candidate SHA2568965d0c3dc170e41b304982b90409b0362e93de4d029b08bba3716ab64dbf95e.
+O0/150/300 RMS:99 layers,159 programs. Program inner Vec capacity457,616,928 B
++descriptors17,808 B; edge logical heap peak24,121,920 B; boolean replay52,432 B.
+CompactFrames exact payload+metadata2,023,511,878 B. This historical census is
+partial, credit:false; it supplies recipe shape, not a new complete backend run.
+Program build and GKR edge vector moving growth need old+new modeled separately;
+generic421-program maximum is far looser than this pinned159 count.
+Per GKR layer coefficient scratch <=(3W+2P)*24+P with W<=16384,P<=421;
+next/old weights <=4W*24; no default dense N*W matrix. Edge sizeof is48 B.
+P0 compact entries retire before RMS work returns; RMS program/checkpoint and
+proof retire after wire.put(2). RMS does not overlap the later Lookup tree.
+
+Softmax O300:Q=221,184,000,R=60*65535=3,932,100,N=2^28. Wide cache6Q=1,327,104,000 B;
+histogram4R=15,728,400 B; CUT4 tree(2*(N/16)-1)*48=1,610,612,688 B. Sum2,953,445,088
+B plus finite descriptors/binding/proof (class5/9). Upper tree levels <=25*24.
+Max O0/150 are smaller. EXP maximum checkpoint512MiB/1GiB retires before Lookup.
+Range A deep children96*2^24=1,610,612,736 B plus 1GiB window; original claims,
+root caches, replay envelope and Writer remain and must be added, not each
+earlier RMS/Lookup checkpoint. Main payloads have finite formulas; typed/proof
+terms belong to the remaining classes. GKR/RMS/Lookup/range are absent at A hash.
+
+7. sourcewise EQ, PowerBlocks, denominators/inverse spectra/contraction bands
+-------------------------------------------------------------------------
+sourcewise.rs:29 PowerBlocks;706/773 cache take before rebuild;853 cached round;
+928 take after two-fold, but powers terms continue to accumulate. Do not cap
+terms at513 across the full chain: up to12*(1OOD+512queries)=6156 terms, padded
+T=8192 leaves/14 levels. Terms/amplitudes each have their actual Vec capacities.
+Denominator+tree descriptor+advance upper:
+2*T*14*24 +(2*T-1)*24 +32*24 +T*24 =6,095,592 B.
+At block B<=2^21, setup inverse/multiply/DFT main peak192B=402,653,184 B.
+Setup precedes native consumer begin. Cached inverse48B +DFT32B +two outputs/
+marshal120B +paired GPU public vectors48B =248B=520,093,696 B steady contraction.
+Do NOT sum the setup192B and all later device/marshal bands as simultaneous.
+Terms pairs <=8192*48=393,216 B; amplitudes <=2*8192*24=393,216 B. Eq lookup
+split <=14+14 bits gives786,432 B; native EQ tables <=2048*24=49,152 B plus5
+chunks*16 and one Poly<=256E. Denominator numerator construction fits the
+stated setup vs steady phase separation; capacities are retained after truncate.
+W reads only congruent original suffix indices for a band; all bands together
+read each original once per round, not one full W scan per band. Retained A
+operates all three planes in one pass with <=2 virtual prefix bits; zero new
+original A reconstruction. This class is absent at initial A hash. A smaller
+adaptive B is a valid next fix only IF a complete phase bound fails; no arbitrary
+quota or unnecessary block reduction is proposed in lieu of the missing census.
+
+8. Historical endpoint forms/targets, coefficients, public linear marshalling
+----------------------------------------------------------------------------
+Stored original claims are capped at8192 targets and524288 cubes per root.
+Batch::add protocol.rs:33 shrinks points/forms before retaining original claims,
+and preserves their order/MAC. Retained max root bound is the existing
+C*(sizeofCube +D*24) +T*(sizeofVec+sizeofAuth/Key); D34/35 and both roles count.
+Packet construction linear.rs:283-329 explicitly uses with_capacity for chunks,
+tables/groups/intervals/points and does not create a second large point copy.
+Host prepare accounts packet +2*(PrefixWeights+PublicRound) for moving growth;
+upload phase accounts host packet plus aligned device packet; packet retires
+before W/A consumer scan. Public residual point cap2^25 is separate from the
+CPU cube cap. Public endpoints and pending local points persist through the
+later proof stages until explicit dropped in canonical_prove.rs.
+
+Exact remaining term: public_forms/pullback/rope/route construction BEFORE
+Batch::add/shrink and BEFORE linear::bind enforces root aggregate cube counts;
+temporary scalar form and pulled-back result can coexist. Shrink may move the
+old oversized allocation alongside the compact retained one. Later bind builds
+the entire transcript-record byte Vec with36+24*D bytes/cube plus headers while
+retained forms remain; generic capacity upper depends its extend growth and
+is not captured by the retained claim maximum alone. It retires before native
+linear packet work, so don't add it to that device packet phase. Need derive
+source/route cube-count-per-constructor and point capacity from the pinned
+public plan, then explicitly take the largest transient with old/new bounds.
+No actual overflow found, but this class is NOT numerically discharged. During
+initial A hash no current original claim/form/pending vector exists.
+
+9. Common owner/Rust metadata, reservations/flags, producer temporaries
+---------------------------------------------------------------------
+Current sizeof common C++ owner42,088 B is measured reduced, deterministic by
+compiled type (512 slots) and already named. Each CUDA allocation is rounded256
+B and charged BEFORE malloc. Failure/free debt and stop remain enforced.
+Replay generation/tails can hold multiple Rows refs to the same Buffer; count
+device payload once, actual Arc/Rust descriptors every allocation/reference.
+One Rust Buffer value ~32 B; an Arc<Buffer> has its typed header allocation, up
+to512 owner slots. RuntimeApi is fixed function-pointer table; ownerArc shared.
+Trees/RNGs/NativeViews add actual Vec/Arc/lock/descriptor capacities even when
+their device allocation is fully charged; phase-local flags are already in
+components and must not be charged twice. Census sampling/markers are not
+additional device producer allocations.
+
+Exact remaining term: typed Arc/BTreeMap heap topology and live counts from
+Session/Generation/Engine, native Tree/query descriptors, phase record JSON
+maps/string capacities, channel/lifetime vectors, library/config paths and
+FS/transcript descriptors. Measurements.report clones retained records only
+AFTER crypto cleanup, so old+new report JSON is not concurrent with S1 planes.
+Phase drop has old/end JSON and a progress-record copy; progress writes to a
+file instead of collecting per-leaf messages. Count bounded call sites, not
+460 analytic ledger rows as if those were 460 live runtime phase records.
+This class remains OPEN: no arbitrary 1MiB metadata slot, no allocator allowance
+substitution for Rust payload, and no blanket sizeof(entry) for BTreeMap nodes.
+
+10. Last bounded <=128E read and final CPU source base-case
+--------------------------------------------------------
+Native view materializes a consumed temporary3-plane buffer, at most3*align256
+(8*128)=3072 B; output and Rust decoded result <=2*24*128=6144 B, flag256 B.
+Typed EQ packet has <=5 chunks +2048 tablecapacity*24+Shape32 aligned, very
+conservative fullD35 packet; actual final virtual prefix<=2 is much smaller.
+Final source polynomials <=64E (1536 B each). Bound separately retained view
+and temporary and do not free the retained view before lease/opening release.
+No original A scan or per-row D2H. All native output publication follows flag
+and free success. Only coexists with the small final query, not S1 R23 ring.
+Main payload finite; descriptors class9.
+
+11. Fresh base-case main/mask caches and private randomness
+---------------------------------------------------------
+Original+fresh coded masks conservative216,463,936 B as class4 formula; widths
+total40, masks23. Revealed blinded polys<=40*(2048+512)*24=2,457,600 B; fresh
+source<= (64+512)*24=13,824 B; main final mask domain<=8192 and width<=4, so
+codeword<=8192*4*24, salts<=8192*4*8 and Merkle<= (2*8192-1)*32. Add existing
+original source <=64E and per-mask final-vector descriptors. CPU generic FFT
+caches use finite final sizes, separate from high S1 PowerBlocks cache which
+has already taken/retired. Fresh correlator state is one-use and small PCG
+batch bounded as class4, no fake PCG or reuse. Absent during initial A hash.
+
+What root can integrate from this delivery
+=========================================
+Already-prepared patches below are frozen, not tested by this agent. Root has
+since integrated Writer and retirement census; preserve their clean receipts,
+do not reapply their stale base blindly.
+
+phase-retirement.patch SHA256
+019d6117ac701443cf0455b0dfe435d7166d5a7abcb353b915b117face760a4a
+ - ledger persistent-only A hash correction;
+ - existing reduced canonical native scan arena before/after assertion;
+ - existing A finish->hash test retires powers and reports the actual census.
+canonical-writer-capacity.patch SHA256
+c8d419cf1ccd2bf06ffa4092978272057f0dfbfedbc3ea811e29fb6380b3e371
+ - fixed96MiB Writer capacity + exact wire/FS parity and capacity test;
+ - no protocol/byte changes. Root reports clean build/parity already passed.
+
+Minimum remaining ledger updates (no new GPU campaign, Gamma or auditor)
+ - Keep host padding only in producer scan/upload phases; use persistent numeric
+   owner in hash/retained query/contraction. Use new selected W query device857338880.
+ - Add distinct public-query construction160q phase; do not merge its transient
+   inverse/CPU DFT with query publication. Preserve private device factor sums.
+ - Add setup/idle/PCG expansion, RMS compile/build/GKR, EXP/Lookup, range, bind,
+   PowerBlocks setup/steady, encode/receive/decode, final/fresh and report phases.
+ - Bind public pinned structural counts to the already accepted Gamma recipe.
+   Native producer reduced arena retirement can validate lifetime without a
+   pinned 785MiB allocation or any additional canonical A reconstruction.
+
+Precise unresolved closure criterion
+====================================
+For every above phase, substitute each OPEN term with its actual typed capacity
+upper and simultaneous old/new bound from current caller constructors; make the
+sum <=5,905,580,032. Four missing classes cannot be declared zero. The smallest
+necessary metadata-only check is an actual six-profile nested capacity traversal
+plus typed descriptor/topology/form-constructor/schema counts on the existing
+pinned plan, without values, W scans or D34 allocations. It is not yet included
+as an executable helper here because the root forbade new subprojects and must
+serialize test/build work. The already fixed Writer removes one demonstrated
+capacity ambiguity; it does not close the remaining frame/schema/form/meta
+census. A counter-only success, generic quota, or unverified all-role inference
+cannot fill those terms. There is no complete-fit/admission claim in this file.

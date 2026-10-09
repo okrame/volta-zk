@@ -1,24 +1,37 @@
-//! Explicit, non-admitted CPU reference. No GPU fallback or provider actions.
+//! Explicit CPU reference or CUDA diagnostic. No GPU fallback or provider actions.
 //! Full canonical execution is heavy and MUST NOT run on the development VM.
 //! This executable does not certify calibration, provenance, HBM, or readiness.
 use super::metrics::{Counted, Measurements, Traffic};
 use super::*;
 use std::io::{Read, Write};
 use std::path::Path;
+use std::time::Duration;
 use volta_pcg::{
     c71_lifetime::Lifetime,
     c71_seed6::{self, Geometry},
 };
 
+fn diagnostic_timeout(raw: Option<&str>) -> Result<Duration, String> {
+    let seconds = match raw {
+        None => 65,
+        Some(value) if !value.is_empty() && value.bytes().all(|c| c.is_ascii_digit()) =>
+            value.parse::<u32>().map_err(|_| "invalid diagnostic transport timeout")?,
+        Some(_) => return Err("invalid diagnostic transport timeout".into()),
+    };
+    if seconds == 0 { return Err("diagnostic transport timeout must be positive".into()); }
+    Ok(Duration::from_secs(u64::from(seconds)))
+}
+
 fn pair(
     traffic: Traffic,
+    timeout: Duration,
 ) -> Result<(std::os::unix::net::UnixStream, Counted<std::os::unix::net::UnixStream>), String> {
     // Kernel-owned socketpairs are the authenticated local role boundary.
     // An unauthenticated TCP replacement does not preserve this premise.
     let (p, v) = std::os::unix::net::UnixStream::pair().map_err(|e| e.to_string())?;
     for c in [&p, &v] {
-        c.set_read_timeout(Some(std::time::Duration::from_secs(65))).map_err(|e| e.to_string())?;
-        c.set_write_timeout(Some(std::time::Duration::from_secs(65))).map_err(|e| e.to_string())?;
+        c.set_read_timeout(Some(timeout)).map_err(|e| e.to_string())?;
+        c.set_write_timeout(Some(timeout)).map_err(|e| e.to_string())?;
     }
     Ok((p, Counted { channel: v, traffic }))
 }
@@ -175,7 +188,10 @@ impl Response {
 }
 
 fn packed(path: &Path, cells: usize) -> Result<(Arc<Vec<i16>>, String), String> {
-    super::super::calibration::read_packed(path, cells)
+    super::super::calibration::read_packed_observed(path, cells, |words| {
+        kernel::progress::resident_w("host", "live", (words.capacity() * 2) as u64,
+            Some(words.as_ptr() as u64))
+    })
 }
 
 pub fn command(args: &[String]) -> Result<serde_json::Value, String> {
@@ -210,6 +226,8 @@ pub fn command(args: &[String]) -> Result<serde_json::Value, String> {
         drop(phase);
     }
     let report = measurements.report();
+    let release = measurements.release();
+    let result = result.and_then(|output| { release?; Ok(output) });
     kernel::progress::emit(serde_json::json!({"kind": "command_result", "complete": result.is_ok(),
         "measurements": report}))?;
     match result {
@@ -244,6 +262,18 @@ fn measured_command(
         )),
         _ => return Err("Stop: explicit backend required: c71_canonical_reference reference-cpu CANDIDATE TABLES PACKED NEW_JOURNAL_DIRECTORY PREPARATION_BYTES; or experiment-cuda with LIBRARY DEVICE appended".into()),
     };
+    let timeout = {
+        let timeout_env = std::env::var("C71_DIAGNOSTIC_TIMEOUT_SECONDS");
+        diagnostic_timeout(match &timeout_env {
+            Ok(value) => Some(value.as_str()),
+            Err(std::env::VarError::NotPresent) => None,
+            Err(_) => return Err("diagnostic transport timeout is not UTF-8".into()),
+        })?
+    };
+    // A socket silence limit is not the phase/campaign deadline enforced outside.
+    kernel::progress::emit(serde_json::json!({"kind": "transport_policy",
+        "socket_timeout_seconds": timeout.as_secs(), "response_target_seconds": 65,
+        "scope": "per socket operation; external process deadline required"}))?;
     let limit: usize = args[5].parse().map_err(|_| "invalid preparation budget")?;
     if limit < 98_380_800 {
         return Err("preparation budget below layer checkpoints".into());
@@ -276,7 +306,7 @@ fn measured_command(
     let input = Arc::new(calibration_input::Tables::from_bytes(&table_bytes)?);
     phase.finish();
     let phase = measurements.phase("coordinator", None, "public_distribution");
-    let (mut source, mut destination) = pair(measurements.channel("public_distribution", None))?;
+    let (mut source, mut destination) = pair(measurements.channel("public_distribution", None), timeout)?;
     let (vcandidate, vtable_bytes) = std::thread::scope(|scope| {
         let sender = scope.spawn(move || {
             write_public(&mut source, &candidate, &table_bytes).map_err(|e| e.to_string())
@@ -335,6 +365,7 @@ fn measured_command(
                 measurements,
                 packed_digest,
                 native.clone(),
+                timeout,
             )
         })
     })
@@ -350,6 +381,7 @@ fn run(
     measurements: &Measurements,
     packed_digest: String,
     native_config: Option<kernel::range::windowed::native::Config>,
+    timeout: Duration,
 ) -> Result<serde_json::Value, String> {
     let geometry = Geometry::new(675, 19, 11).map_err(|e| e.to_string())?;
     if public.required.iter().sum::<usize>() * 3 > geometry.capacity().map_err(|e| e.to_string())? {
@@ -412,8 +444,8 @@ fn run(
     let prompt: [u32; 100] = prompt.try_into().map_err(|_| "pinned prompt length")?;
     let session: [u8; 32] = rand::random();
     let channel_binding: [u8; 32] = rand::random();
-    let (pcg_p, pcg_v) = pair(measurements.channel("seed6_setup", None))?;
-    let (mut proof_p, mut proof_v) = pair(measurements.channel("installation", None))?;
+    let (pcg_p, pcg_v) = pair(measurements.channel("seed6_setup", None), timeout)?;
+    let (mut proof_p, mut proof_v) = pair(measurements.channel("installation", None), timeout)?;
     let phase = measurements.phase("coordinator", None, "installation_distribution_and_journals");
     write_installation(&mut proof_p, &binding, session, channel_binding)
         .map_err(|e| e.to_string())?;
@@ -520,11 +552,12 @@ fn run(
     }
     let native_stats = native.as_ref().map(|session| session.stats()).transpose()?;
     Ok(serde_json::json!({"credit": false, "readiness": false, "gpu_execution": native.is_some(),
-        "backend": if native.is_some() { "cuda-producers-range-w-pcs-cpu-protocol" } else { "reference-cpu" },
+        "backend": if native.is_some() { "cuda-producers-range-pcs-cpu-gkr-verifier" } else { "reference-cpu" },
         "w_commitment_backend": if native.is_some() { "resident-cuda-32-coset-8-column" } else { "reference-cpu-four-coset" },
         "native_cumulative": native_stats,
-        "cpu_phases": ["public validation and table packing", "PCS private coins and salt sampling; bounded 256 MiB W range gather/upload", "PCS openings/remainders/source contractions; A and extension FFT/Merkle; reference-cpu W commitment", "non-range GKR and original MAC arithmetic", "Seed6 real AES setup and expansion", "proof encoding, verifier and durable journals", "bounded original A row/byte staging for CPU protocol consumers"],
-        "gpu_phases": if native.is_some() { vec!["initial W signed accumulation/finite FFT/incremental BLAKE3/Merkle", "all 13 inference and replay producers", "resident A byte gather", "range canopy/Gram/fold/reductions"] } else { vec![] },
+        "cpu_phases": if native.is_some() { vec!["public validation, tables and PCS private coins", "public factors and Merkle opening regeneration", "non-range GKR/RMS and original MAC arithmetic", "Seed6 real AES setup and expansion", "proof encoding, verifier and durable journals", "bounded original A staging for remaining CPU consumers"] } else { vec!["all protocol phases on explicit CPU reference"] },
+        "gpu_phases": if native.is_some() { vec!["all 13 inference and replay producers", "initial W/A accumulation, finite FFT, salts, BLAKE3 and Merkle", "initial W/A query Horner and linear closure", "S1/Query E extension cosets, hashes, salts, OOD, retention, folds and contractions", "resident A byte gather and range canopy/Gram/fold/reductions"] } else { vec![] },
+        "socket_timeout_seconds": timeout.as_secs(), "response_target_seconds": 65,
         "canonical_certificates_verified": 3, "tables_numerically_certified": false,
         "checkpoint_provenance_verified": false, "packed_blake3": packed_digest,
         "responses": responses,
@@ -535,6 +568,22 @@ fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn c71_canonical_runner_diagnostic_timeout_and_disconnect() {
+        assert_eq!(diagnostic_timeout(None).unwrap(), Duration::from_secs(65));
+        assert_eq!(diagnostic_timeout(Some("7200")).unwrap(), Duration::from_secs(7200));
+        for value in ["", "0", "-1", "+1", "1.5", " 60", "4294967296"] {
+            assert!(diagnostic_timeout(Some(value)).is_err(), "{value}");
+        }
+        let (p, mut v) = pair(Traffic::default(), Duration::from_millis(20)).unwrap();
+        assert_eq!(p.read_timeout().unwrap(), Some(Duration::from_millis(20)));
+        assert_eq!(p.write_timeout().unwrap(), Some(Duration::from_millis(20)));
+        let error = Response::read(&mut v).err().unwrap();
+        assert!(matches!(error.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut));
+        drop(p);
+        assert_eq!(Response::read(&mut v).err().unwrap().kind(), io::ErrorKind::UnexpectedEof);
+    }
+
     #[test]
     fn c71_canonical_runner_transport_and_default_stop() {
         assert!(command(&[]).unwrap_err().contains("explicit backend required"));
@@ -621,7 +670,7 @@ mod tests {
     fn c71_canonical_runner_counted_socket_protocol_three_slots() {
         // Transport fixture only: the three bodies are not valid certificates.
         let m = Measurements::new();
-        let (mut p, mut v) = pair(m.channel("public_distribution", None)).unwrap();
+        let (mut p, mut v) = pair(m.channel("public_distribution", None), Duration::from_secs(65)).unwrap();
         std::thread::scope(|scope| {
             let peer = scope.spawn(move || {
                 write_public(&mut p, b"{}", &vec![0; calibration_input::Tables::BYTES]).unwrap();

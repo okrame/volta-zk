@@ -909,9 +909,7 @@ pub(in crate::c71_matrix) mod tests {
     #[test]
     #[ignore = "explicit authorized GPU experiment; requires C71_NATIVE_PARITY_LIBRARY"]
     fn c71_b12_windowed_native_hardware_parity_explicit() {
-        let library = std::env::var_os("C71_NATIVE_PARITY_LIBRARY")
-            .expect("explicit native CUDA library required");
-        let config = native::Config::new(library.into(), 0, 512 << 20, 256 << 20, 512, 3);
+        let config = native::tests::hardware_config(512, 512 << 20);
         shared_native_parity(config.clone());
         let mut signed = config;
         signed.window_words = 2048;

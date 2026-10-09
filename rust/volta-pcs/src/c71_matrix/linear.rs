@@ -769,9 +769,20 @@ mod tests {
 
     #[test]
     fn c71_b12_native_linear_original_codecs_exact_coefficients_endpoints_and_work() {
-        let fixture=device::tests::fixture(512);
-        let (source,bytes,scans,_)=native_source_codec_fixture(&fixture.config);
-        let (weights,signed_values)=native_weight_codec_fixture(&fixture.config);
+        let fixture = device::tests::fixture(512);
+        linear_coefficients_parity(&fixture.config, false);
+    }
+
+    #[test]
+    #[ignore = "explicit authorized GPU experiment; requires C71_NATIVE_PARITY_LIBRARY"]
+    fn c71_b12_native_hardware_linear_coefficients_endpoints() {
+        let config = device::tests::hardware_config(512, 262144);
+        linear_coefficients_parity(&config, true);
+    }
+
+    fn linear_coefficients_parity(config: &device::Config, gpu_execution: bool) {
+        let (source,bytes,scans,_)=native_source_codec_fixture(config);
+        let (weights,signed_values)=native_weight_codec_fixture(config);
         let extension=Fp3::new(Fp::new(7),Fp::new(11),Fp::new(13));
         let mut cases=0;
         for (original,values) in [(source,bytes),(weights,signed_values)] {
@@ -808,7 +819,7 @@ mod tests {
                         "packet_host_capacity_bytes":work.packet_host_capacity_bytes,
                         "packet_host_peak_bound_bytes":work.packet_host_peak_bound_bytes,
                         "h2d_bytes":work.after.h2d_bytes-work.before.h2d_bytes,"d2h_bytes":124,
-                        "gpu_execution":false,"credit":false}));
+                        "gpu_execution":gpu_execution,"credit":false}));
                     cases+=1;
                 }
             }
@@ -817,7 +828,7 @@ mod tests {
         assert_eq!(scans.load(Ordering::Relaxed),8);
         // An empty original has only the prescribed public zero tail. No
         // resident scan, scalar getter or byte window may be requested.
-        let (mut empty,_,empty_scans,_)=native_source_codec_fixture(&fixture.config);
+        let (mut empty,_,empty_scans,_)=native_source_codec_fixture(config);
         let NativeOriginal::Source(empty_source)=&mut empty else {unreachable!()};
         empty_source.live=0;
         empty_source.scan=Arc::new(|_|panic!("public zero tail requested original scan"));
@@ -834,7 +845,7 @@ mod tests {
         println!("C71_NATIVE_LINEAR_PARITY {}",serde_json::json!({"cases":cases,
             "MAC_basis_u3_2":true,"i16_u16_slack_raw_i48_split":true,"ragged_sealed_W":true,
             "prefix_zero_one_extension":true,"overlapping_duplicate_cubes":true,
-            "public_tail_reads":0,"public_zero_tail_case":true,"GPU_execution":false,"credit":false}));
+            "public_tail_reads":0,"public_zero_tail_case":true,"GPU_execution":gpu_execution,"credit":false}));
     }
 
     #[test]
@@ -1148,24 +1159,27 @@ mod tests {
 
     #[test]
     fn c71_b12_sourcewise_linear_matches_dense_wire_fs_point_and_original_mac() {
-        linear_full_wire_parity(false);
+        linear_full_wire_parity(None);
     }
     #[test]
     fn c71_b12_native_linear_full_wire_fs_point_and_original_mac() {
-        linear_full_wire_parity(true);
+        let mut fixture=device::tests::fixture(512);
+        // The selected resident query also retains public factor spectra.
+        fixture.config.arena_bytes=2<<20;
+        linear_full_wire_parity(Some(&fixture.config));
     }
-    fn linear_full_wire_parity(native: bool) {
+    #[test]
+    #[ignore = "explicit authorized GPU experiment; requires C71_NATIVE_PARITY_LIBRARY"]
+    fn c71_b12_native_hardware_linear_full_wire_fs_point_and_original_mac() {
+        let config=device::tests::hardware_config(512,2<<20);
+        linear_full_wire_parity(Some(&config));
+    }
+    fn linear_full_wire_parity(native_config: Option<&device::Config>) {
         use std::sync::Arc;
-        let native_fixture=native.then(|| {
-            let mut fixture=device::tests::fixture(512);
-            // The selected resident query also retains public factor spectra.
-            fixture.config.arena_bytes=2<<20;
-            fixture
-        });
         let bits = 10;
         let weights: Vec<_> =
             (0..1usize << bits).map(|i| ((i * 29 + i * i * 3) % 251) as i16 - 125).collect();
-        let native_weights=native.then(||Arc::new(weights.clone()));
+        let native_weights=native_config.map(|_|Arc::new(weights.clone()));
         let model = Model::new_in(Domain::Flat(bits), weights).unwrap();
         let values: Vec<_> = model.polynomial().as_slice().iter().map(|&x| E::from(x)).collect();
         let source = {
@@ -1180,8 +1194,8 @@ mod tests {
             source,
         )
         .unwrap();
-        if let (Some(fixture),Some(weights))=(&native_fixture,native_weights) {
-            let mut runtime=device::Runtime::new(&fixture.config).unwrap();
+        if let (Some(config),Some(weights))=(native_config,native_weights) {
+            let mut runtime=device::Runtime::new(config).unwrap();
             runtime.install_weights(weights.clone(),[17;32]).unwrap();
             replay=replay.fixture_native_original(NativeOriginal::Weights(b12::replay::NativeWeights {
                 runtime:Arc::new(std::sync::Mutex::new(runtime)),weights,layout:[17;32],

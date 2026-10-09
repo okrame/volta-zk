@@ -89,6 +89,10 @@ pub(in crate::c71_matrix) struct Budget {
     _weights: Arc<Vec<i16>>,
 }
 impl Budget {
+    pub(in crate::c71_matrix) fn weight_capacity_bytes(&self) -> u64 {
+        (self._weights.capacity() * size_of::<i16>()) as u64
+    }
+
     pub(in crate::c71_matrix) fn new(weights: &Arc<Vec<i16>>) -> Result<Self, String> {
         if BUDGET_ACTIVE.compare_exchange(false, true, Relaxed, Relaxed).is_err() {
             return Err("temporary budget already active".into());

@@ -423,12 +423,19 @@ pub(super) struct PackedRows<'a, R> {
 }
 
 pub(super) fn read_packed(path: &Path, cells: usize) -> Result<(Arc<Vec<i16>>, String), String> {
+    read_packed_observed(path, cells, |_| Ok(()))
+}
+
+pub(super) fn read_packed_observed(
+    path: &Path, cells: usize, allocated: impl FnOnce(&Vec<i16>) -> Result<(), String>,
+) -> Result<(Arc<Vec<i16>>, String), String> {
     let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
     if file.metadata().map_err(|e| e.to_string())?.len() != (2 * cells) as u64 {
         return Err("canonical packed W length differs".into());
     }
     let mut words = Vec::new();
     words.try_reserve_exact(cells).map_err(|e| e.to_string())?;
+    allocated(&words)?; // Publish the owned range before the first private page is touched.
     let mut h = blake3::Hasher::new();
     let mut chunk = [0; 65536];
     while words.len() < cells {
@@ -911,6 +918,29 @@ pub(super) fn profile_attention(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn c71_canonical_packed_observer_precedes_load_and_preserves_codec() {
+        let path = std::env::temp_dir().join(format!("c71-packed-observed-{}-{}", std::process::id(), rand::random::<u64>()));
+        let expected = [-32767i16, -1, 0, 1, 32767];
+        let bytes: Vec<_> = expected.iter().flat_map(|word| word.to_le_bytes()).collect();
+        std::fs::write(&path, &bytes).unwrap();
+        let mut observed = false;
+        let (words, digest) = read_packed_observed(&path, expected.len(), |words| {
+            assert!(words.is_empty());
+            assert!(words.capacity() >= expected.len());
+            observed = true;
+            Ok(())
+        }).unwrap();
+        assert!(observed);
+        assert_eq!(words.as_slice(), expected);
+        assert_eq!(digest, blake3::hash(&bytes).to_hex().as_str());
+        assert!(read_packed_observed(&path, expected.len(), |_| Err("observer stopped".into())).unwrap_err().contains("observer stopped"));
+        std::fs::write(&path, i16::MIN.to_le_bytes()).unwrap();
+        assert!(read_packed(&path, 1).unwrap_err().contains("overflow marker"));
+        std::fs::remove_file(path).unwrap();
+    }
+
 
     #[test]
     fn c71_b12_native_calibration_block_matrix_matches_i128_and_rejects_invalid() {

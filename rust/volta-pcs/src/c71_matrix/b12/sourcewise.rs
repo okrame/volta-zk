@@ -1501,9 +1501,20 @@ pub(super) mod tests {
 
     #[test]
     fn c71_b12_native_residual_state_exact_coefficients_late_retention_and_views() {
-        let fixture=device::tests::fixture(512);
+        let fixture = device::tests::fixture(512);
+        residual_state_parity(&fixture.config, false);
+    }
+
+    #[test]
+    #[ignore = "explicit authorized GPU experiment; requires C71_NATIVE_PARITY_LIBRARY"]
+    fn c71_b12_native_hardware_residual_state_retention_and_views() {
+        let config = device::tests::hardware_config(512, 262144);
+        residual_state_parity(&config, true);
+    }
+
+    fn residual_state_parity(config: &device::Config, gpu_execution: bool) {
         for dimension in [10,12] {for source in [false,true] {
-            let (original,values,scans,owner)=native_fixture_original(&fixture.config,dimension,source);
+            let (original,values,scans,owner)=native_fixture_original(config,dimension,source);
             let original_values=Arc::new(values);
             let get:Getter={let values=original_values.clone();Arc::new(move |i|E::from(values[i]))};
             let point:Vec<_>=(0..dimension).map(|i|match i%3 {0=>E::ZERO,1=>E::ONE,
@@ -1570,7 +1581,7 @@ pub(super) mod tests {
             initial.close().unwrap();
             let final_stats=owner.lock().unwrap().close().unwrap();
             assert_eq!(final_stats.arena_bytes,0);
-            println!("C71_NATIVE_RESIDUAL_STATE_COMPONENT {}",serde_json::json!({"credit":false,"gpu_execution":false,
+            println!("C71_NATIVE_RESIDUAL_STATE_COMPONENT {}",serde_json::json!({"credit":false,"gpu_execution":gpu_execution,
                 "dimension":dimension,"source_bytes":source,"named_final_bytes":native.named_bytes(),
                 "source_visits":native.source_reads.load(Ordering::Relaxed),"retained_visits":native.retained_reads.load(Ordering::Relaxed),
                 "state_descriptor_bytes":size_of::<State>(),"retained_descriptor_bytes":size_of::<Retained>()+size_of::<RetainedData>(),

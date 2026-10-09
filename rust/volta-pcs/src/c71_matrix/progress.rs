@@ -67,6 +67,37 @@ pub(super) fn host_process_memory() -> Option<Vec<String>> {
         .map(str::to_owned).collect())
 }
 
+fn process_start_ticks(stat: &str) -> Result<u64, String> {
+    // comm may contain spaces and parentheses; field 22 follows its last ')'.
+    stat.rsplit_once(')').and_then(|(_, fields)| fields.split_whitespace().nth(19))
+        .and_then(|value| value.parse().ok()).filter(|&ticks| ticks > 0)
+        .ok_or_else(|| "invalid process identity for W residency".into())
+}
+
+/// Only the external canonical monitor needs private virtual addresses. This
+/// durable lifecycle is diagnostic, outside wire/FS and unavailable for resume.
+pub(in crate::c71_matrix) fn resident_w(
+    space: &str, state: &str, bytes: u64, address: Option<u64>,
+) -> Result<(), String> {
+    match std::env::var_os("C71_CANONICAL_MONITOR") {
+        None => return Ok(()),
+        Some(value) if value == "1" => {},
+        Some(_) => return Err("invalid canonical monitor switch".into()),
+    }
+    if !ACTIVE.load(Ordering::Relaxed) {
+        return Err("canonical W monitor requires durable progress".into());
+    }
+    let mut stat = [0u8; 4096];
+    let mut file = File::open("/proc/self/stat").map_err(|e| e.to_string())?;
+    let count = file.read(&mut stat).map_err(|e| e.to_string())?;
+    if count == stat.len() { return Err("oversized process identity".into()); }
+    let ticks = process_start_ticks(std::str::from_utf8(&stat[..count]).map_err(|e| e.to_string())?)?;
+    let mut event = json!({"kind": "resident_w", "space": space, "state": state,
+        "bytes": bytes, "pid": std::process::id(), "process_start_ticks": ticks});
+    if let Some(address) = address { event["address"] = json!(address); }
+    emit(event)
+}
+
 pub(super) fn emit(event: Value) -> Result<(), String> {
     if !ACTIVE.load(Ordering::Relaxed) {
         return Ok(());
@@ -134,6 +165,14 @@ impl Drop for Span {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn c71_progress_process_identity_uses_last_parenthesis() {
+        let fields = (3..=21).map(|_| "0").chain(std::iter::once("12345")).collect::<Vec<_>>().join(" ");
+        assert_eq!(process_start_ticks(&format!("42 (worker ) name) {fields} 999")).unwrap(), 12345);
+        for invalid in ["", "42 (bad) S 123", "42 no comm"] { assert!(process_start_ticks(invalid).is_err()); }
+        assert!(process_start_ticks(&std::fs::read_to_string("/proc/self/stat").unwrap()).unwrap() > 0);
+    }
+
     #[test]
     fn c71_progress_durable_prefix_no_overwrite_and_failure() {
         use std::os::unix::fs::PermissionsExt;

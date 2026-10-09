@@ -75,8 +75,9 @@ Il runner esplicito `experiment-cuda` collega i 13 producer, inferenza
 causale, replay A, PCS/range/GKR, verifica e promozione per O=0/150/300.
 È un percorso misto GPU/CPU. La tabella descrive l'integrazione corrente;
 parità ridotta e integrazione software non attribuiscono compilazione,
-prestazioni o picco fisico H100. I prerequisiti operativi ancora aperti
-sono nel [runbook](runpod-tests.md#prerequisiti-operativi-ancora-aperti).
+prestazioni o picco fisico H100. Gli ingressi di test e il lancio
+sorvegliato sono nel
+[runbook](runpod-tests.md#preparazione-operativa-della-campagna).
 
 | Parte | Stato e confine |
 |---|---|
@@ -115,8 +116,9 @@ della riserva e il completamento canonico sono aperti.
 
 La telemetria misura wall annidati, traffico applicativo, census ai
 confini delle fasi, ledger cumulativo CUDA e RSS/HWM. Non sommare picchi
-separati o contatori cumulativi. Monitor esterni devono ancora misurare
-CPU-time, HBM e arresti. Non sono acquisiti certificati canonici o misure
+separati o contatori cumulativi. Il monitor esterno applica deadline e
+arresti fisici campionati; CPU-time, HBM e allowance devono ancora essere
+misurati sulla H100. Non sono acquisiti certificati canonici o misure
 D34/D35 complete della prova. La
 [parità H100 precedente](../../benchmarks/results/c71-h100-corrected-parity-2026-10-04-d3c2fa95eaf7.json)
 riguarda operatori sintetici e MAC originali, non il percorso ottimizzato.
@@ -140,13 +142,13 @@ baseline `9033c64`. Si conclude quando codice, parità ridotte, benchmark
 rappresentativi, conto completo e procedure sono pronti, prima della
 campagna hardware. Il
 [checkpoint locale](../../benchmarks/results/c71-crypto-rms-local-2026-10-09-abd2de09efb4.json)
-conserva parità, benchmark e ledger. La revisione del passaggio alla H100
-ha però rilevato prerequisiti operativi non coperti dalla precedente
-dichiarazione di conclusione: ingressi di test sulla libreria CUDA reale,
-timeout del trasporto diagnostico e monitor della campagna. Il
-[runbook](runpod-tests.md#prerequisiti-operativi-ancora-aperti) ne definisce
-la chiusura; la preparazione operativa non è ancora completa.
-I target hardware restano aperti.
+conserva parità, benchmark e ledger. La successiva revisione del passaggio
+alla H100 ha aggiunto ingressi di test espliciti sulla libreria reale,
+timeout diagnostico separato dal target di 65 s e lancio sorvegliato.
+Il [runbook](runpod-tests.md#preparazione-operativa-della-campagna)
+definisce la procedura aggiornata e i suoi limiti: i campioni nelle
+transizioni di W non attribuiscono credito congiunto di memoria;
+picco completo, allowance e target hardware restano aperti.
 Nuova H100 e durata richiedono nuova autorizzazione.
 
 Il [checkpoint S1 e Query E](../c7.1-history/crypto-residual-query-2026-10-09.md)

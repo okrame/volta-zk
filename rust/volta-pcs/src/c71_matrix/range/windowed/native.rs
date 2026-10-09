@@ -557,6 +557,7 @@ pub(in crate::c71_matrix) struct Runtime {
     raw: Raw,
     stopped: bool,
     weights: Option<(Arc<Vec<i16>>, [u8; 32])>,
+    weight_install_bytes: u64,
     owner: Arc<()>,
     configuration: (PathBuf, i32, u64, u64),
 }
@@ -885,6 +886,7 @@ impl Runtime {
             raw: ptr::null_mut(),
             stopped: false,
             weights: None,
+            weight_install_bytes: 0,
             owner: Arc::new(()),
             configuration: (
                 config.library.clone(),
@@ -956,8 +958,18 @@ impl Runtime {
         if self.weights.is_some() || layout == [0; 32] {
             return self.abort("native W identity or replacement");
         }
+        let bytes = (weights.len() * 2) as u64;
+        if let Err(error) = crate::c71_matrix::progress::resident_w("device", "allocating", bytes, None) {
+            return self.abort(error);
+        }
+        // Begin can allocate before returning an error; retain its lifecycle
+        // through cleanup even when no sealed weights owner was installed.
+        self.weight_install_bytes = bytes;
         let status = unsafe { (self.api.weights_begin)(self.raw, weights.len() as u64) };
         self.check(status)?;
+        if let Err(error) = crate::c71_matrix::progress::resident_w("device", "live", bytes, None) {
+            return self.abort(error);
+        }
         for (i, chunk) in weights.chunks(1 << 27).enumerate() {
             let status = unsafe {
                 (self.api.weights_upload)(
@@ -1779,14 +1791,22 @@ impl Runtime {
         if raw.is_null() {
             return Ok(Stats::default());
         }
+        let bytes = self.weight_install_bytes;
+        let before = if bytes != 0 {
+            crate::c71_matrix::progress::resident_w("device", "retiring", bytes, None)
+        } else { Ok(()) };
         let mut stats = Stats::default();
         let status = unsafe { (self.api.close)(raw, &mut stats) };
         self.weights = None;
-        if status != 0 || stats.cleanup_failed != 0 {
+        if status != 0 || stats.cleanup_failed != 0 || stats.weights_bytes != 0 {
             return Err(format!(
                 "native cleanup failed, arena bytes: {}, W bytes: {}",
                 stats.arena_bytes, stats.weights_bytes
             ));
+        }
+        before?; // Diagnostic failure never bypasses the actual native cleanup.
+        if bytes != 0 {
+            crate::c71_matrix::progress::resident_w("device", "retired", bytes, None)?;
         }
         Ok(stats)
     }
@@ -2195,6 +2215,62 @@ impl<'a, T: Word> Evaluator<'a, T> {
 #[cfg(test)]
 pub(in crate::c71_matrix) mod tests {
     use super::*;
+
+    fn hardware_config_from_library(
+        library: Option<PathBuf>, window_words: usize, arena_bytes: u64,
+    ) -> Result<Config, String> {
+        let library = library.ok_or("C71_NATIVE_PARITY_LIBRARY is required")?;
+        if arena_bytes <= 256 || arena_bytes % 256 != 0 || arena_bytes > 6 << 30 {
+            return Err("hardware parity arena violates the native allocation contract".into());
+        }
+        // Reduced tests keep the host fixture's usable capacity; the existing
+        // 512 MiB range test retains its original 256 MiB reserve.
+        let reserve_bytes = if arena_bytes > 256 << 20 { 256 << 20 } else { 256 };
+        if !library.is_absolute() || !library.is_file() {
+            return Err("hardware parity requires an absolute native library file".into());
+        }
+        let library = std::fs::canonicalize(library).map_err(|e| e.to_string())?;
+        let api = Library::open(&library)?;
+        // A renamed host fixture must never acquire CUDA parity credit.
+        for symbol in [
+            b"c71_range_test_failure\0".as_slice(), b"c71_range_test_expect_bytes\0",
+            b"c71_range_test_expect_raw\0", b"c71_range_test_expect_pcs\0",
+            b"c71_range_test_pcs_record\0",
+        ] {
+            if unsafe { api.symbol::<*mut c_void>(symbol) }.is_ok() {
+                return Err("hardware parity rejects the host test library".into());
+            }
+        }
+        Ok(Config::new(library, 0, arena_bytes, reserve_bytes, window_words, 3))
+    }
+
+    pub(in crate::c71_matrix) fn hardware_config(window_words: usize, arena_bytes: u64) -> Config {
+        let config = hardware_config_from_library(
+            std::env::var_os("C71_NATIVE_PARITY_LIBRARY").map(PathBuf::from),
+            window_words, arena_bytes,
+        ).expect("explicit real CUDA parity library required; no host fallback");
+        eprintln!("C71_HARDWARE_PARITY_LIBRARY {}", config.library.display());
+        config
+    }
+
+    #[test]
+    fn c71_b12_native_hardware_parity_rejects_missing_and_host_library() {
+        assert!(hardware_config_from_library(None, 512, 16 << 20).is_err());
+        assert!(hardware_config_from_library(Some(PathBuf::from("relative.so")), 512, 16 << 20).is_err());
+        let fixture = fixture(512);
+        for arena_bytes in [0, 256, 513, (6 << 30) + 256] {
+            let error = hardware_config_from_library(Some(fixture.config.library.clone()), 512, arena_bytes)
+                .err().unwrap();
+            assert!(error.contains("arena violates"), "{error}");
+        }
+        let missing = fixture.directory.join("missing-library.so");
+        assert!(hardware_config_from_library(Some(missing), 512, 16 << 20).is_err());
+        let renamed = fixture.directory.join("renamed-cuda-library.so");
+        std::fs::copy(&fixture.config.library, &renamed).unwrap();
+        let error = hardware_config_from_library(Some(renamed.clone()), 512, 16 << 20).err().unwrap();
+        assert!(error.contains("rejects the host test library"), "{error}");
+        std::fs::remove_file(renamed).unwrap();
+    }
     #[test]
     fn c71_b12_native_residual_pcs_basis_is_distinct_and_canonical() {
         let v=E::new([Goldilocks::ZERO,Goldilocks::ONE,Goldilocks::ZERO]);
@@ -2461,13 +2537,25 @@ pub(in crate::c71_matrix) mod tests {
     }
     #[test]
     fn c71_b12_native_transform_natural_forward_inverse_and_work() {
+        let mut fixture = fixture(512);
+        fixture.config.arena_bytes = 16 << 20;
+        transform_natural_parity(&fixture.config, false);
+    }
+
+    #[test]
+    #[ignore = "explicit authorized GPU experiment; requires C71_NATIVE_PARITY_LIBRARY"]
+    fn c71_b12_native_hardware_transform_natural_forward_inverse() {
+        let config = hardware_config(512, 16 << 20);
+        transform_natural_parity(&config, true);
+    }
+
+    fn transform_natural_parity(config: &Config, gpu_execution: bool) {
         use p3_dft::{Radix2DFTSmallBatch,TwoAdicSubgroupDft};
         use p3_field::PrimeField64;
         use p3_goldilocks::Goldilocks;
-        let mut fixture=fixture(512); fixture.config.arena_bytes=16<<20;
         let weights=Arc::new(Vec::new());
         let _budget=crate::c71_matrix::census::Budget::new(&weights).unwrap();
-        let mut runtime=Runtime::new(&fixture.config).unwrap();
+        let mut runtime=Runtime::new(config).unwrap();
         let dft=Radix2DFTSmallBatch::<Goldilocks>::default();
         let cases=(1..=10).flat_map(|log| [1usize,3,4].map(move |batch|(log,batch)))
             .chain([(3,32767),(3,32768),(3,65530),(3,65536),(16,3),(17,3)]);
@@ -2506,13 +2594,13 @@ pub(in crate::c71_matrix) mod tests {
                 for buffer in [values,scratch,forward,inverse] { runtime.release_buffer(buffer).unwrap(); }
                 if batch>4 || log>10 { println!("C71_NATIVE_TRANSFORM_BENCH {}",serde_json::json!({
                     "log_length":log,"batch":batch,"forward_owner_host_s":forward_s,"inverse_owner_host_s":inverse_s,
-                    "launches_per_transform":launches,"gpu_execution":false,"credit":false})); }
+                    "launches_per_transform":launches,"gpu_execution":gpu_execution,"credit":false})); }
         }
         let stats=runtime.close().unwrap(); assert_eq!(stats.arena_bytes,0);
         println!("C71_NATIVE_TRANSFORM {}",serde_json::json!({"cases":36,"log_lengths":[1,17],
             "natural_forward_and_inverse":true,"host_owner_bytes":stats.host_owner_bytes,
             "capacity_peak_bytes":stats.peak_capacity_bytes,"census":crate::c71_matrix::census::simultaneous(),
-            "gpu_execution":false,"credit":false}));
+            "gpu_execution":gpu_execution,"credit":false}));
     }
 
     #[test]
@@ -2686,15 +2774,27 @@ pub(in crate::c71_matrix) mod tests {
     }
     #[test]
     fn c71_b12_native_private_salts_owner_exact_stream_hash_and_work() {
+        let mut fixture = fixture(512);
+        fixture.config.arena_bytes = 16 << 20;
+        private_salts_owner_parity(&fixture.config, false);
+    }
+
+    #[test]
+    #[ignore = "explicit authorized GPU experiment; requires C71_NATIVE_PARITY_LIBRARY"]
+    fn c71_b12_native_hardware_private_salts_stream_and_hash() {
+        let config = hardware_config(512, 16 << 20);
+        private_salts_owner_parity(&config, true);
+    }
+
+    fn private_salts_owner_parity(config: &Config, gpu_execution: bool) {
         use std::time::Instant;
-        let mut fixture = fixture(512); fixture.config.arena_bytes = 16 << 20;
         for (case, (rows, cosets, group, origin)) in [
             (16usize, 32usize, 4usize, 7u64),
             (4, 64, 32, 32),
             (4096, 32, 32, 63),
             (4, 32, 32, (1u64 << 40) - 8 * 4 * 4 * 32),
         ].into_iter().enumerate() {
-            let mut runtime = Runtime::new(&fixture.config).unwrap();
+            let mut runtime = Runtime::new(config).unwrap();
             let height = rows * cosets;
             let seed = [case as u8 + 23; 32];
             let mut hash = blake3::Hasher::new();
@@ -2778,7 +2878,7 @@ pub(in crate::c71_matrix) mod tests {
                 "native_d2h_bytes_after_prescan":after.d2h_bytes-before.d2h_bytes,
                 "reference_samples_capacity_bytes":samples.capacity()*8,"host_indices_capacity_bytes":
                     8*(starts.capacity()+offsets.capacity()+expected_starts.capacity()+expected_offsets.capacity()+expected_ends.capacity()),
-                "salt_band_uploads":0,"gpu_execution":false,"credit":false}));
+                "salt_band_uploads":0,"gpu_execution":gpu_execution,"credit":false}));
             runtime.close().unwrap();
         }
         fn count_band(rows: usize) -> usize { rows.min(65536) }

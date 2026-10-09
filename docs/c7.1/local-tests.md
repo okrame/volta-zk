@@ -136,9 +136,13 @@ un driver CUDA simulato; confrontano matematica e lifecycle, senza
 compilare/eseguire CUDA. I risultati datati, RSS e provenienza sono
 nell'[indice delle evidenze](design.md#evidenze-e-decisioni).
 Questi filtri costruiscono la libreria simulata anche su una H100:
-`C71_NATIVE_PARITY_LIBRARY` non ne cambia il backend. Gli ingressi
-hardware dei nuovi consumer sono un
-[prerequisito ancora aperto](runpod-tests.md#prerequisiti-operativi-ancora-aperti).
+`C71_NATIVE_PARITY_LIBRARY` non ne cambia il backend. I 14 ingressi
+hardware espliciti e il range preesistente sono `#[ignore]`, elencati nel
+[runbook](runpod-tests.md#parità-e-misure-rappresentative). Riutilizzano
+gli stessi oracoli con Config esplicita e rifiutano la libreria simulata
+anche rinominata. Fault injection e simboli mancanti rimangono host.
+La preparazione locale verifica helper e guardie; l'esecuzione di quei
+kernel richiede la campagna autorizzata.
 
 | Filtro | Significato |
 |---|---|
@@ -151,11 +155,27 @@ hardware dei nuovi consumer sono un
 | `c71_b12_windowed_native_failure` | Errori terminali e assenza di fallback |
 | `c71_canonical_metrics_` | Wall/traffico/census, senza sommare picchi |
 | `c71_canonical_runner_` | Selezione backend, verifica/promozione e journal |
+| `c71_b12_native_hardware_parity_rejects_missing_and_host_library` | Libreria mancante/relativa/simulata, anche rinominata, e arena invalida rifiutate prima dell'owner CUDA |
+| `c71_canonical_runner_diagnostic_timeout_and_disconnect` | Timeout finito esplicito, lettura bloccata e disconnessione terminali; socketpair locale |
 
 Le socketpair locali possono richiedere un'eccezione al sandbox; non
 usano rete esterna. Conservare il rifiuto sandbox e la successiva
 esecuzione separatamente. Norm finale ha 149 righe: i test della schedule
 non trasformano il batch in 150 per semplicità.
+
+Il monitor della campagna ha fixture Python senza provider/GPU: lifecycle
+W, limite congiunto, `smaps`, deadline/riserva, output esclusivi e privati,
+errore GPU/cgroup e arresto dei gruppi figli. Eseguire sotto gli stessi
+limiti locali. Le fixture emulano GPU, cgroup e `time`; processi,
+sessioni/gruppi e lettura `smaps` sono locali reali:
+
+```bash
+(ulimit -v 2097152; timeout -k 5s 60s .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_campaign_measure.py)
+```
+
+Le fixture non misurano HBM o picco fisico canonico. La
+[procedura operativa](runpod-tests.md#preparazione-operativa-della-campagna)
+distingue questi controlli dal futuro lancio H100.
 
 Se il toolkit è disponibile, compilare libreria completa e diagnostico
 senza eseguirli; altrimenti la build CUDA si svolge sul pod autorizzato:

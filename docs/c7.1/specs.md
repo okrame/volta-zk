@@ -683,11 +683,13 @@ ricevuti prima dell'installazione. I cap precedono le allocazioni del
 decoder: candidata ≤1 MiB, tabelle esattamente 24.414.870 B, installazione
 136 B, richiesta 416 B. Il framing della risposta aggiunge 680 B al corpo;
 il completamento ne usa 73. Sono dati sul canale locale autenticato,
-non una nuova autenticazione crittografica del trasporto. Il runner
-attuale imposta timeout socket fissi di 65 s, anche durante l'attesa
-della risposta completa. Il limite diagnostico deve essere separato dal
-target temporale secondo i [prerequisiti del runbook](runpod-tests.md#prerequisiti-operativi-ancora-aperti),
-con deadline esterna e arresto terminale conservati.
+non una nuova autenticazione crittografica del trasporto. Il runner usa
+`C71_DIAGNOSTIC_TIMEOUT_SECONDS`: intero positivo u32, default 65 s,
+finito per ogni operazione read/write della socket. Il
+[lanciatore sorvegliato](runpod-tests.md#preparazione-operativa-della-campagna)
+lo imposta alla durata diagnostica della fase, applicando separatamente
+deadline esterna e riserva di chiusura. Timeout/disconnessione restano
+terminali; il target della risposta rimane 65 s.
 
 [canonical_metrics.rs](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_metrics.rs)
 conta i byte effettivamente letti/scritti dal lato V, separando
@@ -707,6 +709,8 @@ incomplete e traffico parziale, senza valori privati; un processo ucciso
 richiede comunque il log del controller. RSS/HWM sono dell'intero processo
 host con entrambi i ruoli. I campioni ai confini di fase non sono picchi
 per ruolo; CPU-time e HBM osservata richiedono il monitor esterno.
+Le etichette CPU/GPU del report descrivono le route selezionate, inclusi
+sali, query W/A e contrazioni residenti; non attribuiscono tempi ai kernel.
 
 ### Telemetria durevole del percorso crittografico
 
@@ -728,6 +732,17 @@ I butterfly FFT sono un censimento analitico, non istruzioni misurate.
 RSS/HWM sono del processo; HBM/bus/picco fisico richiedono monitor esterno.
 Nessun seed, pad, sale, W/A/KV o motivo privato nei record; pubblicare solo
 la selezione revisionata. Il JSONL non è conservato interamente in RAM.
+
+Con `C71_CANONICAL_MONITOR=1`, il processo pubblica anche il lifecycle
+del solo packed W: PID/starttime, indirizzo host, byte e transizioni
+host/device. Questi metadati restano nel log privato. Il monitor esenta
+solo un limite inferiore della residenza host da `smaps` e il payload
+device identificato dal lifecycle; non sottrae W dal solo RSS nominale.
+Campioni durante allocazione/ritiro non chiudono il conto congiunto.
+Nelle fasi stabili applica RSS albero+HBM intera meno tali esenzioni
+≤6.174.015.488 B; census payload, swap, disco, margine GPU, cgroup e
+deadline restano controllati. È un arresto campionato conservativo,
+non una misura del picco completo o una prova della riserva fisica.
 
 `PrivateRng` usa 4.096 B heap per sampler sequenziale, nel conto comune.
 Cursore logico e cap 2^40 contano i byte richiesti; l'ultimo refill non

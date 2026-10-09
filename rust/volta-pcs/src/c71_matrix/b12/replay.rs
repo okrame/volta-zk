@@ -2219,7 +2219,7 @@ fn compare_source_with_query(
     )
     .is_err());
     if let Some(owner)=residual_owner {
-        println!("C71_NATIVE_RESIDUAL_QUERY_FULL_WIRE {}",json!({"credit":false,"gpu_execution":false,"dimension":dimension,
+        println!("C71_NATIVE_RESIDUAL_QUERY_FULL_WIRE {}",json!({"credit":false,"backend":"explicit_native_owner","dimension":dimension,
             "native":owner.lock().unwrap().stats().unwrap(),"canonical_bytes":bytes.len(),"native_extension_queries":true,
             "wire_fs_rng_original_mac_equal":true}));
     }
@@ -3292,7 +3292,18 @@ mod tests {
     fn c71_b12_native_weight_tree_exact_roots_openings_and_work() {
         let mut fixture = device::tests::fixture(512);
         fixture.config.arena_bytes = 8 << 20;
-        let (native, get, calls) = native_weight_source_fixture(15, &fixture.config);
+        weight_tree_parity(&fixture.config, false);
+    }
+
+    #[test]
+    #[ignore = "explicit authorized GPU experiment; requires C71_NATIVE_PARITY_LIBRARY"]
+    fn c71_b12_native_hardware_weight_tree_roots_openings() {
+        let config = device::tests::hardware_config(512, 8 << 20);
+        weight_tree_parity(&config, true);
+    }
+
+    fn weight_tree_parity(config: &device::Config, gpu_execution: bool) {
+        let (native, get, calls) = native_weight_source_fixture(15, config);
         let owner = native.runtime.clone();
         let live = native.weights.len();
         let _budget = crate::c71_matrix::census::Budget::new(&native.weights).unwrap();
@@ -3340,7 +3351,7 @@ mod tests {
             "native": stats, "cache": model.retained_census(), "source_visits": live * groups,
             "durable_records": events.len(), "census": crate::c71_matrix::census::simultaneous(),
             "native_commitment_census": native_census,
-            "different_compiler_optimization_no_speedup_claim": true, "gpu_execution": false, "credit": false}));
+            "different_compiler_optimization_no_speedup_claim": true, "gpu_execution": gpu_execution, "credit": false}));
         owner.lock().unwrap().close().unwrap();
     }
 
@@ -3359,8 +3370,20 @@ mod tests {
 
     #[test]
     fn c71_b12_native_query_exact_horner_windows_pads_and_resources() {
-        let mut fixture=device::tests::fixture(512); fixture.config.arena_bytes=8<<20;
-        let f=native_source_fixture(&fixture.config);
+        let mut fixture = device::tests::fixture(512);
+        fixture.config.arena_bytes = 8 << 20;
+        initial_source_query_parity(&fixture.config, false);
+    }
+
+    #[test]
+    #[ignore = "explicit authorized GPU experiment; requires C71_NATIVE_PARITY_LIBRARY"]
+    fn c71_b12_native_hardware_initial_source_query_horner() {
+        let config = device::tests::hardware_config(512, 8 << 20);
+        initial_source_query_parity(&config, true);
+    }
+
+    fn initial_source_query_parity(config: &device::Config, gpu_execution: bool) {
+        let f=native_source_fixture(config);
         let owner=f.native.runtime.clone();
         let _budget=crate::c71_matrix::census::Budget::new(&f.weights).unwrap();
         let cpu_requests=Arc::new(Mutex::new(Vec::new()));
@@ -3430,7 +3453,7 @@ mod tests {
                         "only_returned_matrix_payload_bytes":actual.values.len()*size_of::<Goldilocks>(),
                         "reference_and_expected_and_actual_harness_bytes":3*actual.values.len()*size_of::<Goldilocks>(),
                         "census":crate::c71_matrix::census::simultaneous(),
-                        "different_compiler_optimization_no_speedup_claim":true,"gpu_execution":false,"credit":false})); }
+                        "different_compiler_optimization_no_speedup_claim":true,"gpu_execution":gpu_execution,"credit":false})); }
                 }
             }
         }
@@ -3438,14 +3461,26 @@ mod tests {
         assert_eq!(f.cpu_scans.load(std::sync::atomic::Ordering::Relaxed),0);
         println!("C71_NATIVE_QUERY_PARITY {}",json!({"cases":cases,"independent_horner":true,
             "i16_and_split_raw_i48":true,"original_d2h_bytes":0,"same_original_windows":true,
-            "gpu_execution":false,"credit":false}));
+            "gpu_execution":gpu_execution,"credit":false}));
         owner.lock().unwrap().close().unwrap();
     }
 
     #[test]
     fn c71_b12_native_weight_query_horner_signed_pads_duplicates_and_accounting() {
-        let mut fixture=device::tests::fixture(512);fixture.config.arena_bytes=16<<20;
-        let (original,source,_scans,owner)=super::super::sourcewise::tests::native_fixture_original(&fixture.config,10,false);
+        let mut fixture = device::tests::fixture(512);
+        fixture.config.arena_bytes = 16 << 20;
+        initial_weight_query_parity(&fixture.config, false);
+    }
+
+    #[test]
+    #[ignore = "explicit authorized GPU experiment; requires C71_NATIVE_PARITY_LIBRARY"]
+    fn c71_b12_native_hardware_initial_weight_query_horner() {
+        let config = device::tests::hardware_config(512, 16 << 20);
+        initial_weight_query_parity(&config, true);
+    }
+
+    fn initial_weight_query_parity(config: &device::Config, gpu_execution: bool) {
+        let (original,source,_scans,owner)=super::super::sourcewise::tests::native_fixture_original(config,10,false);
         let NativeOriginal::Weights(native)=original else {panic!("W query fixture differs");};
         let _budget=crate::c71_matrix::census::Budget::new(&native.weights).unwrap();
         let live=native.weights.len();let source=Arc::new(source);let mut cases=0;
@@ -3486,7 +3521,7 @@ mod tests {
                     "host_fixture_s":elapsed,"h2d":after.h2d_bytes-before.h2d_bytes,
                     "d2h":after.d2h_bytes-before.d2h_bytes,"d2d":after.d2d_bytes-before.d2d_bytes,
                     "launches":after.launches-before.launches,"fences":after.fences-before.fences,
-                    "native":after,"host_returned_payload":width*count*8,"gpu_execution":false,"credit":false}));}
+                    "native":after,"host_returned_payload":width*count*8,"gpu_execution":gpu_execution,"credit":false}));}
                 cases+=1;
             }
         }
@@ -3525,8 +3560,20 @@ mod tests {
 
     #[test]
     fn c71_b12_native_query_composed_uncached_chain_original_mac_and_transcript() {
-        let mut fixture=device::tests::fixture(512); fixture.config.arena_bytes=8<<20;
-        let f=native_source_fixture(&fixture.config);
+        let mut fixture = device::tests::fixture(512);
+        fixture.config.arena_bytes = 8 << 20;
+        initial_source_query_chain_parity(&fixture.config, false);
+    }
+
+    #[test]
+    #[ignore = "explicit authorized GPU experiment; requires C71_NATIVE_PARITY_LIBRARY"]
+    fn c71_b12_native_hardware_initial_source_query_whir_chain() {
+        let config = device::tests::hardware_config(512, 8 << 20);
+        initial_source_query_chain_parity(&config, true);
+    }
+
+    fn initial_source_query_chain_parity(config: &device::Config, gpu_execution: bool) {
+        let f=native_source_fixture(config);
         let owner=f.native.runtime.clone();
         let _budget=crate::c71_matrix::census::Budget::new(&f.weights).unwrap();
         let bytes=f.bytes.clone();
@@ -3543,7 +3590,7 @@ mod tests {
         let stats=owner.lock().unwrap().close().unwrap(); assert_eq!(stats.stopped,0); assert_eq!(stats.arena_bytes,0);
         println!("C71_NATIVE_QUERY_CHAIN {}",json!({"domain_log2":10,"initial_commitment_fixture":"CPU original",
             "uncached_initial_query_route":true,"full_proof_wire_fs_rng_mac_and_verifiers_exact":true,
-            "query_original_windows":*requests.lock().unwrap(),"native":stats,"gpu_execution":false,"credit":false}));
+            "query_original_windows":*requests.lock().unwrap(),"native":stats,"gpu_execution":gpu_execution,"credit":false}));
     }
 
     fn native_source_fixture(config: &device::Config) -> NativeSourceFixture {
@@ -3628,10 +3675,21 @@ mod tests {
 
     #[test]
     fn c71_b12_native_source_tree_exact_roots_openings_histogram_and_work() {
-        use std::sync::atomic::Ordering;
         let mut fixture = device::tests::fixture(512);
         fixture.config.arena_bytes = 8 << 20;
-        let f = native_source_fixture(&fixture.config);
+        source_tree_parity(&fixture.config, false);
+    }
+
+    #[test]
+    #[ignore = "explicit authorized GPU experiment; requires C71_NATIVE_PARITY_LIBRARY"]
+    fn c71_b12_native_hardware_source_tree_roots_openings_histogram() {
+        let config = device::tests::hardware_config(512, 8 << 20);
+        source_tree_parity(&config, true);
+    }
+
+    fn source_tree_parity(config: &device::Config, gpu_execution: bool) {
+        use std::sync::atomic::Ordering;
+        let f = native_source_fixture(config);
         let owner = f.native.runtime.clone();
         let _budget = crate::c71_matrix::census::Budget::new(&f.weights).unwrap();
         let before = owner.lock().unwrap().stats().unwrap();
@@ -3689,7 +3747,7 @@ mod tests {
             "reconstructions": groups, "initial_cpu_scans": 0, "initial_scalar_getter_calls": 0,
             "durable_records": events.len(), "census": crate::c71_matrix::census::simultaneous(),
             "native_commitment_census": native_census, "fixture_original_upload_before_commit": true,
-            "different_compiler_optimization_no_speedup_claim": true, "gpu_execution": false, "credit": false}));
+            "different_compiler_optimization_no_speedup_claim": true, "gpu_execution": gpu_execution, "credit": false}));
         owner.lock().unwrap().close().unwrap();
     }
 
@@ -4329,9 +4387,20 @@ mod tests {
     }
     #[test]
     fn c71_b12_native_residual_paired_tree_root_salts_and_cpu_geometry() {
-        let fixture=device::tests::fixture(512);
+        let fixture = device::tests::fixture(512);
+        residual_tree_parity(&fixture.config, false);
+    }
+
+    #[test]
+    #[ignore = "explicit authorized GPU experiment; requires C71_NATIVE_PARITY_LIBRARY"]
+    fn c71_b12_native_hardware_residual_tree_roots_salts_openings() {
+        let config = device::tests::hardware_config(512, 262144);
+        residual_tree_parity(&config, true);
+    }
+
+    fn residual_tree_parity(config: &device::Config, gpu_execution: bool) {
         for (first,height) in [(3,1024),(7,256)] {for source in [false,true] {
-            let (original,values,_scans,owner)=super::super::sourcewise::tests::native_fixture_original(&fixture.config,10,source);
+            let (original,values,_scans,owner)=super::super::sourcewise::tests::native_fixture_original(config,10,source);
             let values=Arc::new(values);let data=values.clone();let get:Getter=Arc::new(move |i|E::from(data[i]));
             let point=vec![E::new([Goldilocks::new(3),Goldilocks::new(5),Goldilocks::new(7)]);10];
             let target=Poly::new(values.as_ref().clone()).eval_base(&Point::new(point.clone()));
@@ -4365,7 +4434,7 @@ mod tests {
             assert_eq!(serde_json::to_value(native_oracle.tree.open(&indices).unwrap()).unwrap(),
                 serde_json::to_value(cpu_oracle.tree.open(&indices).unwrap()).unwrap());
             let stats=owner.lock().unwrap().stats().unwrap();
-            println!("C71_NATIVE_RESIDUAL_TREE_COMPONENT {}",json!({"credit":false,"gpu_execution":false,
+            println!("C71_NATIVE_RESIDUAL_TREE_COMPONENT {}",json!({"credit":false,"gpu_execution":gpu_execution,
                 "source_bytes":source,"first_fold":first,"height":height,"seconds":seconds,"cpu_seconds":cpu_seconds,
                 "native_rows":replay_tree::native_extension_geometry(height).unwrap().0,
                 "cpu_rows":replay_tree::geometry(height,12).unwrap().0,
@@ -4380,10 +4449,22 @@ mod tests {
 
     #[test]
     fn c71_b12_native_residual_query_horner_pads_duplicates_and_virtual_prefixes() {
+        let mut fixture = device::tests::fixture(512);
+        fixture.config.arena_bytes = 16 << 20;
+        residual_query_horner_parity(&fixture.config, false);
+    }
+
+    #[test]
+    #[ignore = "explicit authorized GPU experiment; requires C71_NATIVE_PARITY_LIBRARY"]
+    fn c71_b12_native_hardware_residual_query_horner() {
+        let config = device::tests::hardware_config(512, 16 << 20);
+        residual_query_horner_parity(&config, true);
+    }
+
+    fn residual_query_horner_parity(config: &device::Config, gpu_execution: bool) {
         use std::sync::atomic::Ordering;
-        let mut fixture=device::tests::fixture(512);fixture.config.arena_bytes=16<<20;
         for source in [false,true] {
-            let (original,values,scans,owner)=super::super::sourcewise::tests::native_fixture_original(&fixture.config,10,source);
+            let (original,values,scans,owner)=super::super::sourcewise::tests::native_fixture_original(config,10,source);
             let point=vec![E::ZERO;10];let target=E::from(values[0]);
             let mut dense:Vec<_>=values.into_iter().map(E::from).collect();
             let mut native=State::new_native(original,&point,3,target,source).unwrap();
@@ -4426,7 +4507,7 @@ mod tests {
             }
             if let Some(lease)=lease {lease.release().unwrap();native.native_retained_stage().unwrap().close_native().unwrap();}
             initial.close().unwrap();let stats=owner.lock().unwrap().close().unwrap();assert_eq!(stats.arena_bytes,0);
-            println!("C71_NATIVE_QUERY_E_HORNER {}",json!({"credit":false,"gpu_execution":false,"source_bytes":source,
+            println!("C71_NATIVE_QUERY_E_HORNER {}",json!({"credit":false,"gpu_execution":gpu_execution,"source_bytes":source,
                 "query_caps":[1,2,4,8],"pad_rows":19,"virtual_prefixes":[0,1,2],"exact_horner":true,"native":stats}));
         }
     }
@@ -4434,9 +4515,21 @@ mod tests {
 
     #[test]
     fn c71_b12_native_residual_query_full_whir_a_wire_fs_rng_and_original_mac() {
+        let mut fixture = device::tests::fixture(512);
+        fixture.config.arena_bytes = 16 << 20;
+        residual_source_chain_parity(&fixture.config, false);
+    }
+
+    #[test]
+    #[ignore = "explicit authorized GPU experiment; requires C71_NATIVE_PARITY_LIBRARY"]
+    fn c71_b12_native_hardware_residual_source_whir_chain() {
+        let config = device::tests::hardware_config(512, 16 << 20);
+        residual_source_chain_parity(&config, true);
+    }
+
+    fn residual_source_chain_parity(config: &device::Config, gpu_execution: bool) {
         use std::sync::atomic::{AtomicU64,Ordering};
-        let mut fixture=device::tests::fixture(512);fixture.config.arena_bytes=16<<20;
-        let (original,values,scans,owner)=super::super::sourcewise::tests::native_fixture_original(&fixture.config,10,true);
+        let (original,values,scans,owner)=super::super::sourcewise::tests::native_fixture_original(config,10,true);
         let NativeOriginal::Source(source)=&original else {unreachable!()};
         let requests=Arc::new(Mutex::new(Vec::new()));let log=requests.clone();let reader=source.window.clone();
         let data=Arc::new(values.clone());let calls=Arc::new(AtomicU64::new(0));let count=calls.clone();
@@ -4448,14 +4541,14 @@ mod tests {
             })}),Some(original));
         let stats=owner.lock().unwrap().stats().unwrap();assert_eq!(stats.stopped,0);
         assert!(!requests.lock().unwrap().is_empty());
-        let config=config(10).unwrap();let remaining=10-config.round_folding_factor(0);
+        let config=super::config(10).unwrap();let remaining=10-config.round_folding_factor(0);
         let height=config.inv_rate(0)*(1<<(remaining-config.round_folding_factor(1)));
         let rows=replay_tree::native_extension_geometry(height).unwrap().0;
         assert_eq!(scans.load(Ordering::Relaxed),(3+height/rows/2) as u64,
             "singleton + S1 groups + OOD + late retention only; no query/S2 original replay");
         // CPU getter is used only by the ordinary initial commitment/histogram;
         // the explicit native backend installs a panic getter for the proof.
-        println!("C71_NATIVE_RESIDUAL_QUERY_A_CHAIN {}",json!({"credit":false,"gpu_execution":false,"dimension":10,
+        println!("C71_NATIVE_RESIDUAL_QUERY_A_CHAIN {}",json!({"credit":false,"gpu_execution":gpu_execution,"dimension":10,
             "seconds":started.elapsed().as_secs_f64(),"initial_commitment":"CPU reference",
             "initial_queries":"resident original bytes","residual_state_and_extension_queries":"native owner",
             "original_reconstructions":scans.load(Ordering::Relaxed),"initial_cpu_getter_calls":calls.load(Ordering::Relaxed),
@@ -4465,15 +4558,27 @@ mod tests {
 
     #[test]
     fn c71_b12_native_residual_query_full_whir_w_wire_fs_rng_and_original_mac() {
-        let mut fixture=device::tests::fixture(512);fixture.config.arena_bytes=16<<20;
-        let (original,values,_scans,owner)=super::super::sourcewise::tests::native_fixture_original(&fixture.config,10,false);
+        let mut fixture = device::tests::fixture(512);
+        fixture.config.arena_bytes = 16 << 20;
+        residual_weight_chain_parity(&fixture.config, false);
+    }
+
+    #[test]
+    #[ignore = "explicit authorized GPU experiment; requires C71_NATIVE_PARITY_LIBRARY"]
+    fn c71_b12_native_hardware_residual_weight_whir_chain() {
+        let config = device::tests::hardware_config(512, 16 << 20);
+        residual_weight_chain_parity(&config, true);
+    }
+
+    fn residual_weight_chain_parity(config: &device::Config, gpu_execution: bool) {
+        let (original,values,_scans,owner)=super::super::sourcewise::tests::native_fixture_original(config,10,false);
         let data=Arc::new(values.clone());let get:Getter=Arc::new(move |i|E::from(data[i]));
         let started=std::time::Instant::now();
         let NativeOriginal::Weights(weights)=&original else {panic!("W query fixture differs");};
         compare_source_with_query(10,get,values,None,None,None,false,
             Some(NativeQuery::Weights(weights.clone())),Some(original));
         let stats=owner.lock().unwrap().stats().unwrap();assert_eq!(stats.stopped,0);assert_eq!(stats.arena_bytes,0);
-        println!("C71_NATIVE_RESIDUAL_QUERY_W_CHAIN {}",json!({"credit":false,"gpu_execution":false,"dimension":10,
+        println!("C71_NATIVE_RESIDUAL_QUERY_W_CHAIN {}",json!({"credit":false,"gpu_execution":gpu_execution,"dimension":10,
             "seconds":started.elapsed().as_secs_f64(),"initial_commitment":"CPU reference","initial_queries":"resident sealed W",
             "residual_state_and_extension_queries":"native owner","full_weight_retention":false,"native":stats}));
         owner.lock().unwrap().close().unwrap();

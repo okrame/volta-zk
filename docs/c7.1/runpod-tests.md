@@ -13,10 +13,9 @@ ammissione Γ, failure canonico e nuovi controlli locali.
 
 Il goal prepara in locale l'intero percorso crittografico per H100 80 GB.
 Parità e conto del checkpoint locale sono nel
-[record](../../benchmarks/results/c71-crypto-rms-local-2026-10-09-abd2de09efb4.json),
-ma la revisione ha rilevato i [prerequisiti operativi](#prerequisiti-operativi-ancora-aperti)
-ancora aperti. La precedente dichiarazione di conclusione non copriva
-queste lacune del passaggio hardware;
+[record](../../benchmarks/results/c71-crypto-rms-local-2026-10-09-abd2de09efb4.json).
+La revisione successiva ha aggiunto test hardware espliciti, timeout
+diagnostico e monitor nella [procedura operativa](#preparazione-operativa-della-campagna);
 **nessuna nuova campagna è autorizzata**.
 Hardware e durata richiedono una nuova decisione.
 La preparazione locale non autorizza riattivazione, nuovi pod o benchmark
@@ -51,7 +50,7 @@ Accumulo W ordinario e QK/PV scalari rimangono default; le candidate Tensor/MMA
 sono confronti espliciti. Parità host e driver simulato non attribuiscono
 compilazione sm_90, parità CUDA, prestazioni o picco fisico H100.
 
-Percorso principale: chiudere i prerequisiti operativi locali → autorizzare
+Percorso principale: verificare codice/procedure locali → autorizzare
 hardware e durata → verificare ambiente e riusare Γ → parità CUDA e
 misure rappresentative con conto simultaneo → esperimento O=0/150/300 →
 conservare esiti e arrestare il pod. La campagna misurerà separatamente
@@ -61,45 +60,49 @@ quando l'ammissione pertinente è invalidata; la prova completa richiede
 Γ ammesso. Cronache, pod/deadline e stime superate rimangono nel
 [runbook storico](../c7.1-history/runpod-tests-2026-10-07.md).
 
-### Prerequisiti operativi ancora aperti
+### Preparazione operativa della campagna
 
-La revisione su `c5b81bf` conferma le integrazioni e i record locali,
-ma non un passaggio alla campagna completo. Prima dell'avvio a pagamento:
+La revisione su `c5b81bf` ha individuato tre lacune del passaggio hardware;
+le correzioni sono implementate nel codice e nelle procedure correnti:
 
-1. **Parità dei nuovi consumer sulla libreria reale.** I filtri PCS/sali,
-   FFT naturale, query, closure lineare e S1/Query E usano
-   [`native::tests::fixture`](../../rust/volta-pcs/src/c71_matrix/range/windowed/native.rs),
-   che compila sempre `range-host-fixture.so` con il driver simulato.
-   `C71_NATIVE_PARITY_LIBRARY` è letto soltanto dal test hardware range
-   già documentato sotto; impostarlo non converte gli altri filtri.
-   Preparare ingressi hardware espliciti per le parità positive,
-   riusando gli oracoli e rifiutando la libreria simulata. I test di fault
-   injection e simboli mancanti restano host. L'esecuzione CUDA avverrà
-   soltanto sul pod autorizzato, prima della prova canonica.
-2. **Timeout del trasporto diagnostico.**
-   [`canonical_runner::pair`](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_runner.rs)
-   imposta read/write timeout a 65 s. Il verificatore attende il primo
-   byte mentre il prover prepara l'intera risposta: oltre quel silenzio
-   chiude il canale, anche con `PROOF_SECONDS` maggiore. L'installazione W
-   precede queste socket e non è soggetta a tale attesa. Separare il limite
-   diagnostico di trasporto dal target prestazionale, mantenendo deadline
-   esterna, terminalità e test ridotti di timeout/disconnessione.
-3. **Monitor e metadati della campagna.** Lo snippet dell'esperimento
-   registra HBM ma non arresta al superamento delle soglie fisiche.
-   [`c71_campaign_measure.py`](../../scripts/c71_campaign_measure.py) usa
-   ancora la riserva di chiusura fissa di 1.800 s e soglie della calibrazione
-   (RSS 96 GiB, HBM 80 GB), senza verificare la riserva fisica congiunta
-   della prova. Preparare e verificare con fixture un lancio sorvegliato
-   che applichi i limiti canonici e la riserva concordata. Aggiornare anche
-   `cpu_phases`/`gpu_phases` nel report del runner: le etichette elencano
-   ancora A, sali, resti e contrazioni fra le fasi CPU, benché le route
-   selezionate siano residenti. Non usarle per attribuire i tempi.
+1. **Ingressi CUDA espliciti.** Quattordici test positivi `#[ignore]`
+   riusano gli oracoli host per sali/FFT, commitment/query W/A, closure
+   lineare e S1/Query E. La guard comune richiede
+   `C71_NATIVE_PARITY_LIBRARY` assoluta e rifiuta i simboli della libreria
+   simulata anche se rinominata. I test locali restano simulati; fault
+   injection e simboli mancanti non vengono trasferiti sulla GPU.
+   I comandi individuali sono [sotto](#parità-e-misure-rappresentative).
+2. **Trasporto diagnostico.** Il runner accetta
+   `C71_DIAGNOSTIC_TIMEOUT_SECONDS`, intero positivo u32, default 65 s.
+   Il monitor lo imposta alla durata della fase, mantenendo finite le
+   attese read/write e terminali timeout/disconnessioni. La deadline
+   esterna ferma l'intero esperimento; il target prestazionale rimane 65 s.
+3. **Lancio sorvegliato.**
+   [`c71_campaign_measure.py`](../../scripts/c71_campaign_measure.py)
+   distingue `--mode canonical` da `--mode calibration`, richiede deadline,
+   riserva di chiusura esplicita, UUID GPU e cgroup v2 leggibile
+   (`memory.events`/`memory.current`). Errori del monitor, OOM, swap,
+   disco/margini GPU e superamento dei temporanei campionati fermano la
+   sessione con i gruppi figli. I metadati CPU/GPU del runner riflettono
+   le route residenti correnti; rimangono etichette, non misure di kernel.
 
-Questi interventi riguardano test e controllo dell'esperimento; non
-cambiano Γ, protocollo, limiti di memoria o target di 65 s. I record
-positivi e negativi esistenti conservano il proprio ambito. Compilazione
-CUDA, parità hardware, picco fisico e cinque tempi restano verifiche della
-campagna successiva, non risultati già acquisiti.
+Il conto fisico stabile include RSS dell'albero e monitor più HBM del
+device intero. Per W host sottrae solo un limite inferiore della residenza
+ricavato da `smaps`; per W device richiede il lifecycle dell'owner del run.
+Durante allocazione/ritiro non concede credito al campione congiunto:
+restano deadline e stop globali, ma quel tratto non prova il tetto fisico.
+Il report conserva `physical_complete_peak:false`. Picchi transitori,
+sufficienza della riserva fisica e cinque tempi richiedono la campagna.
+Il monitor del processo non spegne il pod: serve sempre il guard provider
+indipendente e la conferma finale dello stop.
+Il lancio richiede Linux con `/proc` e `smaps` leggibili per lo stesso UID,
+cgroup v2 con `memory.current`/`memory.events`, GNU `/usr/bin/time` e
+`nvidia-smi` sul device autorizzato. Dati o dipendenze mancanti fermano
+il controllo; non vengono sostituiti con zeri.
+
+Questi interventi preservano Γ, protocollo, limiti e NoPeek/MAC originali.
+La validazione locale riguarda le guardie e gli oracoli ridotti; nessun
+esito locale attribuisce compilazione CUDA o parità sulla H100.
 
 ## Autorizzazione e limiti
 
@@ -137,10 +140,10 @@ corretto. Le eccezioni AS non richiedono una nuova approvazione per campagna.
 
 Monitorare l'albero processi, HBM, cgroup/swap e disco; i campioni non sono
 un picco completo. [c71_campaign_measure.py](../../scripts/c71_campaign_measure.py)
-richiede `AUTHORIZED_END_EPOCH` e UUID in `CUDA_VISIBLE_DEVICES`; il suo
-arresto deve raggiungere i gruppi figli. Il wrapper corrente richiede
-l'adattamento indicato nei [prerequisiti](#prerequisiti-operativi-ancora-aperti)
-prima dell'uso canonico. Il timeout di un processo non spegne
+richiede `AUTHORIZED_END_EPOCH`, `CLOSE_RESERVE_SECONDS` e UUID in
+`CUDA_VISIBLE_DEVICES`; il suo arresto raggiunge i gruppi figli nella
+sessione. Usare il modo canonico e il progress log secondo la
+[procedura](#preparazione-operativa-della-campagna). Il timeout di un processo non spegne
 il pod. Verificare lo stato finale dal provider entro la deadline, anche
 se il salvataggio è incompleto. I vecchi flag provider di deadline non
 sono un meccanismo affidabile di arresto.
@@ -276,22 +279,51 @@ nvcc -std=c++17 -O2 -arch=sm_90 --cudart static \
 Richiede compute capability 9; errore CUDA o differenza termina con exit
 nonzero. Conservare stdout/stderr, digest del binario, SHA e fingerprint.
 È parità sintetica `credit:false`, non un forward canonico o un benchmark.
-Il test seguente è ignorato nelle suite locali e usa **la libreria reale**,
-non il driver simulato: verifica gather residente→range/GKR→PCS sui MAC
-originali due volte nello stesso owner, poi range signed, contro transcript
-CPU ridotti. Impostare binario e `LIBRARY` a build verificate e compatibili
+I test seguenti sono ignorati nelle suite locali e richiedono **la
+libreria reale**. Il range verifica gather residente→range/GKR→PCS sui
+MAC originali due volte nello stesso owner, poi range signed. Gli altri
+14 ingressi confrontano i nuovi consumer con gli stessi oracoli host.
+Impostare binario e `LIBRARY` a build verificate e compatibili
 con le sorgenti numeriche correnti, registrando la SHA di ciascuna build;
 le sole modifiche documentali non impongono ricompilazione. Eseguire:
 
 ```bash
-(test "$(ulimit -H -v)" = unlimited; ulimit -S -v unlimited;
- C71_NATIVE_PARITY_LIBRARY="$LIBRARY" timeout -k 5s 60s "$C71_PCS_TEST_BINARY" \
-   c71_b12_windowed_native_hardware_parity_explicit --ignored --test-threads=1 --nocapture)
+set -euo pipefail
+test "$(ulimit -H -v)" = unlimited
+ulimit -S -v unlimited
+C71_HARDWARE_FILTERS=(
+  c71_b12_windowed_native_hardware_parity_explicit
+  c71_b12_native_hardware_transform_natural_forward_inverse
+  c71_b12_native_hardware_private_salts_stream_and_hash
+  c71_b12_native_hardware_weight_tree_roots_openings
+  c71_b12_native_hardware_source_tree_roots_openings_histogram
+  c71_b12_native_hardware_initial_source_query_horner
+  c71_b12_native_hardware_initial_weight_query_horner
+  c71_b12_native_hardware_initial_source_query_whir_chain
+  c71_b12_native_hardware_residual_state_retention_and_views
+  c71_b12_native_hardware_residual_tree_roots_salts_openings
+  c71_b12_native_hardware_residual_query_horner
+  c71_b12_native_hardware_residual_source_whir_chain
+  c71_b12_native_hardware_residual_weight_whir_chain
+  c71_b12_native_hardware_linear_coefficients_endpoints
+  c71_b12_native_hardware_linear_full_wire_fs_point_and_original_mac
+)
+for C71_HARDWARE_FILTER in "${C71_HARDWARE_FILTERS[@]}"; do
+  test $(( $(date +%s) + 60 )) -le \
+    $(( ${AUTHORIZED_END_EPOCH:?deadline richiesta} - ${CLOSE_RESERVE_SECONDS:?riserva richiesta} ))
+  test "$("$C71_PCS_TEST_BINARY" "$C71_HARDWARE_FILTER" --ignored --list | awk '/: test$/ { n++ } END { print n+0 }')" = 1
+  C71_NATIVE_PARITY_LIBRARY="$LIBRARY" timeout -k 5s 60s "$C71_PCS_TEST_BINARY" \
+    "$C71_HARDWARE_FILTER" --ignored --test-threads=1 --nocapture
+done
 ```
 
-Non richiede pesi reali; la sua disponibilità non dichiara già passata
-la parità hardware. Il test locale equivalente usa lo stesso helper con
-driver host simulato e non viene contato come esecuzione GPU.
+Non richiedono pesi reali; la disponibilità non dichiara già passata la
+parità hardware. Eseguire un filtro per processo e conservare l'esito:
+zero test eseguiti o timeout non sono pass. Le catene WHIR D10 hanno
+commitment iniziale CPU dichiarato e query/S1/extension native;
+commitment iniziali GPU e aperture W/A sono coperti separatamente D15.
+Questi test non selezionano la candidata Tensor. Le fixture locali
+equivalenti rimangono host anche con la variabile d'ambiente impostata.
 Misurare sali, scansioni, accumuli, FFT, Merkle, aperture, GKR e Seed6
 separatamente, poi con gli stati simultaneamente vivi. La telemetria
 privata è fuori dal transcript; conservare contatori e log anche su timeout.
@@ -392,10 +424,10 @@ non riusare i vecchi upper temporali o dare credito al lavoro non crescente.
 
 Parità hardware, tempo H100 e picco fisico si verificano nella campagna
 autorizzata, con parità prima della prova completa; non sono gate locali.
-Gli ingressi di test e il lancio sorvegliato vanno invece preparati prima,
-secondo i [prerequisiti](#prerequisiti-operativi-ancora-aperti).
+Gli ingressi di test e il lancio sorvegliato sono definiti nella
+[procedura operativa](#preparazione-operativa-della-campagna).
 Il target di 65 s non è un gate preventivo per l'esperimento diagnostico;
-il timeout socket attuale deve essere corretto per permettere tale misura.
+il monitor imposta un timeout socket diagnostico finito separato.
 Misurare e conservare anche il mancato target. Rimangono
 invariati NoPeek, MAC originali, margine arena 256 MiB, margine globale
 1 GiB e stop su esaurimento senza spill dinamico.
@@ -410,10 +442,8 @@ loro stati simultaneamente vivi. Un kernel veloce da solo non dimostra
 il tempo completo. CUDA richiesto ma non disponibile deve produrre errore,
 senza un percorso CPU sostitutivo. La produzione usa PCG reale/AES.
 
-Schema di comando sul solo hardware autorizzato, dopo chiusura dei
-prerequisiti sopra, ammissione di Γ, build e parità, entro il budget residuo
-con la riserva di chiusura. Non è ancora un lanciatore completo con gli
-arresti fisici richiesti. Impostare
+Comando sul solo hardware autorizzato, dopo ammissione di Γ, build e
+parità, entro il budget residuo con la riserva di chiusura. Impostare
 `APPROVED_SHA`, `PROOF_SECONDS`, `CANDIDATE`, `TABLES`, `PACKED`, `LIBRARY`
 e `RUN` (directory nuova sotto `benchmarks/raw`). Il device logico è 0;
 fissare prima `CUDA_VISIBLE_DEVICES` all'UUID autorizzato,
@@ -430,34 +460,27 @@ test "$PROOF_SECONDS" -gt 0
 test "${CLOSE_RESERVE_SECONDS:?riserva concordata richiesta}" -gt 0
 test $(( $(date +%s) + PROOF_SECONDS )) -le \
   $(( ${AUTHORIZED_END_EPOCH:?deadline richiesta} - CLOSE_RESERVE_SECONDS ))
+export CUDA_VISIBLE_DEVICES AUTHORIZED_END_EPOCH CLOSE_RESERVE_SECONDS
 mkdir "$RUN"
 nvidia-smi -q > "$RUN/hardware.txt"
 nvcc --version > "$RUN/nvcc.txt"
 rustc -vV > "$RUN/rustc.txt"
 sha256sum "$LIBRARY" rust/target/debug/examples/c71_canonical_reference \
   > "$RUN/executables.sha256"
-nvidia-smi --query-gpu=timestamp,uuid,memory.total,memory.used,memory.free,utilization.gpu \
-  --format=csv -l 1 > "$RUN/gpu.csv" 2> "$RUN/gpu-monitor.stderr" &
-MONITOR_PID=$!
-trap 'kill "$MONITOR_PID" 2>/dev/null || true; wait "$MONITOR_PID" 2>/dev/null || true' EXIT
 test "$(ulimit -H -v)" = unlimited
 ulimit -S -v unlimited
-set +e
-/usr/bin/time -v -o "$RUN/process-time.txt" \
-  timeout -k 5s "$PROOF_SECONDS" \
+.venv/bin/python scripts/c71_campaign_measure.py \
+  --mode canonical --progress "$RUN/journals.progress.jsonl" \
+  "$RUN" canonical "$PROOF_SECONDS" \
   rust/target/debug/examples/c71_canonical_reference experiment-cuda \
-  "$CANDIDATE" "$TABLES" "$PACKED" "$RUN/journals" 2147483648 "$LIBRARY" 0 \
-  > "$RUN/runner.json" 2> "$RUN/runner.stderr"
-STATUS=$?
-set -e
-printf '%s\n' "$STATUS" > "$RUN/exit-code.txt"
-exit "$STATUS"
+  "$CANDIDATE" "$TABLES" "$PACKED" "$RUN/journals" 2147483648 "$LIBRARY" 0
 ```
 
-Il monitor nvidia-smi osserva il device intero, non attribuisce memoria a
-un ruolo; un monitor fallito invalida la misura HBM, non autorizza una
-stima nulla. `time -v` registra CPU-time/RSS del processo con entrambi i
-ruoli. Il timeout registra un fallimento anche se manca JSON finale.
+Il wrapper crea esclusivamente `$RUN/logs/canonical.*`: stdout/stderr,
+`memory.csv`, `time.txt`, exit e `summary.json`. Osserva il device intero,
+non attribuisce HBM a un ruolo; un campione GPU/cgroup mancante o invalido
+ferma la sessione. `time -v` registra CPU-time/RSS del processo con
+entrambi i ruoli. Il timeout resta un fallimento anche senza JSON finale.
 Conservare anche `$RUN/journals.progress.jsonl`, privato e durevole, con
 fasi, avanzamento, lavoro, traffico e campioni congiunti. Un'ultima riga
 troncata resta nel file originale e si esclude dalla lettura. Il log non

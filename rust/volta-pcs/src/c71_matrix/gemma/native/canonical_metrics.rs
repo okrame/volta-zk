@@ -65,6 +65,15 @@ impl Measurements {
         Ok(())
     }
 
+    pub(super) fn release(self) -> Result<(), String> {
+        let bytes = self.budget.lock().unwrap().as_ref().map(|b| b.weight_capacity_bytes());
+        let before = bytes.map(|n| crate::c71_matrix::progress::resident_w("host", "retiring", n, None)).transpose();
+        drop(self); // Release every retained Arc, not just the allocator's Budget.
+        before?;
+        if let Some(n) = bytes { crate::c71_matrix::progress::resident_w("host", "retired", n, None)?; }
+        Ok(())
+    }
+
     pub(super) fn native(&self, session: Arc<super::resident::Session>) {
         *self.native.lock().unwrap() = Some(session);
     }

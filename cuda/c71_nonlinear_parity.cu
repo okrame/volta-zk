@@ -33,6 +33,8 @@ template<class Value> static std::vector<Value> read(Value* input,size_t count,c
     check(cudaStreamSynchronize(stream)); return output;
 }
 int main() {
+    check(cudaDeviceSetLimit(cudaLimitStackSize,256));
+    size_t stack=0; check(cudaDeviceGetLimit(&stack,cudaLimitStackSize)); require(stack==256);
     cudaDeviceProp properties{}; check(cudaSetDevice(0)); check(cudaGetDeviceProperties(&properties,0));
     require(properties.major==9);
     cudaStream_t stream; check(cudaStreamCreateWithFlags(&stream,cudaStreamNonBlocking));

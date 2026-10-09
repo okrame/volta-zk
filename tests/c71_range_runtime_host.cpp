@@ -15,6 +15,7 @@ using namespace c71_range;
 struct FakeStream { std::vector<std::function<void()>> pending; };
 static bool fail_launch=false, fail_fence=false, fail_free=false, corrupt=false;
 static bool fail_dense=false;
+static unsigned stack_fault=0;
 static bool corrupt_query_data=false;
 static int copy_fail_after=-1;
 static int download_fail_after=-1;
@@ -28,6 +29,13 @@ static std::vector<uint64_t> recorded_pcs;
 static bool record_pcs=false;
 static std::vector<uint64_t> expected_short_ring;
 cudaError_t cudaSetDevice(int n) { return n==0?0:1; }
+cudaError_t cudaDeviceSetLimit(cudaLimit limit,size_t bytes) {
+    assert(limit==cudaLimitStackSize && bytes==256); return stack_fault==1?1:0;
+}
+cudaError_t cudaDeviceGetLimit(size_t* bytes,cudaLimit limit) {
+    assert(limit==cudaLimitStackSize); *bytes=stack_fault==3?512:256;
+    return stack_fault==2?1:0;
+}
 cudaError_t cudaStreamCreateWithFlags(cudaStream_t* s,unsigned flags) {
     assert(flags==cudaStreamNonBlocking); *s=new FakeStream; return 0;
 }
@@ -2342,6 +2350,16 @@ int main() {
     assert(c71_range_create(0,512,512,nullptr,&c) && !c && !allocations);
     assert(c71_range_create(1,512,256,nullptr,&c) && c);
     C71RangeStats final{}; assert(c71_range_close(c,&final) && final.cleanup_failed);
+    for(stack_fault=1;stack_fault<=3;++stack_fault) {
+        c=nullptr; const auto launched_before=launches, allocated_before=allocations;
+        assert(c71_range_create(0,262144,256,nullptr,&c) && c && stats(c).stopped);
+        uint64_t id=0;
+        assert(c71_range_alloc(c,C71_U8,1,&id) && !id);
+        assert(launches==launched_before && allocations==allocated_before);
+        assert(!c71_range_close(c,&final) && !final.arena_bytes && !final.cleanup_failed);
+    }
+    stack_fault=0;
+    std::puts("C71_RUNTIME_STACK_LIMIT {\"requested_bytes\":256,\"terminal_rejections\":3,\"gpu_execution\":false,\"credit\":false}");
     c=create(); const auto a=roots(c); const auto root=alloc(c,C71_PAIR,1024);
     assert(!c71_range_runtime_canopy(c,a,root));
     assert(!c71_range_as_children(c,a));

@@ -40,6 +40,10 @@ def test_native_range_owner_with_deferred_fake_driver(tmp_path):
                       "gpu_execution": False, "credit": False}
 
     expected_components = {
+        "C71_RUNTIME_STACK_LIMIT": {
+            "requested_bytes": 256, "terminal_rejections": 3,
+            "gpu_execution": False, "credit": False,
+        },
         "C71_PCS_RESIDUAL_OWNER_COMPONENT": {
             "singleton": 1, "original_retention": 1, "ood_original": 1,
             "ood_resident": 3, "paired_folds": 2, "bounded_consuming_reads": 3,

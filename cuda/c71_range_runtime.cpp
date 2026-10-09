@@ -248,7 +248,13 @@ extern "C" int c71_range_create(int device,uint64_t bytes,uint64_t reserve,C71Ra
     c->device=device; c->usable=bytes-reserve; c->stats.host_owner_bytes=sizeof(*c);
     // On an initialization error return the stopped owner for diagnostics/close.
     *out=c;
-    if(checked(c,cudaSetDevice(device)) || checked(c,cudaStreamCreateWithFlags(&c->stream,cudaStreamNonBlocking))) return -1;
+    if(checked(c,cudaSetDevice(device))) return -1;
+    // sm_90 kernels need at most 216 B; avoid the unused default stack reserve.
+    size_t stack=0;
+    if(checked(c,cudaDeviceSetLimit(cudaLimitStackSize,256)) ||
+       checked(c,cudaDeviceGetLimit(&stack,cudaLimitStackSize))) return -1;
+    if(stack!=256) return fail(c,"CUDA initial stack reservation differs");
+    if(checked(c,cudaStreamCreateWithFlags(&c->stream,cudaStreamNonBlocking))) return -1;
     return 0; // Budget only: idle device capacity must not coexist with host PCS.
 }
 extern "C" int c71_range_close(C71RangeContext* c,C71RangeStats* out) {

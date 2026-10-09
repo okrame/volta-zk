@@ -160,9 +160,13 @@ nessun commitment A o certificato completo. Il payload sotto cap non
 basta a dimostrare l'allowance fisica.
 Il [probe procfs](../c7.1-history/h100-thp-candidate-2026-10-09.md) misura
 0,928 s per una lettura smaps di W su pagine da 4 KiB. La candidata
-`920e684` consiglia pagine grandi prima del caricamento e passa il test
-locale sui byte/digest; effetto fisico e prestazionale sulla H100 restano
-da validare in un nuovo run. Il trial fallito non la usava.
+`920e684` consiglia pagine grandi prima del caricamento. La
+[validazione H100](../c7.1-history/h100-thp-validation-2026-10-09.md)
+passa 15/15 CUDA e token esatti: inferenza 85,393 s (−5,741% osservato),
+caricamento più lento a 153,661 s, temporanee circa invariate. Smaps scende
+a 0,025 s nel probe, mediana 0,059 s durante la preparazione. Nessun
+credito al picco completo. Le code CUDA a una connessione passano 15/15;
+il loro risparmio sul modello è ancora in misura.
 Γ, causalità, replay e garanzie restano invariati. O=0/150/300 non sono verificati.
 Il precedente timeout CPU dopo
 circa 41 minuti rimane il fallimento di quella schedule da 1.024 scansioni,

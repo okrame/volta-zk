@@ -1,0 +1,842 @@
+{
+  "all_150_tokens_equal": true,
+  "artifacts": [
+    {
+      "bytes": 33472,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/build-rust-thp.stderr",
+      "sha256": "6ecf16180710b4f562b01107d2e6e7bfd26e7f2210c7ac5c7ed71f775378f7b9"
+    },
+    {
+      "bytes": 0,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/build-rust-thp.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 38444,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/cpu-gpu-observations.jsonl",
+      "sha256": "359065578d0c692e9f22d38c85bfa0714be59fd517d840edc218ef8980712410"
+    },
+    {
+      "bytes": 2853,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/cuda-queue-probe-comparison.json",
+      "sha256": "d457bccb771c5b959cbaddaa7a5b699654c5530477ecc05086dfbc53ae5aa3c2"
+    },
+    {
+      "bytes": 19,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/cuda-queue-probe-default.end",
+      "sha256": "b6270ea5d84bcc1bb9e71c8853c74283eb06cc00062306f4b0b675208091524f"
+    },
+    {
+      "bytes": 2,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/cuda-queue-probe-default.exit",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "bytes": 719,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/cuda-queue-probe-default.memory.csv",
+      "sha256": "aa09ac086e875f34d965917421de0edb94c4be9740327d5b6c0705c19f48fd7c"
+    },
+    {
+      "bytes": 19,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/cuda-queue-probe-default.start",
+      "sha256": "7291fc34309c990ee4a15ac7edeef2eb38ccab78374b36d9cc4150ef0b5fc949"
+    },
+    {
+      "bytes": 0,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/cuda-queue-probe-default.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 548,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/cuda-queue-probe-default.stdout",
+      "sha256": "dc1353c6ae9859b1a18ac9cb8b890b9309b49d7bcf4eb62f9890a016aa4a950e"
+    },
+    {
+      "bytes": 1542,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/cuda-queue-probe-default.summary.json",
+      "sha256": "878f0f725fc028ee258057dd2874e5526f4bb31d2ca184eb346f83bb33f9fefa"
+    },
+    {
+      "bytes": 832,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/cuda-queue-probe-default.time.txt",
+      "sha256": "1fd43a5262f766b81b1ace426c4b44aa3d18944eaa3ab1d1b723a0d6d37321ec"
+    },
+    {
+      "bytes": 19,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/cuda-queue-probe-one-quarter.end",
+      "sha256": "4b750204ab5a8278b2f55e48add0d22b08508786d937174f10505c89c3ec33a9"
+    },
+    {
+      "bytes": 2,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/cuda-queue-probe-one-quarter.exit",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "bytes": 604,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/cuda-queue-probe-one-quarter.memory.csv",
+      "sha256": "08167d895371f6a192971a5ab21413752463c52962f4a60d6ed7b587591d2f88"
+    },
+    {
+      "bytes": 19,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/cuda-queue-probe-one-quarter.start",
+      "sha256": "ea6405bcee2a833870c9c96a58e56f2190c5edac6473ab8d854cda7a87c466c1"
+    },
+    {
+      "bytes": 0,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/cuda-queue-probe-one-quarter.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 549,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/cuda-queue-probe-one-quarter.stdout",
+      "sha256": "ebda13d76dbb6c0a9c32b75b902f04585568111a33f441147b6491dd3b134c5e"
+    },
+    {
+      "bytes": 1542,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/cuda-queue-probe-one-quarter.summary.json",
+      "sha256": "d3a2512e6cbab30d2e64041df2243c5ce8974b28d8832ff3212f961a71e5e401"
+    },
+    {
+      "bytes": 830,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/cuda-queue-probe-one-quarter.time.txt",
+      "sha256": "5cbb45880da8f5642653e2c1142fecba9867d39611d1c9972fe6c458b1dfac2f"
+    },
+    {
+      "bytes": 18,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/cuda-queue-probe-one.end",
+      "sha256": "14343a321fcf83ab06ed51e3472f2fe34c3a4d94822de2ca59ea9dc5c69642c2"
+    },
+    {
+      "bytes": 2,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/cuda-queue-probe-one.exit",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "bytes": 601,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/cuda-queue-probe-one.memory.csv",
+      "sha256": "08a2cd6a80f261b8b3934b271be5d82a4fb515cdad96ab9cf41a23dfaa084cc6"
+    },
+    {
+      "bytes": 19,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/cuda-queue-probe-one.start",
+      "sha256": "b827e817894781594274a76905c12abb9c4a4ec578d30df8f04b58c74fcbde2c"
+    },
+    {
+      "bytes": 0,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/cuda-queue-probe-one.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 546,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/cuda-queue-probe-one.stdout",
+      "sha256": "015a65bb3d1990385ea4e5eb52c9316e70b2f100ce69558bd7190a4d9da8de63"
+    },
+    {
+      "bytes": 1535,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/cuda-queue-probe-one.summary.json",
+      "sha256": "53c7f69dbaadf7305ee480722791d035d4cb5186b34e7a576cab35165d45f4c3"
+    },
+    {
+      "bytes": 830,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/cuda-queue-probe-one.time.txt",
+      "sha256": "d0ebe31dfb0e5e1a00ea223db17c683ce61e13116128aaa4dcfdd9fae3d507b7"
+    },
+    {
+      "bytes": 19,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/cuda-queue-probe-quarter.end",
+      "sha256": "b584794227c67b4dcd0642eeaf0c6b17f3849812985266d602fda3015631075d"
+    },
+    {
+      "bytes": 2,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/cuda-queue-probe-quarter.exit",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "bytes": 610,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/cuda-queue-probe-quarter.memory.csv",
+      "sha256": "cd5824d552fbe205cf636c0dc176b9ddc385a1553de51405619f8eedb23d1f4a"
+    },
+    {
+      "bytes": 18,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/cuda-queue-probe-quarter.start",
+      "sha256": "d9c61a8d0ad1aa6ecfe45fde37b37e710eb6721e205f9a54204c70c088894d7d"
+    },
+    {
+      "bytes": 0,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/cuda-queue-probe-quarter.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 551,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/cuda-queue-probe-quarter.stdout",
+      "sha256": "50e201418d10a600de2d74fe848667c578f41306b594ada2f8ef7b52d6cc9879"
+    },
+    {
+      "bytes": 1540,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/cuda-queue-probe-quarter.summary.json",
+      "sha256": "8c7f2c6480ff33d0b8db92634adf09cb20dfc1c2c8b33412c33e6aa1173ed5f5"
+    },
+    {
+      "bytes": 831,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/cuda-queue-probe-quarter.time.txt",
+      "sha256": "0c76dc55944be746995cc62af9dd3a9fa26e660b78c3acd81519b861d5bef624"
+    },
+    {
+      "bytes": 1531,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/cuda-queue-probe.py",
+      "sha256": "3f77d39b7f2d15e1eb59ed5a4edfaee532f6cfcb00735ebad29869c3866b0732"
+    },
+    {
+      "bytes": 179745,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/inference.memory.csv",
+      "sha256": "74e1de3c7fbcf6648b8da403c5600041f91adef59faab70349de6e95dcfe6182"
+    },
+    {
+      "bytes": 31892,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/inference.stdout",
+      "sha256": "0fe53fcb93e9b34215ca276c8b6941a9cdc4b0a0169ed32fddf80d03d9c2ae7c"
+    },
+    {
+      "bytes": 1971,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/inference.summary.json",
+      "sha256": "e1f9d23f576d9ff375808f1b951443adf3632f80839cf152dc63b31ecdd5f072"
+    },
+    {
+      "bytes": 1207,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/inference.time.txt",
+      "sha256": "0777192283a8eae7c5d04d8756c2cbaa532eeecab7a81daea1cd2fd6a9f25f2e"
+    },
+    {
+      "bytes": 207,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/queue1-nonlinear-cuda.stdout",
+      "sha256": "4e169c610173d9dffeac9689e86f03d7c116cac7b67b82dc9391ea44aa923108"
+    },
+    {
+      "bytes": 211,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/queue1-parity-01.stdout",
+      "sha256": "a99d664c56e1572a1a1cf57acbdd4659f8ea62f7b4026cecdd90b83b18e849fa"
+    },
+    {
+      "bytes": 2055,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/queue1-parity-02.stdout",
+      "sha256": "68709258d8760f7c9c508ee17ed367b5bb2c8ee32f1c255439e95085cf0cc57e"
+    },
+    {
+      "bytes": 2143,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/queue1-parity-03.stdout",
+      "sha256": "a2f1bd4acf03af3d55ff4279f2e07532e1a9f12aada70d9774ab5ed17bd10e2e"
+    },
+    {
+      "bytes": 2699,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/queue1-parity-04.stdout",
+      "sha256": "bb484b2d006b5e113a3dcc14b43858a04a68929237cbd7bbce8ce0eca9234886"
+    },
+    {
+      "bytes": 2839,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/queue1-parity-05.stdout",
+      "sha256": "045a3589c108d0d18d885e0cb42a97a332e2728e54275db7bd28812c001b117d"
+    },
+    {
+      "bytes": 18711,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/queue1-parity-06.stdout",
+      "sha256": "18888d7cb2c7a2007dbba6eb7b054f80057d27468ddddb46831725f20e3ce44e"
+    },
+    {
+      "bytes": 4047,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/queue1-parity-07.stdout",
+      "sha256": "ee7ef3790f95957327e640c3dc197b2428060cc47332a3dcbc2336d8af1f2fb4"
+    },
+    {
+      "bytes": 989,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/queue1-parity-08.stdout",
+      "sha256": "9f016530d8fba7022010a1dc10476362ef2fef88645ecb4a4fc7b3cc520cf6e3"
+    },
+    {
+      "bytes": 2895,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/queue1-parity-09.stdout",
+      "sha256": "f58369b2515a2fe4a76ace8ea5e1b69ced6455181188e5fe0d8772290e713b79"
+    },
+    {
+      "bytes": 2713,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/queue1-parity-10.stdout",
+      "sha256": "efd514d37f3219de06908040f22cd69bef92f3fb8626329153173c9a3cffe124"
+    },
+    {
+      "bytes": 1300,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/queue1-parity-11.stdout",
+      "sha256": "77652259b8cf3ef88aa45ba7d5347ade4eee52f9e9564b905c577d893ac3859c"
+    },
+    {
+      "bytes": 1694,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/queue1-parity-12.stdout",
+      "sha256": "b926dc232970b870b91e460a6b8f741b74dd5e375f365ba7c0be05037f5ff61d"
+    },
+    {
+      "bytes": 1479,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/queue1-parity-13.stdout",
+      "sha256": "9038f1ff119c375e77b048f6c3f75d9ddd3a6980ac411b11fe64d5b3e181ea90"
+    },
+    {
+      "bytes": 4314,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/queue1-parity-14.stdout",
+      "sha256": "939cfc421861420fb4f32cf4ddaa3ae944aaa491b0912c840059e91dc05b1838"
+    },
+    {
+      "bytes": 220,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/queue1-parity-15.stdout",
+      "sha256": "88a515df6959d78fbdce9147e79725585b65301d58ce452443e2e82fe8245475"
+    },
+    {
+      "bytes": 31538,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/queue1-validation.json",
+      "sha256": "573ef7a6e3cd6a7c7df6f05560b2059677c4ddcd9462e91cb01cc83b1a5152fd"
+    },
+    {
+      "bytes": 734,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/thp-loading-probe.json",
+      "sha256": "c75c7ee581f1f0d86aa657d6374e12c6954f36715d00a2c2484e96c482bfc335"
+    },
+    {
+      "bytes": 207,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/thp-nonlinear-cuda.stdout",
+      "sha256": "4e169c610173d9dffeac9689e86f03d7c116cac7b67b82dc9391ea44aa923108"
+    },
+    {
+      "bytes": 211,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/thp-parity-01.stdout",
+      "sha256": "5e0f029e823a883fc788631e338722a2007abb8d91fa457cb28eba2a4f94adae"
+    },
+    {
+      "bytes": 2054,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/thp-parity-02.stdout",
+      "sha256": "0b7b6744cfb8e894a6a8eccf048044cd91e6c4f42af00786ce7bd808ffb7b45c"
+    },
+    {
+      "bytes": 2143,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/thp-parity-03.stdout",
+      "sha256": "229677b24b0abe4aa18a2c5396fd38d38348007fca728a11eee20c41687ef6c6"
+    },
+    {
+      "bytes": 2699,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/thp-parity-04.stdout",
+      "sha256": "74e62f7791ccea5bc9ce283b3e6d7f948696aff38d94bf3904c0c91dc64ebb0f"
+    },
+    {
+      "bytes": 2839,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/thp-parity-05.stdout",
+      "sha256": "09ace2c8017ecd2dc6b78768714c1758ad5aa1ad1037023bdc6bf6c96a0bb6d9"
+    },
+    {
+      "bytes": 18710,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/thp-parity-06.stdout",
+      "sha256": "caaac25247a7e058e81824fded5d60ac929a58aa9418232da75f740eef5287cb"
+    },
+    {
+      "bytes": 4047,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/thp-parity-07.stdout",
+      "sha256": "9d7c7b425e29a33fde9872d9cce1e146d2da218e902f6d4e32170b802a8032b9"
+    },
+    {
+      "bytes": 989,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/thp-parity-08.stdout",
+      "sha256": "0d595426aeb984c6ee0a05be5a2214b0edc49595e02b0443262708d6a341da6b"
+    },
+    {
+      "bytes": 2895,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/thp-parity-09.stdout",
+      "sha256": "5c05b685882462f30395f17cee2c93b30228c8be97fdedfaf561387ba160927c"
+    },
+    {
+      "bytes": 2714,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/thp-parity-10.stdout",
+      "sha256": "aa968315529a1d5d19bec0434ec88dacfe06772b9ae55f0669dc732ae52f96ac"
+    },
+    {
+      "bytes": 1300,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/thp-parity-11.stdout",
+      "sha256": "1abb6246ab08c160414b57d6d415f45bbc5165e88e02dac3d48e4e07d893f83e"
+    },
+    {
+      "bytes": 1694,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/thp-parity-12.stdout",
+      "sha256": "514e2ea34cd05e44d9d814c6fe25516ff0ab371ff5da5806284f60199ccd1115"
+    },
+    {
+      "bytes": 1479,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/thp-parity-13.stdout",
+      "sha256": "aedea588ef4642fa96ac6e11f28ec9879f2b1556d67ed2294b87bd518a92d76c"
+    },
+    {
+      "bytes": 4315,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/thp-parity-14.stdout",
+      "sha256": "a82497f80e34dcb582c9284a214db170ddae0903548f61ca250440f1b1f02813"
+    },
+    {
+      "bytes": 220,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/thp-parity-15.stdout",
+      "sha256": "8d4a57ddb4ece338420aeb5733d6c3c7a1d68839079229239ee38529ca9a63ba"
+    },
+    {
+      "bytes": 1261,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/thp-residency-probe.json",
+      "sha256": "b7de0564594358deaaee69639e613eb858718b7a94e7f163aac8e42b3978e665"
+    },
+    {
+      "bytes": 879,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/thp-runner-regressions.stdout",
+      "sha256": "0bd59fbb36b7a33bdf974597f492f4e7675d2f73b6c7b8c5688b5b622edee2af"
+    },
+    {
+      "bytes": 34865,
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789/thp-validation.json",
+      "sha256": "02df6ffdb28387990fbe37d8472489677abe570bdc1bbd7b5ab881d8196083a1"
+    }
+  ],
+  "baseline": {
+    "path": "benchmarks/results/c71-h100-stack256-2026-10-09-a32a6c3286b5.json",
+    "sha256": "6283747e1446ab713a8bee714a8d0ef4ce395eaac125ebef521d2ed2719a009d"
+  },
+  "canonical_certificates_verified": 0,
+  "comparison": {
+    "after_inference_seconds": 85.392672384,
+    "after_sampled_temporary_peak_bytes": 1266966016,
+    "before_inference_seconds": 90.593679528,
+    "before_sampled_temporary_peak_bytes": 1267047936,
+    "observed_inference_reduction_seconds": 5.201007144,
+    "observed_reduction_fraction": 0.05741026494450441,
+    "scope": "One completed run per configuration, not isolated causal speedup or complete peak. Loading regresses; no claim that THP alone remedies canonical04 physical stop."
+  },
+  "component_complete": true,
+  "credit": false,
+  "date": "2026-10-09",
+  "git_dirty": false,
+  "git_sha": "920e684d1789741dcc86d536e962b8dae8e25af9",
+  "launch": {
+    "argv": [
+      "/workspace/c71-h100-20261009/binaries/c71_canonical_reference-920e684",
+      "inference-cuda",
+      "/workspace/c71-h100-20261009/gamma-inputs/candidate.json",
+      "/workspace/c71-h100-20261009/gamma-inputs/tables.bin",
+      "/workspace/c71-h100-20261009/weights/gemma-4-31b-5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89.packed.i16",
+      "/workspace/c71-h100-20261009/inference-04/journals",
+      "2147483648",
+      "/workspace/c71-h100-20261009/libc71_device_runner_stack256.so",
+      "0"
+    ],
+    "argv_encoded_bytes": 422,
+    "argv_path_capacity_bound_bytes": 4096,
+    "binary_sha256": "e3e2e1fb481b838449875d970c7e9e508a6e433d499754e92faf33a4f63dc5b8",
+    "binary_source_git_sha": "920e684d1789741dcc86d536e962b8dae8e25af9",
+    "canonical_certificates_verified": 0,
+    "correlations": "none in inference component; no protocol credit",
+    "cuda_sources_identical": true,
+    "diagnostic_timeout_seconds": 1800,
+    "gamma_reused": true,
+    "git_dirty": false,
+    "initial_accepted_kv": "empty",
+    "library_sha256": "88f3138effc9af42068e77aa3b4bf2c5d0d6c7b634c9608900da50aa94a6b0c2",
+    "library_source_git_sha": "a32a6c3286b556b43f8ede0b1a2ae39b5d7ebb2d",
+    "monitor_label": "inference",
+    "packed_page_advice": true,
+    "prepared_epoch": 1791587105.4782925,
+    "response_target_seconds": 65,
+    "source_git_sha": "920e684d1789741dcc86d536e962b8dae8e25af9"
+  },
+  "monitor": {
+    "authorized_end_epoch": 1791601722.0,
+    "close_reserve_seconds": 1800,
+    "command": [
+      "bash",
+      "-c",
+      "ulimit -S -v unlimited; exec \"$@\"",
+      "c71-inference",
+      "/workspace/c71-h100-20261009/binaries/c71_canonical_reference-920e684",
+      "inference-cuda",
+      "/workspace/c71-h100-20261009/gamma-inputs/candidate.json",
+      "/workspace/c71-h100-20261009/gamma-inputs/tables.bin",
+      "/workspace/c71-h100-20261009/weights/gemma-4-31b-5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89.packed.i16",
+      "/workspace/c71-h100-20261009/inference-04/journals",
+      "2147483648",
+      "/workspace/c71-h100-20261009/libc71_device_runner_stack256.so",
+      "0"
+    ],
+    "compute_end_epoch": 1791599922.0,
+    "exit_code": 0,
+    "gpu_uuid": "GPU-9f6b4728-e7d8-ff40-d9f1-e1cec5dd2b3a",
+    "incomplete_samples": 3,
+    "label": "inference",
+    "mode": "canonical",
+    "observed_payload_peak_bytes": 692827993,
+    "payload_limit_bytes": 5905580032,
+    "physical_complete_peak": false,
+    "physical_temporary_limit_bytes": 6174015488,
+    "resource_failure": null,
+    "sampled_host_rss_peak_bytes": 61635661824,
+    "sampled_stable_temporary_peak_bytes": 1266966016,
+    "sampled_whole_gpu_peak_bytes": 62420680704,
+    "samples": 1390,
+    "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+    "sampling_target_seconds": 0.2,
+    "smaps_read_failures": 0,
+    "stable_samples": 1387,
+    "start_unix_seconds": 1791587105.515647,
+    "wall_seconds": 278.1659062523395
+  },
+  "native_counters_and_cleanup_identical": true,
+  "official_queue_reference": "https://docs.nvidia.com/cuda/archive/12.8.1/cuda-c-programming-guide/index.html#cuda-environment-variables",
+  "packed_blake3": "0c864df612e2e2137caaee9d1bd354d8df3d3e1b99781e03835b4efa726c4d74",
+  "phase_seconds": {
+    "coordinator/command_total": 277.554066158,
+    "coordinator/global_initialization": 169.507523209,
+    "coordinator/public_distribution": 0.018362304,
+    "inference": 85.392672384,
+    "preparation_including_inference": 85.446341191,
+    "prover/load_packed_w": 153.660605219,
+    "prover/native_global_residency": 22.537559393,
+    "prover/preparation_including_inference": 85.446342118,
+    "prover/read_and_compile_public": 7.42071588,
+    "verifier/compile_received_public": 7.501235686
+  },
+  "private_bundle": {
+    "bytes": 10492873,
+    "files": 326,
+    "manifest_sha256": "b874320dd2f40b61e8388ab981e5dd3941b5c5b50b4368392ce399b1b5adff5f",
+    "path": "artifact/c7.1-pod/h100-final-thp-validation-20261009T231100Z"
+  },
+  "queue_probe_scope": "Empty contexts only, no model or canonical memory credit. One/one saves 1048576B GPU plus49205248B host. Quarter queues give a smaller additional reduction and are not selected. Full-model inference05 pending in a new record.",
+  "run": "inference-04",
+  "sampling": {
+    "extra_smaps_walks": 2,
+    "max_read_seconds": 0.09668865613639355,
+    "median_read_seconds": 0.05865934677422047,
+    "preparation_samples": 427
+  },
+  "schema": "volta-c71-h100-thp-validation-v1",
+  "thp_residency": {
+    "epoch": 1791587275.7472584,
+    "mappings": [
+      {
+        "fields": {
+          "AnonHugePages": "0 kB",
+          "Anonymous": "4 kB",
+          "KernelPageSize": "4 kB",
+          "MMUPageSize": "4 kB",
+          "Rss": "4 kB",
+          "Size": "4 kB",
+          "THPeligible": "0",
+          "VmFlags": "rd wr mr mw me ac sd"
+        },
+        "mapping_bytes": 4096
+      },
+      {
+        "fields": {
+          "AnonHugePages": "59099136 kB",
+          "Anonymous": "59955748 kB",
+          "KernelPageSize": "4 kB",
+          "MMUPageSize": "4 kB",
+          "Rss": "59955748 kB",
+          "Size": "59955748 kB",
+          "THPeligible": "1",
+          "VmFlags": "rd wr mr mw me ac sd hg"
+        },
+        "mapping_bytes": 61394685952
+      },
+      {
+        "fields": {
+          "AnonHugePages": "0 kB",
+          "Anonymous": "8 kB",
+          "KernelPageSize": "4 kB",
+          "MMUPageSize": "4 kB",
+          "Rss": "8 kB",
+          "Size": "136 kB",
+          "THPeligible": "0",
+          "VmFlags": "rd wr mr mw me ac sd"
+        },
+        "mapping_bytes": 139264
+      }
+    ],
+    "packed_capacity_bytes": 61394690560,
+    "raw_smaps_bytes": 104580,
+    "read_seconds": 0.025467412546277046,
+    "scope": "One extra read after completed W load, diagnostic interference declared; no numerical or protocol credit."
+  },
+  "token_u32le_sha256": "18e31d2acf4e12c5edb3270e8df64a6e68aac756de27e8c62474089027136872",
+  "validation": {
+    "checks": [
+      {
+        "exit_code": 0,
+        "label": "build-rust-thp",
+        "sampled_host_rss_peak_bytes": 2935619584,
+        "wall_seconds": 609.3074060063809
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "thp-runner-regressions",
+        "passed": 6,
+        "sampled_host_rss_peak_bytes": 25825280,
+        "wall_seconds": 0.2003339510411024
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "thp-parity-01",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 194322432,
+        "wall_seconds": 3.6142687667161226
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "thp-parity-02",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 138821632,
+        "wall_seconds": 1.0062118005007505
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "thp-parity-03",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 150708224,
+        "wall_seconds": 1.6014660988003016
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "thp-parity-04",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 146071552,
+        "wall_seconds": 1.6013534534722567
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "thp-parity-05",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 146935808,
+        "wall_seconds": 1.648088499903679
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "thp-parity-06",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 139104256,
+        "wall_seconds": 1.6556729935109615
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "thp-parity-07",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 137994240,
+        "wall_seconds": 0.8568966500461102
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "thp-parity-08",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 225628160,
+        "wall_seconds": 2.8546708952635527
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "thp-parity-09",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 135921664,
+        "wall_seconds": 1.6013229377567768
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "thp-parity-10",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 137187328,
+        "wall_seconds": 1.455702567473054
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "thp-parity-11",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 128598016,
+        "wall_seconds": 1.00108808465302
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "thp-parity-12",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 232181760,
+        "wall_seconds": 2.802159897983074
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "thp-parity-13",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 231305216,
+        "wall_seconds": 2.652192449197173
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "thp-parity-14",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 134336512,
+        "wall_seconds": 1.001134943217039
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "thp-parity-15",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 200491008,
+        "wall_seconds": 2.4016377348452806
+      },
+      {
+        "exit_code": 0,
+        "label": "thp-nonlinear-cuda",
+        "sampled_host_rss_peak_bytes": 128212992,
+        "wall_seconds": 0.6487471722066402
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "queue1-parity-01",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 145674240,
+        "wall_seconds": 3.40978723205626
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "queue1-parity-02",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 70430720,
+        "wall_seconds": 0.6464014630764723
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "queue1-parity-03",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 84434944,
+        "wall_seconds": 0.8529385980218649
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "queue1-parity-04",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 97546240,
+        "wall_seconds": 1.4013901222497225
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "queue1-parity-05",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 98189312,
+        "wall_seconds": 1.4631270579993725
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "queue1-parity-06",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 90669056,
+        "wall_seconds": 1.4008726794272661
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "queue1-parity-07",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 89673728,
+        "wall_seconds": 0.6528803668916225
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "queue1-parity-08",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 177614848,
+        "wall_seconds": 2.655057994648814
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "queue1-parity-09",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 78692352,
+        "wall_seconds": 0.8667275328189135
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "queue1-parity-10",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 99639296,
+        "wall_seconds": 0.8010111544281244
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "queue1-parity-11",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 83447808,
+        "wall_seconds": 0.6009339615702629
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "queue1-parity-12",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 183713792,
+        "wall_seconds": 2.648880708962679
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "queue1-parity-13",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 182743040,
+        "wall_seconds": 2.601983204483986
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "queue1-parity-14",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 78688256,
+        "wall_seconds": 0.6569308005273342
+      },
+      {
+        "exit_code": 0,
+        "failed": 0,
+        "label": "queue1-parity-15",
+        "passed": 1,
+        "sampled_host_rss_peak_bytes": 151834624,
+        "wall_seconds": 2.201581932604313
+      },
+      {
+        "exit_code": 0,
+        "label": "queue1-nonlinear-cuda",
+        "sampled_host_rss_peak_bytes": 46997504,
+        "wall_seconds": 0.44994660653173923
+      }
+    ],
+    "default_queue_all15_real_cuda_passed": true,
+    "queue1_all15_real_cuda_passed": true,
+    "queue1_environment": {
+      "CUDA_DEVICE_MAX_CONNECTIONS": "1",
+      "CUDA_DEVICE_MAX_COPY_CONNECTIONS": "1",
+      "CUDA_SCALE_LAUNCH_QUEUES": null
+    },
+    "queue1_source_git_sha": "749b5983c700fd501846cc8e7ad6bb0ab2040309"
+  }
+}

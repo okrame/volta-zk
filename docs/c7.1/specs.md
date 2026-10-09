@@ -1277,7 +1277,13 @@ La [candidata `920e684`](../c7.1-history/h100-thp-candidate-2026-10-09.md)
 applica `MADV_HUGEPAGE` prima del primo accesso alle sole pagine intere
 interne alla capacità posseduta di W. Errore terminale, nessuna copia o
 esenzione aggiuntiva; il consiglio non garantisce THP. Il monitor continua
-a richiedere la residenza reale. La validazione H100 è ancora pendente.
+a richiedere la residenza reale. La
+[validazione H100](../c7.1-history/h100-thp-validation-2026-10-09.md)
+passa 15/15 CUDA, token e contatori esatti: 85,393 s di inferenza,
+caricamento più lento, temporanee circa invariate. Il probe osserva
+98,571% di W in AnonHugePages; nessuna esenzione è dedotta dal consiglio.
+Le code compute/copy a una connessione passano 15/15 reali ma il loro
+risparmio canonico non è ancora dimostrato.
 `produce_native` collega tutti i 13 tipi di producer, riusando i dispatcher
 di base e nonlineare e le route Norm/QK/softmax/PV. Verifica arità, presenza
 esatta di coda/istogramma e assenza di token estranei all'embedding;

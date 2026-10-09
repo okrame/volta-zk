@@ -1,0 +1,925 @@
+warning: variant `Shape` is never constructed
+   --> volta-pcg/src/c71_seed6.rs:123:5
+    |
+120 | enum Seed6Error {
+    |      ---------- variant in this enum
+...
+123 |     Shape,
+    |     ^^^^^
+    |
+    = note: `Seed6Error` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: struct `ProverRows` is never constructed
+   --> volta-pcg/src/c71_seed6.rs:128:8
+    |
+128 | struct ProverRows<'a> {
+    |        ^^^^^^^^^^
+
+warning: struct `VerifierRows` is never constructed
+   --> volta-pcg/src/c71_seed6.rs:136:8
+    |
+136 | struct VerifierRows<'a> {
+    |        ^^^^^^^^^^^^
+
+warning: struct `CompressedRows` is never constructed
+   --> volta-pcg/src/c71_seed6.rs:191:8
+    |
+191 | struct CompressedRows {
+    |        ^^^^^^^^^^^^^^
+
+warning: function `buffer_report` is never used
+   --> volta-pcg/src/c71_seed6.rs:228:4
+    |
+228 | fn buffer_report(output: &CompressedRows) -> Seed6Buffers {
+    |    ^^^^^^^^^^^^^
+
+warning: struct `Seed6Buffers` is never constructed
+   --> volta-pcg/src/c71_seed6.rs:243:8
+    |
+243 | struct Seed6Buffers {
+    |        ^^^^^^^^^^^^
+
+warning: function `prover_accumulators` is never used
+   --> volta-pcg/src/c71_seed6.rs:256:4
+    |
+256 | fn prover_accumulators(rows: ProverRows<'_>) -> Result<ProverCheck, Seed6Error> {
+    |    ^^^^^^^^^^^^^^^^^^^
+
+warning: function `verifier_accumulator` is never used
+   --> volta-pcg/src/c71_seed6.rs:271:4
+    |
+271 | fn verifier_accumulator(rows: VerifierRows<'_>) -> Result<VerifierCheck, Seed6Error> {
+    |    ^^^^^^^^^^^^^^^^^^^^
+
+warning: function `check_then_compress` is never used
+   --> volta-pcg/src/c71_seed6.rs:318:4
+    |
+318 | fn check_then_compress(
+    |    ^^^^^^^^^^^^^^^^^^^
+
+warning: method `heap_bytes` is never used
+   --> volta-pcg/src/c71_seed6/equality.rs:156:8
+    |
+ 86 | impl<State> Prepared<State> {
+    | --------------------------- method in this implementation
+...
+156 |     fn heap_bytes(&self) -> usize {
+    |        ^^^^^^^^^^
+
+warning: function `check_remaining` is never used
+   --> volta-pcg/src/c71_seed6/guard.rs:285:4
+    |
+285 | fn check_remaining(p: &ProverFinished, v: &GuardAccepted) {
+    |    ^^^^^^^^^^^^^^^
+
+warning: fields `work` and `random_candidates` are never read
+  --> volta-pcg/src/c71_seed6/cggm.rs:24:5
+   |
+19 | struct SenderPending {
+   |        ------------- fields in this struct
+...
+24 |     work: Work,
+   |     ^^^^
+25 |     random_candidates: u64,
+   |     ^^^^^^^^^^^^^^^^^
+
+warning: field `work` is never read
+  --> volta-pcg/src/c71_seed6/cggm.rs:34:5
+   |
+28 | struct ReceiverPending {
+   |        --------------- field in this struct
+...
+34 |     work: Work,
+   |     ^^^^
+
+warning: field `work` is never read
+  --> volta-pcg/src/c71_seed6/cggm.rs:40:5
+   |
+37 | struct SplitPending<State> {
+   |        ------------ field in this struct
+...
+40 |     work: Work,
+   |     ^^^^
+
+warning: method `terms` is never used
+  --> volta-pcg/src/c71_seed6/expand.rs:43:8
+   |
+25 | impl Stream {
+   | ----------- method in this implementation
+...
+43 |     fn terms(&mut self) -> Result<(Vec<EaTerm>, Work), Error> {
+   |        ^^^^^
+
+warning: methods `next_row` and `heap_bytes` are never used
+   --> volta-pcg/src/c71_seed6/expand.rs:122:19
+    |
+102 | impl Sender {
+    | ----------- methods in this implementation
+...
+122 |     pub(super) fn next_row(&mut self) -> Result<[u64; 3], Error> {
+    |                   ^^^^^^^^
+...
+217 |     pub(super) fn heap_bytes(&self) -> usize {
+    |                   ^^^^^^^^^^
+
+warning: methods `next_row` and `heap_bytes` are never used
+   --> volta-pcg/src/c71_seed6/expand.rs:254:19
+    |
+222 | impl Receiver {
+    | ------------- methods in this implementation
+...
+254 |     pub(super) fn next_row(&mut self) -> Result<[u64; 4], Error> {
+    |                   ^^^^^^^^
+...
+303 |     pub(super) fn heap_bytes(&self) -> usize {
+    |                   ^^^^^^^^^^
+
+warning: field `seed6_work` is never read
+  --> volta-pcg/src/c71_seed6/real.rs:91:9
+   |
+86 | pub(super) struct RealProverOutput {
+   |                   ---------------- field in this struct
+...
+91 |     pub seed6_work: Seed6Work,
+   |         ^^^^^^^^^^
+
+warning: field `seed6_work` is never read
+   --> volta-pcg/src/c71_seed6/real.rs:101:9
+    |
+ 96 | pub(super) struct RealVerifierOutput {
+    |                   ------------------ field in this struct
+...
+101 |     pub seed6_work: Seed6Work,
+    |         ^^^^^^^^^^
+
+warning: field `work` is never read
+   --> volta-pcg/src/c71_seed6/real.rs:117:9
+    |
+114 | pub(super) struct ProverReservation {
+    |                   ----------------- field in this struct
+...
+117 |     pub work: ReservationWork,
+    |         ^^^^
+
+warning: field `work` is never read
+   --> volta-pcg/src/c71_seed6/real.rs:123:9
+    |
+120 | pub(super) struct VerifierReservation {
+    |                   ------------------- field in this struct
+...
+123 |     pub work: ReservationWork,
+    |         ^^^^
+
+warning: `volta-pcg` (lib) generated 21 warnings
+warning: function `cache_fold_rows_values` is never used
+    --> volta-proto/src/block_proof.rs:2209:4
+     |
+2209 | fn cache_fold_rows_values(segs: &[CacheSegP], wr: &[Fp2], c0: usize, w: usize) -> Vec<Fp2> {
+     |    ^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `cache_fold_cols_values` is never used
+    --> volta-proto/src/block_proof.rs:2264:4
+     |
+2264 | fn cache_fold_cols_values(segs: &[CacheSegP], wc: &[Fp2], c0: usize, w: usize) -> Vec<Fp2> {
+     |    ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `volta-proto` (lib) generated 2 warnings
+   Compiling volta-pcs v0.0.0 (/workspace/volta-zk/rust/volta-pcs)
+warning: unused imports: `C6_PERSISTENT_CACHE_CAPACITY_TOKENS`, `C6_PERSISTENT_CACHE_LAYERS`, `C6_PERSISTENT_CACHE_PADDED_LAYERS`, `C6_PERSISTENT_CACHE_PADDED_WIDTH`, `C6_PERSISTENT_CACHE_SLOT_CAPACITY`, and `C6_PERSISTENT_CACHE_WIDTH`
+  --> volta-pcs/src/c6_persistent_cache_blind.rs:32:5
+   |
+32 |     C6_PERSISTENT_CACHE_CAPACITY_TOKENS, C6_PERSISTENT_CACHE_FOLD_CAPACITY,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+33 |     C6_PERSISTENT_CACHE_LAYERS, C6_PERSISTENT_CACHE_PADDED_LAYERS,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+34 |     C6_PERSISTENT_CACHE_PADDED_WIDTH, C6_PERSISTENT_CACHE_SLOT_CAPACITY, C6_PERSISTENT_CACHE_WIDTH,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> volta-pcs/src/c71_matrix/gemma/native/canonical_device.rs:196:15
+    |
+196 |     fn finish(mut self) -> Result<BTreeMap<usize, Rows>, String> {
+    |               ----^^^^
+    |               |
+    |               help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `maximum_work`
+    --> volta-pcs/src/c71_matrix/gemma/softmax.rs:1110:13
+     |
+1110 |         let maximum_work =
+     |             ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_maximum_work`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: associated function `replay_at` is never used
+  --> volta-pcs/src/c71_matrix/b12.rs:88:8
+   |
+85 | impl PrivateRng {
+   | --------------- associated function in this implementation
+...
+88 |     fn replay_at(seed: [u8;32], offset: u64) -> Result<Self, String> {
+   |        ^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `leaves_in_place` is never used
+  --> volta-pcs/src/c71_matrix/b12/streaming.rs:26:4
+   |
+26 | fn leaves_in_place(
+   |    ^^^^^^^^^^^^^^^
+
+warning: method `named_bytes` is never used
+   --> volta-pcs/src/c71_matrix/b12/sourcewise.rs:109:8
+    |
+ 37 | impl PowerBlocks {
+    | ---------------- method in this implementation
+...
+109 |     fn named_bytes(&self) -> usize {
+    |        ^^^^^^^^^^^
+
+warning: field `source_reads` is never read
+   --> volta-pcs/src/c71_matrix/b12/sourcewise.rs:533:16
+    |
+514 | pub(super) struct State {
+    |                   ----- field in this struct
+...
+533 |     pub(super) source_reads: Arc<AtomicU64>,
+    |                ^^^^^^^^^^^^
+
+warning: method `named_bytes` is never used
+   --> volta-pcs/src/c71_matrix/b12/sourcewise.rs:801:19
+    |
+536 | impl State {
+    | ---------- method in this implementation
+...
+801 |     pub(super) fn named_bytes(&self) -> usize {
+    |                   ^^^^^^^^^^^
+
+warning: fields `coset_rows`, `cosets`, and `work` are never read
+   --> volta-pcs/src/c71_matrix/b12/replay_tree.rs:148:5
+    |
+145 | pub(super) struct Tree {
+    |                   ---- fields in this struct
+...
+148 |     coset_rows: usize,
+    |     ^^^^^^^^^^
+149 |     cosets: usize,
+    |     ^^^^^^
+...
+156 |     pub work: ReplayWork,
+    |         ^^^^
+
+warning: method `geometry` is never used
+   --> volta-pcs/src/c71_matrix/b12/replay_tree.rs:496:19
+    |
+160 | impl Tree {
+    | --------- method in this implementation
+...
+496 |     pub(super) fn geometry(&self) -> (usize, usize, usize, usize) {
+    |                   ^^^^^^^^
+
+warning: method `len` is never used
+   --> volta-pcs/src/c71_matrix/b12/replay.rs:222:8
+    |
+221 | impl QueryLevel {
+    | --------------- method in this implementation
+222 |     fn len(&self) -> usize {
+    |        ^^^
+
+warning: methods `coset`, `coset_base`, and `coset_extension` are never used
+   --> volta-pcs/src/c71_matrix/b12/replay.rs:393:8
+    |
+372 | impl Code {
+    | --------- methods in this implementation
+...
+393 |     fn coset(
+    |        ^^^^^
+...
+407 |     fn coset_base(
+    |        ^^^^^^^^^^
+...
+416 |     fn coset_extension(
+    |        ^^^^^^^^^^^^^^^
+
+warning: associated items `new_checked` and `source` are never used
+    --> volta-pcs/src/c71_matrix/b12/replay.rs:1589:34
+     |
+1426 | impl ReplayModel {
+     | ---------------- associated items in this implementation
+...
+1589 |     pub(in crate::c71_matrix) fn new_checked(
+     |                                  ^^^^^^^^^^^
+...
+1648 |     pub(in crate::c71_matrix) fn source(&self) -> Getter {
+     |                                  ^^^^^^
+
+warning: function `c63_direct_source_domain_offsets` is never used
+   --> volta-pcs/src/c63_authenticated_sketch.rs:568:15
+    |
+568 | pub(crate) fn c63_direct_source_domain_offsets(
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: struct `C63RowEqualityFactors` is never constructed
+    --> volta-pcs/src/c63_authenticated_sketch.rs:1006:8
+     |
+1006 | struct C63RowEqualityFactors {
+     |        ^^^^^^^^^^^^^^^^^^^^^
+
+warning: associated items `new` and `weight` are never used
+    --> volta-pcs/src/c63_authenticated_sketch.rs:1013:8
+     |
+1012 | impl C63RowEqualityFactors {
+     | -------------------------- associated items in this implementation
+1013 |     fn new(point: &[Fp2]) -> Result<Self, String> {
+     |        ^^^
+...
+1024 |     fn weight(&self, row: u32) -> Result<Fp2, String> {
+     |        ^^^^^^
+
+warning: function `c63_correction_rows_opening_from_resident_parts` is never used
+    --> volta-pcs/src/c63_authenticated_sketch.rs:1336:15
+     |
+1336 | pub(crate) fn c63_correction_rows_opening_from_resident_parts(
+     |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `fold_c64_terminal_pending_prover` is never used
+  --> volta-pcs/src/c64_joint_residual_sketch.rs:40:15
+   |
+40 | pub(crate) fn fold_c64_terminal_pending_prover(
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `fold_c64_terminal_pending_verifier` is never used
+  --> volta-pcs/src/c64_joint_residual_sketch.rs:64:15
+   |
+64 | pub(crate) fn fold_c64_terminal_pending_verifier(
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `fold_c64_projected_pending_prover` is never used
+  --> volta-pcs/src/c64_joint_residual_sketch.rs:88:15
+   |
+88 | pub(crate) fn fold_c64_projected_pending_prover(
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `fold_c64_projected_pending_verifier` is never used
+   --> volta-pcs/src/c64_joint_residual_sketch.rs:119:15
+    |
+119 | pub(crate) fn fold_c64_projected_pending_verifier(
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `c64_correction_pending_prover` is never used
+   --> volta-pcs/src/c64_joint_residual_sketch.rs:150:15
+    |
+150 | pub(crate) fn c64_correction_pending_prover(
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `c64_correction_pending_verifier` is never used
+   --> volta-pcs/src/c64_joint_residual_sketch.rs:160:15
+    |
+160 | pub(crate) fn c64_correction_pending_verifier(
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `c64_projected_pending_digest` is never used
+   --> volta-pcs/src/c64_joint_residual_sketch.rs:170:15
+    |
+170 | pub(crate) fn c64_projected_pending_digest(
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `c64_projected_pending_digest_verifier` is never used
+   --> volta-pcs/src/c64_joint_residual_sketch.rs:189:15
+    |
+189 | pub(crate) fn c64_projected_pending_digest_verifier(
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `validate_projected_terminal_entries` is never used
+   --> volta-pcs/src/c64_joint_residual_sketch.rs:208:4
+    |
+208 | fn validate_projected_terminal_entries<'a>(
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `validate_and_digest_terminal_entries` is never used
+   --> volta-pcs/src/c64_joint_residual_sketch.rs:237:4
+    |
+237 | fn validate_and_digest_terminal_entries<'a>(
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `draw_c64_projected_residual_postclaim_challenges` is never used
+   --> volta-pcs/src/c64_projected_residual_suffix.rs:301:15
+    |
+301 | pub(crate) fn draw_c64_projected_residual_postclaim_challenges(
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `c64_residual_auth_context` is never used
+   --> volta-pcs/src/c64_projected_residual_suffix.rs:679:4
+    |
+679 | fn c64_residual_auth_context(
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `c64_residual_limb_context` is never used
+   --> volta-pcs/src/c64_projected_residual_suffix.rs:878:4
+    |
+878 | fn c64_residual_limb_context(
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: method `finish_c62` is never used
+   --> volta-pcs/src/c61_whir_reference.rs:250:19
+    |
+139 | impl<'a> C61InteractiveChallenger<'a> {
+    | ------------------------------------- method in this implementation
+...
+250 |     pub(crate) fn finish_c62(&self, payload: &[u8]) -> ReferenceResult<C61WhirInteractionStats> {
+    |                   ^^^^^^^^^^
+
+warning: struct `C61NativePendingSlotRegistryProverBuilder` is never constructed
+   --> volta-pcs/src/c6_authenticated_output_link.rs:992:19
+    |
+992 | pub(crate) struct C61NativePendingSlotRegistryProverBuilder {
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: struct `C61NativePendingSlotRegistryVerifierBuilder` is never constructed
+   --> volta-pcs/src/c6_authenticated_output_link.rs:996:19
+    |
+996 | pub(crate) struct C61NativePendingSlotRegistryVerifierBuilder {
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: struct `C63AuthenticatedSketchPendingSlotRegistryProverBuilder` is never constructed
+    --> volta-pcs/src/c6_authenticated_output_link.rs:1001:19
+     |
+1001 | pub(crate) struct C63AuthenticatedSketchPendingSlotRegistryProverBuilder {
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: struct `C63AuthenticatedSketchPendingSlotRegistryVerifierBuilder` is never constructed
+    --> volta-pcs/src/c6_authenticated_output_link.rs:1005:19
+     |
+1005 | pub(crate) struct C63AuthenticatedSketchPendingSlotRegistryVerifierBuilder {
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: associated items `new`, `absorb_residual`, `absorb_persistent_cache`, and `finish` are never used
+    --> volta-pcs/src/c6_authenticated_output_link.rs:1333:19
+     |
+1332 | impl C61NativePendingSlotRegistryProverBuilder {
+     | ---------------------------------------------- associated items in this implementation
+1333 |     pub(crate) fn new(fixed: &C6FixedWrapperCommitments) -> Result<Self> {
+     |                   ^^^
+...
+1342 |     pub(crate) fn absorb_residual(
+     |                   ^^^^^^^^^^^^^^^
+...
+1349 |     pub(crate) fn absorb_persistent_cache(
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^
+...
+1356 |     pub(crate) fn finish(self) -> Result<C6PendingSlotRegistryProver> {
+     |                   ^^^^^^
+
+warning: associated items `new`, `absorb_residual`, `absorb_persistent_cache`, and `finish` are never used
+    --> volta-pcs/src/c6_authenticated_output_link.rs:1362:19
+     |
+1361 | impl C61NativePendingSlotRegistryVerifierBuilder {
+     | ------------------------------------------------ associated items in this implementation
+1362 |     pub(crate) fn new(fixed: &C6FixedWrapperCommitments) -> Result<Self> {
+     |                   ^^^
+...
+1371 |     pub(crate) fn absorb_residual(
+     |                   ^^^^^^^^^^^^^^^
+...
+1378 |     pub(crate) fn absorb_persistent_cache(
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^
+...
+1385 |     pub(crate) fn finish(self) -> Result<C6PendingSlotRegistryVerifier> {
+     |                   ^^^^^^
+
+warning: associated items `new`, `absorb_residual`, and `finish` are never used
+    --> volta-pcs/src/c6_authenticated_output_link.rs:1391:19
+     |
+1390 | impl C63AuthenticatedSketchPendingSlotRegistryProverBuilder {
+     | ----------------------------------------------------------- associated items in this implementation
+1391 |     pub(crate) fn new(fixed: &C6FixedWrapperCommitments) -> Result<Self> {
+     |                   ^^^
+...
+1400 |     pub(crate) fn absorb_residual(
+     |                   ^^^^^^^^^^^^^^^
+...
+1407 |     pub(crate) fn finish(self) -> Result<C6PendingSlotRegistryProver> {
+     |                   ^^^^^^
+
+warning: associated items `new`, `absorb_residual`, and `finish` are never used
+    --> volta-pcs/src/c6_authenticated_output_link.rs:1413:19
+     |
+1412 | impl C63AuthenticatedSketchPendingSlotRegistryVerifierBuilder {
+     | ------------------------------------------------------------- associated items in this implementation
+1413 |     pub(crate) fn new(fixed: &C6FixedWrapperCommitments) -> Result<Self> {
+     |                   ^^^
+...
+1422 |     pub(crate) fn absorb_residual(
+     |                   ^^^^^^^^^^^^^^^
+...
+1429 |     pub(crate) fn finish(self) -> Result<C6PendingSlotRegistryVerifier> {
+     |                   ^^^^^^
+
+warning: associated function `new` is never used
+    --> volta-pcs/src/c6_authenticated_output_link.rs:1630:8
+     |
+1629 | impl C6Nbr2CombinedDelayedTerm {
+     | ------------------------------ associated function in this implementation
+1630 |     fn new(
+     |        ^^^
+
+warning: `volta-pcs` (lib) generated 40 warnings (run `cargo fix --lib -p volta-pcs` to apply 3 suggestions)
+    Finished `dev` profile [optimized] target(s) in 2m 58s
+warning: variant `Shape` is never constructed
+   --> volta-pcg/src/c71_seed6.rs:123:5
+    |
+120 | enum Seed6Error {
+    |      ---------- variant in this enum
+...
+123 |     Shape,
+    |     ^^^^^
+    |
+    = note: `Seed6Error` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: struct `ProverRows` is never constructed
+   --> volta-pcg/src/c71_seed6.rs:128:8
+    |
+128 | struct ProverRows<'a> {
+    |        ^^^^^^^^^^
+
+warning: struct `VerifierRows` is never constructed
+   --> volta-pcg/src/c71_seed6.rs:136:8
+    |
+136 | struct VerifierRows<'a> {
+    |        ^^^^^^^^^^^^
+
+warning: struct `CompressedRows` is never constructed
+   --> volta-pcg/src/c71_seed6.rs:191:8
+    |
+191 | struct CompressedRows {
+    |        ^^^^^^^^^^^^^^
+
+warning: function `buffer_report` is never used
+   --> volta-pcg/src/c71_seed6.rs:228:4
+    |
+228 | fn buffer_report(output: &CompressedRows) -> Seed6Buffers {
+    |    ^^^^^^^^^^^^^
+
+warning: struct `Seed6Buffers` is never constructed
+   --> volta-pcg/src/c71_seed6.rs:243:8
+    |
+243 | struct Seed6Buffers {
+    |        ^^^^^^^^^^^^
+
+warning: function `prover_accumulators` is never used
+   --> volta-pcg/src/c71_seed6.rs:256:4
+    |
+256 | fn prover_accumulators(rows: ProverRows<'_>) -> Result<ProverCheck, Seed6Error> {
+    |    ^^^^^^^^^^^^^^^^^^^
+
+warning: function `verifier_accumulator` is never used
+   --> volta-pcg/src/c71_seed6.rs:271:4
+    |
+271 | fn verifier_accumulator(rows: VerifierRows<'_>) -> Result<VerifierCheck, Seed6Error> {
+    |    ^^^^^^^^^^^^^^^^^^^^
+
+warning: function `check_then_compress` is never used
+   --> volta-pcg/src/c71_seed6.rs:318:4
+    |
+318 | fn check_then_compress(
+    |    ^^^^^^^^^^^^^^^^^^^
+
+warning: method `heap_bytes` is never used
+   --> volta-pcg/src/c71_seed6/equality.rs:156:8
+    |
+ 86 | impl<State> Prepared<State> {
+    | --------------------------- method in this implementation
+...
+156 |     fn heap_bytes(&self) -> usize {
+    |        ^^^^^^^^^^
+
+warning: function `check_remaining` is never used
+   --> volta-pcg/src/c71_seed6/guard.rs:285:4
+    |
+285 | fn check_remaining(p: &ProverFinished, v: &GuardAccepted) {
+    |    ^^^^^^^^^^^^^^^
+
+warning: fields `work` and `random_candidates` are never read
+  --> volta-pcg/src/c71_seed6/cggm.rs:24:5
+   |
+19 | struct SenderPending {
+   |        ------------- fields in this struct
+...
+24 |     work: Work,
+   |     ^^^^
+25 |     random_candidates: u64,
+   |     ^^^^^^^^^^^^^^^^^
+
+warning: field `work` is never read
+  --> volta-pcg/src/c71_seed6/cggm.rs:34:5
+   |
+28 | struct ReceiverPending {
+   |        --------------- field in this struct
+...
+34 |     work: Work,
+   |     ^^^^
+
+warning: field `work` is never read
+  --> volta-pcg/src/c71_seed6/cggm.rs:40:5
+   |
+37 | struct SplitPending<State> {
+   |        ------------ field in this struct
+...
+40 |     work: Work,
+   |     ^^^^
+
+warning: method `terms` is never used
+  --> volta-pcg/src/c71_seed6/expand.rs:43:8
+   |
+25 | impl Stream {
+   | ----------- method in this implementation
+...
+43 |     fn terms(&mut self) -> Result<(Vec<EaTerm>, Work), Error> {
+   |        ^^^^^
+
+warning: methods `next_row` and `heap_bytes` are never used
+   --> volta-pcg/src/c71_seed6/expand.rs:122:19
+    |
+102 | impl Sender {
+    | ----------- methods in this implementation
+...
+122 |     pub(super) fn next_row(&mut self) -> Result<[u64; 3], Error> {
+    |                   ^^^^^^^^
+...
+217 |     pub(super) fn heap_bytes(&self) -> usize {
+    |                   ^^^^^^^^^^
+
+warning: methods `next_row` and `heap_bytes` are never used
+   --> volta-pcg/src/c71_seed6/expand.rs:254:19
+    |
+222 | impl Receiver {
+    | ------------- methods in this implementation
+...
+254 |     pub(super) fn next_row(&mut self) -> Result<[u64; 4], Error> {
+    |                   ^^^^^^^^
+...
+303 |     pub(super) fn heap_bytes(&self) -> usize {
+    |                   ^^^^^^^^^^
+
+warning: field `seed6_work` is never read
+  --> volta-pcg/src/c71_seed6/real.rs:91:9
+   |
+86 | pub(super) struct RealProverOutput {
+   |                   ---------------- field in this struct
+...
+91 |     pub seed6_work: Seed6Work,
+   |         ^^^^^^^^^^
+
+warning: field `seed6_work` is never read
+   --> volta-pcg/src/c71_seed6/real.rs:101:9
+    |
+ 96 | pub(super) struct RealVerifierOutput {
+    |                   ------------------ field in this struct
+...
+101 |     pub seed6_work: Seed6Work,
+    |         ^^^^^^^^^^
+
+warning: field `work` is never read
+   --> volta-pcg/src/c71_seed6/real.rs:117:9
+    |
+114 | pub(super) struct ProverReservation {
+    |                   ----------------- field in this struct
+...
+117 |     pub work: ReservationWork,
+    |         ^^^^
+
+warning: field `work` is never read
+   --> volta-pcg/src/c71_seed6/real.rs:123:9
+    |
+120 | pub(super) struct VerifierReservation {
+    |                   ------------------- field in this struct
+...
+123 |     pub work: ReservationWork,
+    |         ^^^^
+
+warning: `volta-pcg` (lib) generated 21 warnings
+warning: function `cache_fold_rows_values` is never used
+    --> volta-proto/src/block_proof.rs:2209:4
+     |
+2209 | fn cache_fold_rows_values(segs: &[CacheSegP], wr: &[Fp2], c0: usize, w: usize) -> Vec<Fp2> {
+     |    ^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `cache_fold_cols_values` is never used
+    --> volta-proto/src/block_proof.rs:2264:4
+     |
+2264 | fn cache_fold_cols_values(segs: &[CacheSegP], wc: &[Fp2], c0: usize, w: usize) -> Vec<Fp2> {
+     |    ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `volta-proto` (lib) generated 2 warnings
+   Compiling volta-pcs v0.0.0 (/workspace/volta-zk/rust/volta-pcs)
+warning: unused import: `volta_mac::CorrelationStream`
+    --> volta-pcs/src/c63_authenticated_sketch.rs:2169:9
+     |
+2169 |     use volta_mac::CorrelationStream;
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused imports: `C6_PERSISTENT_CACHE_CAPACITY_TOKENS`, `C6_PERSISTENT_CACHE_LAYERS`, `C6_PERSISTENT_CACHE_PADDED_LAYERS`, `C6_PERSISTENT_CACHE_PADDED_WIDTH`, `C6_PERSISTENT_CACHE_SLOT_CAPACITY`, and `C6_PERSISTENT_CACHE_WIDTH`
+  --> volta-pcs/src/c6_persistent_cache_blind.rs:32:5
+   |
+32 |     C6_PERSISTENT_CACHE_CAPACITY_TOKENS, C6_PERSISTENT_CACHE_FOLD_CAPACITY,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+33 |     C6_PERSISTENT_CACHE_LAYERS, C6_PERSISTENT_CACHE_PADDED_LAYERS,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+34 |     C6_PERSISTENT_CACHE_PADDED_WIDTH, C6_PERSISTENT_CACHE_SLOT_CAPACITY, C6_PERSISTENT_CACHE_WIDTH,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: variable does not need to be mutable
+   --> volta-pcs/src/c71_matrix/gemma/native/canonical_device.rs:196:15
+    |
+196 |     fn finish(mut self) -> Result<BTreeMap<usize, Rows>, String> {
+    |               ----^^^^
+    |               |
+    |               help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `source` is never used
+    --> volta-pcs/src/c71_matrix/b12/replay.rs:1648:34
+     |
+1426 | impl ReplayModel {
+     | ---------------- method in this implementation
+...
+1648 |     pub(in crate::c71_matrix) fn source(&self) -> Getter {
+     |                                  ^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `c63_direct_source_domain_offsets` is never used
+   --> volta-pcs/src/c63_authenticated_sketch.rs:568:15
+    |
+568 | pub(crate) fn c63_direct_source_domain_offsets(
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `c63_correction_rows_opening_from_resident_parts` is never used
+    --> volta-pcs/src/c63_authenticated_sketch.rs:1336:15
+     |
+1336 | pub(crate) fn c63_correction_rows_opening_from_resident_parts(
+     |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `fold_c64_terminal_pending_prover` is never used
+  --> volta-pcs/src/c64_joint_residual_sketch.rs:40:15
+   |
+40 | pub(crate) fn fold_c64_terminal_pending_prover(
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `fold_c64_terminal_pending_verifier` is never used
+  --> volta-pcs/src/c64_joint_residual_sketch.rs:64:15
+   |
+64 | pub(crate) fn fold_c64_terminal_pending_verifier(
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `fold_c64_projected_pending_prover` is never used
+  --> volta-pcs/src/c64_joint_residual_sketch.rs:88:15
+   |
+88 | pub(crate) fn fold_c64_projected_pending_prover(
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `fold_c64_projected_pending_verifier` is never used
+   --> volta-pcs/src/c64_joint_residual_sketch.rs:119:15
+    |
+119 | pub(crate) fn fold_c64_projected_pending_verifier(
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `c64_correction_pending_prover` is never used
+   --> volta-pcs/src/c64_joint_residual_sketch.rs:150:15
+    |
+150 | pub(crate) fn c64_correction_pending_prover(
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `c64_correction_pending_verifier` is never used
+   --> volta-pcs/src/c64_joint_residual_sketch.rs:160:15
+    |
+160 | pub(crate) fn c64_correction_pending_verifier(
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `c64_projected_pending_digest` is never used
+   --> volta-pcs/src/c64_joint_residual_sketch.rs:170:15
+    |
+170 | pub(crate) fn c64_projected_pending_digest(
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `c64_projected_pending_digest_verifier` is never used
+   --> volta-pcs/src/c64_joint_residual_sketch.rs:189:15
+    |
+189 | pub(crate) fn c64_projected_pending_digest_verifier(
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `validate_projected_terminal_entries` is never used
+   --> volta-pcs/src/c64_joint_residual_sketch.rs:208:4
+    |
+208 | fn validate_projected_terminal_entries<'a>(
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `validate_and_digest_terminal_entries` is never used
+   --> volta-pcs/src/c64_joint_residual_sketch.rs:237:4
+    |
+237 | fn validate_and_digest_terminal_entries<'a>(
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `draw_c64_projected_residual_postclaim_challenges` is never used
+   --> volta-pcs/src/c64_projected_residual_suffix.rs:301:15
+    |
+301 | pub(crate) fn draw_c64_projected_residual_postclaim_challenges(
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `c64_residual_auth_context` is never used
+   --> volta-pcs/src/c64_projected_residual_suffix.rs:679:4
+    |
+679 | fn c64_residual_auth_context(
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `c64_residual_limb_context` is never used
+   --> volta-pcs/src/c64_projected_residual_suffix.rs:878:4
+    |
+878 | fn c64_residual_limb_context(
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: method `finish_c62` is never used
+   --> volta-pcs/src/c61_whir_reference.rs:250:19
+    |
+139 | impl<'a> C61InteractiveChallenger<'a> {
+    | ------------------------------------- method in this implementation
+...
+250 |     pub(crate) fn finish_c62(&self, payload: &[u8]) -> ReferenceResult<C61WhirInteractionStats> {
+    |                   ^^^^^^^^^^
+
+warning: associated function `for_test` is never used
+   --> volta-pcs/src/c6_authenticated_output_link.rs:309:19
+    |
+299 | impl C63ResidualSourceFunctionalsVerifiedLink {
+    | --------------------------------------------- associated function in this implementation
+...
+309 |     pub(crate) fn for_test(
+    |                   ^^^^^^^^
+
+warning: methods `absorb_residual` and `absorb_persistent_cache` are never used
+    --> volta-pcs/src/c6_authenticated_output_link.rs:1342:19
+     |
+1332 | impl C61NativePendingSlotRegistryProverBuilder {
+     | ---------------------------------------------- methods in this implementation
+...
+1342 |     pub(crate) fn absorb_residual(
+     |                   ^^^^^^^^^^^^^^^
+...
+1349 |     pub(crate) fn absorb_persistent_cache(
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: methods `absorb_residual` and `absorb_persistent_cache` are never used
+    --> volta-pcs/src/c6_authenticated_output_link.rs:1371:19
+     |
+1361 | impl C61NativePendingSlotRegistryVerifierBuilder {
+     | ------------------------------------------------ methods in this implementation
+...
+1371 |     pub(crate) fn absorb_residual(
+     |                   ^^^^^^^^^^^^^^^
+...
+1378 |     pub(crate) fn absorb_persistent_cache(
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: method `absorb_residual` is never used
+    --> volta-pcs/src/c6_authenticated_output_link.rs:1400:19
+     |
+1390 | impl C63AuthenticatedSketchPendingSlotRegistryProverBuilder {
+     | ----------------------------------------------------------- method in this implementation
+...
+1400 |     pub(crate) fn absorb_residual(
+     |                   ^^^^^^^^^^^^^^^
+
+warning: method `absorb_residual` is never used
+    --> volta-pcs/src/c6_authenticated_output_link.rs:1422:19
+     |
+1412 | impl C63AuthenticatedSketchPendingSlotRegistryVerifierBuilder {
+     | ------------------------------------------------------------- method in this implementation
+...
+1422 |     pub(crate) fn absorb_residual(
+     |                   ^^^^^^^^^^^^^^^
+
+warning: associated function `scaled` is never used
+   --> volta-pcs/src/c6_live_wrapper.rs:175:8
+    |
+131 | impl<'a> C6LiveWrapperSources<'a> {
+    | --------------------------------- associated function in this implementation
+...
+175 |     fn scaled(
+    |        ^^^^^^
+
+warning: `volta-pcs` (lib test) generated 26 warnings (run `cargo fix --lib -p volta-pcs --tests` to apply 3 suggestions)
+    Finished `test` profile [optimized] target(s) in 7m 10s
+  Executable unittests src/lib.rs (target/debug/deps/volta_pcs-c3c000ed1bc60c59)

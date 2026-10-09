@@ -61,9 +61,14 @@ installazione 441,657 s, setup 1.974,199 s e preparazione O=0 87,349 s
 sono completi; A e certificati no. Nessun timeout. Journal freschi bruciati.
 `2ff8106` conserva anche il campione terminale nel riepilogo; 36 test passano.
 Il [probe procfs e la candidata `920e684`](../c7.1-history/h100-thp-candidate-2026-10-09.md)
-sono separati dal trial fallito. La nuova richiesta THP richiede build
-compatibile, controlli pertinenti, parità CUDA e inferenza esatta. Non attribuire al consiglio una residenza o un
-guadagno non osservati; non allentare monitor, cap o deadline.
+sono separati dal trial fallito. La
+[validazione H100 THP](../c7.1-history/h100-thp-validation-2026-10-09.md)
+passa sei regressioni, 15/15 CUDA e inferenza esatta a 85,393 s. Il
+caricamento sale a 153,661 s; temporanee circa invariate, monitor più rapido.
+Le due connessioni CUDA a 1 passano 15/15 reali; il diagnostico completo
+`inference-05` è in corso prima di selezionare un nuovo trial canonico.
+Non attribuire ai contesti vuoti un risparmio canonico; cap e deadline
+restano invariati.
 Deadline e guard della campagna restano invariati.
 
 La precedente campagna chiusa conserva il proprio fallimento nel commitment

@@ -40,6 +40,9 @@ Dopo lo [stop fisico canonico](../c7.1-history/h100-canonical-04-2026-10-09.md),
 `2ff8106` include nel riepilogo del monitor il campione che causa lo stop.
 Passano 36 test, incluso il primo campione già oltre cap; nessuna modifica
 al limite o al trattamento dei campioni smaps recuperati.
+La [successiva validazione H100 THP/code](../c7.1-history/h100-thp-validation-2026-10-09.md)
+passa sei regressioni del runner e due serie 15/15 CUDA reali con i
+rispettivi ambienti. Sono test provider, non controlli locali.
 
 ## Limiti e ambiente
 

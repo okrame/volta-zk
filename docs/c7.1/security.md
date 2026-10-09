@@ -44,8 +44,11 @@ viene importato nel prossimo trial.
 Il [consiglio Linux per le pagine W](../c7.1-history/h100-thp-candidate-2026-10-09.md)
 riguarda solo l'allocazione globale prima del caricamento: non legge
 monete o correlazioni, non cambia input o transcript e non concede una
-nuova esenzione di memoria. È una candidata operativa ancora da validare
-sulla H100, distinta dal trial fallito.
+nuova esenzione di memoria. La
+[validazione H100](../c7.1-history/h100-thp-validation-2026-10-09.md)
+passa parità finita e inferenza esatta; le code CUDA a una connessione
+passano 15/15. Sono configurazioni operative, senza nuova assunzione o
+credito di sicurezza; nessun limite fisico è rilassato.
 
 Il teorema richiede almeno 78 bit per ciascun vantaggio completo.
 Si lavora nel modello dell'oracolo casuale classico, con lavoro e memoria

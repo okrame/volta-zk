@@ -1,0 +1,78 @@
+{
+  "samples": [
+    {
+      "epoch": 1791586522.6024983,
+      "environment": {
+        "CUDA_DEVICE_MAX_CONNECTIONS": null,
+        "CUDA_DEVICE_MAX_COPY_CONNECTIONS": null,
+        "CUDA_SCALE_LAUNCH_QUEUES": null
+      },
+      "stack_limit_bytes": 256,
+      "global_free_bytes": 84672643072,
+      "global_total_bytes": 85017493504,
+      "global_used_bytes": 344850432,
+      "host_status": [
+        "VmHWM:\t  118300 kB",
+        "VmRSS:\t  118300 kB"
+      ],
+      "scope": "One fresh empty CUDA context, one nonblocking stream and a4096B memset/free. No C7.1 kernels/model; concurrentCPUcompilation only. No canonical memory or parity credit.",
+      "credit": false
+    },
+    {
+      "epoch": 1791586523.2328048,
+      "environment": {
+        "CUDA_DEVICE_MAX_CONNECTIONS": "1",
+        "CUDA_DEVICE_MAX_COPY_CONNECTIONS": "1",
+        "CUDA_SCALE_LAUNCH_QUEUES": null
+      },
+      "stack_limit_bytes": 256,
+      "global_free_bytes": 84673691648,
+      "global_total_bytes": 85017493504,
+      "global_used_bytes": 343801856,
+      "host_status": [
+        "VmHWM:\t   70248 kB",
+        "VmRSS:\t   70248 kB"
+      ],
+      "scope": "One fresh empty CUDA context, one nonblocking stream and a4096B memset/free. No C7.1 kernels/model; concurrentCPUcompilation only. No canonical memory or parity credit.",
+      "credit": false
+    },
+    {
+      "epoch": 1791586523.8755207,
+      "environment": {
+        "CUDA_DEVICE_MAX_CONNECTIONS": "1",
+        "CUDA_DEVICE_MAX_COPY_CONNECTIONS": "1",
+        "CUDA_SCALE_LAUNCH_QUEUES": "0.25x"
+      },
+      "stack_limit_bytes": 256,
+      "global_free_bytes": 84673691648,
+      "global_total_bytes": 85017493504,
+      "global_used_bytes": 343801856,
+      "host_status": [
+        "VmHWM:\t   68188 kB",
+        "VmRSS:\t   68188 kB"
+      ],
+      "scope": "One fresh empty CUDA context, one nonblocking stream and a4096B memset/free. No C7.1 kernels/model; concurrentCPUcompilation only. No canonical memory or parity credit.",
+      "credit": false
+    },
+    {
+      "epoch": 1791586524.6452444,
+      "environment": {
+        "CUDA_DEVICE_MAX_CONNECTIONS": null,
+        "CUDA_DEVICE_MAX_COPY_CONNECTIONS": null,
+        "CUDA_SCALE_LAUNCH_QUEUES": "0.25x"
+      },
+      "stack_limit_bytes": 256,
+      "global_free_bytes": 84672643072,
+      "global_total_bytes": 85017493504,
+      "global_used_bytes": 344850432,
+      "host_status": [
+        "VmHWM:\t  101192 kB",
+        "VmRSS:\t  101192 kB"
+      ],
+      "scope": "One fresh empty CUDA context, one nonblocking stream and a4096B memset/free. No C7.1 kernels/model; concurrentCPUcompilation only. No canonical memory or parity credit.",
+      "credit": false
+    }
+  ],
+  "official_reference": "https://docs.nvidia.com/cuda/archive/12.8.1/cuda-c-programming-guide/index.html#cuda-environment-variables",
+  "credit": false
+}

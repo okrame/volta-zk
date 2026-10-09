@@ -1282,8 +1282,10 @@ a richiedere la residenza reale. La
 passa 15/15 CUDA, token e contatori esatti: 85,393 s di inferenza,
 caricamento più lento, temporanee circa invariate. Il probe osserva
 98,571% di W in AnonHugePages; nessuna esenzione è dedotta dal consiglio.
-Le code compute/copy a una connessione passano 15/15 reali ma il loro
-risparmio canonico non è ancora dimostrato.
+Le [code compute/copy a una connessione](../c7.1-history/h100-queue1-2026-10-09.md)
+passano 15/15 reali e inferenza esatta a 84,382 s, con massimo temporaneo
+campionato 1.216.531.968 B (−50.434.048 B). Sono selezionate per il nuovo
+trial; risparmio e picco canonici restano da dimostrare.
 `produce_native` collega tutti i 13 tipi di producer, riusando i dispatcher
 di base e nonlineare e le route Norm/QK/softmax/PV. Verifica arità, presenza
 esatta di coda/istogramma e assenza di token estranei all'embedding;

@@ -65,10 +65,12 @@ sono separati dal trial fallito. La
 [validazione H100 THP](../c7.1-history/h100-thp-validation-2026-10-09.md)
 passa sei regressioni, 15/15 CUDA e inferenza esatta a 85,393 s. Il
 caricamento sale a 153,661 s; temporanee circa invariate, monitor più rapido.
-Le due connessioni CUDA a 1 passano 15/15 reali; il diagnostico completo
-`inference-05` è in corso prima di selezionare un nuovo trial canonico.
-Non attribuire ai contesti vuoti un risparmio canonico; cap e deadline
-restano invariati.
+Le [due connessioni CUDA a 1](../c7.1-history/h100-queue1-2026-10-09.md)
+passano 15/15 reali e inferenza esatta a 84,382 s; massimo temporaneo
+campionato 1.216.531.968 B, riduzione misurata 50.434.048 B.
+`canonical-05` è in corso dalle 23:13:42 UTC su checkout `749b598`,
+binario `920e684`, libreria `a32a6c3`: nuovo W/setup AES/journal, stesso Γ,
+cap e timeout 7.200 s. Il picco canonico completo rimane da dimostrare.
 Deadline e guard della campagna restano invariati.
 
 La precedente campagna chiusa conserva il proprio fallimento nel commitment

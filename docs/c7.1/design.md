@@ -165,8 +165,12 @@ Il [probe procfs](../c7.1-history/h100-thp-candidate-2026-10-09.md) misura
 passa 15/15 CUDA e token esatti: inferenza 85,393 s (−5,741% osservato),
 caricamento più lento a 153,661 s, temporanee circa invariate. Smaps scende
 a 0,025 s nel probe, mediana 0,059 s durante la preparazione. Nessun
-credito al picco completo. Le code CUDA a una connessione passano 15/15;
-il loro risparmio sul modello è ancora in misura.
+credito al picco completo. Le
+[code CUDA a una connessione](../c7.1-history/h100-queue1-2026-10-09.md)
+passano 15/15 e inferenza esatta a 84,382 s: massimo temporaneo campionato
+1.216.531.968 B, −50.434.048 B rispetto alla stessa build con code di default.
+Sono selezionate per `canonical-05`, da W alle 23:13:42 UTC con AES/journal
+freschi; il picco canonico rimane da verificare.
 Γ, causalità, replay e garanzie restano invariati. O=0/150/300 non sono verificati.
 Il precedente timeout CPU dopo
 circa 41 minuti rimane il fallimento di quella schedule da 1.024 scansioni,

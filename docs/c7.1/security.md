@@ -49,6 +49,9 @@ nuova esenzione di memoria. La
 passa parità finita e inferenza esatta; le code CUDA a una connessione
 passano 15/15. Sono configurazioni operative, senza nuova assunzione o
 credito di sicurezza; nessun limite fisico è rilassato.
+Dopo [inferenza esatta e riduzione fisica di componente](../c7.1-history/h100-queue1-2026-10-09.md),
+`canonical-05` riparte con nuovi journal e correlazioni AES monouso.
+Il riuso di Γ/W non riusa setup, monete, MAC o stato di sessione.
 
 Il teorema richiede almeno 78 bit per ciascun vantaggio completo.
 Si lavora nel modello dell'oracolo casuale classico, con lavoro e memoria

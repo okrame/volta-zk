@@ -43,6 +43,9 @@ al limite o al trattamento dei campioni smaps recuperati.
 La [successiva validazione H100 THP/code](../c7.1-history/h100-thp-validation-2026-10-09.md)
 passa sei regressioni del runner e due serie 15/15 CUDA reali con i
 rispettivi ambienti. Sono test provider, non controlli locali.
+Il [diagnostico successivo](../c7.1-history/h100-queue1-2026-10-09.md)
+confronta esattamente 150 token, digest W, contatori e cleanup con la
+baseline THP; la misura fisica resta distinta dalla verifica canonica.
 
 ## Limiti e ambiente
 

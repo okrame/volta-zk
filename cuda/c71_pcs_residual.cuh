@@ -181,39 +181,6 @@ C71_RESIDUAL_HD inline bool weight_scalar(int16_t original,uint64_t& out) {
     out=original<0 ? P-uint64_t(-int32_t(original)) : uint64_t(original);
     return true;
 }
-// Exact host metadata coverage, never a per-cell bitmap. The common owner
-// charges this fixed frontier in sizeof(Context). Public producer order may
-// be reversed/ragged; overlap and more than 4096 disjoint gaps are terminal.
-// Admission of that gap bound on the pinned canonical plan remains explicit.
-struct SourceCoverage {
-    struct Interval { uint64_t first,last; };
-    static constexpr unsigned capacity=4096;
-    Interval intervals[capacity]{};
-    uint32_t count=0,highwater=0;
-    bool insert(uint64_t first,uint64_t length,uint64_t live) {
-        if(!length || first>=live || length>live-first) return false;
-        const uint64_t last=first+length;
-        unsigned pos=0;while(pos<count && intervals[pos].first<first)++pos;
-        if((pos && intervals[pos-1].last>first) || (pos<count && intervals[pos].first<last))return false;
-        const bool left=pos && intervals[pos-1].last==first;
-        const bool right=pos<count && intervals[pos].first==last;
-        if(left && right) {
-            intervals[pos-1].last=intervals[pos].last;
-            for(unsigned i=pos;i+1<count;++i)intervals[i]=intervals[i+1];
-            --count;
-        } else if(left)intervals[pos-1].last=last;
-        else if(right)intervals[pos].first=first;
-        else {
-            if(count==capacity)return false;
-            for(unsigned i=count;i>pos;--i)intervals[i]=intervals[i-1];
-            intervals[pos]={first,last};++count;
-        }
-        if(count>highwater)highwater=count;
-        return true;
-    }
-    bool complete(uint64_t live) const { return count==1 && intervals[0].first==0 && intervals[0].last==live; }
-};
-static_assert(sizeof(SourceCoverage)==65544);
 struct ContractResult { E value[2]; };
 static_assert(sizeof(ContractResult)==48);
 // Call only after Shape/kind/band validation. Enumerates the selected suffix

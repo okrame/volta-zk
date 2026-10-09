@@ -120,7 +120,6 @@ struct LinearTransaction {
 static_assert(sizeof(LinearTransaction)==120);
 struct ResidualTransaction {
     c71_pcs_residual::Shape shape{};
-    c71_pcs_residual::SourceCoverage coverage{};
     c71_pcs_residual::CosetShape cosets{};
     c71_pcs_residual::PowerShape powers{};
     c71_pcs_residual::E point{};
@@ -1619,8 +1618,10 @@ int residual_submit(C71RangeContext* c,uint64_t input,const c71_pcs::SourceTile*
            original->initialized!=original->count || !c71_pcs::valid(*tile,original->kind,original->count,s.shape.live))
             return fail(c,"PCS residual original tile type, coverage or mode");
         visits=tile->rows*tile->columns*tile->width;
-        if(visits>s.shape.live-s.visited || !s.coverage.insert(tile->original_first,visits,s.shape.live))
-            return fail(c,"PCS residual original tile overlap, excess or frontier capacity");
+        // The trusted canonical adapter owns exact unique source-row coverage.
+        // This boundary validates spans/count, as for the initial native A PCS.
+        if(visits>s.shape.live-s.visited)
+            return fail(c,"PCS residual original tile excess");
         status=c71_pcs_residual_source_launch(c->stream,ptr<void>(c,original),original->count,original->kind,*tile,
             s.shape,chunks,tables,s.phase,residual_output(c),s.cosets,high,s.powers,low_power,high_power,flag);
         s.mode=1;
@@ -1764,8 +1765,7 @@ extern "C" int c71_pcs_residual_finish(C71RangeContext* c,uint64_t token,C71PcsR
     uintptr_t end=0;
     auto& s=c->residual;
     if(!output || reinterpret_cast<uintptr_t>(output)%alignof(C71PcsResidualResult) ||
-       !c71_dense::span(output,sizeof(*output),end) || !s.mode || s.visited!=s.shape.live ||
-       (s.mode==1 && !s.coverage.complete(s.shape.live)))
+       !c71_dense::span(output,sizeof(*output),end) || !s.mode || s.visited!=s.shape.live)
         return fail(c,"PCS residual finish output or original scan incomplete");
     bool submitted_error=false;
     if(s.phase==residual::Phase::cosets) {

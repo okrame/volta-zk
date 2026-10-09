@@ -2087,38 +2087,26 @@ void weight_launch_failures() {
     }
     std::puts("C71_PCS_QUERY_E_WEIGHT_FAILURE {\"terminal_rejections\":2,\"pad_only_launches\":1,\"real_work_launches\":2,\"accepted_init_drained\":true,\"gpu_execution\":false,\"credit\":false}");
 }
-void source_coverage_checks() {
+void trusted_source_partition_checks() {
     namespace pcs=c71_pcs_residual;
     const auto packet=residual_test::lookup({{0,0,0},{0,0,0},{7,11,13}});
-    pcs::SourceCoverage reference{};auto* c=create();const auto original=residual_test::input(c);
+    auto* c=create();const auto original=residual_test::input(c);
     auto token=residual_test::begin(c,{32,7,4,{}},pcs::Phase::retention,packet);
+    bool covered[32]{}; // Reduced independent partition oracle, never a runtime A bitmap.
     for(unsigned first:{8u,24u,0u,16u}) {
-        assert(reference.insert(first,8,32));
+        for(unsigned i=first;i<first+8;++i) { assert(!covered[i]);covered[i]=true; }
         assert(!c71_pcs_residual_source_tile(c,token,original,{first/2,1,4,1,first,0,2,2}));
     }
-    assert(reference.complete(32) && reference.highwater==2);
-    assert(stats(c).host_owner_bytes>=sizeof(pcs::SourceCoverage));
+    for(bool visited:covered)assert(visited);
     const auto retained=residual_test::finish(c,token).planes;
     residual_test::read_copy(c,retained,residual_test::dense_fold(residual_test::originals(),{{0,0,0},{0,0,0},{7,11,13}}));
     assert(!c71_pcs_residual_retire_planes(c,retained));close(c);
-    c=create();const auto duplicate_input=residual_test::input(c);token=residual_test::begin(c,{32,7,4,{}},pcs::Phase::retention,packet);
-    const c71_pcs::SourceTile half{0,8,1,8,0,0,2,2};assert(!c71_pcs_residual_source_tile(c,token,duplicate_input,half));
-    const auto before=stats(c);assert(c71_pcs_residual_source_tile(c,token,duplicate_input,half));
-    assert(stats(c).stopped && stats(c).launches==before.launches);
-    C71PcsResidualResult unchanged{};std::memset(&unchanged,0xa5,sizeof(unchanged));const auto saved=unchanged;
-    assert(c71_pcs_residual_finish(c,token,&unchanged) && !std::memcmp(&unchanged,&saved,sizeof(saved)));close(c);
-    // Metadata-only overflow: one private i16, no allocation proportional to A.
-    c=create();const auto scalar=alloc(c,C71_I16,1);const int16_t value=1;assert(!c71_range_upload(c,scalar,&value,2));
-    const auto full=residual_test::lookup(std::vector<E>(14));token=residual_test::begin(c,{8194,14,0,{}},pcs::Phase::retention,full);
-    pcs::SourceCoverage overflow{};
-    for(unsigned i=0;i<pcs::SourceCoverage::capacity;++i) {
-        assert(overflow.insert(2*i,1,8194));assert(!c71_pcs_residual_source_tile(c,token,scalar,{0,1,1,1,2*i,0,1,2}));
-    }
-    assert(overflow.highwater==4096 && !overflow.insert(8192,1,8194));
-    const auto overflow_before=stats(c);assert(c71_pcs_residual_source_tile(c,token,scalar,{0,1,1,1,8192,0,1,2}));
-    assert(stats(c).stopped && stats(c).launches==overflow_before.launches);close(c);
-    std::puts("C71_PCS_SOURCE_COVERAGE {\"reversed_ragged_cases\":1,\"overlap_rejections\":1,\"frontier_overflow_rejections\":1,\"source_frontier_highwater_reduced\":2,\"source_frontier_capacity\":4096,\"source_frontier_bytes\":65544,\"pinned_gap_bound_verified\":false,\"gpu_execution\":false,\"credit\":false}");
+    // NativeSource's canonical producer checks duplicate/omitted original rows;
+    // Bytes::resident_original_tiles preserves its disjoint dyadic byte partition.
+    // The standalone C byte-count boundary does not attest uniqueness.
+    std::puts("C71_PCS_TRUSTED_SOURCE_PARTITION {\"reversed_ragged_cases\":1,\"trusted_row_coverage\":true,\"standalone_byte_count_proves_uniqueness\":false,\"gpu_execution\":false,\"credit\":false}");
 }
+
 }
 
 int main() {
@@ -2235,7 +2223,7 @@ int main() {
     residual_query_test::positive();
     residual_query_test::negative();
     residual_query_test::weight_launch_failures();
-    residual_query_test::source_coverage_checks();
+    residual_query_test::trusted_source_partition_checks();
     assert(allocations==frees);
     std::puts("C71_RANGE_OWNER_HOST {\"rejections\":13,\"dense_rejections\":23,\"byte_rejections\":19,\"pointwise_rejections\":14,\"embedding_rejections\":17,\"dense_batches\":2,\"dense_row_views\":1,\"max_arena_bytes\":262144,\"gpu_execution\":false,\"credit\":false}");
 }

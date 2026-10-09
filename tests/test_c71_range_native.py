@@ -82,10 +82,9 @@ def test_native_range_owner_with_deferred_fake_driver(tmp_path):
         "terminal_rejections": 2, "pad_only_launches": 1, "real_work_launches": 2,
         "accepted_init_drained": True, "gpu_execution": False, "credit": False,
     }
-    expected_components["C71_PCS_SOURCE_COVERAGE"] = {
-        "reversed_ragged_cases": 1, "overlap_rejections": 1, "frontier_overflow_rejections": 1,
-        "source_frontier_highwater_reduced": 2, "source_frontier_capacity": 4096,
-        "source_frontier_bytes": 65544, "pinned_gap_bound_verified": False,
+    expected_components["C71_PCS_TRUSTED_SOURCE_PARTITION"] = {
+        "reversed_ragged_cases": 1, "trusted_row_coverage": True,
+        "standalone_byte_count_proves_uniqueness": False,
         "gpu_execution": False, "credit": False,
     }
     assert reports == expected_components

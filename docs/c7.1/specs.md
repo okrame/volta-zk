@@ -837,7 +837,9 @@ Replay/hash condividono il flag sticky, una verifica/fence per gruppo,
 nessun H2D sali o fence per banda. Current finale e byte consumati devono
 coincidere col prescan; digest negati fino al ritiro privato. Il flag è
 rilasciato dopo fence valido senza ripeterlo; free-failure resta terminale.
-Owner host 37.288 B e Stats 152 B; la API Rust sali aggiunge 48 B.
+Owner host 37.288 B al checkpoint sali e Stats 152 B; la API Rust sali
+aggiunge 48 B. Il successivo owner lineare aggiunge 120 B host permanenti,
+da contare anche nelle altre fasi, senza modificare i record precedenti.
 
 Il lavoro XOF logico prescan+replay resta almeno 256/128 GiB W/A; gli
 upload sali host 128/64 GiB sono sostituiti da 168 B H2D metadata per
@@ -923,9 +925,35 @@ sovrapposizioni e ordine arbitrario conservano coefficienti/endpoint.
 Unicità è precondizione dello scanner; il confine controlla live/range/
 count ed errori prima delle tre correlazioni. Wire/FS/MAC e riserva 3D+2
 restano invariati; capacità/realloc/forme pubbliche sono nel budget.
-Il caller è CPU al checkpoint query. Helper CUDA, nuovo owner lineare e
-collegamento `native_original` sono preparazione successiva, senza
-record di convalida owner/caller. Anche `c71_pcs_residual.cuh/.cu` prepara aritmetica
+Il [checkpoint lineare](../c7.1-history/crypto-linear-2026-10-09.md) collega
+`native_original` A/W allo stesso owner. Quattro simboli ABI4 obbligatori
+gestiscono packet canonico, accumuli e risultato; kind18 privato non è
+allocabile, leggibile o rilasciabile genericamente. Begin fa una fence
+sugli upload prima di liberare il packet host; finish restituisce cinque
+Fp3 MAC e flag, valida e ritira i tre buffer prima della pubblicazione.
+Sono 124 B D2H e due fence del consumer per round: sul pinned 34 scan A
+e 35 W, rispettivamente 4.216/4.340 B di risultati. Producer, mapping,
+flag e sincronizzazioni propri restano ulteriori. W carica il mapping
+sigillato una volta per prova; A chiama lo scanner senza lock esterno.
+
+Shape/Chunk/Group/Interval/Result sono 32/16/16/64/120 B. Il cap owner
+packet è 1 GiB, con al più 2^20 intervalli e 2^25 punti: upper nominato
+allineato packet+output+flag 872.447.744 B. Il caller `MAX_CUBES=2^19`
+ammette al più 17.825.792 punti residuali; il corrispondente upper
+conservativo è 461.405.952 B. Sono esclusi forme originali, descrittori
+temporanei, staging host, producer/Tree/PCG/prova e margini; il census
+conta capacità/realloc e ogni prenotazione. Telemetria riporta capacità
+host effettiva e bound temporaneo per round, delta completo del common
+owner compresi producer/mapping, senza sommare picchi cumulativi.
+Owner host corrente 37.408 B, Stats 152 B, API Rust +32 B; kernel 256
+thread, grid ≤8192 e shared 30.720 B. Registri/spill/scheduling e conto
+fisico restano da misurare. Nessuna ammissione congiunta segue da questi
+subtotal. I 16 casi codec/endpoints, 30 rifiuti, quattro simboli mancanti
+e cinque fault di avanzamento preservano le tre correlazioni per round;
+la catena D10 signed W verifica full wire/FS/punto/MAC originale con PCS
+CPU. La parità A completa e quella CUDA non sono implicite in tale catena.
+
+`c71_pcs_residual.cuh/.cu` prepara separatamente aritmetica
 PCS v³=v+1, singleton/OOD, SoA e coset/fold senza selezione o consumo da
 parte dell'owner; non implica retention S1 GPU o cambi di lifetime.
 
@@ -973,6 +1001,7 @@ e conteggi originali. La copertura completa precede il seal di ogni finestra.
 | PCS iniziale W CUDA | Ring otto colonne/32 coset 2.147.483.648 B, CV 1.073.741.824 B e frontier 234.881.024 B; subtotal device del componente 3.745.182.208 B con sampler privato, senza sommare la schedule CPU alternativa |
 | PCS S1/S2 | S1: due coset 2^23×12×8; S2: due coset 2^21×12×8 con S1 da 3.221.225.472 B vivo. Dopo il rilascio del predecessore si applica il fold e `shrink_to_fit`; anche l'eventuale sovrapposizione vecchio+nuovo del realloc è addebitata |
 | Aperture PCS | Matrice contigua; query iniziali A native con subtotal e lifetime sopra, fattori pubblici CPU; W/extension CPU. q≤2^20, resti/FFT/staging e un solo sottoalbero rigenerato; righe/sali/path precedentemente aperti restano conteggiati |
+| Closure lineare | Packet/output/flag nativi e staging host sopra; forme pubbliche e producer rimangono nel conto. Una scan originale per round, mapping W una volta; nessuna retention implicita |
 | Range/staging | Range A ≤1 GiB device; finestra originale query A ≤256 MiB device, senza copia byte host nel caller nativo (≤256 MiB host nel riferimento CPU); W staging signed ≤256 MiB, padding pubblico signed host ≤55.574.528 B; ogni copia rimane nel conto |
 | GKR, Seed6 e altro host | Compact RMS, EXP30/lookup, contrazioni, MAC originali, Seed6 reale dei due ruoli, tabelle/profili, certificati/codec e metadati passano dallo stesso allocatore; nessuno slot figurativo li rende gratuiti |
 
@@ -999,7 +1028,8 @@ del consumo. Il gather accetta viste nei prefissi KV, non celle future.
 Questi byte non passano al verificatore. Il range A resta residente;
 La finestra range A del runner scende da 2 GiB a 1 GiB: cambia il numero
 di finestre, non gli originali né la geometria del range.
-I commitment iniziali W/A e le query iniziali A sono residenti. PCS
+I commitment iniziali W/A, le query iniziali A e gli accumuli lineari sui
+valori originali sono residenti. PCS
 extension FFT/Merkle e relativi sali, query W/extension, contrazioni,
 GKR non-range, MAC, PCG, codec e verifica
 restano CPU dichiarati, non fallback impliciti. La rigenerazione di una

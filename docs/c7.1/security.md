@@ -692,8 +692,20 @@ passa al Tree prima dell'autenticazione Merkle. Errori, owner/span/tipo
 alterati o buffer pending sono terminali, senza reader/getter sostitutivo.
 La catena ridotta uncached conserva wire, FS/RNG e MAC originali con due
 verificatori; non dimostra parità CUDA o ammissione fisica. Extension/S1
-e caller lineare restano CPU al source validato: helper S1 e nuovo owner
-lineare preparatori non scaricano le relative premesse.
+e caller lineare restano CPU al source di quel checkpoint.
+
+Il successivo [checkpoint lineare](../c7.1-history/crypto-linear-2026-10-09.md)
+valida owner/caller sugli originali, usando MAC u³=2 e marshalling
+canonico distinto dalla PCS. Packet e token sono owner-bound; begin
+completa gli upload, finish controlla flag/campi e ritiro prima di
+autenticare il round. Scanner A e mapping W restano quelli originali;
+sfide e covettori rimangono nel consumer. Errori di copertura, producer,
+symbol, copy/fence/free non consumano le tre correlazioni di un round
+incompleto e fermano l'owner, senza getter fallback. La prova D10 signed
+W conserva full wire/FS/punto/MAC; i codec A sono verificati separatamente.
+Non ne segue un lemma Lean di raffinamento, parità CUDA o completamento
+del profilo canonico. Extension/S1 resta CPU; l'helper PCS preparatorio
+non scarica le premesse delle viste residenti o del loro lifetime.
 
 S1 si ridimensiona soltanto dopo consumo/rilascio del predecessore e
 registrazione del successore; nessun oracolo ancora apribile è modificato.

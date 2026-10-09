@@ -143,14 +143,12 @@ nvcc -std=c++17 -O2 -arch=sm_90 --cudart static \
 ```
 
 Il loader richiede tutti i simboli ABI4 correnti, comprese operazioni
-sali, confronto Tensor, FFT naturale e quattro operazioni query. Una libreria incompleta fallisce
+sali, confronto Tensor, FFT naturale, quattro operazioni query e quattro
+lineari. Una libreria incompleta fallisce
 prima dell'uso. Le FFT naturali sono definite nell'unità weight esistente.
-La unità lineare risolve i launcher del nuovo owner preparatorio; il
-caller è CPU al checkpoint query, mentre il nuovo collegamento
-`native_original` richiede un record distinto. Nel codice preparato le
-quattro API owner `c71_linear_begin(...)`, `c71_linear_source_tile(...)`,
-`c71_linear_weights(...)`, `c71_linear_finish(...)` richiedono verifica separata
-prima dell'uso. `c71_pcs_residual.cu` è un helper S1 preparatorio, senza
+L'unità lineare risolve i launcher dell'owner/caller ora verificato dal
+[checkpoint lineare](../c7.1-history/crypto-linear-2026-10-09.md), distinto
+dal precedente query. `c71_pcs_residual.cu` è un helper S1 preparatorio, senza
 consumer owner: non è necessario alla linkline corrente e non dà credito
 alla PCS extension. Conservare RSS/deadline della build separati e
 nessun rapporto di speedup tra Rust O0 e C++ O2.
@@ -248,10 +246,20 @@ nvcc -std=c++17 -O2 -arch=sm_90 -c cuda/c71_attention_mma.cu -o /tmp/c71_attenti
 
 La FFT e il caller delle query iniziali A sono integrati nel common owner
 nel [checkpoint query](../c7.1-history/crypto-query-2026-10-09.md).
-Le fixture `tests/test_c71_linear_native.py` e
-`tests/test_c71_pcs_residual.py` controllano helper distinti MAC/PCS;
-il nuovo owner lineare e il caller S1 rimangono preparazione da verificare,
-non risultati di questo checkpoint. Non aggregare i cinque filtri query
+Il [checkpoint lineare](../c7.1-history/crypto-linear-2026-10-09.md)
+verifica cinque filtri, da eseguire uno per invocazione:
+
+| Filtro | Significato |
+|---|---|
+| `c71_b12_native_linear_original_codecs_exact_coefficients_endpoints_and_work` | 16 casi A/W, slack prodotto da argmax, i48 split, EQ/endpoint e zero tail senza letture |
+| `c71_b12_native_linear_owner_token_coverage_and_fail_closed` | 30 rifiuti, token/owner privati, copertura, copie/fence/free e flag |
+| `c71_b12_native_linear_symbols_are_required` | Quattro simboli ABI obbligatori assenti |
+| `c71_b12_native_linear_producer_errors_burn_only_completed_rounds` | Cinque fault: correlazioni e FS avanzano solo per round completati |
+| `c71_b12_native_linear_full_wire_fs_point_and_original_mac` | Prova D10 signed W esatta contro denso, PCS CPU, wire/FS/punto/MAC |
+
+`tests/test_c71_linear_native.py` verifica 167 casi contro l'oracolo
+denso e bench host D15/D17; `tests/test_c71_pcs_residual.py` controlla
+solo l'helper PCS distinto, non owner/caller S1. Non aggregare i cinque filtri query
 in una sola invocazione: ciascuno compila una fixture dinamica.
 La futura parità sm_90, il tempo completo e il picco fisico si verificano
 sulla H100 autorizzata. Non ridurre limiti query o aumentare implicitamente

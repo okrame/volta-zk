@@ -85,7 +85,7 @@ non attribuiscono prestazioni o picco fisico H100.
 | Sali iniziali W/A | Prescan e replay selezionati sullo stream comune, cursore logico e cap originali; niente bande host/upload sali |
 | FFT naturale diretta/inversa | Primitiva integrata nell'owner con parità indipendente, usata dalle query iniziali A; extension e S1 restano CPU |
 | Query iniziali A | Reader residente e resti collegati al Tree/runner, con sole valutazioni finali D2H; costruzione dei fattori pubblici CPU, richieste e ricostruzioni originali |
-| Closure lineare | Una scan originale per round CPU al checkpoint query, D·live visite; helper, owner GPU e collegamento `native_original` preparati, da convalidare separatamente |
+| Closure lineare | Owner e caller nativi integrati con parità ridotta: una scan originale per round, D·live visite, cinque elementi MAC e flag restituiti; mapping W riusato, nessun getter A sostitutivo |
 | Accumulo W Tensor Core | Candidata limb16 esatta e confronto esplicito sul medesimo owner; ordinario rimane predefinito |
 | QK/PV | Default scalare esatto; candidata MMA con prefisso causale comune e bordo scalare non selezionata |
 | Resto della prova | Extension PCS/S1, query W, contrazioni, GKR non-range/MAC, Seed6 reale AES, codec, verifica e journal dichiarati CPU; helper S1 preparatorio |
@@ -133,13 +133,13 @@ rappresentativi, conto completo e procedure sono pronti, prima della
 campagna hardware. Il goal è ancora attivo; nuova H100 e durata
 richiedono nuova autorizzazione.
 
-Le query iniziali A sono ora collegate al reader residente, con parità
-ridotta contro Horner e catena PCS uncached. I prossimi passi sono S1,
-closure lineare e poi aperture/GKR/range e sincronizzazioni secondo il
+Le query iniziali A e la closure lineare sono collegate all'owner comune,
+con parità ridotte contro Horner, coefficienti ed intero wire. I prossimi passi sono S1
+e poi aperture/GKR/range e sincronizzazioni secondo il
 profilo. S1 conserva 35 passaggi non-query fino alla retention: evitare
 una seconda matrice device da 1 GiB o una doppia retention da 3,22 GB.
-Helper S1 e nuovo owner lineare sono preparazione distinta dal checkpoint
-query validato, senza credito di integrazione. Valutare TMA, fusioni e CUDA Graphs
+L'helper S1 è un componente controllato separatamente, senza credito di
+integrazione PCS. Valutare TMA, fusioni e CUDA Graphs
 su costi misurati. Il confronto W ordinario/Tensor e la selezione QK/PV
 richiedono compilazione, parità e misura GPU nella futura campagna.
 
@@ -188,6 +188,7 @@ locali sono `credit:false`, senza compilazione o esecuzione CUDA.
 | [Sali owner/Tree](../c7.1-history/crypto-salts-owner-2026-10-09.md) | Stream privato, root/aperture/transcript/MAC e conto aggiornato; gerarchia CUDA non eseguita, timeout CPU conservato |
 | [FFT naturale owner](../c7.1-history/crypto-transform-2026-10-09.md) | Diretta/inversa esatte, geometria dispari e guard; primitiva integrata, query caller ancora CPU al source validato |
 | [Query iniziali A residenti](../c7.1-history/crypto-query-2026-10-09.md) | Horner, richieste identiche e catena D10 uncached con wire/FS/RNG/MAC originali; extension/S1 e caller lineare ancora CPU |
+| [Closure lineare owner/caller](../c7.1-history/crypto-linear-2026-10-09.md) | Codec e coefficienti/endpoints originali, consumo monouso, full wire D10; S1 aritmetico distinto, nessuna parità CUDA |
 | [Regole operative](../c7.1-history/operating-rules-2026-10-08.md), [temporanei](../c7.1-history/temporary-memory-2026-10-04.md) | Ragioni delle decisioni; autorizzazioni correnti definite nel [runbook](runpod-tests.md#autorizzazione-e-limiti) |
 
 ## Contratto delle risorse

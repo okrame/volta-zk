@@ -19,10 +19,11 @@ hardware. Γ si riusa dopo verifica di identità ed impatto compatibili.
 
 Il runner `experiment-cuda` è misto: inferenza/replay/range A e commitment
 iniziali W/A con sali residenti e
-[query iniziali A native](../c7.1-history/crypto-query-2026-10-09.md).
-Fattori pubblici, extension PCS/S1, query W, caller lineare,
+[query iniziali A native](../c7.1-history/crypto-query-2026-10-09.md) e
+[closure lineare residente](../c7.1-history/crypto-linear-2026-10-09.md).
+Fattori pubblici, extension PCS/S1, query W,
 GKR non-range/MAC, Seed6 AES e verifica restano CPU al checkpoint validato.
-Nuovo owner lineare e helper S1 sono preparazione distinta da verificare.
+L'helper S1 resta preparazione distinta da integrare e verificare.
 Accumulo W ordinario e QK/PV scalari rimangono default; le candidate Tensor/MMA
 sono confronti espliciti. Parità host e driver simulato non attribuiscono
 compilazione sm_90, parità CUDA, prestazioni o picco fisico H100.
@@ -249,8 +250,13 @@ MAC originali. Contare fattori/staging CPU, matrice finale, righe/sali/path
 già aperti e gli altri owner secondo [specs](specs.md#aperture-e-fft-naturale).
 Verificare il ritiro dello scratch query prima della rigenerazione del
 batch corrente e retention S1 solo dopo apertura del predecessore.
-Il nuovo owner lineare e helper S1 richiedono parità e conto propri prima
-della selezione; non ereditarli dal checkpoint query.
+Per la closure lineare confrontare coefficienti/endpoints e intero wire
+dei MAC originali, contando 124 B e due fence del consumer per round
+separatamente dai producer. Verificare mapping W unico, scanner A
+senza lock esterno, ritiro prima della pubblicazione e assenza di
+consumo correlazioni sui round falliti. Il checkpoint locale non
+compila CUDA; ripetere i cinque filtri nativi pertinenti sulla libreria
+reale. S1 richiede parità e conto propri; non ereditarli da query/linear.
 
 Il [diagnostico W](../../cuda/c71_pcs_weight_compare.cpp) si compila e
 linka contro la libreria CUDA reale, rifiutando il driver di test.

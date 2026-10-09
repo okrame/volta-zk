@@ -139,8 +139,13 @@ con 128 scansioni/7,859 TB logici. Il setup Seed6/AES termina in
 2.018,838 s; il [primo trial](../c7.1-history/h100-canonical-01-2026-10-09.md)
 fallisce durante la preparazione O=0, senza violazioni dei limiti. Il loader
 CUDA rifiutava marker di overflow in voci pubbliche non selezionate.
-La correzione e il diagnostico separato di inferenza sono in validazione;
-O=0/150/300 non sono verificati. Il precedente timeout CPU dopo
+La [correzione validata](../c7.1-history/h100-inference-01-2026-10-09.md)
+passa otto regressioni e la parità CUDA 15/15. Il diagnostico O=0
+completa l'inferenza in 90,615 s, con tutti i token uguali al replay
+intero ammesso, senza prova o promozione KV. Il profilo di 1.185.820
+lanci motiva il batching del prompt noto, ora in validazione; non
+cambia Γ, causalità o replay. O=0/150/300 non sono verificati.
+Il precedente timeout CPU dopo
 circa 41 minuti rimane il fallimento di quella schedule da 1.024 scansioni,
 non lo stato del commitment H100 corrente. La CLI ricostruisce W a ogni
 avvio e non riprende installazioni o sessioni interrotte.

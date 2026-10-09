@@ -15,8 +15,12 @@ canonica completa; il benchmark non dimostra un guadagno temporale.
 La successiva correzione dei marker GELU estende il test
 `c71_canonical_resident_nonlinear_original_routes` con una voce MIN
 non selezionata e aggiunge `c71_canonical_runner_preserves_both_role_failures`.
-La parità CUDA nonlineare copre sia marker non usato sia marker selezionato;
-questi nuovi controlli sono in attesa di esecuzione sulla build corretta.
+La [validazione sul pod](../c7.1-history/h100-inference-01-2026-10-09.md)
+passa otto regressioni, ripete 15/15 sulla libreria reale e copre sia
+marker non usato sia marker selezionato nel test CUDA nonlineare.
+Il batching del prompt estende i test di schedule e geometria nei tre
+contesti e il test CUDA con GEMM a 100 righe e attenzione batch 2/100;
+questi controlli aggiuntivi sono ancora in esecuzione sul pod.
 
 ## Limiti e ambiente
 

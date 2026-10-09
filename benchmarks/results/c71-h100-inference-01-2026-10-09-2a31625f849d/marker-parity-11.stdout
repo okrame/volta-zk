@@ -1,0 +1,8 @@
+
+running 1 test
+test c71_matrix::b12::replay::tests::c71_b12_native_hardware_residual_query_horner ... C71_NATIVE_QUERY_E_HORNER {"credit":false,"exact_horner":true,"gpu_execution":true,"native":{"allocations":352,"arena_bytes":0,"cleanup_failed":0,"d2d_bytes":4320,"d2h_bytes":3712,"fences":363,"h2d_bytes":130498,"host_owner_bytes":42088,"launches":4012,"live_capacity_bytes":0,"logical_bytes":0,"peak_capacity_bytes":10240,"peak_reserved_bytes":12282,"releases":352,"stopped":0,"weights_bytes":0,"weights_loaded_bytes":2042,"weights_sealed":1,"zeroed_bytes":3424},"pad_rows":19,"query_caps":[1,2,4,8],"source_bytes":false,"virtual_prefixes":[0,1,2]}
+C71_NATIVE_QUERY_E_HORNER {"credit":false,"exact_horner":true,"gpu_execution":true,"native":{"allocations":357,"arena_bytes":0,"cleanup_failed":0,"d2d_bytes":4320,"d2h_bytes":3716,"fences":364,"h2d_bytes":108832,"host_owner_bytes":42088,"launches":3593,"live_capacity_bytes":0,"logical_bytes":0,"peak_capacity_bytes":13056,"peak_reserved_bytes":13056,"releases":356,"stopped":0,"weights_bytes":0,"weights_loaded_bytes":0,"weights_sealed":0,"zeroed_bytes":6500},"pad_rows":19,"query_caps":[1,2,4,8],"source_bytes":true,"virtual_prefixes":[0,1,2]}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 600 filtered out; finished in 0.73s
+

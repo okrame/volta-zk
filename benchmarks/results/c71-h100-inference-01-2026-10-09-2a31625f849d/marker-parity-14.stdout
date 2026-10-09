@@ -1,0 +1,23 @@
+
+running 1 test
+test c71_matrix::linear::tests::c71_b12_native_hardware_linear_coefficients_endpoints ... C71_NATIVE_LINEAR_COMPONENT {"credit":false,"d2h_bytes":124,"domain_log2":10,"gpu_execution":true,"h2d_bytes":1208,"live":256,"owner_host_s":0.000469653,"packet_host_capacity_bytes":1328,"packet_host_peak_bound_bytes":5056,"prefix_bits":0}
+C71_NATIVE_LINEAR_COMPONENT {"credit":false,"d2h_bytes":124,"domain_log2":10,"gpu_execution":true,"h2d_bytes":1072,"live":256,"owner_host_s":0.000237573,"packet_host_capacity_bytes":1192,"packet_host_peak_bound_bytes":4224,"prefix_bits":1}
+C71_NATIVE_LINEAR_COMPONENT {"credit":false,"d2h_bytes":124,"domain_log2":10,"gpu_execution":true,"h2d_bytes":568,"live":256,"owner_host_s":0.000148831,"packet_host_capacity_bytes":688,"packet_host_peak_bound_bytes":2640,"prefix_bits":2}
+C71_NATIVE_LINEAR_COMPONENT {"credit":false,"d2h_bytes":124,"domain_log2":10,"gpu_execution":true,"h2d_bytes":6336,"live":256,"owner_host_s":0.000172877,"packet_host_capacity_bytes":6456,"packet_host_peak_bound_bytes":19920,"prefix_bits":9}
+C71_NATIVE_LINEAR_COMPONENT {"credit":false,"d2h_bytes":124,"domain_log2":12,"gpu_execution":true,"h2d_bytes":1256,"live":256,"owner_host_s":0.000235144,"packet_host_capacity_bytes":1376,"packet_host_peak_bound_bytes":5152,"prefix_bits":0}
+C71_NATIVE_LINEAR_COMPONENT {"credit":false,"d2h_bytes":124,"domain_log2":12,"gpu_execution":true,"h2d_bytes":1120,"live":256,"owner_host_s":0.000236366,"packet_host_capacity_bytes":1240,"packet_host_peak_bound_bytes":4320,"prefix_bits":1}
+C71_NATIVE_LINEAR_COMPONENT {"credit":false,"d2h_bytes":124,"domain_log2":12,"gpu_execution":true,"h2d_bytes":616,"live":256,"owner_host_s":0.000144663,"packet_host_capacity_bytes":736,"packet_host_peak_bound_bytes":2736,"prefix_bits":2}
+C71_NATIVE_LINEAR_COMPONENT {"credit":false,"d2h_bytes":124,"domain_log2":12,"gpu_execution":true,"h2d_bytes":6480,"live":256,"owner_host_s":0.000173123,"packet_host_capacity_bytes":6600,"packet_host_peak_bound_bytes":20352,"prefix_bits":11}
+C71_NATIVE_LINEAR_COMPONENT {"credit":false,"d2h_bytes":124,"domain_log2":10,"gpu_execution":true,"h2d_bytes":1208,"live":256,"owner_host_s":0.000164941,"packet_host_capacity_bytes":1328,"packet_host_peak_bound_bytes":5056,"prefix_bits":0}
+C71_NATIVE_LINEAR_COMPONENT {"credit":false,"d2h_bytes":124,"domain_log2":10,"gpu_execution":true,"h2d_bytes":1072,"live":256,"owner_host_s":0.000095251,"packet_host_capacity_bytes":1192,"packet_host_peak_bound_bytes":4224,"prefix_bits":1}
+C71_NATIVE_LINEAR_COMPONENT {"credit":false,"d2h_bytes":124,"domain_log2":10,"gpu_execution":true,"h2d_bytes":568,"live":256,"owner_host_s":0.000069493,"packet_host_capacity_bytes":688,"packet_host_peak_bound_bytes":2640,"prefix_bits":2}
+C71_NATIVE_LINEAR_COMPONENT {"credit":false,"d2h_bytes":124,"domain_log2":10,"gpu_execution":true,"h2d_bytes":6336,"live":256,"owner_host_s":0.000090293,"packet_host_capacity_bytes":6456,"packet_host_peak_bound_bytes":19920,"prefix_bits":9}
+C71_NATIVE_LINEAR_COMPONENT {"credit":false,"d2h_bytes":124,"domain_log2":12,"gpu_execution":true,"h2d_bytes":1256,"live":256,"owner_host_s":0.000082243,"packet_host_capacity_bytes":1376,"packet_host_peak_bound_bytes":5152,"prefix_bits":0}
+C71_NATIVE_LINEAR_COMPONENT {"credit":false,"d2h_bytes":124,"domain_log2":12,"gpu_execution":true,"h2d_bytes":1120,"live":256,"owner_host_s":0.000091676,"packet_host_capacity_bytes":1240,"packet_host_peak_bound_bytes":4320,"prefix_bits":1}
+C71_NATIVE_LINEAR_COMPONENT {"credit":false,"d2h_bytes":124,"domain_log2":12,"gpu_execution":true,"h2d_bytes":616,"live":256,"owner_host_s":0.000066729,"packet_host_capacity_bytes":736,"packet_host_peak_bound_bytes":2736,"prefix_bits":2}
+C71_NATIVE_LINEAR_COMPONENT {"credit":false,"d2h_bytes":124,"domain_log2":12,"gpu_execution":true,"h2d_bytes":6480,"live":256,"owner_host_s":0.000091399,"packet_host_capacity_bytes":6600,"packet_host_peak_bound_bytes":20352,"prefix_bits":11}
+C71_NATIVE_LINEAR_PARITY {"GPU_execution":true,"MAC_basis_u3_2":true,"cases":16,"credit":false,"i16_u16_slack_raw_i48_split":true,"overlapping_duplicate_cubes":true,"prefix_zero_one_extension":true,"public_tail_reads":0,"public_zero_tail_case":true,"ragged_sealed_W":true}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 600 filtered out; finished in 0.78s
+

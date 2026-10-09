@@ -33,6 +33,14 @@ output nuovo e monitor canonico: esegue solo O=0 con lo stesso owner,
 limiti e preparatore, senza commitment, PCG, prova, accettazione o promozione KV.
 È una misura di componente. Il successivo trial canonico richiede journal
 e correlazioni nuovi e parte nuovamente da W.
+Il [diagnostico su `2a31625`](../c7.1-history/h100-inference-01-2026-10-09.md)
+passa in 202,679 s: inferenza 90,615 s, preparazione 92,433 s, tutti i
+150 token uguali al riferimento intero O=0. Otto regressioni, 15/15
+CUDA e lookup con marker passano. Massimo temporaneo stabile campionato
+1.474.276.864 B, senza credito al picco completo. La revisione `3e6c63a`
+riduce i lanci raggruppando il prompt: compilazione, geometria/parità e
+nuovo diagnostico sono predisposti in sequenza; prima del nuovo canonico
+richiedere esito positivo e confronto esatto degli output pubblici.
 
 La precedente campagna chiusa conserva il proprio fallimento nel commitment
 W; il suo pod spento e le sue autorizzazioni non descrivono questa campagna.

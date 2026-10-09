@@ -1,0 +1,6 @@
+
+running 1 test
+test c71_matrix::gemma::native::protocol::tests::c71_b12_native_wire_limit_includes_completion_record ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 570 filtered out; finished in 0.36s
+

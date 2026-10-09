@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+    "c71_b12_query_small_remainders_exact_fp3_and_cost",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 2.664165518246591,
+  "max_rss_bytes": 17944576,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 2.6511810000000002,
+  "system_s": 0.011989999999999999,
+  "log": "/tmp/c71-residual-local-02-clean-20261009.log"
+}

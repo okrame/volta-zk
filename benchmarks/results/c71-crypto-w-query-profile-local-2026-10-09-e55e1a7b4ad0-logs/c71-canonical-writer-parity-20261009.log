@@ -1,0 +1,7 @@
+
+running 1 test
+test c71_matrix::gemma::native::protocol::writer_capacity_tests::c71_canonical_writer_fixed_capacity_preserves_wire_and_transcript ... C71_CANONICAL_WRITER_CAPACITY {"capacity_bytes":100663296,"credit":false,"frames":128,"gpu_execution":false,"moving_reallocations_after_canonical_begin":0,"wire_and_transcript_exact":true,"wire_bytes":41402}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 570 filtered out; finished in 0.00s
+

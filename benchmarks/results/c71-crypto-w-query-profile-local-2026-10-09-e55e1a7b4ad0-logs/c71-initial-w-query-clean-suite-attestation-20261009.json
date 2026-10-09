@@ -1,0 +1,10 @@
+{
+  "source_git_sha": "26c87d29d554d5d10f6b25e784b31a65539136e9",
+  "git_dirty": false,
+  "before_and_after_clean": true,
+  "binary_sha256": "3e7084e15bf824c540a9c53fe0f075378b438e3549f576d63e74b19fc510eb7b",
+  "Rust_checks": 6,
+  "python_tests": 3,
+  "test_exit_codes_all_zero": true,
+  "wrapper_failure": "Expected2Pythonpasses but actual3: wrapper assertion failed afterallchecks PASS; no tests rerun"
+}

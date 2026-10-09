@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+    "c71_b12_native_wire_limit_includes_completion_record",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 0.37290455400943756,
+  "max_rss_bytes": 113102848,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 0.290056,
+  "system_s": 0.08017099999999999,
+  "log": "/tmp/c71-canonical-writer-boundary-20261009.log"
+}

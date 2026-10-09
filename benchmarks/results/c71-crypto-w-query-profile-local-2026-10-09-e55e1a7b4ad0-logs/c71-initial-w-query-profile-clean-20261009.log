@@ -1,0 +1,4 @@
+  File "/home/okrame/projects/volta-zk/scripts/c71_residual_profile.py", line 198
+    execution=('resident original W with shared GPU remainder route' if 'self.native_query=Some(NativeQuery::Weights(native.clone()))' in texts[PCS+'b12/replay.rs'] else 'CPU source; GPU remainder counts conditional'))),
+                                                                                                                                                                                                                          ^
+SyntaxError: closing parenthesis ')' does not match opening parenthesis '{' on line 182

@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+    "c71_b12_native_residual_query_full_whir_a_wire_fs_rng_and_original_mac",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 50.92860519187525,
+  "max_rss_bytes": 328052736,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 50.691,
+  "system_s": 0.225331,
+  "log": "/tmp/c71-initial-w-query-a-full-clean-20261009.log"
+}

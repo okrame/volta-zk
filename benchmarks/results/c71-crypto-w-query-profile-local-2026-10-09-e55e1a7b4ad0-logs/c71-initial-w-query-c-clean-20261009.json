@@ -1,0 +1,23 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/.venv/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "-s",
+    "-p",
+    "no:cacheprovider",
+    "tests/test_c71_pcs_query_weight.py",
+    "tests/test_c71_range_native.py"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 15.382093384861946,
+  "max_rss_bytes": 338853888,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 14.99553,
+  "system_s": 0.30350299999999997,
+  "log": "/tmp/c71-initial-w-query-c-clean-20261009.log"
+}

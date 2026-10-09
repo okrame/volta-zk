@@ -1,0 +1,10 @@
+{
+  "source_git_sha": "26c87d29d554d5d10f6b25e784b31a65539136e9",
+  "git_dirty": false,
+  "before_and_after_clean": true,
+  "binary_sha256": "3e7084e15bf824c540a9c53fe0f075378b438e3549f576d63e74b19fc510eb7b",
+  "checks_01_04_and_06": "PASS",
+  "check05_sandbox": "socketpair PermissionDenied; not protocol failure",
+  "check05_approved_local_socketpair_retry": "TIMEOUT124 at60.0179s; preserved; no deadline extension/no further rerun",
+  "canonical_phase_times": null
+}

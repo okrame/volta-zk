@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+    "sourcewise_real_boolean_replay_matches_dense_coefficients_at_selected_depths",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 0.32264405488967896,
+  "max_rss_bytes": 30343168,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 0.30233099999999996,
+  "system_s": 0.019785999999999998,
+  "log": "/tmp/c71-residual-local-04-clean-20261009.log"
+}

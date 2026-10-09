@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+    "c71_canonical_device_replay_original_rows_windows_and_failure",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 12.223875567317009,
+  "max_rss_bytes": 328224768,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 12.097352,
+  "system_s": 0.12380899999999999,
+  "log": "/tmp/c71-initial-w-query-a-replay-lifetime-clean-20261009.log"
+}

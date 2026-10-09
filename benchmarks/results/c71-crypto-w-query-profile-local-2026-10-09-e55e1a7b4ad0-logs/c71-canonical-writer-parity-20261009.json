@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+    "c71_canonical_writer_fixed_capacity_preserves_wire_and_transcript",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 0.005682907998561859,
+  "max_rss_bytes": 13488128,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 0.0,
+  "system_s": 0.005259,
+  "log": "/tmp/c71-canonical-writer-parity-20261009.log"
+}

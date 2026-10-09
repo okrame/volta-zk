@@ -1,0 +1,3185 @@
+{
+  "schema": "c71-crypto-preparation-local-v1",
+  "date": "2026-10-09",
+  "recorded_at_utc": "2026-10-09T14:05:54.366082+00:00",
+  "status": "PASS_LOCAL_INITIAL_W_QUERY_AND_SELECTED_RESIDUAL_CENSUS_WITH_AES_CHAIN_TIMEOUT",
+  "credit": false,
+  "source_git_sha": "e55e1a7b4ad07ec0b44d4e970df816ffb15f02bf",
+  "git_dirty": false,
+  "baseline": "9033c64",
+  "goal_complete": false,
+  "goal_status": "active",
+  "canonical_diagnostic": "benchmarks/results/c71-cuda-experiment-2026-10-07-868a3e8.json",
+  "prior_stage": "benchmarks/results/c71-crypto-residual-query-local-2026-10-09-9a5da712a258.json",
+  "provenance": {
+    "platform": "Linux-6.12.94+deb13-arm64-aarch64-with-glibc2.41",
+    "gpu_execution": false,
+    "cuda_compilation": false,
+    "checks_source_scope": "W/A checks and finite residual fixtures clean26c87d2; Writer and admitted source census cleane55e1a7. Only protocol Writer capacity and source census differ: no current-source claim substituted for ancestor execution.",
+    "builds": "W Rust build pre01 precedes clean26c commit: source-content reuse, not a clean run of record. Writer build cleane55e1a7 with one job/noAS/60s. Limits never extended.",
+    "fixtures": "independent Horner, host C/CUDA-driver fixtures and reduced CPU references; no CUDA execution/security or canonical D34/D35 performance credit",
+    "wrapper_failures": "W suite expected2 Python passes but3 passed; all checks had exit0 and source/binary were re-attested without reruns. Residual loop stopped at actual socketpair failure; local approved retry timed out60s. Final wire check was run separately and passed.",
+    "gamma": "same admitted Gamma, identities and numerical semantics; public RMS ledger digest checked against its admission receipt; no session correlation reuse"
+  },
+  "readiness": {
+    "initial_W_queries_resident_selected": true,
+    "reduced_full_WHIR_D10_A_W_exact": true,
+    "initial_A_reconstructions": 512,
+    "full_A_replay_lower_bound_before_partial_consumers": 581,
+    "complete_joint_resource_accounting": false,
+    "all_cryptographic_work_quantified": false,
+    "H100_campaign_authorized": false,
+    "H100_performance_measured": false
+  },
+  "checks": [
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_native_weight_query_symbol_is_mandatory",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 9.669062037952244,
+      "max_rss_bytes": 328343552,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 9.503068,
+      "system_s": 0.159799,
+      "log": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-symbol-clean-20261009.log",
+      "label": "W mandatory symbol",
+      "receipt": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-symbol-clean-20261009.json",
+      "source_git_sha": "26c87d29d554d5d10f6b25e784b31a65539136e9",
+      "git_dirty": false,
+      "binary_sha256": "3e7084e15bf824c540a9c53fe0f075378b438e3549f576d63e74b19fc510eb7b",
+      "passed": 1,
+      "metrics": {}
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_native_weight_query_horner_signed_pads_duplicates_and_accounting",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 10.44940431881696,
+      "max_rss_bytes": 328130560,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 10.303966,
+      "system_s": 0.140741,
+      "log": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-w-horner-clean-20261009.log",
+      "label": "W Horner",
+      "receipt": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-w-horner-clean-20261009.json",
+      "source_git_sha": "26c87d29d554d5d10f6b25e784b31a65539136e9",
+      "git_dirty": false,
+      "binary_sha256": "3e7084e15bf824c540a9c53fe0f075378b438e3549f576d63e74b19fc510eb7b",
+      "passed": 1,
+      "metrics": {
+        "C71_NATIVE_WEIGHT_QUERY_LOCAL": [
+          {
+            "columns": 8,
+            "credit": false,
+            "d2d": 131072,
+            "d2h": 4160,
+            "fences": 66,
+            "gpu_execution": false,
+            "h2d": 33832,
+            "host_fixture_s": 0.01909793,
+            "host_returned_payload": 4160,
+            "launches": 1200,
+            "live": 1021,
+            "n": 128,
+            "native": {
+              "allocations": 103,
+              "arena_bytes": 0,
+              "cleanup_failed": 0,
+              "d2d_bytes": 205440,
+              "d2h_bytes": 4992,
+              "fences": 181,
+              "h2d_bytes": 42378,
+              "host_owner_bytes": 42088,
+              "launches": 6466,
+              "live_capacity_bytes": 0,
+              "logical_bytes": 0,
+              "peak_capacity_bytes": 51968,
+              "peak_reserved_bytes": 54010,
+              "releases": 103,
+              "stopped": 0,
+              "weights_bytes": 2042,
+              "weights_loaded_bytes": 2042,
+              "weights_sealed": 1,
+              "zeroed_bytes": 0
+            },
+            "pad_rows": 6,
+            "query_rows": 65
+          },
+          {
+            "columns": 8,
+            "credit": false,
+            "d2d": 786432,
+            "d2h": 16448,
+            "fences": 78,
+            "gpu_execution": false,
+            "h2d": 164904,
+            "host_fixture_s": 0.091564713,
+            "host_returned_payload": 16448,
+            "launches": 1460,
+            "live": 1021,
+            "n": 128,
+            "native": {
+              "allocations": 151,
+              "arena_bytes": 0,
+              "cleanup_failed": 0,
+              "d2d_bytes": 991872,
+              "d2h_bytes": 21440,
+              "fences": 259,
+              "h2d_bytes": 207282,
+              "host_owner_bytes": 42088,
+              "launches": 7926,
+              "live_capacity_bytes": 0,
+              "logical_bytes": 0,
+              "peak_capacity_bytes": 232192,
+              "peak_reserved_bytes": 234234,
+              "releases": 151,
+              "stopped": 0,
+              "weights_bytes": 2042,
+              "weights_loaded_bytes": 2042,
+              "weights_sealed": 1,
+              "zeroed_bytes": 0
+            },
+            "pad_rows": 6,
+            "query_rows": 257
+          },
+          {
+            "columns": 2,
+            "credit": false,
+            "d2d": 32768,
+            "d2h": 1040,
+            "fences": 62,
+            "gpu_execution": false,
+            "h2d": 37688,
+            "host_fixture_s": 0.01778234,
+            "host_returned_payload": 1040,
+            "launches": 560,
+            "live": 1021,
+            "n": 512,
+            "native": {
+              "allocations": 255,
+              "arena_bytes": 0,
+              "cleanup_failed": 0,
+              "d2d_bytes": 1110272,
+              "d2h_bytes": 22688,
+              "fences": 417,
+              "h2d_bytes": 256898,
+              "host_owner_bytes": 42088,
+              "launches": 14632,
+              "live_capacity_bytes": 0,
+              "logical_bytes": 0,
+              "peak_capacity_bytes": 232192,
+              "peak_reserved_bytes": 234234,
+              "releases": 255,
+              "stopped": 0,
+              "weights_bytes": 2042,
+              "weights_loaded_bytes": 2042,
+              "weights_sealed": 1,
+              "zeroed_bytes": 0
+            },
+            "pad_rows": 137,
+            "query_rows": 65
+          },
+          {
+            "columns": 2,
+            "credit": false,
+            "d2d": 196608,
+            "d2h": 4112,
+            "fences": 72,
+            "gpu_execution": false,
+            "h2d": 166712,
+            "host_fixture_s": 0.082671042,
+            "host_returned_payload": 4112,
+            "launches": 432,
+            "live": 1021,
+            "n": 512,
+            "native": {
+              "allocations": 303,
+              "arena_bytes": 0,
+              "cleanup_failed": 0,
+              "d2d_bytes": 1306880,
+              "d2h_bytes": 26800,
+              "fences": 489,
+              "h2d_bytes": 423610,
+              "host_owner_bytes": 42088,
+              "launches": 15064,
+              "live_capacity_bytes": 0,
+              "logical_bytes": 0,
+              "peak_capacity_bytes": 233984,
+              "peak_reserved_bytes": 236026,
+              "releases": 303,
+              "stopped": 0,
+              "weights_bytes": 2042,
+              "weights_loaded_bytes": 2042,
+              "weights_sealed": 1,
+              "zeroed_bytes": 0
+            },
+            "pad_rows": 137,
+            "query_rows": 257
+          },
+          {
+            "columns": 2,
+            "credit": false,
+            "d2d": 32768,
+            "d2h": 1040,
+            "fences": 62,
+            "gpu_execution": false,
+            "h2d": 60072,
+            "host_fixture_s": 0.0215349,
+            "host_returned_payload": 1040,
+            "launches": 1080,
+            "live": 1021,
+            "n": 512,
+            "native": {
+              "allocations": 407,
+              "arena_bytes": 0,
+              "cleanup_failed": 0,
+              "d2d_bytes": 1603456,
+              "d2h_bytes": 28048,
+              "fences": 647,
+              "h2d_bytes": 562762,
+              "host_owner_bytes": 42088,
+              "launches": 35198,
+              "live_capacity_bytes": 0,
+              "logical_bytes": 0,
+              "peak_capacity_bytes": 233984,
+              "peak_reserved_bytes": 236026,
+              "releases": 407,
+              "stopped": 0,
+              "weights_bytes": 2042,
+              "weights_loaded_bytes": 2042,
+              "weights_sealed": 1,
+              "zeroed_bytes": 0
+            },
+            "pad_rows": 1536,
+            "query_rows": 65
+          },
+          {
+            "columns": 2,
+            "credit": false,
+            "d2d": 196608,
+            "d2h": 4112,
+            "fences": 72,
+            "gpu_execution": false,
+            "h2d": 189096,
+            "host_fixture_s": 0.102283308,
+            "host_returned_payload": 4112,
+            "launches": 536,
+            "live": 1021,
+            "n": 512,
+            "native": {
+              "allocations": 455,
+              "arena_bytes": 0,
+              "cleanup_failed": 0,
+              "d2d_bytes": 1800064,
+              "d2h_bytes": 32160,
+              "fences": 719,
+              "h2d_bytes": 751858,
+              "host_owner_bytes": 42088,
+              "launches": 35734,
+              "live_capacity_bytes": 0,
+              "logical_bytes": 0,
+              "peak_capacity_bytes": 256256,
+              "peak_reserved_bytes": 258298,
+              "releases": 455,
+              "stopped": 0,
+              "weights_bytes": 2042,
+              "weights_loaded_bytes": 2042,
+              "weights_sealed": 1,
+              "zeroed_bytes": 0
+            },
+            "pad_rows": 1536,
+            "query_rows": 257
+          }
+        ]
+      }
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_native_residual_query_full_whir_w_wire_fs_rng_and_original_mac",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 58.464436903595924,
+      "max_rss_bytes": 328220672,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 58.010454,
+      "system_s": 0.39076099999999997,
+      "log": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-w-full-clean-20261009.log",
+      "label": "W full WHIR",
+      "receipt": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-w-full-clean-20261009.json",
+      "source_git_sha": "26c87d29d554d5d10f6b25e784b31a65539136e9",
+      "git_dirty": false,
+      "binary_sha256": "3e7084e15bf824c540a9c53fe0f075378b438e3549f576d63e74b19fc510eb7b",
+      "passed": 1,
+      "metrics": {
+        "C71_NATIVE_RESIDUAL_QUERY_FULL_WIRE": [
+          {
+            "canonical_bytes": 2284920,
+            "credit": false,
+            "dimension": 10,
+            "gpu_execution": false,
+            "native": {
+              "allocations": 2171,
+              "arena_bytes": 0,
+              "cleanup_failed": 0,
+              "d2d_bytes": 46931968,
+              "d2h_bytes": 1728448,
+              "fences": 2744,
+              "h2d_bytes": 16239938,
+              "host_owner_bytes": 42088,
+              "launches": 47178,
+              "live_capacity_bytes": 0,
+              "logical_bytes": 0,
+              "peak_capacity_bytes": 568576,
+              "peak_reserved_bytes": 570618,
+              "releases": 2171,
+              "stopped": 0,
+              "weights_bytes": 2042,
+              "weights_loaded_bytes": 2042,
+              "weights_sealed": 1,
+              "zeroed_bytes": 1577592
+            },
+            "native_extension_queries": true,
+            "wire_fs_rng_original_mac_equal": true
+          }
+        ],
+        "C71_NATIVE_RESIDUAL_QUERY_W_CHAIN": [
+          {
+            "credit": false,
+            "dimension": 10,
+            "full_weight_retention": false,
+            "gpu_execution": false,
+            "initial_commitment": "CPU reference",
+            "initial_queries": "resident sealed W",
+            "native": {
+              "allocations": 2171,
+              "arena_bytes": 0,
+              "cleanup_failed": 0,
+              "d2d_bytes": 46931968,
+              "d2h_bytes": 1728448,
+              "fences": 2744,
+              "h2d_bytes": 16239938,
+              "host_owner_bytes": 42088,
+              "launches": 47178,
+              "live_capacity_bytes": 0,
+              "logical_bytes": 0,
+              "peak_capacity_bytes": 568576,
+              "peak_reserved_bytes": 570618,
+              "releases": 2171,
+              "stopped": 0,
+              "weights_bytes": 2042,
+              "weights_loaded_bytes": 2042,
+              "weights_sealed": 1,
+              "zeroed_bytes": 1577592
+            },
+            "residual_state_and_extension_queries": "native owner",
+            "seconds": 47.631115977
+          }
+        ]
+      }
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_native_query_exact_horner_windows_pads_and_resources",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 11.897757104132324,
+      "max_rss_bytes": 328355840,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 11.681822,
+      "system_s": 0.211605,
+      "log": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-a-horner-clean-20261009.log",
+      "label": "A Horner",
+      "receipt": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-a-horner-clean-20261009.json",
+      "source_git_sha": "26c87d29d554d5d10f6b25e784b31a65539136e9",
+      "git_dirty": false,
+      "binary_sha256": "3e7084e15bf824c540a9c53fe0f075378b438e3549f576d63e74b19fc510eb7b",
+      "passed": 1,
+      "metrics": {
+        "C71_NATIVE_QUERY_LOCAL": [
+          {
+            "census": {
+              "denied_allocations": 0,
+              "enforced": true,
+              "excluded_packed_w_capacity_bytes": 1024,
+              "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+              "host_layout_bytes": 61710,
+              "native_reservation_bytes": 57448,
+              "operational_margin_required_bytes": 268435456,
+              "payload_limit_bytes": 5905580032,
+              "peak_plus_runtime_allowance_bytes": 268602628,
+              "physical_runtime_allowance_verified": false,
+              "runtime_allowance_bytes": 268435456,
+              "temporary_live_bytes": 118859,
+              "temporary_payload_peak_bytes": 167172
+            },
+            "cpu_reference_o0_s": 0.037953733,
+            "credit": false,
+            "different_compiler_optimization_no_speedup_claim": true,
+            "domain_log2": 10,
+            "gpu_execution": false,
+            "live": 0,
+            "message_rows": 128,
+            "native": {
+              "allocations": 134,
+              "arena_bytes": 15360,
+              "cleanup_failed": 0,
+              "d2d_bytes": 160768,
+              "d2h_bytes": 6084,
+              "fences": 229,
+              "h2d_bytes": 48752,
+              "host_owner_bytes": 42088,
+              "launches": 2695,
+              "live_capacity_bytes": 15360,
+              "logical_bytes": 15360,
+              "peak_capacity_bytes": 66560,
+              "peak_reserved_bytes": 67584,
+              "releases": 132,
+              "stopped": 0,
+              "weights_bytes": 1024,
+              "weights_loaded_bytes": 1024,
+              "weights_sealed": 1,
+              "zeroed_bytes": 4
+            },
+            "native_d2d_bytes": 131072,
+            "native_d2h_bytes": 4160,
+            "native_h2d_bytes": 33152,
+            "native_host_o2_s": 0.017284879,
+            "only_returned_matrix_payload_bytes": 4160,
+            "original_window_requests": [],
+            "original_windows": 0,
+            "pad_rows": 6,
+            "query_rows": 65,
+            "reference_and_expected_and_actual_harness_bytes": 12480
+          },
+          {
+            "census": {
+              "denied_allocations": 0,
+              "enforced": true,
+              "excluded_packed_w_capacity_bytes": 1024,
+              "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+              "host_layout_bytes": 61934,
+              "native_reservation_bytes": 57448,
+              "operational_margin_required_bytes": 268435456,
+              "payload_limit_bytes": 5905580032,
+              "peak_plus_runtime_allowance_bytes": 268603268,
+              "physical_runtime_allowance_verified": false,
+              "runtime_allowance_bytes": 268435456,
+              "temporary_live_bytes": 119083,
+              "temporary_payload_peak_bytes": 167812
+            },
+            "cpu_reference_o0_s": 0.037592398,
+            "credit": false,
+            "different_compiler_optimization_no_speedup_claim": true,
+            "domain_log2": 10,
+            "gpu_execution": false,
+            "live": 1,
+            "message_rows": 128,
+            "native": {
+              "allocations": 275,
+              "arena_bytes": 15360,
+              "cleanup_failed": 0,
+              "d2d_bytes": 322560,
+              "d2h_bytes": 12184,
+              "fences": 465,
+              "h2d_bytes": 93408,
+              "host_owner_bytes": 42088,
+              "launches": 5468,
+              "live_capacity_bytes": 15360,
+              "logical_bytes": 15360,
+              "peak_capacity_bytes": 67072,
+              "peak_reserved_bytes": 68096,
+              "releases": 273,
+              "stopped": 0,
+              "weights_bytes": 1024,
+              "weights_loaded_bytes": 1024,
+              "weights_sealed": 1,
+              "zeroed_bytes": 664
+            },
+            "native_d2d_bytes": 131072,
+            "native_d2h_bytes": 4164,
+            "native_h2d_bytes": 33152,
+            "native_host_o2_s": 0.017194795,
+            "only_returned_matrix_payload_bytes": 4160,
+            "original_window_requests": [
+              [
+                0,
+                1
+              ]
+            ],
+            "original_windows": 1,
+            "pad_rows": 6,
+            "query_rows": 65,
+            "reference_and_expected_and_actual_harness_bytes": 12480
+          },
+          {
+            "census": {
+              "denied_allocations": 0,
+              "enforced": true,
+              "excluded_packed_w_capacity_bytes": 1024,
+              "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+              "host_layout_bytes": 61934,
+              "native_reservation_bytes": 57448,
+              "operational_margin_required_bytes": 268435456,
+              "payload_limit_bytes": 5905580032,
+              "peak_plus_runtime_allowance_bytes": 268603268,
+              "physical_runtime_allowance_verified": false,
+              "runtime_allowance_bytes": 268435456,
+              "temporary_live_bytes": 119083,
+              "temporary_payload_peak_bytes": 167812
+            },
+            "cpu_reference_o0_s": 0.03761919,
+            "credit": false,
+            "different_compiler_optimization_no_speedup_claim": true,
+            "domain_log2": 10,
+            "gpu_execution": false,
+            "live": 127,
+            "message_rows": 128,
+            "native": {
+              "allocations": 416,
+              "arena_bytes": 15360,
+              "cleanup_failed": 0,
+              "d2d_bytes": 491520,
+              "d2h_bytes": 18284,
+              "fences": 701,
+              "h2d_bytes": 138064,
+              "host_owner_bytes": 42088,
+              "launches": 8871,
+              "live_capacity_bytes": 15360,
+              "logical_bytes": 15360,
+              "peak_capacity_bytes": 67072,
+              "peak_reserved_bytes": 68096,
+              "releases": 414,
+              "stopped": 0,
+              "weights_bytes": 1024,
+              "weights_loaded_bytes": 1024,
+              "weights_sealed": 1,
+              "zeroed_bytes": 1324
+            },
+            "native_d2d_bytes": 131072,
+            "native_d2h_bytes": 4164,
+            "native_h2d_bytes": 33152,
+            "native_host_o2_s": 0.017235837,
+            "only_returned_matrix_payload_bytes": 4160,
+            "original_window_requests": [
+              [
+                0,
+                127
+              ]
+            ],
+            "original_windows": 1,
+            "pad_rows": 6,
+            "query_rows": 65,
+            "reference_and_expected_and_actual_harness_bytes": 12480
+          },
+          {
+            "census": {
+              "denied_allocations": 0,
+              "enforced": true,
+              "excluded_packed_w_capacity_bytes": 1024,
+              "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+              "host_layout_bytes": 61934,
+              "native_reservation_bytes": 57448,
+              "operational_margin_required_bytes": 268435456,
+              "payload_limit_bytes": 5905580032,
+              "peak_plus_runtime_allowance_bytes": 268603268,
+              "physical_runtime_allowance_verified": false,
+              "runtime_allowance_bytes": 268435456,
+              "temporary_live_bytes": 119083,
+              "temporary_payload_peak_bytes": 167812
+            },
+            "cpu_reference_o0_s": 0.037518648,
+            "credit": false,
+            "different_compiler_optimization_no_speedup_claim": true,
+            "domain_log2": 10,
+            "gpu_execution": false,
+            "live": 129,
+            "message_rows": 128,
+            "native": {
+              "allocations": 557,
+              "arena_bytes": 15360,
+              "cleanup_failed": 0,
+              "d2d_bytes": 660864,
+              "d2h_bytes": 24384,
+              "fences": 937,
+              "h2d_bytes": 182720,
+              "host_owner_bytes": 42088,
+              "launches": 12280,
+              "live_capacity_bytes": 15360,
+              "logical_bytes": 15360,
+              "peak_capacity_bytes": 67072,
+              "peak_reserved_bytes": 68096,
+              "releases": 555,
+              "stopped": 0,
+              "weights_bytes": 1024,
+              "weights_loaded_bytes": 1024,
+              "weights_sealed": 1,
+              "zeroed_bytes": 2624
+            },
+            "native_d2d_bytes": 131072,
+            "native_d2h_bytes": 4164,
+            "native_h2d_bytes": 33152,
+            "native_host_o2_s": 0.017231337,
+            "only_returned_matrix_payload_bytes": 4160,
+            "original_window_requests": [
+              [
+                0,
+                129
+              ]
+            ],
+            "original_windows": 1,
+            "pad_rows": 6,
+            "query_rows": 65,
+            "reference_and_expected_and_actual_harness_bytes": 12480
+          },
+          {
+            "census": {
+              "denied_allocations": 0,
+              "enforced": true,
+              "excluded_packed_w_capacity_bytes": 1024,
+              "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+              "host_layout_bytes": 62126,
+              "native_reservation_bytes": 57448,
+              "operational_margin_required_bytes": 268435456,
+              "payload_limit_bytes": 5905580032,
+              "peak_plus_runtime_allowance_bytes": 268603268,
+              "physical_runtime_allowance_verified": false,
+              "runtime_allowance_bytes": 268435456,
+              "temporary_live_bytes": 119275,
+              "temporary_payload_peak_bytes": 167812
+            },
+            "cpu_reference_o0_s": 0.038145026,
+            "credit": false,
+            "different_compiler_optimization_no_speedup_claim": true,
+            "domain_log2": 10,
+            "gpu_execution": false,
+            "live": 517,
+            "message_rows": 128,
+            "native": {
+              "allocations": 718,
+              "arena_bytes": 15360,
+              "cleanup_failed": 0,
+              "d2d_bytes": 852864,
+              "d2h_bytes": 30524,
+              "fences": 1193,
+              "h2d_bytes": 227376,
+              "host_owner_bytes": 42088,
+              "launches": 17637,
+              "live_capacity_bytes": 15360,
+              "logical_bytes": 15360,
+              "peak_capacity_bytes": 67072,
+              "peak_reserved_bytes": 68096,
+              "releases": 716,
+              "stopped": 0,
+              "weights_bytes": 1024,
+              "weights_loaded_bytes": 1024,
+              "weights_sealed": 1,
+              "zeroed_bytes": 5884
+            },
+            "native_d2d_bytes": 131072,
+            "native_d2h_bytes": 4172,
+            "native_h2d_bytes": 33152,
+            "native_host_o2_s": 0.017351838,
+            "only_returned_matrix_payload_bytes": 4160,
+            "original_window_requests": [
+              [
+                0,
+                256
+              ],
+              [
+                256,
+                256
+              ],
+              [
+                512,
+                5
+              ]
+            ],
+            "original_windows": 3,
+            "pad_rows": 6,
+            "query_rows": 65,
+            "reference_and_expected_and_actual_harness_bytes": 12480
+          },
+          {
+            "census": {
+              "denied_allocations": 0,
+              "enforced": true,
+              "excluded_packed_w_capacity_bytes": 1024,
+              "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+              "host_layout_bytes": 62246,
+              "native_reservation_bytes": 57448,
+              "operational_margin_required_bytes": 268435456,
+              "payload_limit_bytes": 5905580032,
+              "peak_plus_runtime_allowance_bytes": 268603292,
+              "physical_runtime_allowance_verified": false,
+              "runtime_allowance_bytes": 268435456,
+              "temporary_live_bytes": 119395,
+              "temporary_payload_peak_bytes": 167836
+            },
+            "cpu_reference_o0_s": 0.03755069,
+            "credit": false,
+            "different_compiler_optimization_no_speedup_claim": true,
+            "domain_log2": 10,
+            "gpu_execution": false,
+            "live": 1024,
+            "message_rows": 128,
+            "native": {
+              "allocations": 959,
+              "arena_bytes": 15360,
+              "cleanup_failed": 0,
+              "d2d_bytes": 1205120,
+              "d2h_bytes": 39276,
+              "fences": 1565,
+              "h2d_bytes": 287312,
+              "host_owner_bytes": 42088,
+              "launches": 27149,
+              "live_capacity_bytes": 15360,
+              "logical_bytes": 15360,
+              "peak_capacity_bytes": 67072,
+              "peak_reserved_bytes": 68096,
+              "releases": 957,
+              "stopped": 0,
+              "weights_bytes": 1024,
+              "weights_loaded_bytes": 1024,
+              "weights_sealed": 1,
+              "zeroed_bytes": 13164
+            },
+            "native_d2d_bytes": 131072,
+            "native_d2h_bytes": 4176,
+            "native_h2d_bytes": 33152,
+            "native_host_o2_s": 0.017369962,
+            "only_returned_matrix_payload_bytes": 4160,
+            "original_window_requests": [
+              [
+                0,
+                256
+              ],
+              [
+                256,
+                256
+              ],
+              [
+                512,
+                256
+              ],
+              [
+                768,
+                256
+              ]
+            ],
+            "original_windows": 4,
+            "pad_rows": 6,
+            "query_rows": 65,
+            "reference_and_expected_and_actual_harness_bytes": 12480
+          },
+          {
+            "census": {
+              "denied_allocations": 0,
+              "enforced": true,
+              "excluded_packed_w_capacity_bytes": 1024,
+              "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+              "host_layout_bytes": 112934,
+              "native_reservation_bytes": 57448,
+              "operational_margin_required_bytes": 268435456,
+              "payload_limit_bytes": 5905580032,
+              "peak_plus_runtime_allowance_bytes": 268836012,
+              "physical_runtime_allowance_verified": false,
+              "runtime_allowance_bytes": 268435456,
+              "temporary_live_bytes": 170083,
+              "temporary_payload_peak_bytes": 400556
+            },
+            "cpu_reference_o0_s": 0.185439478,
+            "credit": false,
+            "different_compiler_optimization_no_speedup_claim": true,
+            "domain_log2": 10,
+            "gpu_execution": false,
+            "live": 1024,
+            "message_rows": 128,
+            "native": {
+              "allocations": 1014,
+              "arena_bytes": 15360,
+              "cleanup_failed": 0,
+              "d2d_bytes": 1991552,
+              "d2h_bytes": 55740,
+              "fences": 1649,
+              "h2d_bytes": 451536,
+              "host_owner_bytes": 42088,
+              "launches": 28621,
+              "live_capacity_bytes": 15360,
+              "logical_bytes": 15360,
+              "peak_capacity_bytes": 247296,
+              "peak_reserved_bytes": 248320,
+              "releases": 1012,
+              "stopped": 0,
+              "weights_bytes": 1024,
+              "weights_loaded_bytes": 1024,
+              "weights_sealed": 1,
+              "zeroed_bytes": 14204
+            },
+            "native_d2d_bytes": 786432,
+            "native_d2h_bytes": 16464,
+            "native_h2d_bytes": 164224,
+            "native_host_o2_s": 0.088343238,
+            "only_returned_matrix_payload_bytes": 16448,
+            "original_window_requests": [
+              [
+                0,
+                256
+              ],
+              [
+                256,
+                256
+              ],
+              [
+                512,
+                256
+              ],
+              [
+                768,
+                256
+              ]
+            ],
+            "original_windows": 4,
+            "pad_rows": 6,
+            "query_rows": 257,
+            "reference_and_expected_and_actual_harness_bytes": 49344
+          },
+          {
+            "census": {
+              "denied_allocations": 0,
+              "enforced": true,
+              "excluded_packed_w_capacity_bytes": 1024,
+              "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+              "host_layout_bytes": 70174,
+              "native_reservation_bytes": 57448,
+              "operational_margin_required_bytes": 268435456,
+              "payload_limit_bytes": 5905580032,
+              "peak_plus_runtime_allowance_bytes": 268836012,
+              "physical_runtime_allowance_verified": false,
+              "runtime_allowance_bytes": 268435456,
+              "temporary_live_bytes": 127323,
+              "temporary_payload_peak_bytes": 400556
+            },
+            "cpu_reference_o0_s": 0.045864856,
+            "credit": false,
+            "different_compiler_optimization_no_speedup_claim": true,
+            "domain_log2": 12,
+            "gpu_execution": false,
+            "live": 0,
+            "message_rows": 512,
+            "native": {
+              "allocations": 1146,
+              "arena_bytes": 15360,
+              "cleanup_failed": 0,
+              "d2d_bytes": 2226048,
+              "d2h_bytes": 61820,
+              "fences": 1877,
+              "h2d_bytes": 540160,
+              "host_owner_bytes": 42088,
+              "launches": 37747,
+              "live_capacity_bytes": 15360,
+              "logical_bytes": 15360,
+              "peak_capacity_bytes": 247296,
+              "peak_reserved_bytes": 248320,
+              "releases": 1144,
+              "stopped": 0,
+              "weights_bytes": 1024,
+              "weights_loaded_bytes": 1024,
+              "weights_sealed": 1,
+              "zeroed_bytes": 14204
+            },
+            "native_d2d_bytes": 131072,
+            "native_d2h_bytes": 4160,
+            "native_h2d_bytes": 43584,
+            "native_host_o2_s": 0.019946517,
+            "only_returned_matrix_payload_bytes": 4160,
+            "original_window_requests": [],
+            "original_windows": 0,
+            "pad_rows": 137,
+            "query_rows": 65,
+            "reference_and_expected_and_actual_harness_bytes": 12480
+          },
+          {
+            "census": {
+              "denied_allocations": 0,
+              "enforced": true,
+              "excluded_packed_w_capacity_bytes": 1024,
+              "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+              "host_layout_bytes": 70270,
+              "native_reservation_bytes": 57448,
+              "operational_margin_required_bytes": 268435456,
+              "payload_limit_bytes": 5905580032,
+              "peak_plus_runtime_allowance_bytes": 268836012,
+              "physical_runtime_allowance_verified": false,
+              "runtime_allowance_bytes": 268435456,
+              "temporary_live_bytes": 127419,
+              "temporary_payload_peak_bytes": 400556
+            },
+            "cpu_reference_o0_s": 0.047849367,
+            "credit": false,
+            "different_compiler_optimization_no_speedup_claim": true,
+            "domain_log2": 12,
+            "gpu_execution": false,
+            "live": 511,
+            "message_rows": 512,
+            "native": {
+              "allocations": 1288,
+              "arena_bytes": 15360,
+              "cleanup_failed": 0,
+              "d2d_bytes": 2493312,
+              "d2h_bytes": 67920,
+              "fences": 2115,
+              "h2d_bytes": 628784,
+              "host_owner_bytes": 42088,
+              "launches": 49774,
+              "live_capacity_bytes": 15360,
+              "logical_bytes": 15360,
+              "peak_capacity_bytes": 247296,
+              "peak_reserved_bytes": 248320,
+              "releases": 1286,
+              "stopped": 0,
+              "weights_bytes": 1024,
+              "weights_loaded_bytes": 1024,
+              "weights_sealed": 1,
+              "zeroed_bytes": 16784
+            },
+            "native_d2d_bytes": 131072,
+            "native_d2h_bytes": 4164,
+            "native_h2d_bytes": 43584,
+            "native_host_o2_s": 0.020094268,
+            "only_returned_matrix_payload_bytes": 4160,
+            "original_window_requests": [
+              [
+                0,
+                511
+              ]
+            ],
+            "original_windows": 1,
+            "pad_rows": 137,
+            "query_rows": 65,
+            "reference_and_expected_and_actual_harness_bytes": 12480
+          },
+          {
+            "census": {
+              "denied_allocations": 0,
+              "enforced": true,
+              "excluded_packed_w_capacity_bytes": 1024,
+              "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+              "host_layout_bytes": 70270,
+              "native_reservation_bytes": 57448,
+              "operational_margin_required_bytes": 268435456,
+              "payload_limit_bytes": 5905580032,
+              "peak_plus_runtime_allowance_bytes": 268836012,
+              "physical_runtime_allowance_verified": false,
+              "runtime_allowance_bytes": 268435456,
+              "temporary_live_bytes": 127419,
+              "temporary_payload_peak_bytes": 400556
+            },
+            "cpu_reference_o0_s": 0.047568907,
+            "credit": false,
+            "different_compiler_optimization_no_speedup_claim": true,
+            "domain_log2": 12,
+            "gpu_execution": false,
+            "live": 513,
+            "message_rows": 512,
+            "native": {
+              "allocations": 1430,
+              "arena_bytes": 15360,
+              "cleanup_failed": 0,
+              "d2d_bytes": 2759936,
+              "d2h_bytes": 74020,
+              "fences": 2353,
+              "h2d_bytes": 717408,
+              "host_owner_bytes": 42088,
+              "launches": 61733,
+              "live_capacity_bytes": 15360,
+              "logical_bytes": 15360,
+              "peak_capacity_bytes": 247296,
+              "peak_reserved_bytes": 248320,
+              "releases": 1428,
+              "stopped": 0,
+              "weights_bytes": 1024,
+              "weights_loaded_bytes": 1024,
+              "weights_sealed": 1,
+              "zeroed_bytes": 21924
+            },
+            "native_d2d_bytes": 131072,
+            "native_d2h_bytes": 4164,
+            "native_h2d_bytes": 43584,
+            "native_host_o2_s": 0.02003306,
+            "only_returned_matrix_payload_bytes": 4160,
+            "original_window_requests": [
+              [
+                0,
+                513
+              ]
+            ],
+            "original_windows": 1,
+            "pad_rows": 137,
+            "query_rows": 65,
+            "reference_and_expected_and_actual_harness_bytes": 12480
+          },
+          {
+            "census": {
+              "denied_allocations": 0,
+              "enforced": true,
+              "excluded_packed_w_capacity_bytes": 1024,
+              "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+              "host_layout_bytes": 70462,
+              "native_reservation_bytes": 57448,
+              "operational_margin_required_bytes": 268435456,
+              "payload_limit_bytes": 5905580032,
+              "peak_plus_runtime_allowance_bytes": 268836012,
+              "physical_runtime_allowance_verified": false,
+              "runtime_allowance_bytes": 268435456,
+              "temporary_live_bytes": 127611,
+              "temporary_payload_peak_bytes": 400556
+            },
+            "cpu_reference_o0_s": 0.051667886,
+            "credit": false,
+            "different_compiler_optimization_no_speedup_claim": true,
+            "domain_log2": 12,
+            "gpu_execution": false,
+            "live": 2049,
+            "message_rows": 512,
+            "native": {
+              "allocations": 1592,
+              "arena_bytes": 15360,
+              "cleanup_failed": 0,
+              "d2d_bytes": 3119872,
+              "d2h_bytes": 80160,
+              "fences": 2611,
+              "h2d_bytes": 806032,
+              "host_owner_bytes": 42088,
+              "launches": 81906,
+              "live_capacity_bytes": 15360,
+              "logical_bytes": 15360,
+              "peak_capacity_bytes": 247296,
+              "peak_reserved_bytes": 248320,
+              "releases": 1590,
+              "stopped": 0,
+              "weights_bytes": 1024,
+              "weights_loaded_bytes": 1024,
+              "weights_sealed": 1,
+              "zeroed_bytes": 32864
+            },
+            "native_d2d_bytes": 131072,
+            "native_d2h_bytes": 4172,
+            "native_h2d_bytes": 43584,
+            "native_host_o2_s": 0.020504811,
+            "only_returned_matrix_payload_bytes": 4160,
+            "original_window_requests": [
+              [
+                0,
+                1024
+              ],
+              [
+                1024,
+                1024
+              ],
+              [
+                2048,
+                1
+              ]
+            ],
+            "original_windows": 3,
+            "pad_rows": 137,
+            "query_rows": 65,
+            "reference_and_expected_and_actual_harness_bytes": 12480
+          },
+          {
+            "census": {
+              "denied_allocations": 0,
+              "enforced": true,
+              "excluded_packed_w_capacity_bytes": 1024,
+              "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+              "host_layout_bytes": 70558,
+              "native_reservation_bytes": 57448,
+              "operational_margin_required_bytes": 268435456,
+              "payload_limit_bytes": 5905580032,
+              "peak_plus_runtime_allowance_bytes": 268836012,
+              "physical_runtime_allowance_verified": false,
+              "runtime_allowance_bytes": 268435456,
+              "temporary_live_bytes": 127707,
+              "temporary_payload_peak_bytes": 400556
+            },
+            "cpu_reference_o0_s": 0.054355275,
+            "credit": false,
+            "different_compiler_optimization_no_speedup_claim": true,
+            "domain_log2": 12,
+            "gpu_execution": false,
+            "live": 4096,
+            "message_rows": 512,
+            "native": {
+              "allocations": 1759,
+              "arena_bytes": 15360,
+              "cleanup_failed": 0,
+              "d2d_bytes": 3603200,
+              "d2h_bytes": 86320,
+              "fences": 2869,
+              "h2d_bytes": 891760,
+              "host_owner_bytes": 42088,
+              "launches": 112916,
+              "live_capacity_bytes": 15360,
+              "logical_bytes": 15360,
+              "peak_capacity_bytes": 247296,
+              "peak_reserved_bytes": 248320,
+              "releases": 1757,
+              "stopped": 0,
+              "weights_bytes": 1024,
+              "weights_loaded_bytes": 1024,
+              "weights_sealed": 1,
+              "zeroed_bytes": 53424
+            },
+            "native_d2d_bytes": 131072,
+            "native_d2h_bytes": 4176,
+            "native_h2d_bytes": 41536,
+            "native_host_o2_s": 0.018959679,
+            "only_returned_matrix_payload_bytes": 4160,
+            "original_window_requests": [
+              [
+                0,
+                1024
+              ],
+              [
+                1024,
+                1024
+              ],
+              [
+                2048,
+                1024
+              ],
+              [
+                3072,
+                1024
+              ]
+            ],
+            "original_windows": 4,
+            "pad_rows": 137,
+            "query_rows": 65,
+            "reference_and_expected_and_actual_harness_bytes": 12480
+          },
+          {
+            "census": {
+              "denied_allocations": 0,
+              "enforced": true,
+              "excluded_packed_w_capacity_bytes": 1024,
+              "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+              "host_layout_bytes": 159958,
+              "native_reservation_bytes": 57448,
+              "operational_margin_required_bytes": 268435456,
+              "payload_limit_bytes": 5905580032,
+              "peak_plus_runtime_allowance_bytes": 268885860,
+              "physical_runtime_allowance_verified": false,
+              "runtime_allowance_bytes": 268435456,
+              "temporary_live_bytes": 217107,
+              "temporary_payload_peak_bytes": 450404
+            },
+            "cpu_reference_o0_s": 0.135369226,
+            "credit": false,
+            "different_compiler_optimization_no_speedup_claim": true,
+            "domain_log2": 14,
+            "gpu_execution": false,
+            "live": 12288,
+            "message_rows": 2048,
+            "native": {
+              "allocations": 1921,
+              "arena_bytes": 15360,
+              "cleanup_failed": 0,
+              "d2d_bytes": 5326848,
+              "d2h_bytes": 92460,
+              "fences": 3127,
+              "h2d_bytes": 1428064,
+              "host_owner_bytes": 42088,
+              "launches": 253095,
+              "live_capacity_bytes": 15360,
+              "logical_bytes": 15360,
+              "peak_capacity_bytes": 247296,
+              "peak_reserved_bytes": 248320,
+              "releases": 1919,
+              "stopped": 0,
+              "weights_bytes": 1024,
+              "weights_loaded_bytes": 1024,
+              "weights_sealed": 1,
+              "zeroed_bytes": 114924
+            },
+            "native_d2d_bytes": 131072,
+            "native_d2h_bytes": 4172,
+            "native_h2d_bytes": 133120,
+            "native_host_o2_s": 0.030451862,
+            "only_returned_matrix_payload_bytes": 4160,
+            "original_window_requests": [
+              [
+                0,
+                4096
+              ],
+              [
+                4096,
+                4096
+              ],
+              [
+                8192,
+                4096
+              ]
+            ],
+            "original_windows": 3,
+            "pad_rows": 1536,
+            "query_rows": 65,
+            "reference_and_expected_and_actual_harness_bytes": 12480
+          }
+        ],
+        "C71_NATIVE_QUERY_PARITY": [
+          {
+            "cases": 75,
+            "credit": false,
+            "gpu_execution": false,
+            "i16_and_split_raw_i48": true,
+            "independent_horner": true,
+            "original_d2h_bytes": 0,
+            "same_original_windows": true
+          }
+        ]
+      }
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_native_residual_query_full_whir_a_wire_fs_rng_and_original_mac",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 50.92860519187525,
+      "max_rss_bytes": 328052736,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 50.691,
+      "system_s": 0.225331,
+      "log": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-a-full-clean-20261009.log",
+      "label": "A full WHIR",
+      "receipt": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-a-full-clean-20261009.json",
+      "source_git_sha": "26c87d29d554d5d10f6b25e784b31a65539136e9",
+      "git_dirty": false,
+      "binary_sha256": "3e7084e15bf824c540a9c53fe0f075378b438e3549f576d63e74b19fc510eb7b",
+      "passed": 1,
+      "metrics": {
+        "C71_NATIVE_RESIDUAL_QUERY_FULL_WIRE": [
+          {
+            "canonical_bytes": 2285464,
+            "credit": false,
+            "dimension": 10,
+            "gpu_execution": false,
+            "native": {
+              "allocations": 2130,
+              "arena_bytes": 1024,
+              "cleanup_failed": 0,
+              "d2d_bytes": 45340672,
+              "d2h_bytes": 1673208,
+              "fences": 2661,
+              "h2d_bytes": 15795552,
+              "host_owner_bytes": 42088,
+              "launches": 46668,
+              "live_capacity_bytes": 1024,
+              "logical_bytes": 1024,
+              "peak_capacity_bytes": 580608,
+              "peak_reserved_bytes": 580608,
+              "releases": 2129,
+              "stopped": 0,
+              "weights_bytes": 0,
+              "weights_loaded_bytes": 0,
+              "weights_sealed": 0,
+              "zeroed_bytes": 1606320
+            },
+            "native_extension_queries": true,
+            "wire_fs_rng_original_mac_equal": true
+          }
+        ],
+        "C71_NATIVE_RESIDUAL_QUERY_A_CHAIN": [
+          {
+            "credit": false,
+            "dimension": 10,
+            "gpu_execution": false,
+            "initial_commitment": "CPU reference",
+            "initial_cpu_getter_calls": 65536,
+            "initial_queries": "resident original bytes",
+            "initial_query_windows": [
+              [
+                0,
+                1024
+              ],
+              [
+                0,
+                1024
+              ],
+              [
+                0,
+                1024
+              ],
+              [
+                0,
+                1024
+              ],
+              [
+                0,
+                1024
+              ],
+              [
+                0,
+                1024
+              ],
+              [
+                0,
+                1024
+              ],
+              [
+                0,
+                1024
+              ],
+              [
+                0,
+                1024
+              ],
+              [
+                0,
+                1024
+              ],
+              [
+                0,
+                1024
+              ],
+              [
+                0,
+                1024
+              ],
+              [
+                0,
+                1024
+              ],
+              [
+                0,
+                1024
+              ],
+              [
+                0,
+                1024
+              ],
+              [
+                0,
+                1024
+              ]
+            ],
+            "native": {
+              "allocations": 2130,
+              "arena_bytes": 1024,
+              "cleanup_failed": 0,
+              "d2d_bytes": 45340672,
+              "d2h_bytes": 1673208,
+              "fences": 2661,
+              "h2d_bytes": 15795552,
+              "host_owner_bytes": 42088,
+              "launches": 46668,
+              "live_capacity_bytes": 1024,
+              "logical_bytes": 1024,
+              "peak_capacity_bytes": 580608,
+              "peak_reserved_bytes": 580608,
+              "releases": 2129,
+              "stopped": 0,
+              "weights_bytes": 0,
+              "weights_loaded_bytes": 0,
+              "weights_sealed": 0,
+              "zeroed_bytes": 1606320
+            },
+            "original_reconstructions": 19,
+            "residual_state_and_extension_queries": "native owner",
+            "seconds": 41.251847452
+          }
+        ]
+      }
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_native_source_four_cosets_fft_hash_original_bytes",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 10.011637623887509,
+      "max_rss_bytes": 328179712,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 9.836843,
+      "system_s": 0.16598,
+      "log": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-a-hash-lifetime-clean-20261009.log",
+      "label": "A hash lifetime",
+      "receipt": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-a-hash-lifetime-clean-20261009.json",
+      "source_git_sha": "26c87d29d554d5d10f6b25e784b31a65539136e9",
+      "git_dirty": false,
+      "binary_sha256": "3e7084e15bf824c540a9c53fe0f075378b438e3549f576d63e74b19fc510eb7b",
+      "passed": 1,
+      "metrics": {
+        "C71_PCS_SOURCE_COMPONENT": [
+          {
+            "before_hash_owner_capacity_bytes": 19712,
+            "before_hash_retained_PCS_capacity_bytes": 19712,
+            "coset_rows": 4,
+            "cosets_per_reconstruction": 4,
+            "credit": false,
+            "d2h_flag_bytes": 8,
+            "first_coset": 0,
+            "gpu_execution": false,
+            "histogram_d2h_bytes": 2048,
+            "message_rows": 8,
+            "native_capacity_peak_bytes": 24320,
+            "native_host_accumulation_fft_s": 0.000273335,
+            "native_owner_host_bytes": 42088,
+            "original_bytes": 764,
+            "pad_rows": 3,
+            "reconstructions": 1,
+            "reference_accumulation_fft_s": 0.00306773,
+            "resource_census": {
+              "denied_allocations": 0,
+              "enforced": true,
+              "excluded_packed_w_capacity_bytes": 0,
+              "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+              "host_layout_bytes": 73466,
+              "native_reservation_bytes": 42088,
+              "operational_margin_required_bytes": 268435456,
+              "payload_limit_bytes": 5905580032,
+              "peak_plus_runtime_allowance_bytes": 268571687,
+              "physical_runtime_allowance_verified": false,
+              "runtime_allowance_bytes": 268435456,
+              "temporary_live_bytes": 116279,
+              "temporary_payload_peak_bytes": 136231
+            },
+            "source_and_power_temporaries_retired_before_hash": true,
+            "source_d2h_bytes": 0,
+            "tiles": 6
+          },
+          {
+            "before_hash_owner_capacity_bytes": 101632,
+            "before_hash_retained_PCS_capacity_bytes": 101632,
+            "coset_rows": 16,
+            "cosets_per_reconstruction": 4,
+            "credit": false,
+            "d2h_flag_bytes": 8,
+            "first_coset": 28,
+            "gpu_execution": false,
+            "histogram_d2h_bytes": 0,
+            "message_rows": 32,
+            "native_capacity_peak_bytes": 108288,
+            "native_host_accumulation_fft_s": 0.000607921,
+            "native_owner_host_bytes": 42088,
+            "original_bytes": 3056,
+            "pad_rows": 35,
+            "reconstructions": 1,
+            "reference_accumulation_fft_s": 0.009196481,
+            "resource_census": {
+              "denied_allocations": 0,
+              "enforced": true,
+              "excluded_packed_w_capacity_bytes": 0,
+              "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+              "host_layout_bytes": 220570,
+              "native_reservation_bytes": 42088,
+              "operational_margin_required_bytes": 268435456,
+              "payload_limit_bytes": 5905580032,
+              "peak_plus_runtime_allowance_bytes": 268802601,
+              "physical_runtime_allowance_verified": false,
+              "runtime_allowance_bytes": 268435456,
+              "temporary_live_bytes": 263383,
+              "temporary_payload_peak_bytes": 367145
+            },
+            "source_and_power_temporaries_retired_before_hash": true,
+            "source_d2h_bytes": 0,
+            "tiles": 23
+          },
+          {
+            "before_hash_owner_capacity_bytes": 1589504,
+            "before_hash_retained_PCS_capacity_bytes": 1589504,
+            "coset_rows": 4,
+            "cosets_per_reconstruction": 4,
+            "credit": false,
+            "d2h_flag_bytes": 8,
+            "first_coset": 2044,
+            "gpu_execution": false,
+            "histogram_d2h_bytes": 0,
+            "message_rows": 512,
+            "native_capacity_peak_bytes": 1692672,
+            "native_host_accumulation_fft_s": 0.005814541,
+            "native_owner_host_bytes": 42088,
+            "original_bytes": 48896,
+            "pad_rows": 1536,
+            "reconstructions": 1,
+            "reference_accumulation_fft_s": 0.149093038,
+            "resource_census": {
+              "denied_allocations": 0,
+              "enforced": true,
+              "excluded_packed_w_capacity_bytes": 0,
+              "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+              "host_layout_bytes": 1965818,
+              "native_reservation_bytes": 42088,
+              "operational_margin_required_bytes": 268435456,
+              "payload_limit_bytes": 5905580032,
+              "peak_plus_runtime_allowance_bytes": 273406249,
+              "physical_runtime_allowance_verified": false,
+              "runtime_allowance_bytes": 268435456,
+              "temporary_live_bytes": 2008631,
+              "temporary_payload_peak_bytes": 4970793
+            },
+            "source_and_power_temporaries_retired_before_hash": true,
+            "source_d2h_bytes": 0,
+            "tiles": 363
+          }
+        ]
+      }
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_canonical_device_replay_original_rows_windows_and_failure",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 12.223875567317009,
+      "max_rss_bytes": 328224768,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 12.097352,
+      "system_s": 0.12380899999999999,
+      "log": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-a-replay-lifetime-clean-20261009.log",
+      "label": "A producer retirement",
+      "receipt": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-a-replay-lifetime-clean-20261009.json",
+      "source_git_sha": "26c87d29d554d5d10f6b25e784b31a65539136e9",
+      "git_dirty": false,
+      "binary_sha256": "3e7084e15bf824c540a9c53fe0f075378b438e3549f576d63e74b19fc510eb7b",
+      "passed": 1,
+      "metrics": {
+        "C71_PCS_SOURCE_STREAM": [
+          {
+            "credit": false,
+            "d2h_flag_bytes": 8,
+            "gpu_execution": false,
+            "launches": 2,
+            "native_peak_capacity_bytes": 33631232,
+            "original_bytes": 6451200,
+            "original_rows_downloaded": 0,
+            "producer_capacity_after_scan": 25566976,
+            "producer_capacity_before_scan": 25566976,
+            "producer_temporaries_retired_before_PCS_hash": true,
+            "reconstructions": 1,
+            "source_h2d_bytes": 0,
+            "tiles": 36
+          }
+        ]
+      }
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "-s",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_c71_pcs_query_weight.py",
+        "tests/test_c71_range_native.py"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 15.382093384861946,
+      "max_rss_bytes": 338853888,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 14.99553,
+      "system_s": 0.30350299999999997,
+      "log": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-c-clean-20261009.log",
+      "label": "C++ independent loader and common owner",
+      "receipt": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-c-clean-20261009.json",
+      "source_git_sha": "26c87d29d554d5d10f6b25e784b31a65539136e9",
+      "git_dirty": false,
+      "binary_sha256": "3e7084e15bf824c540a9c53fe0f075378b438e3549f576d63e74b19fc510eb7b",
+      "passed": 3,
+      "metrics": {
+        "C71_PCS_QUERY_WEIGHT_HOST": [
+          {
+            "column_cases": 992,
+            "loader_outputs": 893556,
+            "expected_W_reads": 328040,
+            "pad_outputs": 399520,
+            "zero_outputs": 165964,
+            "horner_checks": 3968,
+            "loader_blocks": 4269,
+            "geometry_rejections": 25,
+            "named_fixture_heap_upper_bytes": 2926672,
+            "host_component_s": 0.203997411,
+            "max_low_payload_bytes": 8388608,
+            "loader_extra_device_bytes": 0,
+            "loader_shared_bytes": 0,
+            "loader_launches_per_block": 1,
+            "D35_sparse_geometry": true,
+            "gpu_execution": false,
+            "integrated": false,
+            "credit": false
+          }
+        ],
+        "C71_PCS_RESIDUAL_OWNER_COMPONENT": [
+          {
+            "singleton": 1,
+            "original_retention": 1,
+            "ood_original": 1,
+            "ood_resident": 3,
+            "paired_folds": 2,
+            "bounded_consuming_reads": 3,
+            "gpu_execution": false,
+            "credit": false
+          }
+        ],
+        "C71_PCS_RESIDUAL_CONTRACT_OWNER": [
+          {
+            "cases": 8,
+            "W_bands_one_scan": true,
+            "resident_virtual_bits": 2,
+            "consumer_d2h_bytes": 52,
+            "public_tail_reads": 0,
+            "gpu_execution": false,
+            "credit": false
+          }
+        ],
+        "C71_PCS_RESIDUAL_OWNER_FAILURE": [
+          {
+            "terminal_rejections": 45,
+            "private_read_d2h_bytes": 0,
+            "publication_after_free": true,
+            "gpu_execution": false,
+            "credit": false
+          }
+        ],
+        "C71_PCS_RESIDUAL_CONTRACT_FAILURE": [
+          {
+            "terminal_rejections": 19,
+            "gpu_execution": false,
+            "credit": false
+          }
+        ],
+        "C71_PCS_SHORT_OWNER": [
+          {
+            "two_coset_groups": 16,
+            "private_salts": 1024,
+            "ring_words_checked": 3072,
+            "odd_fft_log_rows": 3,
+            "input_d2h_bytes": 0,
+            "gpu_execution": false,
+            "credit": false
+          }
+        ],
+        "C71_PCS_SHORT_OWNER_FAILURE": [
+          {
+            "terminal_rejections": 13,
+            "old_groups_large_rows_rejected": 2,
+            "gpu_execution": false,
+            "credit": false
+          }
+        ],
+        "C71_PCS_QUERY_E_OWNER": [
+          {
+            "column_cases": 80,
+            "query_rows": 448,
+            "original_or_plane_visits": 400,
+            "root_blocks": 204,
+            "private_limb_loads": 3,
+            "fences_per_column": 2,
+            "input_d2h_bytes": 0,
+            "W_scans_per_batch": 1,
+            "gpu_execution": false,
+            "credit": false
+          }
+        ],
+        "C71_PCS_QUERY_E_FAILURE": [
+          {
+            "terminal_rejections": 56,
+            "forbidden_read_d2h_bytes": 0,
+            "publication_after_free": true,
+            "root_columns_are_not_queries": true,
+            "gpu_execution": false,
+            "credit": false
+          }
+        ],
+        "C71_PCS_QUERY_E_WEIGHT_FAILURE": [
+          {
+            "terminal_rejections": 2,
+            "pad_only_launches": 1,
+            "real_work_launches": 2,
+            "accepted_init_drained": true,
+            "gpu_execution": false,
+            "credit": false
+          }
+        ],
+        "C71_PCS_TRUSTED_SOURCE_PARTITION": [
+          {
+            "reversed_ragged_cases": 1,
+            "trusted_row_coverage": true,
+            "standalone_byte_count_proves_uniqueness": false,
+            "gpu_execution": false,
+            "credit": false
+          }
+        ],
+        "C71_PCS_QUERY_W_INITIAL_OWNER": [
+          {
+            "column_cases": 160,
+            "query_rows": 896,
+            "root_blocks": 1672,
+            "original_visits": 640,
+            "W_scans_per_batch": 1,
+            "loader_launches_per_block": 1,
+            "loader_extra_temp_bytes": 0,
+            "block_input_transfer_bytes": 0,
+            "fences_per_column": 1,
+            "D35_sparse_geometry": true,
+            "None_zero_unchanged": true,
+            "gpu_execution": false,
+            "credit": false
+          }
+        ],
+        "C71_PCS_QUERY_W_INITIAL_FAILURE": [
+          {
+            "terminal_rejections": 34,
+            "input_d2h_bytes": 0,
+            "unavailable_GPU_fail_closed": true,
+            "gpu_execution": false,
+            "credit": false
+          }
+        ],
+        "C71_RANGE_OWNER_HOST": [
+          {
+            "rejections": 13,
+            "dense_rejections": 23,
+            "byte_rejections": 19,
+            "pointwise_rejections": 14,
+            "embedding_rejections": 17,
+            "dense_batches": 2,
+            "dense_row_views": 1,
+            "max_arena_bytes": 262144,
+            "gpu_execution": false,
+            "credit": false
+          }
+        ]
+      }
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_query_factors_balanced_product_and_newton_match_direct_oracle",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 0.23842532886192203,
+      "max_rss_bytes": 15015936,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.237982,
+      "system_s": 0.0,
+      "log": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-residual-local-01-clean-20261009.log",
+      "label": "public factors",
+      "receipt": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-residual-local-01-clean-20261009.json",
+      "source_git_sha": "26c87d29d554d5d10f6b25e784b31a65539136e9",
+      "git_dirty": false,
+      "binary_sha256": "3e7084e15bf824c540a9c53fe0f075378b438e3549f576d63e74b19fc510eb7b",
+      "passed": 1,
+      "metrics": {}
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_query_small_remainders_exact_fp3_and_cost",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 2.664165518246591,
+      "max_rss_bytes": 17944576,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 2.6511810000000002,
+      "system_s": 0.011989999999999999,
+      "log": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-residual-local-02-clean-20261009.log",
+      "label": "tiny exact remainders",
+      "receipt": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-residual-local-02-clean-20261009.json",
+      "source_git_sha": "26c87d29d554d5d10f6b25e784b31a65539136e9",
+      "git_dirty": false,
+      "binary_sha256": "3e7084e15bf824c540a9c53fe0f075378b438e3549f576d63e74b19fc510eb7b",
+      "passed": 1,
+      "metrics": {
+        "C71_QUERY_SMALL_REMAINDERS": [
+          {
+            "credit": false,
+            "exact_fp3_cases": 1792,
+            "gpu_execution": false,
+            "same_binary_comparison": true,
+            "scope": "four lowest levels for a 128-column/1024-point CPU opening batch",
+            "timings": [
+              {
+                "cap": 1,
+                "direct_seconds": 0.018067287,
+                "former_four_fft_seconds": 0.614401821,
+                "iterations": 131072
+              },
+              {
+                "cap": 2,
+                "direct_seconds": 0.013229379,
+                "former_four_fft_seconds": 0.570220735,
+                "iterations": 65536
+              },
+              {
+                "cap": 4,
+                "direct_seconds": 0.171484969,
+                "former_four_fft_seconds": 0.540470121,
+                "iterations": 32768
+              },
+              {
+                "cap": 8,
+                "direct_seconds": 0.177895094,
+                "former_four_fft_seconds": 0.536821387,
+                "iterations": 16384
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_windowed_native_shared_resident_transcript_original_mac",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 48.169613604899496,
+      "max_rss_bytes": 328069120,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 47.777828,
+      "system_s": 0.368685,
+      "log": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-residual-local-03-clean-20261009.log",
+      "label": "native range original MAC",
+      "receipt": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-residual-local-03-clean-20261009.json",
+      "source_git_sha": "26c87d29d554d5d10f6b25e784b31a65539136e9",
+      "git_dirty": false,
+      "binary_sha256": "3e7084e15bf824c540a9c53fe0f075378b438e3549f576d63e74b19fc510eb7b",
+      "passed": 1,
+      "metrics": {
+        "C71_TEMPORARY_ALLOCATIONS": [
+          {
+            "denied_allocations": 0,
+            "enforced": true,
+            "excluded_packed_w_capacity_bytes": 0,
+            "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+            "host_layout_bytes": 20698,
+            "native_reservation_bytes": 0,
+            "operational_margin_required_bytes": 268435456,
+            "payload_limit_bytes": 5905580032,
+            "peak_plus_runtime_allowance_bytes": 320025947,
+            "physical_runtime_allowance_verified": false,
+            "runtime_allowance_bytes": 268435456,
+            "temporary_live_bytes": 21423,
+            "temporary_payload_peak_bytes": 51590491
+          }
+        ]
+      }
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "sourcewise_real_boolean_replay_matches_dense_coefficients_at_selected_depths",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 0.32264405488967896,
+      "max_rss_bytes": 30343168,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.30233099999999996,
+      "system_s": 0.019785999999999998,
+      "log": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-residual-local-04-clean-20261009.log",
+      "label": "RMS selected-layer Boolean oracle",
+      "receipt": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-residual-local-04-clean-20261009.json",
+      "source_git_sha": "26c87d29d554d5d10f6b25e784b31a65539136e9",
+      "git_dirty": false,
+      "binary_sha256": "3e7084e15bf824c540a9c53fe0f075378b438e3549f576d63e74b19fc510eb7b",
+      "passed": 1,
+      "metrics": {}
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_native_canonical_wire_body_geometry",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 13.521215378306806,
+      "max_rss_bytes": 300064768,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 13.280068,
+      "system_s": 0.23588199999999998,
+      "log": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-residual-local-06-clean-20261009.log",
+      "label": "canonical wire geometry",
+      "receipt": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-residual-local-06-clean-20261009.json",
+      "source_git_sha": "26c87d29d554d5d10f6b25e784b31a65539136e9",
+      "git_dirty": false,
+      "binary_sha256": "3e7084e15bf824c540a9c53fe0f075378b438e3549f576d63e74b19fc510eb7b",
+      "passed": 1,
+      "metrics": {}
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_canonical_writer_fixed_capacity_preserves_wire_and_transcript",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 0.005682907998561859,
+      "max_rss_bytes": 13488128,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.0,
+      "system_s": 0.005259,
+      "log": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-canonical-writer-parity-20261009.log",
+      "label": "Writer capacity wire/FS",
+      "receipt": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-canonical-writer-parity-20261009.json",
+      "source_git_sha": "e55e1a7b4ad07ec0b44d4e970df816ffb15f02bf",
+      "git_dirty": false,
+      "binary_sha256": "9ae8848d412b34f505f4f4708099349f40b49d1553d1d7bbb6e323cc76859040",
+      "passed": 1,
+      "metrics": {
+        "C71_CANONICAL_WRITER_CAPACITY": [
+          {
+            "capacity_bytes": 100663296,
+            "credit": false,
+            "frames": 128,
+            "gpu_execution": false,
+            "moving_reallocations_after_canonical_begin": 0,
+            "wire_and_transcript_exact": true,
+            "wire_bytes": 41402
+          }
+        ]
+      }
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_native_wire_limit_includes_completion_record",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 0.37290455400943756,
+      "max_rss_bytes": 113102848,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.290056,
+      "system_s": 0.08017099999999999,
+      "log": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-canonical-writer-boundary-20261009.log",
+      "label": "Writer completion limit",
+      "receipt": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-canonical-writer-boundary-20261009.json",
+      "source_git_sha": "e55e1a7b4ad07ec0b44d4e970df816ffb15f02bf",
+      "git_dirty": false,
+      "binary_sha256": "9ae8848d412b34f505f4f4708099349f40b49d1553d1d7bbb6e323cc76859040",
+      "passed": 1,
+      "metrics": {}
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/c71_residual_profile.py",
+        "--output",
+        "/tmp/c71-residual-profile-admitted-output-20261009.json"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 0.1505130073055625,
+      "max_rss_bytes": 40923136,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.09847299999999999,
+      "system_s": 0.053273999999999995,
+      "log": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-residual-profile-admitted-clean-20261009.log",
+      "label": "admitted residual source census",
+      "receipt": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-residual-profile-admitted-clean-20261009.json",
+      "source_git_sha": "e55e1a7b4ad07ec0b44d4e970df816ffb15f02bf",
+      "git_dirty": false,
+      "binary_sha256": null,
+      "passed": null,
+      "metrics": {}
+    }
+  ],
+  "failures": [
+    {
+      "command": [
+        "python3",
+        "scripts/c71_residual_profile.py"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 1,
+      "wall_s": 0.02469441620633006,
+      "max_rss_bytes": 10035200,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.02292,
+      "system_s": 0.001353,
+      "log": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-profile-clean-20261009.log",
+      "label": "profile syntax before correction",
+      "receipt": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-profile-clean-20261009.json"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_seed6_native_full_o0_proof_promotes_same_receipt_after_role_journals",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 101,
+      "wall_s": 0.18485882598906755,
+      "max_rss_bytes": 27566080,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.184354,
+      "system_s": 0.0,
+      "log": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-residual-local-05-clean-20261009.log",
+      "label": "AES local socketpair denied by sandbox",
+      "receipt": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-residual-local-05-clean-20261009.json"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_seed6_native_full_o0_proof_promotes_same_receipt_after_role_journals",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 124,
+      "wall_s": 60.01786501100287,
+      "max_rss_bytes": 142766080,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 60.639952,
+      "system_s": 0.206336,
+      "log": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-residual-local-05-clean02-20261009.log",
+      "label": "AES complete reduced chain timeout after local socket approval",
+      "receipt": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-residual-local-05-clean02-20261009.json"
+    }
+  ],
+  "residual_profile": {
+    "schema": "c71-residual-source-profile-v1",
+    "source_git_sha": "e55e1a7b4ad07ec0b44d4e970df816ffb15f02bf",
+    "classification": "source arithmetic and proposed procedure; no newly measured GPU/complete canonical results",
+    "credit": false,
+    "gpu_execution": false,
+    "joint_admitted": false,
+    "provenance": {
+      "rust/volta-pcs/src/c71_matrix/b12.rs": {
+        "sha256": "bc9bf6fe1843844cb32fb6ca2a790409c6a35139fc3221caef851c7b66a2f62d",
+        "anchors": [
+          "round.num_queries = 512",
+          "result.inner.final_queries = 512"
+        ]
+      },
+      "rust/volta-pcs/src/c71_matrix/b12/replay_tree.rs": {
+        "sha256": "8b036b35eb1c6050102348ca12d4214a256474e754f5281af2f67e290bcf6a32",
+        "anchors": [
+          "const CANONICAL_QUERY_ROWS: usize = 1 << 20",
+          "needed.dedup()",
+          "needed.chunks(batch_cap / self.cut)",
+          "subtree * self.cut..(subtree + 1) * self.cut",
+          "(self.row)(&batch_indices)"
+        ]
+      },
+      "rust/volta-pcs/src/c71_matrix/b12/replay.rs": {
+        "sha256": "406f725de44e9ffac692c0ef5a2db3cdcd5a75027a4ba75be102a772c501cddc",
+        "anchors": [
+          "indices.len().next_power_of_two()",
+          "let source_rows=if split {active} else {n+pad_rows}",
+          "let blocks=(n+pad_rows).div_ceil(cap)",
+          "for limb in 0..3",
+          "native_d2d_bytes",
+          "native_launches",
+          "native_fences"
+        ]
+      },
+      "cuda/c71_pcs_query.cu": {
+        "sha256": "25affc4693862e1d17a8677455a5c0626951f433ed50c4421079cf7655e5769a",
+        "anchors": [
+          "if(degree<=8)",
+          "reverse_high<<<",
+          "multiply_factor<<<",
+          "reverse_quotient<<<",
+          "subtract_product<<<"
+        ]
+      },
+      "cuda/c71_fft.cuh": {
+        "sha256": "eaf940675c107b51ede85b060d3c1c211acd3dea422ee1588c7fe67542291496",
+        "anchors": [
+          "launch_five_pass",
+          "launch_odd",
+          "launch_natural",
+          "parity_scatter_kernel<<<",
+          "cudaMemcpyDeviceToDevice",
+          "std::min(32767u"
+        ]
+      },
+      "rust/volta-pcs/src/c71_matrix/range/windowed.rs": {
+        "sha256": "f88626f236e93d44df0cde5e2c49e6c6344a7878117186922ff10652c4dc03a2",
+        "anchors": [
+          "const WINDOWS:",
+          "const W_WINDOWS:",
+          "Alphabet::Symmetric(_) => (11, 1usize << 27"
+        ]
+      },
+      "rust/volta-pcs/src/c71_matrix/range/windowed/native.rs": {
+        "sha256": "83997eb607dc2f8c34c8b29dba972e7d5c666daa3e3919119d47fdfc6491ae77",
+        "anchors": [
+          "self.work.source_passes += 1",
+          "self.work.requested_bytes +=",
+          "BEFORE the GKR caller"
+        ]
+      },
+      "rust/volta-pcg/src/c71_bootstrap.rs": {
+        "sha256": "a4e15c83d18399c4d41d6b8d8a292031645fc5739f0c1c78901a3e58589fb3ee",
+        "anchors": [
+          "let cipher = Aes256::new_from_slice",
+          "cipher.encrypt_blocks(&mut blocks)",
+          "work.aes_key_schedules += 1",
+          "work.aes_block_encryptions += 4"
+        ]
+      },
+      "rust/volta-pcg/src/c71_seed6/real.rs": {
+        "sha256": "8938a74c9dd0b0c542505d1412fb6a2c05201d96f6102073d7729adb738cd3f8",
+        "anchors": [
+          "factor * 384 * rows * height",
+          "factor * 384 * rows * height * 4"
+        ]
+      },
+      "rust/volta-pcs/src/c71_matrix/gemma/native/canonical_runner.rs": {
+        "sha256": "cac8e4551f68ca39a2fa26fe957e13fcc9ba2cb37f70599d25c0ec50b655c909",
+        "anchors": [
+          "installation_w_commitment",
+          "seed6_setup",
+          "wait_and_decode_response",
+          "verify_journal_and_completion"
+        ]
+      },
+      "rust/volta-pcs/src/c71_matrix/gemma/native/canonical_state.rs": {
+        "sha256": "d8224505935f53594af65ca8d41d290b76f4070b3065095613f529017e25a694",
+        "anchors": [
+          "preparation_including_inference",
+          "commitment_a",
+          "proof_body",
+          "exchange_and_completion"
+        ]
+      },
+      "rust/volta-pcs/src/c71_matrix/gemma/native/canonical_prove.rs": {
+        "sha256": "6ee6d0d6c5014775cacd0bc6bbdd8dbacdd08352562f1ad5dcdb36d64fbcab19",
+        "anchors": [
+          "rms.prove_rms(s, &self.recipes.rms, &read, fs, rows)"
+        ]
+      },
+      "rust/volta-pcs/src/c71_matrix/gemma/rms/caller.rs": {
+        "sha256": "0cf63d903bb220d1ba33ed10ed4a7aaf125a17d25bfa26e0c8a313b21bf8c59c",
+        "anchors": [
+          "gkr::prove(&gs, |i| frames.frame(i).unwrap(), fs, &mut rows)",
+          "CompactFrames::build",
+          "report[\"rms_parameters\"]"
+        ]
+      },
+      "rust/volta-pcs/src/c71_matrix/rms/gkr.rs": {
+        "sha256": "69c7b5e86629ff3985d2e0d1982e92d9c628b4ce7628ae0637dfb213cffcd4e3",
+        "anchors": [
+          "prove_impl(s, &get_frame, fs, correlations, true, None)",
+          "prove_sourcewise(s, get_frame, fs, correlations)",
+          "byte_function::prove_sourcewise(",
+          "source_cell_round::<true>",
+          "if !present[program_index]"
+        ]
+      },
+      "rust/volta-pcs/src/c71_matrix/byte_function.rs": {
+        "sha256": "762ee5f81befdb4a107c877faed9cfdeba9a83ae16d9e33570dfb926ef795dbb",
+        "anchors": [
+          "prove_sourcewise_impl(s, original, get_byte, fs, correlations, false, &[], 0)",
+          "range::prove_tree_sourcewise_custom("
+        ]
+      },
+      "cuda/c71_range_runtime.cpp": {
+        "sha256": "39344025e2dc006c57ce7d5325130c78759bbe2c86702123fcd116dfe4968bf2",
+        "anchors": [
+          "if(fence(c)) return -1;",
+          "if(c71_range_release(c,x) || (y && c71_range_release(c,y))) return -1;",
+          "return c71_range_release(c,id);",
+          "c->stats.h2d_bytes+=bytes;"
+        ]
+      }
+    },
+    "reused_records": [
+      {
+        "path": "benchmarks/results/c71-cuda-experiment-2026-10-07-868a3e8.json",
+        "sha256": "6b386e7e79753977b9d460259036d9be95dc91d8a9cdd102d4c2d5a64535a0d1",
+        "source_git_sha": "868a3e8147cf1b9083457093b3350e295e6e14c1",
+        "git_dirty": false,
+        "status": "INCOMPLETE",
+        "scope": "reused immutable evidence; not a new run or current canonical phase measurement"
+      },
+      {
+        "path": "benchmarks/results/c71-crypto-preparation-local-2026-10-08-04ab8ed1c4ce.json",
+        "sha256": "d5ec1032ef5b0fa8ca6ac4d1e5db2b78a279615a4a7609b9ce06af8f79d27598",
+        "source_git_sha": "04ab8ed1c4ce9c64d0ada7527eccfba14635134b",
+        "git_dirty": false,
+        "status": "PASS_LOCAL_STAGE_1",
+        "scope": "reused immutable evidence; not a new run or current canonical phase measurement"
+      },
+      {
+        "path": "benchmarks/results/c71-crypto-linear-local-2026-10-09-31280382f681.json",
+        "sha256": "2e198bc471aeb8bb813027af53ea19ecef9f4e96a4e00a003ad819c93d330f81",
+        "source_git_sha": "31280382f6814a929f7651cd2c31fdd73e668952",
+        "git_dirty": false,
+        "status": "PASS_LOCAL_RESIDENT_ORIGINAL_LINEAR_OWNER_CALLER_AND_REDUCED_FULL_WIRE",
+        "scope": "reused immutable evidence; not a new run or current canonical phase measurement"
+      },
+      {
+        "path": "benchmarks/results/c71-crypto-residual-query-local-2026-10-09-9a5da712a258.json",
+        "sha256": "e0d62f50441718de69db471e549456b11cf90c2687f90f84ea947aafcbd6b32c",
+        "source_git_sha": "9a5da712a2583be520fe342dfaa278c9651d60fc",
+        "git_dirty": false,
+        "status": "PASS_LOCAL_RESIDENT_S1_QUERY_E_OWNER_CALLER_AND_REDUCED_FULL_WHIR_WIRE",
+        "scope": "reused immutable evidence; not a new run or current canonical phase measurement",
+        "finite_full_WHIR_tests": [
+          {
+            "filter": "c71_b12_native_residual_query_full_whir_w_wire_fs_rng_and_original_mac",
+            "wall_s": 51.833768042735755,
+            "max_rss_bytes": 325767168,
+            "exit_code": 0,
+            "scope": "D10 whole parity fixture, RustO0 and fakeCUDA; includes CPUreference/verification"
+          },
+          {
+            "filter": "c71_b12_native_residual_query_full_whir_a_wire_fs_rng_and_original_mac",
+            "wall_s": 53.88488924596459,
+            "max_rss_bytes": 325861376,
+            "exit_code": 0,
+            "scope": "D10 whole parity fixture, RustO0 and fakeCUDA; includes CPUreference/verification"
+          }
+        ]
+      }
+    ],
+    "pinned_input_counts_provenance": "active specs and canonical getter metadata, bytes not sampled from private sources",
+    "W_installation": {
+      "equivalent_live_scans": 128,
+      "logical_live_i16_bytes": 61394690560,
+      "logical_read_bytes": 7858520391680,
+      "minimum_XOF_prescan_and_replay_bytes": 274877906944
+    },
+    "responses": [
+      {
+        "old_tokens": 0,
+        "A_live_bytes": 13154672538,
+        "full_A_scans_lower_bound": 581,
+        "lower_bound_scope": "initial commitment512 + singleton/S1/OOD/retention35 + linear34; excludes partial range/query/CPU-GKR requests",
+        "QK_plus_PV_causal_integer_products_per_full_A_scan": 12988416000,
+        "QK_plus_PV_products_at_full_scan_lower_bound": 7546269696000,
+        "initial_query_per_q2p20_batch": {
+          "q_eff": 1048576,
+          "main_root_blocks": 12644,
+          "main_remainder_kernel_launches": 417252,
+          "main_low_loader_launches": 12644,
+          "main_odd_fft_packing_D2D_bytes": 848524476416,
+          "pad_split_columns": 30,
+          "pad_extra_root_remainders": 30,
+          "pad_note": "when pads<=q native has no pad-Horner block; only shift+one remainder; CPU direct pad initialization",
+          "child_level_launches": 68608,
+          "final_matrix_D2H_bytes": 1073741824,
+          "public_query_arrays": {
+            "spectra_bytes": 704643072,
+            "twiddle_bytes": 67110400,
+            "spectrum_DFT_calls": 4194302,
+            "spectrum_DFT_cells": 88080384,
+            "product_tree_merges": 1048575,
+            "Newton_polynomial_products": 4194260,
+            "Newton_DFT_calls": 12582780,
+            "Newton_DFT_cells": 465567780,
+            "product_tree_DFT_calls": 3145725,
+            "product_tree_DFT_cells": 125829120,
+            "total_public_factor_DFT_calls": 19922807,
+            "total_public_factor_DFT_cells": 679477284,
+            "spectrum_upload_fences": 42,
+            "public_arrays_release_fences": 84,
+            "twiddle_generation_GPU_launches": 42,
+            "excluded": "DFT internal butterflies/cache, points/shift exponentiation, CPU staging/copies/allocator, packets/private pad/flag"
+          },
+          "excluded": "pad shift/add/load, original-window producer/gather, allocations/releases/fences, all kernel HBM loads/stores, CPU Merkle"
+        }
+      },
+      {
+        "old_tokens": 150,
+        "A_live_bytes": 14334320538,
+        "full_A_scans_lower_bound": 581,
+        "lower_bound_scope": "initial commitment512 + singleton/S1/OOD/retention35 + linear34; excludes partial range/query/CPU-GKR requests",
+        "QK_plus_PV_causal_integer_products_per_full_A_scan": 38793216000,
+        "QK_plus_PV_products_at_full_scan_lower_bound": 22538858496000,
+        "initial_query_per_q2p20_batch": {
+          "q_eff": 1048576,
+          "main_root_blocks": 13777,
+          "main_remainder_kernel_launches": 454641,
+          "main_low_loader_launches": 13777,
+          "main_odd_fft_packing_D2D_bytes": 924558819328,
+          "pad_split_columns": 22,
+          "pad_extra_root_remainders": 22,
+          "pad_note": "when pads<=q native has no pad-Horner block; only shift+one remainder; CPU direct pad initialization",
+          "child_level_launches": 68608,
+          "final_matrix_D2H_bytes": 1073741824,
+          "public_query_arrays": {
+            "spectra_bytes": 704643072,
+            "twiddle_bytes": 67110400,
+            "spectrum_DFT_calls": 4194302,
+            "spectrum_DFT_cells": 88080384,
+            "product_tree_merges": 1048575,
+            "Newton_polynomial_products": 4194260,
+            "Newton_DFT_calls": 12582780,
+            "Newton_DFT_cells": 465567780,
+            "product_tree_DFT_calls": 3145725,
+            "product_tree_DFT_cells": 125829120,
+            "total_public_factor_DFT_calls": 19922807,
+            "total_public_factor_DFT_cells": 679477284,
+            "spectrum_upload_fences": 42,
+            "public_arrays_release_fences": 84,
+            "twiddle_generation_GPU_launches": 42,
+            "excluded": "DFT internal butterflies/cache, points/shift exponentiation, CPU staging/copies/allocator, packets/private pad/flag"
+          },
+          "excluded": "pad shift/add/load, original-window producer/gather, allocations/releases/fences, all kernel HBM loads/stores, CPU Merkle"
+        }
+      },
+      {
+        "old_tokens": 300,
+        "A_live_bytes": 15513968538,
+        "full_A_scans_lower_bound": 581,
+        "lower_bound_scope": "initial commitment512 + singleton/S1/OOD/retention35 + linear34; excludes partial range/query/CPU-GKR requests",
+        "QK_plus_PV_causal_integer_products_per_full_A_scan": 64598016000,
+        "QK_plus_PV_products_at_full_scan_lower_bound": 37531447296000,
+        "initial_query_per_q2p20_batch": {
+          "q_eff": 1048576,
+          "main_root_blocks": 14911,
+          "main_remainder_kernel_launches": 492063,
+          "main_low_loader_launches": 14911,
+          "main_odd_fft_packing_D2D_bytes": 1000660271104,
+          "pad_split_columns": 13,
+          "pad_extra_root_remainders": 13,
+          "pad_note": "when pads<=q native has no pad-Horner block; only shift+one remainder; CPU direct pad initialization",
+          "child_level_launches": 68608,
+          "final_matrix_D2H_bytes": 1073741824,
+          "public_query_arrays": {
+            "spectra_bytes": 704643072,
+            "twiddle_bytes": 67110400,
+            "spectrum_DFT_calls": 4194302,
+            "spectrum_DFT_cells": 88080384,
+            "product_tree_merges": 1048575,
+            "Newton_polynomial_products": 4194260,
+            "Newton_DFT_calls": 12582780,
+            "Newton_DFT_cells": 465567780,
+            "product_tree_DFT_calls": 3145725,
+            "product_tree_DFT_cells": 125829120,
+            "total_public_factor_DFT_calls": 19922807,
+            "total_public_factor_DFT_cells": 679477284,
+            "spectrum_upload_fences": 42,
+            "public_arrays_release_fences": 84,
+            "twiddle_generation_GPU_launches": 42,
+            "excluded": "DFT internal butterflies/cache, points/shift exponentiation, CPU staging/copies/allocator, packets/private pad/flag"
+          },
+          "excluded": "pad shift/add/load, original-window producer/gather, allocations/releases/fences, all kernel HBM loads/stores, CPU Merkle"
+        }
+      }
+    ],
+    "nonrange_GKR_admitted_RMS": {
+      "status": "quantified partial source work on admitted Gamma; no instruction/time lower bound",
+      "Gamma_admission_verified_by_ledger_digest": true,
+      "ledger": "artifact/c7.1-pod/ledger-20261007T150200Z/ledger-attention.json",
+      "ledger_sha256": "478ef250fdb61db673b4d4efa86b3d3ce274081ca1e00653703bc6d8b0d74d7d",
+      "admission": "artifact/c7.1-pod/gamma-admission-20261007T155133Z/admission.json",
+      "admission_sha256": "a6d6abe28da2d50629e1e6790d7af76ab58002f0f21aab8b917dab16b0676259",
+      "recipes": "artifact/c7.1-pod/ledger-20261007T150200Z/recipes-attention.json",
+      "recipes_sha256": "2397d8ca1a2ad65c2df36057e3232e4c51f844a5e044b7cab8a95ed99ac7dc6d",
+      "recipe_digest": "d96b9350cfe9e47acda8cebaf02b895de66d55c525fa2c4463f20022dc3c1014",
+      "historical_ledger_flags_preserved": {
+        "calibrated": false,
+        "complete_work": false,
+        "complete_physical_peak": false,
+        "credit": false
+      },
+      "selected_route": "canonical_prove -> caller.prove_rms -> gkr.prove -> prove_sourcewise -> prove_impl(true,None); no patterns; canonical byte endpoint sourcewise",
+      "frame_callback_scope": "CompactFrames cache reads/replay; not additional complete A reconstructions",
+      "contexts": [
+        {
+          "old_tokens": 0,
+          "programs": 159,
+          "depth": 99,
+          "live_cells": 347937024,
+          "padded_cells": 536870912,
+          "cell_sumcheck_rounds": 2871,
+          "cell_phase": {
+            "boolean_fold_masks_active": 1251968571852288,
+            "cell_first_logical_frame_callbacks": 998927195904,
+            "cell_first_scalar_boolean_replay_gates": 48463257729999360,
+            "field_fold_additions_active_boolean_rows": 1252967499188011,
+            "field_fold_multiplications_active_boolean_rows": 998927335723,
+            "field_fold_subtractions_terminal": 139819,
+            "field_value_source_scalars": 1251968571852288,
+            "prefix_weight_multiplications": 21578989436928,
+            "prefix_weight_subtractions": 10789494718464,
+            "structural_selector_assigned_terms": 998927195904,
+            "structural_selector_callbacks": 1541356388352
+          },
+          "gate_iterations_after_public_support_pruning": {
+            "all": 218471570851765,
+            "and": 54771736018896,
+            "copy": 111712208119301,
+            "xor": 51987626713568
+          },
+          "coefficient_core_Fp3": {
+            "Fp3_mul": 972294988954860,
+            "Fp3_add": 911955034325308,
+            "Fp3_sub": 429465359276200,
+            "Fp3_neg": 51987626713568
+          },
+          "byte_endpoint_children_source_work": {
+            "cubic_additions": 39427799777136,
+            "cubic_multiplications": 59141699665704,
+            "cubic_subtractions": 10952166604760,
+            "equality_additions": 4380866641612,
+            "equality_multiplications": 346363342617732,
+            "equality_subtractions": 175372104629672,
+            "fold_additions": 350744209260544,
+            "fold_multiplications": 350744209260544,
+            "fold_subtractions": 0,
+            "getter_calls": 87686052315136,
+            "getter_scalar_values": 350744209260544,
+            "prefix_terms": 87686052315136
+          },
+          "compact_frames_named_payload_and_metadata_bytes": 2023511878,
+          "missing": [
+            "index/terminal/authentication work",
+            "full proof and allocator capacity",
+            "original frame getter work",
+            "measured fused kernel service rate"
+          ]
+        },
+        {
+          "old_tokens": 150,
+          "programs": 159,
+          "depth": 99,
+          "live_cells": 347937024,
+          "padded_cells": 536870912,
+          "cell_sumcheck_rounds": 2871,
+          "cell_phase": {
+            "boolean_fold_masks_active": 1251968571852288,
+            "cell_first_logical_frame_callbacks": 998927195904,
+            "cell_first_scalar_boolean_replay_gates": 48463257729999360,
+            "field_fold_additions_active_boolean_rows": 1252967499188011,
+            "field_fold_multiplications_active_boolean_rows": 998927335723,
+            "field_fold_subtractions_terminal": 139819,
+            "field_value_source_scalars": 1251968571852288,
+            "prefix_weight_multiplications": 21578989436928,
+            "prefix_weight_subtractions": 10789494718464,
+            "structural_selector_assigned_terms": 998927195904,
+            "structural_selector_callbacks": 1541356388352
+          },
+          "gate_iterations_after_public_support_pruning": {
+            "all": 218471570851765,
+            "and": 54771736018896,
+            "copy": 111712208119301,
+            "xor": 51987626713568
+          },
+          "coefficient_core_Fp3": {
+            "Fp3_mul": 972294988954860,
+            "Fp3_add": 911955034325308,
+            "Fp3_sub": 429465359276200,
+            "Fp3_neg": 51987626713568
+          },
+          "byte_endpoint_children_source_work": {
+            "cubic_additions": 39427799777136,
+            "cubic_multiplications": 59141699665704,
+            "cubic_subtractions": 10952166604760,
+            "equality_additions": 4380866641612,
+            "equality_multiplications": 346363342617732,
+            "equality_subtractions": 175372104629672,
+            "fold_additions": 350744209260544,
+            "fold_multiplications": 350744209260544,
+            "fold_subtractions": 0,
+            "getter_calls": 87686052315136,
+            "getter_scalar_values": 350744209260544,
+            "prefix_terms": 87686052315136
+          },
+          "compact_frames_named_payload_and_metadata_bytes": 2023511878,
+          "missing": [
+            "index/terminal/authentication work",
+            "full proof and allocator capacity",
+            "original frame getter work",
+            "measured fused kernel service rate"
+          ]
+        },
+        {
+          "old_tokens": 300,
+          "programs": 159,
+          "depth": 99,
+          "live_cells": 347937024,
+          "padded_cells": 536870912,
+          "cell_sumcheck_rounds": 2871,
+          "cell_phase": {
+            "boolean_fold_masks_active": 1251968571852288,
+            "cell_first_logical_frame_callbacks": 998927195904,
+            "cell_first_scalar_boolean_replay_gates": 48463257729999360,
+            "field_fold_additions_active_boolean_rows": 1252967499188011,
+            "field_fold_multiplications_active_boolean_rows": 998927335723,
+            "field_fold_subtractions_terminal": 139819,
+            "field_value_source_scalars": 1251968571852288,
+            "prefix_weight_multiplications": 21578989436928,
+            "prefix_weight_subtractions": 10789494718464,
+            "structural_selector_assigned_terms": 998927195904,
+            "structural_selector_callbacks": 1541356388352
+          },
+          "gate_iterations_after_public_support_pruning": {
+            "all": 218471570851765,
+            "and": 54771736018896,
+            "copy": 111712208119301,
+            "xor": 51987626713568
+          },
+          "coefficient_core_Fp3": {
+            "Fp3_mul": 972294988954860,
+            "Fp3_add": 911955034325308,
+            "Fp3_sub": 429465359276200,
+            "Fp3_neg": 51987626713568
+          },
+          "byte_endpoint_children_source_work": {
+            "cubic_additions": 39427799777136,
+            "cubic_multiplications": 59141699665704,
+            "cubic_subtractions": 10952166604760,
+            "equality_additions": 4380866641612,
+            "equality_multiplications": 346363342617732,
+            "equality_subtractions": 175372104629672,
+            "fold_additions": 350744209260544,
+            "fold_multiplications": 350744209260544,
+            "fold_subtractions": 0,
+            "getter_calls": 87686052315136,
+            "getter_scalar_values": 350744209260544,
+            "prefix_terms": 87686052315136
+          },
+          "compact_frames_named_payload_and_metadata_bytes": 2023511878,
+          "missing": [
+            "index/terminal/authentication work",
+            "full proof and allocator capacity",
+            "original frame getter work",
+            "measured fused kernel service rate"
+          ]
+        }
+      ],
+      "excluded_other_nonrange_families": [
+        "RMS statistic/P0",
+        "RNE/tableRNE",
+        "gate/Rope/QK/PV claims",
+        "EXP30 maximum/lookup/ratio pattern branch",
+        "GELU/softcap lookup",
+        "index/terminal/MAC/FS/codec/verifier"
+      ],
+      "target_status": "structural dominant CPU work remains open; H100 profiling alone does not close or accelerate this route",
+      "minimum_native_candidate": "reuse common owner, MAC-u3=2 arithmetic/reduction and bounded CompactFrames chunks; add RMS Boolean replay+four-coefficient consumer and byte-LUT consumer, preserving index/MAC/FS order and joint cap. No existing drop-in kernel; no candidate selected or performance inferred",
+      "new_campaign_requirement": "time and count selected RMS cell/byte consumers separately with current Gamma, exact coefficient/wire/MAC parity, both-role CPU profiles and complete scratch/caches; remaining named families need their own counters before complete work/time claim"
+    },
+    "opening": {
+      "protocol_queries": 512,
+      "distinct_leaves": true,
+      "unique_subtrees": "U = len(set(index//4096))",
+      "batch_formula": "at most256 subtrees/batch; q_eff=nextpow2(4096*subtrees_in_this_batch)",
+      "maximum_512_subtree_batches": [
+        {
+          "subtrees": 256,
+          "rows": 1048576,
+          "q_eff": 1048576
+        },
+        {
+          "subtrees": 256,
+          "rows": 1048576,
+          "q_eff": 1048576
+        }
+      ],
+      "small_tail_257_subtrees": [
+        {
+          "subtrees": 256,
+          "rows": 1048576,
+          "q_eff": 1048576
+        },
+        {
+          "subtrees": 1,
+          "rows": 4096,
+          "q_eff": 4096
+        }
+      ],
+      "CPU_Merkle_compressions_per_256_subtree_batch": {
+        "initial": 20971008,
+        "extension": 5242368
+      },
+      "caution": "q512 direct evaluation is not sufficient: Merkle regeneration requires all4096 rows/subtree; costs below are per batch and no claimU512 is measured"
+    },
+    "initial_W_query_per_q2p20_batch": {
+      "q_eff": 1048576,
+      "main_root_blocks": 29390,
+      "main_remainder_kernel_launches": 969870,
+      "main_low_loader_launches": 29390,
+      "main_odd_fft_packing_D2D_bytes": 1972329512960,
+      "pad_split_columns": 14,
+      "pad_extra_root_remainders": 14,
+      "pad_note": "when pads<=q native has no pad-Horner block; only shift+one remainder; CPU direct pad initialization",
+      "child_level_launches": 68608,
+      "final_matrix_D2H_bytes": 1073741824,
+      "public_query_arrays": {
+        "spectra_bytes": 704643072,
+        "twiddle_bytes": 67110400,
+        "spectrum_DFT_calls": 4194302,
+        "spectrum_DFT_cells": 88080384,
+        "product_tree_merges": 1048575,
+        "Newton_polynomial_products": 4194260,
+        "Newton_DFT_calls": 12582780,
+        "Newton_DFT_cells": 465567780,
+        "product_tree_DFT_calls": 3145725,
+        "product_tree_DFT_cells": 125829120,
+        "total_public_factor_DFT_calls": 19922807,
+        "total_public_factor_DFT_cells": 679477284,
+        "spectrum_upload_fences": 42,
+        "public_arrays_release_fences": 84,
+        "twiddle_generation_GPU_launches": 42,
+        "excluded": "DFT internal butterflies/cache, points/shift exponentiation, CPU staging/copies/allocator, packets/private pad/flag"
+      },
+      "excluded": "pad shift/add/load, original-window producer/gather, allocations/releases/fences, all kernel HBM loads/stores, CPU Merkle",
+      "execution": "resident original W with shared GPU remainder route"
+    },
+    "S1_query_per_q2p20_batch": {
+      "W": {
+        "blocks_per_E_column": 65,
+        "source_loads_three_limbs": 260,
+        "root_remainder_calls": 768,
+        "first_block_D2D_bytes": 100663296,
+        "root_remainder_kernel_launches": 25344,
+        "odd_fft_packing_D2D_bytes": 51539607552,
+        "child_level_launches": 6432,
+        "final_matrix_D2H_bytes": 100663312,
+        "minimum_query_begin_and_finish_fences": 8,
+        "host_publication_payload_bytes": 150994944,
+        "named_device_arrays_bytes": 864028160,
+        "excluded": "EQ/pads metadata and flag; all producers/kernels HBM, release fences, factor construction CPU"
+      },
+      "A": {
+        "blocks_per_E_column": 33,
+        "source_loads_three_limbs": 132,
+        "root_remainder_calls": 384,
+        "first_block_D2D_bytes": 100663296,
+        "root_remainder_kernel_launches": 12672,
+        "odd_fft_packing_D2D_bytes": 25769803776,
+        "child_level_launches": 6432,
+        "final_matrix_D2H_bytes": 100663312,
+        "minimum_query_begin_and_finish_fences": 8,
+        "host_publication_payload_bytes": 150994944,
+        "named_device_arrays_bytes": 864028160,
+        "excluded": "EQ/pads metadata and flag; all producers/kernels HBM, release fences, factor construction CPU"
+      }
+    },
+    "range": {
+      "W": {
+        "virtual_full_source_passes": 29,
+        "virtual_window_requests": 7424,
+        "logical_requested_bytes": 1992864825344,
+        "coefficient_rounds": 595,
+        "coefficient_D2H_bytes": 57120,
+        "coefficient_dependency_fences": 595,
+        "terminal_D2H_bytes": 3360,
+        "root_D2H_bytes": 48,
+        "H_coefficient_rounds": 55,
+        "coefficient_scratch_release_fences": 865,
+        "coefficient_API_total_fences": 1460,
+        "root_and_terminal_download_fences": 36,
+        "canopy_and_retained_children_release_fences": 36,
+        "Gram_bucket_fold_and_final_release_fences": 72,
+        "source_window_release_fences": 29,
+        "W_signed_upload_fences": 7424,
+        "known_consumer_success_path_fences": 9057,
+        "excluded": "resident A producer/byte-seal flags/fences, numeric staging, allocation/close, kernel HBM and partial A replay costs"
+      },
+      "A": {
+        "virtual_full_source_passes": 26,
+        "virtual_window_requests": 416,
+        "logical_requested_bytes": 446676598784,
+        "coefficient_rounds": 561,
+        "coefficient_D2H_bytes": 53856,
+        "coefficient_dependency_fences": 561,
+        "terminal_D2H_bytes": 3264,
+        "root_D2H_bytes": 48,
+        "H_coefficient_rounds": 45,
+        "coefficient_scratch_release_fences": 816,
+        "coefficient_API_total_fences": 1377,
+        "root_and_terminal_download_fences": 35,
+        "canopy_and_retained_children_release_fences": 35,
+        "Gram_bucket_fold_and_final_release_fences": 60,
+        "source_window_release_fences": 416,
+        "W_signed_upload_fences": 0,
+        "known_consumer_success_path_fences": 1923,
+        "excluded": "resident A producer/byte-seal flags/fences, numeric staging, allocation/close, kernel HBM and partial A replay costs"
+      }
+    },
+    "real_AES_setup": {
+      "main": {
+        "seed_rows": 17553,
+        "blinded_rows": 17559,
+        "height": 15,
+        "both_roles_AES_field_outputs": 20227968,
+        "both_roles_AES256_key_schedules": 303419520,
+        "both_roles_AES256_block_encryptions": 1213678080,
+        "both_roles_wire_bytes": 54911851,
+        "excluded": "MR19 group operations, SHAKE samplers, compression/seal, Dory/cGGM/equality expansion, transport/journal"
+      },
+      "opposite_equality": {
+        "seed_rows": 2025,
+        "blinded_rows": 2031,
+        "height": 11,
+        "both_roles_AES_field_outputs": 2339712,
+        "both_roles_AES256_key_schedules": 25736832,
+        "both_roles_AES256_block_encryptions": 102947328,
+        "both_roles_wire_bytes": 6464491,
+        "excluded": "MR19 group operations, SHAKE samplers, compression/seal, Dory/cGGM/equality expansion, transport/journal"
+      },
+      "note": "exact current AES-COPE path work; not old SHAKE candidate cGGM credited as AES"
+    },
+    "wire_body_bounds_bytes": {
+      "O0": [
+        47841180,
+        65053244
+      ],
+      "O150": [
+        54868318,
+        78945726
+      ],
+      "O300": [
+        61797384,
+        92723304
+      ]
+    },
+    "phase_measurement_status": {
+      "installation": null,
+      "setup": null,
+      "inference": null,
+      "proof": null,
+      "verification": null
+    },
+    "phase_note": "canonical diagnostic stopped during old W commitment; reduced test wall includes oracles, fake driver/compiler and often verifier, so cannot fill canonical phase times",
+    "target_obstacle": "response wire lower bounds exceed40MB after first response; cannot claim that target under unchanged protocol",
+    "local_plan": [
+      {
+        "filter": "c71_b12_query_factors_balanced_product_and_newton_match_direct_oracle",
+        "component": "public products/Newton q1..1024",
+        "phase": "proof",
+        "timing_scope": "whole parity test, not isolated production factor time"
+      },
+      {
+        "filter": "c71_b12_query_small_remainders_exact_fp3_and_cost",
+        "component": "direct tiny vs former four FFT, same binary128Ki/cap iterations",
+        "phase": "proof",
+        "timing_scope": "C71_QUERY_SMALL_REMAINDERS internal timing marker, finite CPU only"
+      },
+      {
+        "filter": "c71_b12_windowed_native_shared_resident_transcript_original_mac",
+        "component": "range D10 live731, original MAC and owner stats",
+        "phase": "proof",
+        "timing_scope": "simulated driver algebra/lifecycle; no CUDA timing"
+      },
+      {
+        "filter": "c71_seed6_native_full_o0_proof_promotes_same_receipt_after_role_journals",
+        "component": "real AESSeed6 reduced setup/proof/verify/journal",
+        "phase": "setup+proof+verification",
+        "timing_scope": "whole reduced2role test; isolated phase markers unavailable, report incomplete"
+      },
+      {
+        "filter": "c71_b12_native_canonical_wire_body_geometry",
+        "component": "pinned metadata body lower/upper, no valid certificate",
+        "phase": "proof+verification codec",
+        "timing_scope": "syntactic fixture only"
+      }
+    ],
+    "hardware_matrix": [
+      {
+        "component": "W initial commitment",
+        "compare": "ordinary exacti128 vs Tensor limb16 on same32coset/8column owner",
+        "shapes": "reduced ragged signed endpoints,pads,then pinned mapping boundedband",
+        "accept": "exact values/root/salts/transcript + joint memory, equivalent128scans; same process/source/compiler; no selection from host parity alone"
+      },
+      {
+        "component": "QK/PV",
+        "compare": "scalar exact vs MMA exact with causal prefix/common block+scalar tail",
+        "shapes": "O0/150/300 rows150,heads32,width256/512; also inference1row and partial replay selectedtargets",
+        "accept": "all rawi48/RNE bytes, INT16MIN invalid endpoints, nofuturecolumns, same reconstructedAcount; time entire producer scans separately"
+      },
+      {
+        "component": "initial and extension query",
+        "compare": "current natural oddFFT packing vs bounded optimized FFT/kernelfusion candidate only after actualprofile",
+        "shapes": "512WHIR leaves expanded4096subtrees; qeff4096,512Ki,1Mi and secondbatch; W/A initial+S1",
+        "accept": "exact rows/order/duplicates/pads/root/MAC+sameU/cut/batches; accountfactorCPU and1GiB initialD2H/batch, D2D and actualkernelHBM separately"
+      },
+      {
+        "component": "synchronization/CUDA Graph",
+        "compare": "only repeated public-shape within fixed consumer round or remainder block",
+        "gate": "profile launch CPUtime and fences; no Graph crosses FS challenge, outputflag, NoPeek coin phase or terminalcleanup; capture/workspace charged"
+      },
+      {
+        "component": "TMA/fusion",
+        "compare": "only if kernel profile shows memory/reload costs in W limbtiles or QK/PV sharedtile",
+        "gate": "exactinteger equivalence + shared/register/spill/TMA descriptor accounting; no protocol/work reduction claimed"
+      },
+      {
+        "component": "CPU residual",
+        "compare": "publicfactors, realAESsetup+PCG consume, nonrangeGKR/MAC, codec, verifier, journal each timed separately",
+        "gate": "fresh one-use correlations/journals; \u0393 reuse identity verified; CPUworkcounter profilesnotfakeGPUclaim"
+      }
+    ]
+  },
+  "accounting": {
+    "initial_W_query_selected_device_named_bytes": 857338880,
+    "initial_W_query_device_formula": "initial A device1125647872 minus256MiB original byte window plus126464B sealed W tiles; no additional buffer or input payload transfer",
+    "W_query_API_pointer_added_bytes": 8,
+    "common_owner_host_bytes": 42088,
+    "CUDA_stats_bytes": 152,
+    "W_loader_grid_max_CTAs": 4096,
+    "W_loader_threads": 256,
+    "W_loader_shared_bytes": 0,
+    "W_loader_launches_per_root_block": 1,
+    "W_loader_extra_temporary_bytes": 0,
+    "canonical_Writer_capacity_bytes": 100663296,
+    "Writer_growth_reallocations_after_begin": 0,
+    "A_initial_hash_numeric_persistent_bytes": 591277824,
+    "A_replay_envelope_bytes": 785789696,
+    "A_numeric_retired_before_hash_bytes": 194511872,
+    "joint_admitted": false,
+    "scope": "named payloads only; no total joint/physical admission. Complete11class inventory remains open."
+  },
+  "management_audit": {
+    "subagents_read_only_and_disjoint": true,
+    "root_builds_and_tests_serial": true,
+    "real_rework": "added4096 source frontier then removed after pinned metadata required52883; fragmented helper/owner/caller checkpoints and19 active-doc commits/~30h",
+    "convergence_rule": "one current implementation+test+residual/resource record; reconcile five active docs once, then close remaining precise gaps rather than open speculative optimization tracks"
+  },
+  "remaining": [
+    "complete joint capacity/old+new bounds for all11 inventory classes",
+    "canonical RMS huge repeated Boolean/field work and byte endpoint remain CPU; no optimized native consumer selected",
+    "other nonrange families/PCG expansion/MAC/codec/verifier and original producer service still need complete work/time profiles",
+    "public factor CPU construction, odd FFT packing, Merkle regeneration and W range uploads remain quantified residuals",
+    "no complete installation/setup/inference/proof/verification times on optimized route; require later authorized hardware"
+  ],
+  "artifacts": [
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-symbol-clean-20261009.log",
+      "bytes": 218,
+      "sha256": "ea131831f414754ed1597b9816dab90052c0a340a05a451ec27fb11b0f88d83d"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-symbol-clean-20261009.json",
+      "bytes": 499,
+      "sha256": "2792394db58add440e92a55db086e58abaa5ce8c709dbaefe970820e3fd447b4"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-w-horner-clean-20261009.log",
+      "bytes": 4073,
+      "sha256": "70e7735e04102e30a1561e47bc35fa4f10a9d1a557b8764aa6d9a8098f2af49f"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-w-horner-clean-20261009.json",
+      "bytes": 527,
+      "sha256": "08571f1791b02a5fb7649f843556402cf2e5d04a78593bcc6a182ca913f7a79c"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-w-full-clean-20261009.log",
+      "bytes": 3545,
+      "sha256": "b816423d561041a974fcb3ad4857b2f6b8c98d67e953f34b038172a439c31740"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-w-full-clean-20261009.json",
+      "bytes": 535,
+      "sha256": "713c759052ceb8fc6add3779a5daed296234677ef3648f8362347d6b8b14f1e3"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-a-horner-clean-20261009.log",
+      "bytes": 18734,
+      "sha256": "4abf89704984eccfd81085600abd371baae061c8bd0a7606bb02d1d58c5ae2d0"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-a-horner-clean-20261009.json",
+      "bytes": 516,
+      "sha256": "c7dc7755d888058935435ab70ecbea5ddafa4a3dea27749df73f0981f1046fbf"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-a-full-clean-20261009.log",
+      "bytes": 3760,
+      "sha256": "ca8ec77a6eb2a38a3202b67fb91321abd521f3dbd7052484b15daaf3a90aed3a"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-a-full-clean-20261009.json",
+      "bytes": 520,
+      "sha256": "3a28e56a1bf724340eaec63915ce6f167272cc92a6e74fef5047e6564858ad57"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-a-hash-lifetime-clean-20261009.log",
+      "bytes": 3494,
+      "sha256": "a62eb7f13b3903fccf98504b9be54632b9d79cd36ebfc1a4b1a4424cedd15387"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-a-hash-lifetime-clean-20261009.json",
+      "bytes": 518,
+      "sha256": "b51ddc7f090b04eacf7944f98f07a8576dd10b6dc2f1c2a4e0600c556e91e9e6"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-a-replay-lifetime-clean-20261009.log",
+      "bytes": 622,
+      "sha256": "7932dd2629a67ad058a43d2056b7c0f7967e4e87d184ad11ccfae29afb7f2b9e"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-a-replay-lifetime-clean-20261009.json",
+      "bytes": 537,
+      "sha256": "3965de894d2de4b44b33538010c4b6b394a1e0ad8a13b75214d7c88502d31b82"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-c-clean-20261009.log",
+      "bytes": 2887,
+      "sha256": "7c07ca1cdc281ca11d5c1569847224cec0ae0e295c9d661c68c9cc6c186cb412"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-c-clean-20261009.json",
+      "bytes": 533,
+      "sha256": "90dcf6483830a9efa615cc205b1f87d17845db88083c1a10955f09a64cbc464b"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-residual-local-01-clean-20261009.log",
+      "bytes": 228,
+      "sha256": "d3ede84ac16e0d700ef976fc9984541afb51d3db8db50e11331f12b716fc8823"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-residual-local-01-clean-20261009.json",
+      "bytes": 512,
+      "sha256": "5072a42cfe7f4a47e25c2766e17f12d89707fafb2da0e1da38126089c86aaa44"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-residual-local-02-clean-20261009.log",
+      "bytes": 799,
+      "sha256": "1f3ae3cc52f3d8ccf85a39087553edc35c2afcd08761dea6b9be9d6e438c3dbb"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-residual-local-02-clean-20261009.json",
+      "bytes": 517,
+      "sha256": "cd7d9be1ae47f56c1f7ed00e51a5b116b9eeebbf52b57d97ebd8852a64f7c353"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-residual-local-03-clean-20261009.log",
+      "bytes": 743,
+      "sha256": "eed8787eaa64408c91d9f209b6c9b8e86dd8d913f748d124880c81ef96c1cb96"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-residual-local-03-clean-20261009.json",
+      "bytes": 512,
+      "sha256": "80845681ca133f28475831e43b58aa081fa994072597b19e1d53c9c88ce604bf"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-residual-local-04-clean-20261009.log",
+      "bytes": 232,
+      "sha256": "00679e4bd753cc9292981b91377863235de403f7f47a7c07d1bc3c010de62f20"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-residual-local-04-clean-20261009.json",
+      "bytes": 547,
+      "sha256": "f99de48763281ab19059a01961c32e5f51b84630ffcf4c4d074c799df952daa1"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-residual-local-06-clean-20261009.log",
+      "bytes": 221,
+      "sha256": "8791cfff1a2204b55f414bc9fc502b045defc94fab8dfff52e2bbe6f39c3b12b"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-residual-local-06-clean-20261009.json",
+      "bytes": 503,
+      "sha256": "f6d4d720abf603a9971099c88d30f647221053219e1208d3fc68bc3e511533a8"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-canonical-writer-parity-20261009.log",
+      "bytes": 460,
+      "sha256": "b4b195b9dc7a315b73db945803d3fcd868dbbc28d7d78dee14bf7fbb59a6d04e"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-canonical-writer-parity-20261009.json",
+      "bytes": 509,
+      "sha256": "a5db1cfdf08b8813cfcb2f7f832506c8ad971c8284dcec181e14c0b347d7f219"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-canonical-writer-boundary-20261009.log",
+      "bytes": 223,
+      "sha256": "397c5eaa7f3c1e7f66653609f60673004f90d97469b152f21180f01fd93df42a"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-canonical-writer-boundary-20261009.json",
+      "bytes": 514,
+      "sha256": "6a26832dd9c18f83fcefd2a93cbb9edbad2da1f5bff4cbf4833f5ca17b2241dd"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-residual-profile-admitted-clean-20261009.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-residual-profile-admitted-clean-20261009.json",
+      "bytes": 472,
+      "sha256": "97470fcefdcbed30efc5ed2599febcacdb6fa0f60d1b3f2d2330d370ceadd696"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-profile-clean-20261009.log",
+      "bytes": 611,
+      "sha256": "d2ff2ba2599e50381b0b99afe66d1a595b2ed06263623dac07dfb4baf2bd4c97"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-profile-clean-20261009.json",
+      "bytes": 368,
+      "sha256": "f5a6b82352a228a31591d193b3e165d418cd2a62df619aa964b12a8e88cde196"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-residual-local-05-clean-20261009.log",
+      "bytes": 837,
+      "sha256": "6269fa1e296c14e88fc252a2b396d76805a948b9ac4cc705b26411d1168403c8"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-residual-local-05-clean-20261009.json",
+      "bytes": 517,
+      "sha256": "7220a0e63ce1f780df2d1f361d420bf5a9227876196f7f480ef8def0ea94a587"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-residual-local-05-clean02-20261009.log",
+      "bytes": 154,
+      "sha256": "3536eccc4e44eac8295a62758d6a8ac46ae99fe177e2a9afaf2ae6ab8ffb95b5"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-residual-local-05-clean02-20261009.json",
+      "bytes": 524,
+      "sha256": "0058976d70e1ab97ca61f7dc5bc2696cbbda0f633aebfe97de06a9996b0e967f"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-build-pre01-20261009.log",
+      "bytes": 14061,
+      "sha256": "f186b14a8937cdaf97482aebec1890faa7696a2ad570050f13d95b97df120d80"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-build-pre01-20261009.json",
+      "bytes": 2075,
+      "sha256": "e0ca1c9311f7e4b5a868d53f9dfb3eb3b084dbd5a4d1791ed561ef4c8c4395bb"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-canonical-writer-build-20261009.log",
+      "bytes": 14061,
+      "sha256": "225526aeb45993e04b787db99bb0c9cffa7eda98b741edd654f8a505160a79ba"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-canonical-writer-build-20261009.json",
+      "bytes": 2074,
+      "sha256": "61c74fedf2941bbcdff81f731f517a353612d258debcf50c017e91e7f75d7b45"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-clean-suite-20261009.py",
+      "bytes": 2088,
+      "sha256": "8079b78a40cd27fea761ddf07d184b8e7ad8bc203a4d7b86f2f846a57a866c42"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-initial-w-query-clean-suite-attestation-20261009.json",
+      "bytes": 406,
+      "sha256": "7711806e3341729a06b618a2f069d99963bec99ec5a28f78cebcceb906bda973"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-residual-local-suite-20261009.py",
+      "bytes": 1756,
+      "sha256": "7b9a15c0003d86a6e7ee694bf38d8ab542cb6c47bc1199d4c9230b817a784c45"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-residual-local-suite-attestation-20261009.json",
+      "bytes": 470,
+      "sha256": "6c30f0cc8d78e99907ba0d52522efc6ce719fd7a56cee632cbe30837c0ccb026"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-residual-profile-admitted-output-20261009.json",
+      "bytes": 33538,
+      "sha256": "499967582e908586a8c8ce721e708932c1784e6fd8cfe5505a895c4c2c07a34a"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/c71-goal-local-meta-audit-20261009.md",
+      "bytes": 3691,
+      "sha256": "416054267c01120c8451e44f2a8b3d881e9253b52db90faaa2b12367f6f050e2"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/profile-amend.patch",
+      "bytes": 11254,
+      "sha256": "4685577eecbeb006b8b11fb79d6b598d59f69c32f95aab77373b0a42a1e6f1a8"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-query-profile-local-2026-10-09-e55e1a7b4ad0-logs/canonical-writer-capacity.patch",
+      "bytes": 2629,
+      "sha256": "c8d419cf1ccd2bf06ffa4092978272057f0dfbfedbc3ea811e29fb6380b3e371"
+    }
+  ]
+}

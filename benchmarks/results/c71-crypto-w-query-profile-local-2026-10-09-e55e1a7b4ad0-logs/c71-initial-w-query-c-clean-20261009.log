@@ -1,0 +1,16 @@
+C71_PCS_QUERY_WEIGHT_HOST {"column_cases":992,"loader_outputs":893556,"expected_W_reads":328040,"pad_outputs":399520,"zero_outputs":165964,"horner_checks":3968,"loader_blocks":4269,"geometry_rejections":25,"named_fixture_heap_upper_bytes":2926672,"host_component_s":0.203997411,"max_low_payload_bytes":8388608,"loader_extra_device_bytes":0,"loader_shared_bytes":0,"loader_launches_per_block":1,"D35_sparse_geometry":true,"gpu_execution":false,"integrated":false,"credit":false}
+..C71_PCS_RESIDUAL_OWNER_COMPONENT {"singleton":1,"original_retention":1,"ood_original":1,"ood_resident":3,"paired_folds":2,"bounded_consuming_reads":3,"gpu_execution":false,"credit":false}
+C71_PCS_RESIDUAL_CONTRACT_OWNER {"cases":8,"W_bands_one_scan":true,"resident_virtual_bits":2,"consumer_d2h_bytes":52,"public_tail_reads":0,"gpu_execution":false,"credit":false}
+C71_PCS_RESIDUAL_OWNER_FAILURE {"terminal_rejections":45,"private_read_d2h_bytes":0,"publication_after_free":true,"gpu_execution":false,"credit":false}
+C71_PCS_RESIDUAL_CONTRACT_FAILURE {"terminal_rejections":19,"gpu_execution":false,"credit":false}
+C71_PCS_SHORT_OWNER {"two_coset_groups":16,"private_salts":1024,"ring_words_checked":3072,"odd_fft_log_rows":3,"input_d2h_bytes":0,"gpu_execution":false,"credit":false}
+C71_PCS_SHORT_OWNER_FAILURE {"terminal_rejections":13,"old_groups_large_rows_rejected":2,"gpu_execution":false,"credit":false}
+C71_PCS_QUERY_E_OWNER {"column_cases":80,"query_rows":448,"original_or_plane_visits":400,"root_blocks":204,"private_limb_loads":3,"fences_per_column":2,"input_d2h_bytes":0,"W_scans_per_batch":1,"gpu_execution":false,"credit":false}
+C71_PCS_QUERY_E_FAILURE {"terminal_rejections":56,"forbidden_read_d2h_bytes":0,"publication_after_free":true,"root_columns_are_not_queries":true,"gpu_execution":false,"credit":false}
+C71_PCS_QUERY_E_WEIGHT_FAILURE {"terminal_rejections":2,"pad_only_launches":1,"real_work_launches":2,"accepted_init_drained":true,"gpu_execution":false,"credit":false}
+C71_PCS_TRUSTED_SOURCE_PARTITION {"reversed_ragged_cases":1,"trusted_row_coverage":true,"standalone_byte_count_proves_uniqueness":false,"gpu_execution":false,"credit":false}
+C71_PCS_QUERY_W_INITIAL_OWNER {"column_cases":160,"query_rows":896,"root_blocks":1672,"original_visits":640,"W_scans_per_batch":1,"loader_launches_per_block":1,"loader_extra_temp_bytes":0,"block_input_transfer_bytes":0,"fences_per_column":1,"D35_sparse_geometry":true,"None_zero_unchanged":true,"gpu_execution":false,"credit":false}
+C71_PCS_QUERY_W_INITIAL_FAILURE {"terminal_rejections":34,"input_d2h_bytes":0,"unavailable_GPU_fail_closed":true,"gpu_execution":false,"credit":false}
+C71_RANGE_OWNER_HOST {"rejections":13,"dense_rejections":23,"byte_rejections":19,"pointwise_rejections":14,"embedding_rejections":17,"dense_batches":2,"dense_row_views":1,"max_arena_bytes":262144,"gpu_execution":false,"credit":false}
+.
+3 passed in 15.21s

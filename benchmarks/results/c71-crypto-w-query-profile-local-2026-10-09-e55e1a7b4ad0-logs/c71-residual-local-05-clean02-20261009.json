@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+    "c71_seed6_native_full_o0_proof_promotes_same_receipt_after_role_journals",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 124,
+  "wall_s": 60.01786501100287,
+  "max_rss_bytes": 142766080,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 60.639952,
+  "system_s": 0.206336,
+  "log": "/tmp/c71-residual-local-05-clean02-20261009.log"
+}

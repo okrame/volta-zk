@@ -1,0 +1,18 @@
+{
+  "command": [
+    "python3",
+    "scripts/c71_residual_profile.py",
+    "--output",
+    "/tmp/c71-residual-profile-admitted-output-20261009.json"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 0.1505130073055625,
+  "max_rss_bytes": 40923136,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 0.09847299999999999,
+  "system_s": 0.053273999999999995,
+  "log": "/tmp/c71-residual-profile-admitted-clean-20261009.log"
+}

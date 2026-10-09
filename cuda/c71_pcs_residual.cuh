@@ -37,6 +37,7 @@ static_assert(sizeof(Planes)==24 && sizeof(ConstPlanes)==24 && sizeof(Output)==4
 constexpr unsigned threads=256, max_blocks=8192, singleton_capacity=128;
 constexpr size_t singleton_shared_bytes=singleton_capacity*sizeof(E);
 constexpr size_t ood_shared_bytes=threads*sizeof(E);
+constexpr size_t contract_shared_bytes=threads*2*sizeof(E);
 
 C71_RESIDUAL_HD inline bool canonical(E x) { return x.c0<P && x.c1<P && x.c2<P; }
 C71_RESIDUAL_HD inline bool zero(E x) { return !(x.c0|x.c1|x.c2); }
@@ -151,6 +152,13 @@ C71_RESIDUAL_HD inline E original_contribution(uint64_t index,uint64_t base,Shap
     const Chunk* chunks,const E* tables) {
     return base_mul(lookup(index>>s.remaining,chunks,s.equality.chunks,tables),base);
 }
+C71_RESIDUAL_HD inline E retained_contribution(uint64_t index,E original,Shape s,
+    const Chunk* chunks,const E* tables) {
+    return mul(lookup(index>>s.remaining,chunks,s.equality.chunks,tables),original);
+}
+C71_RESIDUAL_HD inline E pad_contribution(E coefficient,E point,uint64_t index) {
+    return mul(coefficient,power(point,index));
+}
 C71_RESIDUAL_HD inline uint64_t high_rows(Shape s,CosetShape c) {
     const uint64_t n=uint64_t{1}<<(s.remaining-2);
     return (n+c.pad_rows+c.rows-1)/c.rows;
@@ -172,6 +180,71 @@ C71_RESIDUAL_HD inline bool weight_scalar(int16_t original,uint64_t& out) {
     if(original==INT16_MIN) return false; // original signed-W marker forbidden
     out=original<0 ? P-uint64_t(-int32_t(original)) : uint64_t(original);
     return true;
+}
+// Exact host metadata coverage, never a per-cell bitmap. The common owner
+// charges this fixed frontier in sizeof(Context). Public producer order may
+// be reversed/ragged; overlap and more than 4096 disjoint gaps are terminal.
+// Admission of that gap bound on the pinned canonical plan remains explicit.
+struct SourceCoverage {
+    struct Interval { uint64_t first,last; };
+    static constexpr unsigned capacity=4096;
+    Interval intervals[capacity]{};
+    uint32_t count=0,highwater=0;
+    bool insert(uint64_t first,uint64_t length,uint64_t live) {
+        if(!length || first>=live || length>live-first) return false;
+        const uint64_t last=first+length;
+        unsigned pos=0;while(pos<count && intervals[pos].first<first)++pos;
+        if((pos && intervals[pos-1].last>first) || (pos<count && intervals[pos].first<last))return false;
+        const bool left=pos && intervals[pos-1].last==first;
+        const bool right=pos<count && intervals[pos].first==last;
+        if(left && right) {
+            intervals[pos-1].last=intervals[pos].last;
+            for(unsigned i=pos;i+1<count;++i)intervals[i]=intervals[i+1];
+            --count;
+        } else if(left)intervals[pos-1].last=last;
+        else if(right)intervals[pos].first=first;
+        else {
+            if(count==capacity)return false;
+            for(unsigned i=count;i>pos;--i)intervals[i]=intervals[i-1];
+            intervals[pos]={first,last};++count;
+        }
+        if(count>highwater)highwater=count;
+        return true;
+    }
+    bool complete(uint64_t live) const { return count==1 && intervals[0].first==0 && intervals[0].last==live; }
+};
+static_assert(sizeof(SourceCoverage)==65544);
+struct ContractResult { E value[2]; };
+static_assert(sizeof(ContractResult)==48);
+// Call only after Shape/kind/band validation. Enumerates the selected suffix
+// once for every original prefix and (for a round) both half coefficients.
+C71_RESIDUAL_HD inline uint64_t contract_tasks(Shape shape,unsigned kind,uint32_t count) {
+    const uint64_t period=uint64_t{1}<<shape.remaining;
+    return ((shape.live+period-1)/period)*(uint64_t(count)<<kind);
+}
+C71_RESIDUAL_HD inline uint64_t contract_index(uint64_t task,Shape shape,unsigned kind,uint64_t start,uint32_t count) {
+    const uint64_t period=uint64_t{1}<<shape.remaining,size=period>>kind;
+    const uint64_t within=task%count,block=task/count;
+    return (block>>kind)*period+(kind ? (block&1)*size : 0)+start+within;
+}
+C71_RESIDUAL_HD inline uint64_t contract_band_visits(Shape shape,unsigned kind,uint64_t start,uint32_t count) {
+    const uint64_t period=uint64_t{1}<<shape.remaining,size=period>>kind;
+    const uint64_t prefixes=shape.live/period,tail=shape.live%period;
+    uint64_t visits=prefixes*(uint64_t(count)<<kind);
+    for(unsigned side=0;side<(1u<<kind);++side) {
+        const uint64_t first=side*size+start;
+        if(tail>first) visits+=tail-first<count ? tail-first : count;
+    }
+    return visits;
+}
+C71_RESIDUAL_HD inline ContractResult contract_contribution(uint64_t index,E value,
+    unsigned remaining,unsigned kind,E left,E right) {
+    ContractResult out{};
+    if(!kind) { out.value[0]=mul(value,left); return out; }
+    const E difference=sub(right,left);
+    if(index&(uint64_t{1}<<(remaining-1))) out.value[1]=mul(value,difference);
+    else { out.value[0]=mul(value,left); out.value[1]=sub(E{},mul(value,difference)); }
+    return out;
 }
 C71_RESIDUAL_HD inline bool valid_fold(uint64_t count,unsigned rounds,E r0,E r1) {
     return c71_pcs::power_two(count) && count<=(uint64_t{1}<<28) &&

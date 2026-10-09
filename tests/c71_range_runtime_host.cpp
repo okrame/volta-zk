@@ -10,10 +10,12 @@
 #include <cmath>
 #include "c71_fft.cuh"
 #include "c71_pcs_weight_tensor.cuh"
+#include "c71_pcs_residual_query.cuh"
 using namespace c71_range;
 struct FakeStream { std::vector<std::function<void()>> pending; };
 static bool fail_launch=false, fail_fence=false, fail_free=false, corrupt=false;
 static bool fail_dense=false;
+static bool corrupt_query_data=false;
 static int copy_fail_after=-1;
 static int download_fail_after=-1;
 static int upload_fail_after=-1;
@@ -24,6 +26,7 @@ static std::vector<int64_t> expected_raw;
 static std::vector<uint64_t> expected_pcs;
 static std::vector<uint64_t> recorded_pcs;
 static bool record_pcs=false;
+static std::vector<uint64_t> expected_short_ring;
 cudaError_t cudaSetDevice(int n) { return n==0?0:1; }
 cudaError_t cudaStreamCreateWithFlags(cudaStream_t* s,unsigned flags) {
     assert(flags==cudaStreamNonBlocking); *s=new FakeStream; return 0;
@@ -52,7 +55,7 @@ cudaError_t cudaMemcpyAsync(void* d,const void* s,size_t n,cudaMemcpyKind kind,c
         if(copy_fail_after==0) return 1;
         if(copy_fail_after>0) --copy_fail_after;
     }
-    stream->pending.push_back([=] { std::memcpy(d,s,n); if(kind==cudaMemcpyDeviceToHost && corrupt) {
+    stream->pending.push_back([=] { std::memcpy(d,s,n); if(kind==cudaMemcpyDeviceToHost && (corrupt || (corrupt_query_data && n>=8))) {
         if(n>=8) *static_cast<uint64_t*>(d)=P; else *static_cast<uint32_t*>(d)=1;
     } });
     return 0;
@@ -98,6 +101,326 @@ extern "C" int c71_linear_source_launch(cudaStream_t stream,const void* input,un
         if(fail_dense) *flag=1;
     });
 }
+
+// Independent polynomial convolution and ordinary integer modulo oracle for
+// deferred owner tests. This does not model CUDA scheduling or reductions.
+namespace residual_oracle {
+using E=c71_pcs_residual::E;
+using Wide=unsigned __int128;
+uint64_t add(uint64_t a,uint64_t b) { return uint64_t((Wide(a)+b)%P); }
+uint64_t sub(uint64_t a,uint64_t b) { return uint64_t((Wide(a)+P-b)%P); }
+uint64_t mul(uint64_t a,uint64_t b) { return uint64_t(Wide(a)*b%P); }
+E add(E a,E b) { return {residual_oracle::add(a.c0,b.c0),residual_oracle::add(a.c1,b.c1),residual_oracle::add(a.c2,b.c2)}; }
+E sub(E a,E b) { return {residual_oracle::sub(a.c0,b.c0),residual_oracle::sub(a.c1,b.c1),residual_oracle::sub(a.c2,b.c2)}; }
+E mul(E a,E b) {
+    uint64_t polynomial[5]{};
+    const uint64_t left[]={a.c0,a.c1,a.c2},right[]={b.c0,b.c1,b.c2};
+    for(unsigned i=0;i<3;++i) for(unsigned j=0;j<3;++j) polynomial[i+j]=residual_oracle::add(polynomial[i+j],residual_oracle::mul(left[i],right[j]));
+    for(unsigned i=4;i>=3;--i) { polynomial[i-2]=residual_oracle::add(polynomial[i-2],polynomial[i]); polynomial[i-3]=residual_oracle::add(polynomial[i-3],polynomial[i]); }
+    return {polynomial[0],polynomial[1],polynomial[2]};
+}
+E power(E a,uint64_t n) { E value{1,0,0}; while(n) { if(n&1) value=residual_oracle::mul(value,a); a=residual_oracle::mul(a,a); n>>=1; } return value; }
+E fold(E a,E b,E r) { return residual_oracle::add(a,residual_oracle::mul(r,residual_oracle::sub(b,a))); }
+E lookup(uint64_t index,const c71_pcs_residual::Chunk* chunks,unsigned count,const E* tables) {
+    E value{1,0,0};
+    for(unsigned i=0;i<count;++i) { const auto c=chunks[i]; value=residual_oracle::mul(value,tables[c.first+((index>>c.shift)&((uint64_t{1}<<c.bits)-1))]); }
+    return value;
+}
+void contribution(uint64_t index,E original,c71_pcs_residual::Shape shape,
+    const c71_pcs_residual::Chunk* chunks,const E* tables,c71_pcs_residual::Phase phase,
+    c71_pcs_residual::Output output,c71_pcs_residual::CosetShape cosets,const uint64_t* high,
+    c71_pcs_residual::PowerShape powers,const E* power_low,const E* power_high,uint32_t* flag) {
+    namespace pcs=c71_pcs_residual;
+    if(!pcs::canonical(original)) { *flag=1; return; }
+    const uint64_t folded=index&((uint64_t{1}<<shape.remaining)-1);
+    const auto value=residual_oracle::mul(residual_oracle::lookup(phase==pcs::Phase::singleton?folded:index>>shape.remaining,chunks,shape.equality.chunks,tables),original);
+    if(phase==pcs::Phase::singleton) output.reduced[index>>shape.remaining]=residual_oracle::add(output.reduced[index>>shape.remaining],value);
+    else if(phase==pcs::Phase::retention) {
+        output.retained.c0[folded]=residual_oracle::add(output.retained.c0[folded],value.c0);
+        output.retained.c1[folded]=residual_oracle::add(output.retained.c1[folded],value.c1);
+        output.retained.c2[folded]=residual_oracle::add(output.retained.c2[folded],value.c2);
+    } else if(phase==pcs::Phase::ood) {
+        const E lo=power_low[folded&((uint64_t{1}<<powers.low_bits)-1)],hi=power_high[folded>>powers.low_bits];
+        if(!pcs::canonical(lo) || !pcs::canonical(hi)) { *flag=1; return; }
+        *output.reduced=residual_oracle::add(*output.reduced,residual_oracle::mul(value,residual_oracle::mul(lo,hi)));
+    } else {
+        const uint64_t n=uint64_t{1}<<(shape.remaining-2),within=folded%n,row=within%cosets.rows;
+        const unsigned column=unsigned(folded/n);
+        const uint64_t limbs[]={value.c0,value.c1,value.c2};
+        for(unsigned lane=0;lane<2;++lane) for(unsigned component=0;component<3;++component) {
+            const uint64_t factor=high[within/cosets.rows*2+lane];
+            if(factor>=P) { *flag=1; continue; }
+            const uint64_t address=(uint64_t(column*3+component)*2+lane)*cosets.rows+row;
+            output.ring[address]=residual_oracle::add(output.ring[address],residual_oracle::mul(limbs[component],factor));
+        }
+    }
+}
+}
+extern "C" int c71_pcs_residual_weights_launch(cudaStream_t stream,const int16_t* input,uint64_t input_words,
+    const c71_pcs::WeightTile* tiles,uint64_t tile_count,uint64_t first,uint64_t count,
+    c71_pcs_residual::Shape shape,const c71_pcs_residual::Chunk* chunks,const c71_pcs_residual::E* tables,
+    c71_pcs_residual::Phase phase,c71_pcs_residual::Output output,c71_pcs_residual::CosetShape cosets,
+    const uint64_t* high,c71_pcs_residual::PowerShape powers,const c71_pcs_residual::E* power_low,
+    const c71_pcs_residual::E* power_high,uint32_t* flag) {
+    return launch(stream,[=] {
+        for(uint64_t i=0;i<count;++i) {
+            const uint64_t address=c71_pcs::packed_address(tiles,tile_count,first+i,shape.live);
+            if(address>=input_words || input[address]==INT16_MIN) { *flag=1; continue; }
+            const int16_t value=input[address];
+            residual_oracle::contribution(first+i,{value<0?P-uint64_t(-int32_t(value)):uint64_t(value),0,0},
+                shape,chunks,tables,phase,output,cosets,high,powers,power_low,power_high,flag);
+        }
+        if(fail_dense) *flag=1;
+    });
+}
+extern "C" int c71_pcs_residual_source_launch(cudaStream_t stream,const void* input,uint64_t input_words,unsigned kind,
+    c71_pcs::SourceTile tile,c71_pcs_residual::Shape shape,const c71_pcs_residual::Chunk* chunks,
+    const c71_pcs_residual::E* tables,c71_pcs_residual::Phase phase,c71_pcs_residual::Output output,
+    c71_pcs_residual::CosetShape cosets,const uint64_t* high,c71_pcs_residual::PowerShape powers,
+    const c71_pcs_residual::E* power_low,const c71_pcs_residual::E* power_high,uint32_t* flag) {
+    return launch(stream,[=] {
+        for(uint64_t i=0;i<tile.rows*tile.columns;++i) {
+            const uint64_t address=tile.input_first+i/tile.columns*tile.input_stride+i%tile.columns;
+            if(address>=input_words) { *flag=1; continue; }
+            const int64_t original=kind==C71_I16?static_cast<const int16_t*>(input)[address]:static_cast<const int64_t*>(input)[address];
+            for(unsigned lane=0;lane<tile.width;++lane) {
+                const int64_t bound=int64_t{1}<<(8*tile.signed_width-1);
+                if(original<-bound || original>=bound) { *flag=1; continue; }
+                const uint64_t byte=(uint64_t(original+bound)>>(8*(tile.byte_first+lane)))&255;
+                residual_oracle::contribution(tile.original_first+i*tile.width+lane,{byte,0,0},shape,chunks,tables,
+                    phase,output,cosets,high,powers,power_low,power_high,flag);
+            }
+        }
+        if(fail_dense) *flag=1;
+    });
+}
+extern "C" int c71_pcs_residual_resident_launch(cudaStream_t stream,c71_pcs_residual::ConstPlanes input,uint64_t count,
+    c71_pcs_residual::Shape shape,const c71_pcs_residual::Chunk* chunks,const c71_pcs_residual::E* tables,
+    c71_pcs_residual::Phase phase,c71_pcs_residual::Output output,c71_pcs_residual::CosetShape cosets,
+    const uint64_t* high,c71_pcs_residual::PowerShape powers,const c71_pcs_residual::E* power_low,
+    const c71_pcs_residual::E* power_high,uint32_t* flag) {
+    return launch(stream,[=] {
+        for(uint64_t i=0;i<count;++i) residual_oracle::contribution(i,{input.c0[i],input.c1[i],input.c2[i]},shape,chunks,tables,
+            phase,output,cosets,high,powers,power_low,power_high,flag);
+        if(fail_dense) *flag=1;
+    });
+}
+extern "C" int c71_pcs_residual_coset_powers_launch(cudaStream_t stream,uint64_t* low,uint64_t* high,
+    c71_pcs_residual::Shape shape,c71_pcs_residual::CosetShape cosets) {
+    return launch(stream,[=] {
+        const auto omega=residual_oracle::power({7,0,0},(P-1)/(cosets.rows*cosets.cosets)).c0;
+        for(uint64_t i=0;i<2*cosets.rows;++i) low[i]=residual_oracle::power({omega,0,0},uint64_t(cosets.first_coset+i/cosets.rows)*(i%cosets.rows)).c0;
+        const uint64_t n=uint64_t{1}<<(shape.remaining-2),high_rows=(n+cosets.pad_rows+cosets.rows-1)/cosets.rows;
+        for(uint64_t i=0;i<2*high_rows;++i) high[i]=residual_oracle::power({omega,0,0},uint64_t(cosets.first_coset+i%2)*(i/2)*cosets.rows).c0;
+    });
+}
+extern "C" int c71_pcs_residual_ood_powers_launch(cudaStream_t stream,c71_pcs_residual::E* low,c71_pcs_residual::E* high,
+    c71_pcs_residual::PowerShape powers,c71_pcs_residual::E point) {
+    return launch(stream,[=] {
+        for(uint64_t i=0;i<(uint64_t{1}<<powers.low_bits);++i) low[i]=residual_oracle::power(point,i);
+        for(uint64_t i=0;i<(uint64_t{1}<<(powers.bits-powers.low_bits));++i) high[i]=residual_oracle::power(point,i<<powers.low_bits);
+    });
+}
+extern "C" int c71_pcs_residual_pad_launch(cudaStream_t stream,uint64_t* ring,const c71_pcs_residual::E* pads,
+    const uint64_t* low,const uint64_t* high,c71_pcs_residual::Shape shape,c71_pcs_residual::CosetShape cosets,uint32_t* flag) {
+    return launch(stream,[=] {
+        const uint64_t n=uint64_t{1}<<(shape.remaining-2);
+        for(unsigned column=0;column<4;++column) for(unsigned component=0;component<3;++component)
+            for(unsigned lane=0;lane<2;++lane) for(uint64_t row=0;row<cosets.rows;++row) {
+                const auto address=(uint64_t(column*3+component)*2+lane)*cosets.rows+row;
+                uint64_t value=ring[address];
+                for(uint64_t j=0;j<cosets.pad_rows;++j) if((n+j)%cosets.rows==row) {
+                    const auto pad=pads[uint64_t(column)*cosets.pad_rows+j];
+                    const uint64_t coefficient=component==0?pad.c0:component==1?pad.c1:pad.c2;
+                    if(!c71_pcs_residual::canonical(pad)) *flag=1;
+                    value=residual_oracle::add(value,residual_oracle::mul(coefficient,high[(n+j)/cosets.rows*2+lane]));
+                }
+                if(value>=P || low[uint64_t(lane)*cosets.rows+row]>=P) *flag=1;
+                ring[address]=residual_oracle::mul(value,low[uint64_t(lane)*cosets.rows+row]);
+            }
+        if(fail_dense) *flag=1;
+    });
+}
+extern "C" int c71_pcs_residual_ood_pad_launch(cudaStream_t stream,c71_pcs_residual::E* reduced,
+    const c71_pcs_residual::E* pads,uint32_t count,uint64_t length,c71_pcs_residual::E point,uint32_t* flag) {
+    return launch(stream,[=] {
+        for(unsigned i=0;i<count;++i) {
+            if(!c71_pcs_residual::canonical(pads[i])) *flag=1;
+            *reduced=residual_oracle::add(*reduced,residual_oracle::mul(pads[i],residual_oracle::power(point,length+i)));
+        }
+        if(fail_dense) *flag=1;
+    });
+}
+extern "C" int c71_pcs_residual_fold_launch(cudaStream_t stream,c71_pcs_residual::ConstPlanes input,
+    c71_pcs_residual::Planes output,uint64_t count,unsigned rounds,c71_pcs_residual::E r0,c71_pcs_residual::E r1,uint32_t* flag) {
+    return launch(stream,[=] {
+        const uint64_t size=count>>rounds;
+        for(uint64_t i=0;i<size;++i) {
+            c71_pcs_residual::E values[4]{};
+            for(unsigned j=0;j<(1u<<rounds);++j) {
+                const uint64_t k=i+j*size; values[j]={input.c0[k],input.c1[k],input.c2[k]};
+                if(!c71_pcs_residual::canonical(values[j])) *flag=1;
+            }
+            const auto value=rounds==1?residual_oracle::fold(values[0],values[1],r0):
+                residual_oracle::fold(residual_oracle::fold(values[0],values[2],r0),residual_oracle::fold(values[1],values[3],r0),r1);
+            output.c0[i]=value.c0; output.c1[i]=value.c1; output.c2[i]=value.c2;
+        }
+        if(fail_dense) *flag=1;
+    });
+}
+
+
+
+static uint64_t query_original_reads=0,query_resident_reads=0;
+static int query_weight_fail_after=-1;
+static void query_store(uint64_t* low,uint64_t capacity,uint64_t i,residual_oracle::E value) {
+    low[i]=value.c0; low[capacity+i]=value.c1; low[2*capacity+i]=value.c2;
+}
+extern "C" int c71_pcs_residual_query_weights_launch(cudaStream_t stream,const int16_t* input,uint64_t input_words,
+    const c71_pcs::WeightTile* tiles,uint64_t tile_count,c71_pcs_residual::Shape shape,
+    const c71_pcs_residual::Chunk* chunks,const c71_pcs_residual::E* tables,const c71_pcs_residual::E* pads,
+    uint64_t pad_count,uint64_t* low,uint64_t capacity,c71_pcs::QueryBlock block,uint32_t* flag,unsigned* attempted) {
+    if(!attempted) return 1;
+    ++*attempted;
+    if(query_weight_fail_after==0) { ++launches;return 1; }
+    if(query_weight_fail_after>0)--query_weight_fail_after;
+    if(const auto error=launch(stream,[=] {
+        for(uint64_t i=0;i<capacity;++i) {
+            const uint64_t j=block.first+i;residual_oracle::E value{};
+            if(j<block.source_rows && j>=block.message_rows) {
+                const uint64_t address=block.pad_first+j-block.message_rows;
+                if(address>=pad_count || !c71_pcs_residual::canonical(pads[address]))*flag=1;
+                else value=pads[address];
+            }
+            query_store(low,capacity,i,value);
+        }
+        if(fail_dense)*flag=1;
+    });error) return error;
+    if(!c71_pcs_residual_query::weight_work(shape,capacity,block).tasks)return 0;
+    ++*attempted;
+    if(query_weight_fail_after==0) { ++launches;return 1; }
+    if(query_weight_fail_after>0)--query_weight_fail_after;
+    return launch(stream,[=] {
+        const uint64_t virtual_size=uint64_t{1}<<shape.remaining,prefixes=uint64_t{1}<<(shape.dimension-shape.remaining);
+        for(uint64_t i=0;i<capacity;++i) {
+            const uint64_t j=block.first+i; residual_oracle::E value{};
+            if(j>=block.message_rows)continue;
+            if(j<block.source_rows) {
+                for(uint64_t prefix=0;prefix<prefixes;++prefix) {
+                    const uint64_t index=prefix*virtual_size+block.byte_first+j;
+                    if(index>=shape.live) continue;
+                    const uint64_t address=c71_pcs::packed_address(tiles,tile_count,index,shape.live);
+                    if(address>=input_words || input[address]==INT16_MIN) { *flag=1; continue; }
+                    ++query_original_reads;
+                    const int32_t original=input[address];
+                    const uint64_t scalar=original<0?P-uint64_t(-original):uint64_t(original);
+                    const auto equality=residual_oracle::lookup(prefix,chunks,shape.equality.chunks,tables);
+                    value=residual_oracle::add(value,residual_oracle::mul(equality,{scalar,0,0}));
+                }
+            }
+            query_store(low,capacity,i,value);
+        }
+        if(fail_dense) *flag=1;
+    });
+}
+extern "C" int c71_pcs_residual_query_resident_launch(cudaStream_t stream,c71_pcs_residual::ConstPlanes input,
+    uint64_t input_count,c71_pcs_residual::Shape shape,const c71_pcs_residual::Chunk* chunks,
+    const c71_pcs_residual::E* tables,const c71_pcs_residual::E* pads,uint64_t pad_count,
+    uint64_t* low,uint64_t capacity,c71_pcs::QueryBlock block,uint32_t* flag) {
+    return launch(stream,[=] {
+        const uint64_t virtual_size=uint64_t{1}<<shape.remaining,prefixes=uint64_t{1}<<(shape.dimension-shape.remaining);
+        for(uint64_t i=0;i<capacity;++i) {
+            const uint64_t j=block.first+i; residual_oracle::E value{};
+            if(j<block.source_rows) {
+                if(j>=block.message_rows) {
+                    const uint64_t address=block.pad_first+j-block.message_rows;
+                    if(address>=pad_count || !c71_pcs_residual::canonical(pads[address])) *flag=1;
+                    else value=pads[address];
+                } else for(uint64_t prefix=0;prefix<prefixes;++prefix) {
+                    const uint64_t index=prefix*virtual_size+block.byte_first+j;
+                    if(index>=input_count) { *flag=1; continue; }
+                    ++query_resident_reads;
+                    const residual_oracle::E original{input.c0[index],input.c1[index],input.c2[index]};
+                    if(!c71_pcs_residual::canonical(original)) { *flag=1; continue; }
+                    value=residual_oracle::add(value,residual_oracle::mul(original,
+                        residual_oracle::lookup(prefix,chunks,shape.equality.chunks,tables)));
+                }
+            }
+            query_store(low,capacity,i,value);
+        }
+        if(fail_dense) *flag=1;
+    });
+}
+
+static uint64_t contract_original_reads=0,contract_resident_reads=0;
+static void contract_fake_value(uint64_t index,residual_oracle::E original,c71_pcs_residual::Shape shape,
+    const c71_pcs_residual::Chunk* chunks,const c71_pcs_residual::E* tables,unsigned kind,uint64_t start,
+    const c71_pcs_residual::E* left,const c71_pcs_residual::E* right,c71_pcs_residual::E* output,uint32_t* flag) {
+    if(!c71_pcs_residual::canonical(original)) { *flag=1; return; }
+    const auto value=residual_oracle::mul(original,residual_oracle::lookup(index>>shape.remaining,chunks,shape.equality.chunks,tables));
+    const uint64_t size=uint64_t{1}<<(shape.remaining-kind),local=(index&(size-1))-start;
+    if(!c71_pcs_residual::canonical(left[local]) || (right && !c71_pcs_residual::canonical(right[local]))) { *flag=1; return; }
+    if(!kind) output[0]=residual_oracle::add(output[0],residual_oracle::mul(value,left[local]));
+    else if(index&size) output[1]=residual_oracle::add(output[1],residual_oracle::mul(value,residual_oracle::sub(right[local],left[local])));
+    else { output[0]=residual_oracle::add(output[0],residual_oracle::mul(value,left[local])); output[1]=residual_oracle::sub(output[1],residual_oracle::mul(value,residual_oracle::sub(right[local],left[local]))); }
+}
+extern "C" int c71_pcs_residual_contract_weights_launch(cudaStream_t stream,const int16_t* input,uint64_t input_words,
+    const c71_pcs::WeightTile* tiles,uint64_t tile_count,c71_pcs_residual::Shape shape,const c71_pcs_residual::Chunk* chunks,
+    const c71_pcs_residual::E* tables,unsigned kind,uint64_t start,uint32_t count,const c71_pcs_residual::E* left,
+    const c71_pcs_residual::E* right,c71_pcs_residual::E* output,uint32_t* flag) {
+    return launch(stream,[=] {
+        const auto tasks=c71_pcs_residual::contract_tasks(shape,kind,count);
+        for(uint64_t task=0;task<tasks;++task) {
+            const uint64_t index=c71_pcs_residual::contract_index(task,shape,kind,start,count);
+            if(index>=shape.live) continue;
+            const uint64_t address=c71_pcs::packed_address(tiles,tile_count,index,shape.live);
+            if(address>=input_words) { *flag=1; continue; }
+            ++contract_original_reads;
+            const auto original=input[address];
+            if(original==INT16_MIN) { *flag=1; continue; }
+            contract_fake_value(index,{original<0?P-uint64_t(-int32_t(original)):uint64_t(original),0,0},
+                shape,chunks,tables,kind,start,left,right,output,flag);
+        }
+        if(fail_dense) *flag=1;
+    });
+}
+extern "C" int c71_pcs_residual_contract_resident_launch(cudaStream_t stream,c71_pcs_residual::ConstPlanes input,
+    uint64_t input_count,c71_pcs_residual::Shape shape,const c71_pcs_residual::Chunk* chunks,const c71_pcs_residual::E* tables,
+    unsigned kind,uint64_t start,uint32_t count,const c71_pcs_residual::E* left,const c71_pcs_residual::E* right,
+    c71_pcs_residual::E* output,uint32_t* flag) {
+    return launch(stream,[=] {
+        const auto tasks=c71_pcs_residual::contract_tasks(shape,kind,count);
+        for(uint64_t task=0;task<tasks;++task) {
+            const uint64_t index=c71_pcs_residual::contract_index(task,shape,kind,start,count);
+            if(index>=shape.live || index>=input_count) continue;
+            ++contract_resident_reads;
+            contract_fake_value(index,{input.c0[index],input.c1[index],input.c2[index]},shape,chunks,tables,
+                kind,start,left,right,output,flag);
+        }
+        if(fail_dense) *flag=1;
+    });
+}
+extern "C" int c71_pcs_short_pairs_launch(cudaStream_t stream,const uint64_t* ring,const uint64_t* salts,
+    c71_pcs::Hash32* output,uint64_t rows,uint64_t first,uint64_t count,uint32_t* flag) {
+    return launch(stream,[=] {
+        if(!expected_short_ring.empty()) {
+            assert(expected_short_ring.size()==24*rows);
+            for(uint64_t i=0;i<24*rows;++i) assert(expected_short_ring[i]==ring[i]);
+            expected_short_ring.clear();
+        }
+        for(uint64_t local=0;local<count;++local) {
+            const uint64_t leaf=first+local,lane=leaf/rows,row=leaf%rows;
+            for(unsigned column=0;column<12;++column) if(ring[uint64_t(column*2+lane)*rows+row]>=P) *flag=1;
+            for(unsigned i=0;i<4;++i) if(salts[uint64_t(i)*count+local]>=P) *flag=1;
+            // Hash serialization is separately pinned against live Rust in
+            // the short-leaf component; this fixture tests deferred lifetime.
+            const auto hash=c71_pcs::short_leaf(ring+lane*rows,2*rows,row,salts,count,local);
+            output[row]=lane==0?hash:c71_pcs::short_pair_finish(output[row],hash);
+        }
+        if(fail_dense) *flag=1;
+    });
+}
+
 // Sequential oracle for deferred owner/lifetime tests. It does not emulate
 // the CUDA hierarchy; that scheduling still requires real kernel execution.
 extern "C" int c71_pcs_salts_prescan_launch(cudaStream_t stream,const c71_salts::Descriptor* d,
@@ -704,6 +1027,7 @@ extern "C" void c71_range_test_failure(unsigned kind) {
     download_fail_after=kind==7?0:kind==8?1:-1;
     upload_fail_after=kind==10?0:kind==11?1:-1;
     fail_dense=kind==9;
+    corrupt_query_data=kind==12;
 }
 #else
 
@@ -1073,6 +1397,730 @@ static void dense_completion_fence_checks() {
         }
     }
 }
+
+namespace residual_test {
+namespace pcs=c71_pcs_residual;
+using E=pcs::E;
+bool same(E a,E b) { return a.c0==b.c0 && a.c1==b.c1 && a.c2==b.c2; }
+struct Lookup { pcs::EqShape shape{}; std::vector<pcs::Chunk> chunks; std::vector<E> tables; };
+E eq(const std::vector<E>& point,uint64_t index) {
+    E out{1,0,0};
+    for(size_t i=0;i<point.size();++i) out=residual_oracle::mul(out,(index>>(point.size()-1-i))&1?point[i]:residual_oracle::sub({1,0,0},point[i]));
+    return out;
+}
+Lookup lookup(const std::vector<E>& point) {
+    Lookup out;
+    for(size_t first=0;first<point.size();first+=8) {
+        const auto bits=std::min<size_t>(8,point.size()-first);
+        out.chunks.push_back({unsigned(point.size()-first-bits),unsigned(bits),unsigned(out.tables.size()),0});
+        std::vector<E> chunk(point.begin()+first,point.begin()+first+bits);
+        for(uint64_t i=0;i<(uint64_t{1}<<bits);++i) out.tables.push_back(eq(chunk,i));
+    }
+    out.shape={unsigned(point.size()),unsigned(out.chunks.size()),unsigned(out.tables.size()),0}; return out;
+}
+uint64_t begin(C71RangeContext* c,pcs::Shape shape,pcs::Phase phase,const Lookup& packet,
+    pcs::CosetShape cosets={},const std::vector<E>& pads={},E point={}) {
+    shape.equality=packet.shape; uint64_t token=0;
+    assert(!c71_pcs_residual_begin(c,shape,phase,packet.chunks.data(),packet.tables.data(),cosets,pads.data(),unsigned(pads.size()),point,&token));
+    assert(token); return token;
+}
+C71PcsResidualResult finish(C71RangeContext* c,uint64_t token) {
+    C71PcsResidualResult out{}; assert(!c71_pcs_residual_finish(c,token,&out)); return out;
+}
+std::vector<E> dense_fold(std::vector<E> values,const std::vector<E>& prefix) {
+    for(const auto r:prefix) {
+        const size_t half=values.size()/2;
+        for(size_t i=0;i<half;++i) values[i]=residual_oracle::fold(values[i],values[i+half],r);
+        values.resize(half);
+    }
+    return values;
+}
+std::vector<E> originals() {
+    const int16_t words[]={-32767,-257,-1,0,1,255,256,32767,-13,7,11,-29,31,2,-3,5};
+    std::vector<E> out(128);
+    for(unsigned i=0;i<16;++i) for(unsigned lane=0;lane<2;++lane)
+        out[2*i+lane]={uint64_t(uint16_t(int32_t(words[i])+32768)>>(8*lane))&255,0,0};
+    return out;
+}
+uint64_t input(C71RangeContext* c) {
+    const int16_t words[]={-32767,-257,-1,0,1,255,256,32767,-13,7,11,-29,31,2,-3,5};
+    const auto id=alloc(c,C71_I16,16); assert(!c71_range_upload(c,id,words,sizeof(words))); return id;
+}
+void source(C71RangeContext* c,uint64_t token,uint64_t original) {
+    // Reversed trusted tile order, exactly one live prefix partition.
+    assert(!c71_pcs_residual_source_tile(c,token,original,{8,8,1,8,16,0,2,2}));
+    assert(!c71_pcs_residual_source_tile(c,token,original,{0,8,1,8,0,0,2,2}));
+}
+void read_copy(C71RangeContext* c,C71PcsResidualPlanes planes,const std::vector<E>& expected) {
+    const auto empty=lookup({});
+    unsigned dimension=0; while((uint64_t{1}<<dimension)<planes.count) ++dimension;
+    assert(dimension); // Final copies here have at least two coefficients.
+    const auto token=begin(c,{planes.count,dimension,dimension,{}},pcs::Phase::retention,empty);
+    assert(!c71_pcs_residual_resident(c,token,planes)); const auto copy=finish(c,token).planes;
+    std::vector<E> values(copy.count); const auto before=stats(c);
+    assert(!c71_pcs_residual_final_read(c,copy,values.data(),unsigned(values.size())));
+    assert(stats(c).d2h_bytes-before.d2h_bytes==copy.count*24);
+    assert(values.size()==expected.size()); for(size_t i=0;i<values.size();++i) assert(same(values[i],expected[i]));
+}
+void component_checks() {
+    auto* c=create(); const auto original=input(c); const auto values=originals();
+    const std::vector<E> prefix{{0,0,0},{0,0,0},{7,11,13}};
+    const auto suffix=lookup({{0,0,0},{1,0,0},{0,1,0},{3,5,7}});
+    auto before=stats(c);
+    auto token=begin(c,{32,7,4,{}},pcs::Phase::singleton,suffix); source(c,token,original); const auto singleton=finish(c,token);
+    assert(singleton.reduced_count==8 && !singleton.ring && !singleton.planes.c0);
+    for(unsigned i=0;i<8;++i) {
+        E expected{}; for(unsigned j=0;j<16;++j) expected=residual_oracle::add(expected,residual_oracle::mul(values[16*i+j],suffix.tables[j]));
+        assert(same(singleton.reduced[i],expected));
+    }
+    assert(stats(c).d2h_bytes-before.d2h_bytes==8*24+4 && stats(c).arena_bytes==before.arena_bytes);
+    const auto packet=lookup(prefix); const auto folded=dense_fold(values,prefix);
+    before=stats(c); token=begin(c,{32,7,4,{}},pcs::Phase::retention,packet); source(c,token,original);
+    const auto retained=finish(c,token).planes;
+    assert(retained.count==16 && retained.c0 && retained.c1 && retained.c2);
+    assert(stats(c).d2h_bytes-before.d2h_bytes==4);
+    assert(stats(c).arena_bytes==before.arena_bytes+3*256);
+    read_copy(c,retained,folded);
+    const E point{17,19,23}; const std::vector<E> pads{{29,31,37},{0,1,0},{0,0,1}};
+    token=begin(c,{32,7,4,{}},pcs::Phase::ood,packet,{},pads,point); source(c,token,original); const auto ood=finish(c,token);
+    E expected{}; for(size_t i=0;i<folded.size();++i) expected=residual_oracle::add(expected,residual_oracle::mul(folded[i],residual_oracle::power(point,i)));
+    for(size_t i=0;i<pads.size();++i) expected=residual_oracle::add(expected,residual_oracle::mul(pads[i],residual_oracle::power(point,folded.size()+i)));
+    assert(ood.reduced_count==1 && same(ood.reduced[0],expected));
+    for(const std::vector<E>& virtual_prefix:{std::vector<E>{},std::vector<E>{{1,0,0}},std::vector<E>{{0,0,0},{0,1,0}}}) {
+        const auto virtual_packet=lookup(virtual_prefix); const auto current=dense_fold(folded,virtual_prefix);
+        token=begin(c,{16,4,unsigned(4-virtual_prefix.size()),{}},pcs::Phase::ood,virtual_packet,{},pads,point);
+        assert(!c71_pcs_residual_resident(c,token,retained)); const auto actual=finish(c,token);
+        expected={}; for(size_t i=0;i<current.size();++i) expected=residual_oracle::add(expected,residual_oracle::mul(current[i],residual_oracle::power(point,i)));
+        for(size_t i=0;i<pads.size();++i) expected=residual_oracle::add(expected,residual_oracle::mul(pads[i],residual_oracle::power(point,current.size()+i)));
+        assert(same(actual.reduced[0],expected));
+    }
+    for(unsigned rounds:{1u,2u}) {
+        const E r0{0,1,0},r1{0,0,1}; C71PcsResidualPlanes next{}; before=stats(c);
+        assert(!c71_pcs_residual_fold(c,retained,rounds,r0,r1,&next));
+        const auto expected_fold=dense_fold(folded,rounds==1?std::vector<E>{r0}:std::vector<E>{r0,r1});
+        read_copy(c,next,expected_fold); assert(!c71_pcs_residual_retire_planes(c,next));
+        assert(stats(c).arena_bytes==before.arena_bytes);
+    }
+    assert(!c71_pcs_residual_retire_planes(c,retained)); assert(!c71_range_release(c,original)); close(c);
+    std::puts("C71_PCS_RESIDUAL_OWNER_COMPONENT {\"singleton\":1,\"original_retention\":1,\"ood_original\":1,\"ood_resident\":3,\"paired_folds\":2,\"bounded_consuming_reads\":3,\"gpu_execution\":false,\"credit\":false}");
+}
+void contract_checks() {
+    const int16_t weights[]={0,1,-1,32767,-32767,2,-2,3,4,-4,7,-7,11,-11,13,-13,
+        17,-17,19,-19,23,-23,29,-29,31,-31,37,-37,41,-41,43,-43};
+    auto* c=create(); assert(!c71_dense_weights_begin(c,32)); assert(!c71_dense_weights_upload(c,0,weights,32)); assert(!c71_dense_weights_seal(c));
+    const auto tiles=alloc(c,C71_PCS_WEIGHT_TILES,2); const c71_pcs::WeightTile layout[]={{0,16,0,4,2},{16,16,2,4,2}};
+    assert(!c71_pcs_tiles_upload(c,tiles,layout,2));
+    std::vector<E> values(128);
+    for(unsigned i=0;i<32;++i) { const unsigned address=i<16?i/2*4+i%2:((i-16)/2*4+2+(i-16)%2); const auto w=weights[address]; values[i]={w<0?P-uint64_t(-int32_t(w)):uint64_t(w),0,0}; }
+    const std::vector<E> prefix{{0,0,0},{0,0,0},{7,11,13}}; const auto packet=lookup(prefix); const auto folded=dense_fold(values,prefix);
+    unsigned cases=0;
+    for(unsigned kind:{0u,1u}) {
+        const unsigned length=16>>kind; std::vector<E> left(length),right(length); E expected[2]{};
+        for(unsigned i=0;i<length;++i) {
+            left[i]=i%3==0?E{}:i%3==1?E{1,0,0}:E{7+i,11+i,13+i}; right[i]={17+i,19+i,23+i};
+            expected[0]=residual_oracle::add(expected[0],residual_oracle::mul(folded[i],left[i]));
+            if(kind) expected[1]=residual_oracle::add(expected[1],residual_oracle::mul(residual_oracle::sub(folded[i+length],folded[i]),residual_oracle::sub(right[i],left[i])));
+        }
+        uint64_t token=0; const auto before=stats(c); const auto reads=contract_original_reads;
+        assert(!c71_pcs_residual_contract_begin(c,{32,7,4,packet.shape},packet.chunks.data(),packet.tables.data(),kind,3,&token));
+        unsigned bands=0;
+        for(unsigned start=0;start<length;start+=3) {
+            const auto count=std::min(3u,length-start);
+            assert(!c71_pcs_residual_contract_weights_band(c,token,tiles,start,count,left.data()+start,kind?right.data()+start:nullptr)); ++bands;
+        }
+        E actual[2]{}; assert(!c71_pcs_residual_contract_finish(c,token,actual));
+        assert(same(actual[0],expected[0]) && same(actual[1],expected[1]));
+        assert(contract_original_reads-reads==32 && stats(c).d2h_bytes-before.d2h_bytes==52);
+        assert(stats(c).fences-before.fences==bands+2 && stats(c).arena_bytes==before.arena_bytes); ++cases;
+    }
+    const auto token=begin(c,{32,7,4,{}},pcs::Phase::retention,packet); assert(!c71_pcs_residual_weights(c,token,tiles)); const auto retained=finish(c,token).planes;
+    for(const std::vector<E>& virtual_prefix:{std::vector<E>{},std::vector<E>{{1,0,0}},std::vector<E>{{0,1,0},{0,0,1}}}) for(unsigned kind:{0u,1u}) {
+        const auto current=dense_fold(folded,virtual_prefix); const auto virtual_packet=lookup(virtual_prefix);
+        const unsigned remaining=4-unsigned(virtual_prefix.size()),length=unsigned(current.size())>>kind;
+        std::vector<E> left(length),right(length); E expected[2]{};
+        for(unsigned i=0;i<length;++i) {
+            left[i]={3+i,5+i,7+i}; right[i]={11+i,13+i,17+i};
+            expected[0]=residual_oracle::add(expected[0],residual_oracle::mul(current[i],left[i]));
+            if(kind) expected[1]=residual_oracle::add(expected[1],residual_oracle::mul(residual_oracle::sub(current[i+length],current[i]),residual_oracle::sub(right[i],left[i])));
+        }
+        uint64_t job=0; const auto reads=contract_resident_reads; const auto before=stats(c);
+        const unsigned capacity=std::min(3u,length);
+        assert(!c71_pcs_residual_contract_begin(c,{16,4,remaining,virtual_packet.shape},virtual_packet.chunks.data(),virtual_packet.tables.data(),kind,capacity,&job));
+        for(unsigned start=0;start<length;start+=capacity) assert(!c71_pcs_residual_contract_resident_band(c,job,retained,start,std::min(capacity,length-start),left.data()+start,kind?right.data()+start:nullptr));
+        E actual[2]{}; assert(!c71_pcs_residual_contract_finish(c,job,actual));
+        assert(same(actual[0],expected[0]) && same(actual[1],expected[1])); assert(contract_resident_reads-reads==16);
+        assert(stats(c).d2h_bytes-before.d2h_bytes==52 && stats(c).arena_bytes==before.arena_bytes); ++cases;
+    }
+    assert(!c71_pcs_residual_retire_planes(c,retained)); assert(!c71_range_release(c,tiles)); close(c);
+    std::printf("C71_PCS_RESIDUAL_CONTRACT_OWNER {\"cases\":%u,\"W_bands_one_scan\":true,\"resident_virtual_bits\":2,\"consumer_d2h_bytes\":52,\"public_tail_reads\":0,\"gpu_execution\":false,\"credit\":false}\n",cases);
+}
+}
+
+
+namespace residual_test {
+void failure_checks() {
+    const auto packet=lookup({{0,0,0},{1,0,0},{7,11,13}});
+    for(unsigned fault=0;fault<31;++fault) {
+        auto* c=create(); const auto original=input(c);
+        auto shape=pcs::Shape{32,7,4,packet.shape}; auto chunks=packet.chunks; auto tables=packet.tables;
+        uint64_t token=0xababababababababULL; int status=0;
+        C71PcsResidualResult out{}; std::memset(&out,0xa5,sizeof(out)); const auto unchanged=out;
+        if(fault<=10) {
+            switch(fault) {
+            case 0: shape.equality.bits=2; break;
+            case 1: chunks[0].shift=1; break;
+            case 2: tables[0].c2=P; break;
+            case 3: shape.remaining=29; shape.dimension=35; shape.equality={6,1,64,0}; break;
+            case 4: shape.live=129; break;
+            case 5: shape.equality.reserved=1; break;
+            case 6: status=c71_range_alloc(c,C71_PCS_RESIDUAL_PRIVATE,1,&token); break;
+            case 7: fail_fence=true; break;
+            case 8: upload_fail_after=0; break;
+            case 9: upload_fail_after=1; break;
+            case 10: fail_launch=true; break;
+            }
+            if(fault!=6) status=c71_pcs_residual_begin(c,shape,fault==10?pcs::Phase::ood:pcs::Phase::retention,
+                chunks.data(),tables.data(),{},nullptr,0,fault==10?E{7,11,13}:E{},&token);
+            // Only OOD accepts a point. The other fault cases use zero;
+            // retrying a poisoned owner is deliberately impossible.
+        } else {
+            token=begin(c,shape,pcs::Phase::retention,packet);
+            switch(fault) {
+            case 11: status=c71_pcs_residual_finish(c,token,&out); break;
+            case 12: status=c71_pcs_residual_source_tile(c,0,original,{0,8,1,8,0,0,2,2}); break;
+            case 13: status=c71_pcs_residual_source_tile(c,token,original,{0,8,1,8,32,0,2,2}); break;
+            case 14: status=c71_pcs_residual_source_tile(c,token,original,{0,7,1,8,0,0,2,2}); break;
+            case 15: { const auto pending=alloc(c,C71_I16,16); status=c71_pcs_residual_source_tile(c,token,pending,{0,8,1,8,0,0,2,2}); break; }
+            case 16: { const auto wrong=alloc(c,C71_U8,16); status=c71_pcs_residual_source_tile(c,token,wrong,{0,8,1,8,0,0,2,2}); break; }
+            case 17: assert(!c71_pcs_residual_source_tile(c,token,original,{0,8,1,8,0,0,2,2})); status=c71_pcs_residual_finish(c,token,&out); break;
+            case 18: source(c,token,original); status=c71_pcs_residual_source_tile(c,token,original,{0,8,1,8,0,0,2,2}); break;
+            case 19: fail_launch=true; status=c71_pcs_residual_source_tile(c,token,original,{0,8,1,8,0,0,2,2}); break;
+            case 20: fail_dense=true; source(c,token,original); status=c71_pcs_residual_finish(c,token,&out); break;
+            case 21: source(c,token,original); download_fail_after=0; status=c71_pcs_residual_finish(c,token,&out); break;
+            case 22: source(c,token,original); fail_fence=true; status=c71_pcs_residual_finish(c,token,&out); break;
+            case 23: source(c,token,original); fail_free=true; status=c71_pcs_residual_finish(c,token,&out); break;
+            case 24: source(c,token,original); corrupt=true; status=c71_pcs_residual_finish(c,token,&out); break;
+            case 25: { uint64_t words=123; const auto before=stats(c).d2h_bytes; status=c71_pcs_read_words(c,token,0,1,&words); assert(words==123 && stats(c).d2h_bytes==before); break; }
+            case 26: status=c71_range_release(c,token); break;
+            case 27: status=c71_pcs_residual_begin(c,shape,pcs::Phase::retention,chunks.data(),tables.data(),{},nullptr,0,{},&token); break;
+            case 28: { auto* other=create(); const auto foreign=input(other); status=c71_pcs_residual_source_tile(c,token,foreign,{0,8,1,8,0,0,2,2}); close(other); break; }
+            case 29: source(c,token,original); status=c71_pcs_residual_finish(c,token,nullptr); break;
+            case 30: { C71PcsResidualPlanes forged{original,original+1,original+2,16}; status=c71_pcs_residual_resident(c,token,forged); break; }
+            }
+        }
+        fail_launch=false; fail_fence=false; fail_free=false; corrupt=false; fail_dense=false;
+        upload_fail_after=download_fail_after=-1;
+        assert(status && stats(c).stopped && !std::memcmp(&out,&unchanged,sizeof(out)));
+        assert(c71_pcs_residual_finish(c,token,&out));
+        C71RangeStats final{}; const auto closed=c71_range_close(c,&final);
+        assert((closed!=0)==(fault==23));
+    }
+    // Plane capabilities cannot be spliced, exposed as base words, released
+    // through the generic allocator, or published before an auxiliary free.
+    for(unsigned fault=0;fault<14;++fault) {
+        auto* c=create(); const auto original=input(c); const auto shape=pcs::Shape{32,7,4,packet.shape};
+        auto token=begin(c,shape,pcs::Phase::retention,packet); source(c,token,original); auto planes=finish(c,token).planes;
+        int status=0; C71PcsResidualPlanes out{123,127,131,137}; const auto unchanged=out;
+        E values[16]; for(auto& value:values) value={23,29,31};
+        switch(fault) {
+        case 0: status=c71_range_release(c,planes.c0); break;
+        case 1: { uint64_t word=17; const auto before=stats(c).d2h_bytes; status=c71_pcs_read_words(c,planes.c0,0,1,&word); assert(word==17 && stats(c).d2h_bytes==before); break; }
+        case 2: planes.c1=planes.c0; status=c71_pcs_residual_retire_planes(c,planes); break;
+        case 3: planes.count=8; status=c71_pcs_residual_retire_planes(c,planes); break;
+        case 4: status=c71_pcs_residual_retire_ring(c,planes.c0); break;
+        case 5: status=c71_pcs_residual_fold(c,planes,0,{}, {},&out); break;
+        case 6: status=c71_pcs_residual_fold(c,planes,2,{P,0,0},{},&out); break;
+        case 7: fail_launch=true; status=c71_pcs_residual_fold(c,planes,1,{0,1,0},{},&out); break;
+        case 8: fail_fence=true; status=c71_pcs_residual_fold(c,planes,1,{0,1,0},{},&out); break;
+        case 9: fail_dense=true; status=c71_pcs_residual_fold(c,planes,1,{0,1,0},{},&out); break;
+        case 10: fail_free=true; status=c71_pcs_residual_fold(c,planes,1,{0,1,0},{},&out); break;
+        case 11: download_fail_after=1; status=c71_pcs_residual_final_read(c,planes,values,16); break;
+        case 12: corrupt=true; status=c71_pcs_residual_final_read(c,planes,values,16); break;
+        case 13: fail_free=true; status=c71_pcs_residual_final_read(c,planes,values,16); break;
+        }
+        fail_launch=false; fail_fence=false; fail_free=false; corrupt=false; fail_dense=false; download_fail_after=-1;
+        assert(status && stats(c).stopped && !std::memcmp(&out,&unchanged,sizeof(out)));
+        for(auto value:values) assert(same(value,{23,29,31}));
+        C71RangeStats final{}; const auto closed=c71_range_close(c,&final); assert((closed!=0)==(fault==10 || fault==13));
+    }
+    std::puts("C71_PCS_RESIDUAL_OWNER_FAILURE {\"terminal_rejections\":45,\"private_read_d2h_bytes\":0,\"publication_after_free\":true,\"gpu_execution\":false,\"credit\":false}");
+}
+void contract_failures() {
+    const auto packet=lookup({{0,0,0},{1,0,0},{7,11,13}});
+    for(unsigned fault=0;fault<19;++fault) {
+        auto* c=create(); const auto original=input(c); auto token=begin(c,{32,7,4,{}},pcs::Phase::retention,packet);
+        source(c,token,original); const auto planes=finish(c,token).planes;
+        const auto empty=lookup({}); E left[8],right[8]; for(auto& x:left) x={3,5,7}; for(auto& x:right) x={11,13,17};
+        E out[2]={{19,23,29},{31,37,41}}; int status=0;
+        if(fault<5) {
+            auto shape=pcs::Shape{16,4,4,empty.shape};
+            if(fault==0) shape.remaining=5;
+            if(fault==1) shape.equality.bits=1;
+            if(fault==2) upload_fail_after=0;
+            if(fault==3) fail_fence=true;
+            status=c71_pcs_residual_contract_begin(c,shape,nullptr,nullptr,1,fault==4?1u<<22:3,&token);
+        } else {
+            assert(!c71_pcs_residual_contract_begin(c,{16,4,4,empty.shape},nullptr,nullptr,1,3,&token));
+            if(fault>=11) for(unsigned start=0;start<8;start+=3)
+                assert(!c71_pcs_residual_contract_resident_band(c,token,planes,start,std::min(3u,8-start),left+start,right+start));
+            switch(fault) {
+            case 5: status=c71_pcs_residual_contract_resident_band(c,token,planes,1,3,left,right); break;
+            case 6: status=c71_pcs_residual_contract_resident_band(c,token,planes,0,4,left,right); break;
+            case 7: left[0].c1=P; status=c71_pcs_residual_contract_resident_band(c,token,planes,0,3,left,right); break;
+            case 8: status=c71_pcs_residual_contract_resident_band(c,token,planes,0,3,left,nullptr); break;
+            case 9: fail_launch=true; status=c71_pcs_residual_contract_resident_band(c,token,planes,0,3,left,right); break;
+            case 10: status=c71_pcs_residual_contract_finish(c,token,out); break;
+            case 11: download_fail_after=0; status=c71_pcs_residual_contract_finish(c,token,out); break;
+            case 12: download_fail_after=1; status=c71_pcs_residual_contract_finish(c,token,out); break;
+            case 13: fail_free=true; status=c71_pcs_residual_contract_finish(c,token,out); break;
+            case 14: corrupt=true; status=c71_pcs_residual_contract_finish(c,token,out); break;
+            case 15: fail_fence=true; status=c71_pcs_residual_contract_finish(c,token,out); break;
+            case 16: status=c71_pcs_residual_contract_resident_band(c,token,planes,8,1,left,right); break;
+            case 17: status=c71_pcs_residual_retire_planes(c,planes); break;
+            case 18: status=c71_pcs_residual_contract_finish(c,token,nullptr); break;
+            }
+        }
+        upload_fail_after=download_fail_after=-1; fail_launch=false; fail_fence=false; fail_free=false; corrupt=false;
+        assert(status && stats(c).stopped && same(out[0],{19,23,29}) && same(out[1],{31,37,41}));
+        C71RangeStats final{}; const auto closed=c71_range_close(c,&final); assert((closed!=0)==(fault==13));
+    }
+    std::puts("C71_PCS_RESIDUAL_CONTRACT_FAILURE {\"terminal_rejections\":19,\"gpu_execution\":false,\"credit\":false}");
+}
+}
+
+
+namespace residual_test {
+uint64_t private_salts(C71RangeContext* c,uint64_t& end) {
+    uint8_t seed[32]; for(unsigned i=0;i<32;++i) seed[i]=uint8_t(i*7+3);
+    uint64_t token=0; assert(!c71_pcs_salts_begin(c,seed,{8,0,32,32},2,64,&token));
+    c71_salts::Progress progress{};
+    do { assert(!c71_pcs_salts_prescan(c,token,&progress)); } while(!progress.complete);
+    assert(!progress.failed && progress.accepted==4*8*32); end=progress.cursor;
+    uint64_t starts[8]{},offsets[8]{}; assert(!c71_pcs_salts_indices(c,token,starts,8,offsets,8));
+    assert(starts[0]==0 && offsets[0]==0); return token;
+}
+std::vector<uint64_t> expected_ring(const std::vector<E>& folded,const std::vector<E>& pads,unsigned first_coset) {
+    std::vector<uint64_t> out(24*8);
+    const auto omega=residual_oracle::power({7,0,0},(P-1)/256),row_root=residual_oracle::power({7,0,0},(P-1)/8);
+    for(unsigned column=0;column<4;++column) for(unsigned lane=0;lane<2;++lane) for(unsigned row=0;row<8;++row) {
+        const auto point=residual_oracle::mul(residual_oracle::power(omega,first_coset+lane),residual_oracle::power(row_root,row));
+        E value{};
+        for(unsigned j=0;j<4;++j) value=residual_oracle::add(value,residual_oracle::mul(folded[column*4+j],residual_oracle::power(point,j)));
+        for(unsigned j=0;j<3;++j) value=residual_oracle::add(value,residual_oracle::mul(pads[column*3+j],residual_oracle::power(point,4+j)));
+        const uint64_t limbs[]={value.c0,value.c1,value.c2};
+        for(unsigned component=0;component<3;++component) out[(uint64_t(column*3+component)*2+lane)*8+row]=limbs[component];
+    }
+    return out;
+}
+void short_hash_checks() {
+    auto* c=create(); const auto original=input(c); const std::vector<E> prefix{{0,0,0},{0,0,0},{7,11,13}};
+    const auto packet=lookup(prefix); const auto folded=dense_fold(originals(),prefix);
+    std::vector<E> pads(12); for(unsigned i=0;i<12;++i) pads[i]={3+i,5+i,7+i};
+    uint64_t end=0; const auto salts=private_salts(c,end);
+    const auto frontier=alloc(c,C71_PCS_FRONTIER_PENDING,8*4); assert(!c71_pcs_frontier_begin(c,frontier,8,16));
+    uint64_t completed=0,last_roots=0;
+    for(unsigned group=0;group<16;++group) {
+        const auto before=stats(c);
+        const auto token=begin(c,{32,7,4,{}},pcs::Phase::cosets,packet,{8,3,32,2*group,0},pads);
+        source(c,token,original); const auto ring=finish(c,token).ring;
+        assert(ring && stats(c).d2h_bytes-before.d2h_bytes==4);
+        const auto expected=expected_ring(folded,pads,2*group);
+        assert(expected_short_ring.empty()); expected_short_ring=expected;
+        const auto roots=alloc(c,C71_PCS_HASH_PENDING,8);
+        assert(!c71_pcs_short_leaves_private(c,salts,ring,roots,group,0,8,&completed));
+        assert(!c71_pcs_short_leaves_private(c,salts,ring,roots,group,8,8,&completed));
+        assert(expected_short_ring.empty());
+        assert(!c71_pcs_merge_group(c,frontier,roots,group));
+        assert(!c71_pcs_residual_retire_ring(c,ring));
+        if(group!=15) assert(!c71_range_release(c,roots)); else last_roots=roots;
+    }
+    uint64_t cursors[8]{},consumed=0; assert(!c71_pcs_salts_complete(c,salts,cursors,8,&consumed));
+    assert(completed==end && consumed==end && cursors[7]==end);
+    c71_pcs::Hash32 roots[8]; assert(!c71_pcs_read_digests(c,last_roots,0,8,roots));
+    assert(!c71_range_release(c,last_roots)); assert(!c71_range_release(c,frontier)); assert(!c71_range_release(c,original)); close(c);
+    std::puts("C71_PCS_SHORT_OWNER {\"two_coset_groups\":16,\"private_salts\":1024,\"ring_words_checked\":3072,\"odd_fft_log_rows\":3,\"input_d2h_bytes\":0,\"gpu_execution\":false,\"credit\":false}");
+    // Large metadata is rejected by the small arena before cudaMalloc; the
+    // new frontier shape reaches arena admission rather than the old cap.
+    c=create(); const auto allocations_before=allocations; uint64_t denied=0;
+    assert(c71_range_alloc(c,C71_PCS_FRONTIER_PENDING,6*(uint64_t{1}<<23),&denied));
+    assert(!denied && allocations==allocations_before && std::strcmp(c71_range_error(c),"range arena exhausted")==0); close(c);
+    for(unsigned group:{4u,32u}) {
+        c=create(); uint8_t seed[32]{}; uint64_t session=0;
+        assert(c71_pcs_salts_begin(c,seed,{uint64_t{1}<<23,0,128,4096},group,8,&session));
+        assert(!session && !stats(c).allocations); close(c);
+    }
+}
+void short_hash_failures() {
+    const auto packet=lookup({{0,0,0},{1,0,0},{7,11,13}});
+    std::vector<E> pads(12); for(unsigned i=0;i<12;++i) pads[i]={3+i,5+i,7+i};
+    for(unsigned fault=0;fault<13;++fault) {
+        auto* c=create(); const auto original=input(c);
+        // Deliberately wrong ring group can be prepared before the stream;
+        // once the private stream is live, begin requires exact group binding.
+        const auto token=begin(c,{32,7,4,{}},pcs::Phase::cosets,packet,{8,3,32,fault==1?2u:0u,0},pads);
+        source(c,token,original); const auto ring=finish(c,token).ring;
+        uint64_t end=0; const auto session=private_salts(c,end);
+        const auto leaves=alloc(c,fault==2?C71_PCS_BASE:C71_PCS_HASH_PENDING,8);
+        uint64_t completed=0xababababababababULL; int status=0;
+        switch(fault) {
+        case 0: status=c71_pcs_short_leaves_private(c,session,ring,leaves,1,0,8,&completed); break;
+        case 1: status=c71_pcs_short_leaves_private(c,session,ring,leaves,0,0,8,&completed); break;
+        case 2: status=c71_pcs_short_leaves_private(c,session,ring,leaves,0,0,8,&completed); break;
+        case 3: status=c71_pcs_short_leaves_private(c,session,ring,leaves,0,1,8,&completed); break;
+        case 4: status=c71_pcs_short_leaves_private(c,session,ring,leaves,0,0,16,&completed); break;
+        case 5: fail_launch=true; status=c71_pcs_short_leaves_private(c,session,ring,leaves,0,0,8,&completed); break;
+        case 6: assert(!c71_pcs_short_leaves_private(c,session,ring,leaves,0,0,8,&completed)); completed=0xababababababababULL; fail_dense=true; status=c71_pcs_short_leaves_private(c,session,ring,leaves,0,8,8,&completed); break;
+        case 7: assert(!c71_pcs_short_leaves_private(c,session,ring,leaves,0,0,8,&completed)); completed=0xababababababababULL; corrupt=true; status=c71_pcs_short_leaves_private(c,session,ring,leaves,0,8,8,&completed); break;
+        case 8: assert(!c71_pcs_short_leaves_private(c,session,ring,leaves,0,0,8,&completed)); completed=0xababababababababULL; fail_free=true; status=c71_pcs_short_leaves_private(c,session,ring,leaves,0,8,8,&completed); break;
+        case 9: status=c71_range_release(c,ring); break;
+        case 12: {
+            assert(!c71_pcs_short_leaves_private(c,session,ring,leaves,0,0,8,&completed)); completed=0xababababababababULL;
+            status=c71_pcs_residual_retire_ring(c,ring); break;
+        }
+        case 11: {
+            assert(!c71_pcs_short_leaves_private(c,session,ring,leaves,0,0,8,&completed)); completed=0xababababababababULL;
+            const auto swapped=alloc(c,C71_PCS_HASH_PENDING,8);
+            status=c71_pcs_short_leaves_private(c,session,ring,swapped,0,8,8,&completed); break;
+        }
+        case 10: { uint64_t words=123; const auto before=stats(c).d2h_bytes; status=c71_pcs_read_words(c,ring,0,1,&words); assert(words==123 && stats(c).d2h_bytes==before); break; }
+        }
+        fail_launch=false; fail_dense=false; corrupt=false; fail_free=false;
+        assert(status && stats(c).stopped && completed==0xababababababababULL);
+        C71RangeStats final{}; const auto closed=c71_range_close(c,&final); assert((closed!=0)==(fault==8));
+    }
+    std::puts("C71_PCS_SHORT_OWNER_FAILURE {\"terminal_rejections\":13,\"old_groups_large_rows_rejected\":2,\"gpu_execution\":false,\"credit\":false}");
+}
+}
+
+namespace residual_query_test {
+namespace pcs=c71_pcs_residual;
+using E=pcs::E;
+struct Level { unsigned degree; uint64_t inverse,modulus,forward,backward; };
+std::vector<uint64_t> spectrum(const std::vector<uint64_t>& coefficients,unsigned size) {
+    std::vector<uint64_t> values(size);
+    const auto root=residual_oracle::power({7,0,0},(P-1)/size).c0;
+    for(unsigned i=0;i<size;++i) {
+        const auto point=residual_oracle::power({root,0,0},i).c0;
+        for(auto it=coefficients.rbegin();it!=coefficients.rend();++it)
+            values[i]=residual_oracle::add(residual_oracle::mul(values[i],point),*it);
+    }
+    return values;
+}
+uint64_t words(C71RangeContext* c,const std::vector<uint64_t>& values) {
+    const auto id=alloc(c,C71_PCS_BASE,values.size());
+    assert(!c71_pcs_words_upload(c,id,0,values.data(),values.size())); return id;
+}
+std::vector<Level> factors(C71RangeContext* c,const std::vector<uint64_t>& points) {
+    const unsigned capacity=unsigned(points.size()); std::vector<Level> levels;
+    for(unsigned degree=capacity;;degree/=2) {
+        std::vector<uint64_t> inverse(2*capacity),modulus(2*capacity);
+        for(unsigned task=0;task<capacity/degree;++task) {
+            std::vector<uint64_t> polynomial{1};
+            for(unsigned j=0;j<degree;++j) {
+                std::vector<uint64_t> next(polynomial.size()+1);
+                const auto p=points[task*degree+j];
+                for(unsigned k=0;k<polynomial.size();++k) {
+                    next[k]=residual_oracle::sub(next[k],residual_oracle::mul(polynomial[k],p));
+                    next[k+1]=residual_oracle::add(next[k+1],polynomial[k]);
+                }
+                polynomial.swap(next);
+            }
+            std::vector<uint64_t> reciprocal(degree); reciprocal[0]=1;
+            for(unsigned k=1;k<degree;++k) for(unsigned j=1;j<=k;++j)
+                reciprocal[k]=residual_oracle::sub(reciprocal[k],residual_oracle::mul(polynomial[degree-j],reciprocal[k-j]));
+            const auto m=spectrum(polynomial,2*degree),i=spectrum(reciprocal,2*degree);
+            std::copy(m.begin(),m.end(),modulus.begin()+task*2*degree);
+            std::copy(i.begin(),i.end(),inverse.begin()+task*2*degree);
+        }
+        const auto forward=alloc(c,C71_PCS_POWERS,2*degree),backward=alloc(c,C71_PCS_POWERS,2*degree);
+        unsigned log=0;while((1u<<log)<2*degree)++log;
+        assert(!c71_pcs_transform_twiddles(c,forward,log,0));assert(!c71_pcs_transform_twiddles(c,backward,log,1));
+        levels.push_back({degree,words(c,inverse),words(c,modulus),forward,backward});
+        if(degree==1)break;
+    }
+    return levels;
+}
+void release_factors(C71RangeContext* c,const std::vector<Level>& levels) {
+    for(const auto& level:levels) for(auto id:{level.inverse,level.modulus,level.forward,level.backward}) assert(!c71_range_release(c,id));
+}
+struct Work { uint64_t current[3]{},spare=0,work=0,scratch=0; };
+Work workspace(C71RangeContext* c,unsigned capacity) {
+    Work w{};for(auto& id:w.current)id=alloc(c,C71_PCS_BASE,capacity);
+    w.spare=alloc(c,C71_PCS_BASE,capacity);w.work=alloc(c,C71_PCS_BASE,2*capacity);w.scratch=alloc(c,C71_PCS_BASE,2*capacity);return w;
+}
+void release_work(C71RangeContext* c,Work w) {
+    for(auto id:{w.current[0],w.current[1],w.current[2],w.spare,w.work,w.scratch})assert(!c71_range_release(c,id));
+}
+uint64_t query_begin(C71RangeContext* c,pcs::Shape shape,const residual_test::Lookup& packet,
+    const std::vector<E>& pads,unsigned capacity,unsigned column) {
+    uint64_t token=0;shape.equality=packet.shape;
+    assert(!c71_pcs_residual_query_begin(c,shape,packet.chunks.data(),packet.tables.data(),pads.data(),unsigned(pads.size()),capacity,column,&token));
+    assert(token);return token;
+}
+c71_pcs::QueryBlock block(unsigned remaining,unsigned pad_rows,unsigned column,uint64_t first) {
+    const uint64_t n=uint64_t{1}<<(remaining-2);
+    return {first,n+pad_rows,n,n,uint64_t(column)*n,0,uint64_t(column)*pad_rows,pad_rows,0};
+}
+void roots(C71RangeContext* c,uint64_t token,const std::vector<Level>& levels,Work& work,bool first) {
+    // Deliberately permute the three limbs. Each block still consumes all three.
+    const auto& root=levels.front();
+    for(unsigned limb:{2u,0u,1u}) {
+        assert(!c71_pcs_residual_query_root(c,token,limb,first?0:work.current[limb],root.inverse,root.modulus,
+            root.forward,root.backward,work.work,work.scratch,work.spare));
+        std::swap(work.current[limb],work.spare);
+    }
+}
+void children(C71RangeContext* c,const std::vector<Level>& levels,Work& work) {
+    for(size_t level=1;level<levels.size();++level)for(unsigned limb:{1u,2u,0u}) {
+        const auto& factor=levels[level];
+        assert(!c71_pcs_query_remainder(c,work.current[limb],work.current[limb],factor.inverse,factor.modulus,
+            factor.forward,factor.backward,work.work,work.scratch,work.spare,factor.degree,1));
+        std::swap(work.current[limb],work.spare);
+    }
+}
+E horner(const std::vector<E>& values,const std::vector<E>& pads,unsigned column,uint64_t point) {
+    const size_t n=values.size()/4,pad_rows=pads.size()/4;E result{};
+    for(size_t j=pad_rows;j-->0;)result=residual_oracle::add(residual_oracle::mul(result,{point,0,0}),pads[column*pad_rows+j]);
+    for(size_t j=n;j-->0;)result=residual_oracle::add(residual_oracle::mul(result,{point,0,0}),values[column*n+j]);
+    return result;
+}
+void positive() {
+    auto* c=create();const int16_t original_weights[]={0,1,-1,32767,-32767,2,-2,3,4,-4,7,-7,11,-11,13,-13,
+        17,-17,19,-19,23,-23,29,-29,31,-31,37,-37,41,-41,43,-43};
+    assert(!c71_dense_weights_begin(c,32));assert(!c71_dense_weights_upload(c,0,original_weights,32));assert(!c71_dense_weights_seal(c));
+    const auto tiles=alloc(c,C71_PCS_WEIGHT_TILES,2);const c71_pcs::WeightTile mapping[]={{0,16,0,4,2},{16,16,2,4,2}};
+    assert(!c71_pcs_tiles_upload(c,tiles,mapping,2));
+    std::vector<E> original(128);
+    for(unsigned i=0;i<32;++i) { const unsigned address=i<16?i/2*4+i%2:(i-16)/2*4+2+(i-16)%2;
+        const int32_t value=original_weights[address];original[i]={value<0?P-uint64_t(-value):uint64_t(value),0,0}; }
+    const std::vector<E> prefix{{0,0,0},{0,0,0},{7,11,13}};const auto packet=residual_test::lookup(prefix);
+    const auto weight_values=residual_test::dense_fold(original,prefix);
+    const auto input=residual_test::input(c);auto token=residual_test::begin(c,{32,7,4,{}},pcs::Phase::retention,packet);
+    residual_test::source(c,token,input);const auto retained=residual_test::finish(c,token).planes;
+    const auto retained_values=residual_test::dense_fold(residual_test::originals(),prefix);
+    std::vector<E> pads(12);for(unsigned i=0;i<pads.size();++i)pads[i]=i%3==0?E{}:i%3==1?E{1,0,0}:E{5+i,7+i,11+i};
+    unsigned cases=0;uint64_t visits=0,rows=0,blocks=0;
+    for(unsigned capacity:{1u,2u,4u,8u,16u}) {
+        const unsigned count=capacity>2?capacity-1:capacity;
+        const auto domain_root=residual_oracle::power({7,0,0},(P-1)/256).c0;std::vector<uint64_t> points(capacity);
+        for(unsigned i=0;i<count;++i)points[i]=residual_oracle::power({domain_root,0,0},i==2?3:3*i).c0;
+        const auto levels=factors(c,points);auto work=workspace(c,capacity);
+        for(unsigned view=0;view<4;++view) {
+            const std::vector<E> suffix=view==2?std::vector<E>{{1,0,0}}:view==3?std::vector<E>{{0,1,0},{0,0,1}}:std::vector<E>{};
+            const auto p=view==0?packet:residual_test::lookup(suffix);
+            const pcs::Shape shape=view==0?pcs::Shape{32,7,4,p.shape}:pcs::Shape{16,4,unsigned(4-suffix.size()),p.shape};
+            const auto values=view==0?weight_values:residual_test::dense_fold(retained_values,suffix);
+            const uint64_t read_before=view==0?query_original_reads:query_resident_reads;
+            for(unsigned column=0;column<4;++column) {
+                const auto before=stats(c);token=query_begin(c,shape,p,pads,capacity,column);
+                const uint64_t source_rows=values.size()/4+3;bool first=true;
+                for(uint64_t b=(source_rows+capacity-1)/capacity;b-->0;) {
+                    const auto geometry=block(shape.remaining,3,column,b*capacity);
+                    assert(!(view==0?c71_pcs_residual_query_weights(c,token,tiles,geometry):c71_pcs_residual_query_resident(c,token,retained,geometry)));
+                    roots(c,token,levels,work,first);first=false;++blocks;
+                }
+                children(c,levels,work);
+                assert(stats(c).d2h_bytes==before.d2h_bytes && stats(c).fences==before.fences+1);
+                std::vector<uint64_t> actual(3*count,0x12345678);
+                assert(!c71_pcs_residual_query_finish(c,token,work.current,count,actual.data()));
+                for(unsigned row=0;row<count;++row) {
+                    const auto expected=horner(values,pads,column,points[row]);
+                    assert(actual[row]==expected.c0 && actual[count+row]==expected.c1 && actual[2*count+row]==expected.c2);
+                }
+                assert(stats(c).d2h_bytes-before.d2h_bytes==24*count+4 && stats(c).fences-before.fences==2);
+                assert(stats(c).arena_bytes==before.arena_bytes && stats(c).host_owner_bytes==before.host_owner_bytes);
+                ++cases;rows+=count;
+            }
+            const uint64_t read_after=view==0?query_original_reads:query_resident_reads;
+            assert(read_after-read_before==(view==0?32:16));visits+=read_after-read_before;
+        }
+        release_work(c,work);release_factors(c,levels);
+    }
+    assert(!c71_pcs_residual_retire_planes(c,retained));assert(!c71_range_release(c,input));assert(!c71_range_release(c,tiles));close(c);
+    std::printf("C71_PCS_QUERY_E_OWNER {\"column_cases\":%u,\"query_rows\":%llu,\"original_or_plane_visits\":%llu,\"root_blocks\":%llu,\"private_limb_loads\":3,\"fences_per_column\":2,\"input_d2h_bytes\":0,\"W_scans_per_batch\":1,\"gpu_execution\":false,\"credit\":false}\n",
+        cases,(unsigned long long)rows,(unsigned long long)visits,(unsigned long long)blocks);
+}
+}
+
+namespace residual_query_test {
+void drive(C71RangeContext* c,uint64_t token,C71PcsResidualPlanes retained,const std::vector<Level>& levels,Work& w,bool descend=true) {
+    const unsigned capacity=levels.front().degree;bool first=true;
+    for(uint64_t b=(7+capacity-1)/capacity;b-->0;) {
+        assert(!c71_pcs_residual_query_resident(c,token,retained,block(4,3,0,b*capacity)));
+        roots(c,token,levels,w,first);first=false;
+    }
+    if(descend)children(c,levels,w);
+}
+void negative() {
+    constexpr unsigned capacity=2;
+    const auto empty=residual_test::lookup({});
+    const auto prefix=residual_test::lookup({{0,0,0},{0,0,0},{7,11,13}});
+    const std::vector<E> pads{{0,0,0},{1,0,0},{3,5,7},{11,13,17},{19,23,29},{31,37,41},
+        {43,47,53},{59,61,67},{71,73,79},{83,89,97},{101,103,107},{109,113,127}};
+    for(unsigned fault=0;fault<56;++fault) {
+        auto* c=create();const auto original=residual_test::input(c);
+        const auto initial=residual_test::begin(c,{32,7,4,{}},pcs::Phase::retention,prefix);
+        residual_test::source(c,initial,original);const auto retained=residual_test::finish(c,initial).planes;
+        const std::vector<uint64_t> points{1,7};const auto levels=factors(c,points);auto w=workspace(c,capacity);
+        uint64_t token=0;std::vector<uint64_t> output(6,0x12345678);int status=0;
+        const pcs::Shape shape{16,4,4,empty.shape};
+        const bool begin_fault=fault<=7 || fault==44 || (fault>=47 && fault<=50);
+        if(begin_fault) {
+            auto badshape=shape;auto badpads=pads;auto badpacket=empty;uint32_t cap=capacity,column=0;
+            uint64_t* token_pointer=&token;
+            if(fault==0)badshape.remaining=1;
+            if(fault==1)badshape.dimension=36;
+            if(fault==2)badpads[3].c2=P;
+            if(fault==3) { badpacket=residual_test::lookup({{0,1,0}});badshape.remaining=3;
+                badshape.equality=badpacket.shape;badpacket.chunks[0].reserved=1; }
+            if(fault==4)cap=3;
+            if(fault==5)column=4;
+            if(fault==6)token_pointer=nullptr;
+            if(fault==7)badshape.equality.reserved=1;
+            if(fault==44)cap=1u<<21;
+            if(fault==47)token_pointer=reinterpret_cast<uint64_t*>(badpads.data());
+            if(fault==48)upload_fail_after=1;
+            if(fault==49)fail_fence=true;
+            if(fault==50)cap=1u<<20; // reject the complete 24 MiB phase before allocation
+            const auto allocations_before=allocations;
+            status=c71_pcs_residual_query_begin(c,badshape,badpacket.chunks.data(),badpacket.tables.data(),badpads.data(),
+                unsigned(badpads.size()),cap,column,token_pointer);
+            if(fault==50)assert(allocations==allocations_before);
+            if(token_pointer==&token)assert(!token);
+            upload_fail_after=-1;fail_fence=false;
+        } else {
+            token=query_begin(c,shape,empty,pads,capacity,0);
+            auto geometry=block(4,3,0,6);const auto& root=levels.front();
+            const auto root_call=[&](unsigned limb,uint64_t high,uint64_t out,uint64_t forward,uint64_t backward,uint64_t work) {
+                return c71_pcs_residual_query_root(c,token,limb,high,root.inverse,root.modulus,forward,backward,work,w.scratch,out);
+            };
+            switch(fault) {
+            case 8: status=c71_pcs_residual_query_finish(c,token,w.current,2,output.data());break;
+            case 9: status=c71_pcs_residual_query_resident(c,token+1,retained,geometry);break;
+            case 10: geometry.first=4;status=c71_pcs_residual_query_resident(c,token,retained,geometry);break;
+            case 11: geometry.byte_first=4;status=c71_pcs_residual_query_resident(c,token,retained,geometry);break;
+            case 12: geometry.window_first=1;status=c71_pcs_residual_query_resident(c,token,retained,geometry);break;
+            case 13: geometry.pad_only=1;status=c71_pcs_residual_query_resident(c,token,retained,geometry);break;
+            case 14: geometry.source_rows=6;status=c71_pcs_residual_query_resident(c,token,retained,geometry);break;
+            case 15: assert(!c71_pcs_residual_query_resident(c,token,retained,geometry));status=c71_pcs_residual_query_resident(c,token,retained,geometry);break;
+            case 16: status=c71_pcs_residual_query_weights(c,token,original,geometry);break;
+            case 17: { auto bad=retained;bad.c1=bad.c0;status=c71_pcs_residual_query_resident(c,token,bad,geometry);break; }
+            case 18: status=c71_pcs_residual_retire_planes(c,retained);break;
+            case 19: { const auto before=stats(c);status=c71_pcs_read_words(c,levels[0].modulus,0,1,output.data());assert(stats(c).d2h_bytes==before.d2h_bytes);break; }
+            case 20: { const auto before=stats(c);status=c71_original_read(c,original,C71_I16,0,1,output.data());assert(stats(c).d2h_bytes==before.d2h_bytes);break; }
+            case 21: status=c71_range_release(c,w.work);break;
+            case 22: { const uint64_t word=1;status=c71_pcs_words_upload(c,levels[0].modulus,0,&word,1);break; }
+            case 23: { uint64_t other=0;status=c71_linear_begin(c,{},nullptr,nullptr,0,nullptr,nullptr,nullptr,&other);break; }
+            case 24: { uint64_t other=0;status=c71_pcs_residual_begin(c,shape,pcs::Phase::retention,nullptr,nullptr,{},nullptr,0,{},&other);break; }
+            case 25: { uint8_t seed[32]{};uint64_t other=0;status=c71_pcs_salts_begin(c,seed,{8,0,32,32},2,64,&other);break; }
+            case 26: status=root_call(0,0,w.spare,root.forward,root.backward,w.work);break;
+            case 27: assert(!c71_pcs_residual_query_resident(c,token,retained,geometry));status=root_call(3,0,w.spare,root.forward,root.backward,w.work);break;
+            case 28: assert(!c71_pcs_residual_query_resident(c,token,retained,geometry));status=root_call(0,w.current[0],w.spare,root.forward,root.backward,w.work);break;
+            case 29: assert(!c71_pcs_residual_query_resident(c,token,retained,geometry));assert(!root_call(0,0,w.spare,root.forward,root.backward,w.work));
+                std::swap(w.current[0],w.spare);status=root_call(0,0,w.spare,root.forward,root.backward,w.work);break;
+            case 30: assert(!c71_pcs_residual_query_resident(c,token,retained,geometry));assert(!root_call(0,0,w.spare,root.forward,root.backward,w.work));
+                std::swap(w.current[0],w.spare);status=root_call(1,0,w.current[0],root.forward,root.backward,w.work);break;
+            case 31: assert(!c71_pcs_residual_query_resident(c,token,retained,geometry));status=root_call(0,0,w.spare,root.backward,root.forward,w.work);break;
+            case 32: assert(!c71_pcs_residual_query_resident(c,token,retained,geometry));status=root_call(0,0,w.spare,root.forward,root.backward,w.current[2]);break;
+            case 33: assert(!c71_pcs_residual_query_resident(c,token,retained,geometry));copy_fail_after=0;status=root_call(0,0,w.spare,root.forward,root.backward,w.work);copy_fail_after=-1;break;
+            case 34: fail_launch=true;status=c71_pcs_residual_query_resident(c,token,retained,geometry);fail_launch=false;break;
+            case 35: assert(!c71_pcs_residual_query_resident(c,token,retained,geometry));roots(c,token,levels,w,true);
+                geometry.first=4;assert(!c71_pcs_residual_query_resident(c,token,retained,geometry));fail_launch=true;
+                status=root_call(0,w.current[0],w.spare,root.forward,root.backward,w.work);fail_launch=false;break;
+            case 36: drive(c,token,retained,levels,w);fail_dense=true;status=c71_pcs_residual_query_finish(c,token,w.current,2,output.data());fail_dense=false;break;
+            case 37: case 38: case 39: drive(c,token,retained,levels,w);download_fail_after=fault==37?0:fault==38?1:3;
+                status=c71_pcs_residual_query_finish(c,token,w.current,2,output.data());download_fail_after=-1;break;
+            case 40: drive(c,token,retained,levels,w);fail_fence=true;status=c71_pcs_residual_query_finish(c,token,w.current,2,output.data());fail_fence=false;break;
+            case 41: drive(c,token,retained,levels,w);corrupt=true;status=c71_pcs_residual_query_finish(c,token,w.current,2,output.data());corrupt=false;break;
+            case 42: drive(c,token,retained,levels,w);fail_free=true;status=c71_pcs_residual_query_finish(c,token,w.current,2,output.data());fail_free=false;break;
+            case 43: { drive(c,token,retained,levels,w);uint64_t ids[]={w.spare,w.current[1],w.current[2]};status=c71_pcs_residual_query_finish(c,token,ids,2,output.data());break; }
+            case 45: drive(c,token,retained,levels,w);status=c71_pcs_residual_query_finish(c,token,w.current,3,output.data());break;
+            case 46: { drive(c,token,retained,levels,w);const auto ids=std::vector<uint64_t>(w.current,w.current+3);
+                status=c71_pcs_residual_query_finish(c,token,w.current,2,w.current);assert(std::equal(ids.begin(),ids.end(),w.current));break; }
+            case 51: { auto* other=create();const auto other_original=residual_test::input(other);
+                const auto other_token=residual_test::begin(other,{32,7,4,{}},pcs::Phase::retention,prefix);residual_test::source(other,other_token,other_original);
+                const auto foreign=residual_test::finish(other,other_token).planes;status=c71_pcs_residual_query_resident(c,token,foreign,geometry);close(other);break; }
+            case 52: drive(c,token,retained,levels,w,false);status=c71_pcs_residual_query_finish(c,token,w.current,2,output.data());break;
+            case 53: { auto swapped=retained;std::swap(swapped.c1,swapped.c2);
+                status=c71_pcs_residual_query_resident(c,token,swapped,geometry);break; }
+            case 54: drive(c,token,retained,levels,w);status=c71_pcs_transform(c,w.current[0],w.spare,levels.back().forward,1,1,0);break;
+            case 55: drive(c,token,retained,levels,w);corrupt_query_data=true;
+                status=c71_pcs_residual_query_finish(c,token,w.current,2,output.data());corrupt_query_data=false;break;
+            default: assert(false);
+            }
+        }
+        assert(status && stats(c).stopped && *c71_range_error(c));
+        for(auto word:output)assert(word==0x12345678);
+        C71RangeStats final{};const auto closed=c71_range_close(c,&final);
+        if(fault==42)assert(closed && final.cleanup_failed && final.arena_bytes==256);
+        else assert(!closed && !final.cleanup_failed && !final.arena_bytes && !final.weights_bytes);
+    }
+    std::puts("C71_PCS_QUERY_E_FAILURE {\"terminal_rejections\":56,\"forbidden_read_d2h_bytes\":0,\"publication_after_free\":true,\"root_columns_are_not_queries\":true,\"gpu_execution\":false,\"credit\":false}");
+}
+}
+
+namespace residual_query_test {
+void weight_launch_failures() {
+    for(unsigned failed_launch=0;failed_launch<2;++failed_launch) {
+        auto* c=create();const int16_t weights[]={1,-1,2,-2,3,-3,4,-4,5,-5,6,-6,7,-7,8,-8};
+        assert(!c71_dense_weights_begin(c,16));assert(!c71_dense_weights_upload(c,0,weights,16));assert(!c71_dense_weights_seal(c));
+        const auto tiles=alloc(c,C71_PCS_WEIGHT_TILES,1);const c71_pcs::WeightTile mapping{0,16,0,4,4};
+        assert(!c71_pcs_tiles_upload(c,tiles,&mapping,1));
+        const auto packet=residual_test::lookup({{0,0,0},{0,0,0},{7,11,13}});
+        std::vector<E> pads(12,E{3,5,7});const auto levels=factors(c,{1,7});auto w=workspace(c,2);
+        const auto token=query_begin(c,{16,7,4,packet.shape},packet,pads,2,0);
+        for(unsigned first:{6u,4u}) {
+            const auto before=stats(c);assert(!c71_pcs_residual_query_weights(c,token,tiles,block(4,3,0,first)));
+            assert(stats(c).launches-before.launches==1); // private pad block only
+            roots(c,token,levels,w,first==6);
+        }
+        const auto before=stats(c);const auto global_launches=launches;
+        query_weight_fail_after=int(failed_launch);
+        const int status=c71_pcs_residual_query_weights(c,token,tiles,block(4,3,0,2));
+        query_weight_fail_after=-1;
+        assert(status && stats(c).stopped && stats(c).launches-before.launches==failed_launch+1);
+        assert(launches-global_launches==failed_launch+1 && stats(c).d2h_bytes==before.d2h_bytes);
+        uint64_t untouched[6];std::fill(untouched,untouched+6,uint64_t{0x12345678});
+        assert(c71_pcs_residual_query_finish(c,token,w.current,2,untouched));
+        for(auto word:untouched)assert(word==0x12345678);
+        close(c); // drains an accepted init before releasing its private low
+    }
+    std::puts("C71_PCS_QUERY_E_WEIGHT_FAILURE {\"terminal_rejections\":2,\"pad_only_launches\":1,\"real_work_launches\":2,\"accepted_init_drained\":true,\"gpu_execution\":false,\"credit\":false}");
+}
+void source_coverage_checks() {
+    namespace pcs=c71_pcs_residual;
+    const auto packet=residual_test::lookup({{0,0,0},{0,0,0},{7,11,13}});
+    pcs::SourceCoverage reference{};auto* c=create();const auto original=residual_test::input(c);
+    auto token=residual_test::begin(c,{32,7,4,{}},pcs::Phase::retention,packet);
+    for(unsigned first:{8u,24u,0u,16u}) {
+        assert(reference.insert(first,8,32));
+        assert(!c71_pcs_residual_source_tile(c,token,original,{first/2,1,4,1,first,0,2,2}));
+    }
+    assert(reference.complete(32) && reference.highwater==2);
+    assert(stats(c).host_owner_bytes>=sizeof(pcs::SourceCoverage));
+    const auto retained=residual_test::finish(c,token).planes;
+    residual_test::read_copy(c,retained,residual_test::dense_fold(residual_test::originals(),{{0,0,0},{0,0,0},{7,11,13}}));
+    assert(!c71_pcs_residual_retire_planes(c,retained));close(c);
+    c=create();const auto duplicate_input=residual_test::input(c);token=residual_test::begin(c,{32,7,4,{}},pcs::Phase::retention,packet);
+    const c71_pcs::SourceTile half{0,8,1,8,0,0,2,2};assert(!c71_pcs_residual_source_tile(c,token,duplicate_input,half));
+    const auto before=stats(c);assert(c71_pcs_residual_source_tile(c,token,duplicate_input,half));
+    assert(stats(c).stopped && stats(c).launches==before.launches);
+    C71PcsResidualResult unchanged{};std::memset(&unchanged,0xa5,sizeof(unchanged));const auto saved=unchanged;
+    assert(c71_pcs_residual_finish(c,token,&unchanged) && !std::memcmp(&unchanged,&saved,sizeof(saved)));close(c);
+    // Metadata-only overflow: one private i16, no allocation proportional to A.
+    c=create();const auto scalar=alloc(c,C71_I16,1);const int16_t value=1;assert(!c71_range_upload(c,scalar,&value,2));
+    const auto full=residual_test::lookup(std::vector<E>(14));token=residual_test::begin(c,{8194,14,0,{}},pcs::Phase::retention,full);
+    pcs::SourceCoverage overflow{};
+    for(unsigned i=0;i<pcs::SourceCoverage::capacity;++i) {
+        assert(overflow.insert(2*i,1,8194));assert(!c71_pcs_residual_source_tile(c,token,scalar,{0,1,1,1,2*i,0,1,2}));
+    }
+    assert(overflow.highwater==4096 && !overflow.insert(8192,1,8194));
+    const auto overflow_before=stats(c);assert(c71_pcs_residual_source_tile(c,token,scalar,{0,1,1,1,8192,0,1,2}));
+    assert(stats(c).stopped && stats(c).launches==overflow_before.launches);close(c);
+    std::puts("C71_PCS_SOURCE_COVERAGE {\"reversed_ragged_cases\":1,\"overlap_rejections\":1,\"frontier_overflow_rejections\":1,\"source_frontier_highwater_reduced\":2,\"source_frontier_capacity\":4096,\"source_frontier_bytes\":65544,\"pinned_gap_bound_verified\":false,\"gpu_execution\":false,\"credit\":false}");
+}
+}
+
 int main() {
     // Original P3 66e2906 Goldilocks generator, including canonical 2^32.
     uint64_t two_adic_root=0x185629dcda58878cULL;
@@ -1178,6 +2226,16 @@ int main() {
     embedding_checks();
     pointwise_checks();
     byte_checks();
+    residual_test::component_checks();
+    residual_test::contract_checks();
+    residual_test::failure_checks();
+    residual_test::contract_failures();
+    residual_test::short_hash_checks();
+    residual_test::short_hash_failures();
+    residual_query_test::positive();
+    residual_query_test::negative();
+    residual_query_test::weight_launch_failures();
+    residual_query_test::source_coverage_checks();
     assert(allocations==frees);
     std::puts("C71_RANGE_OWNER_HOST {\"rejections\":13,\"dense_rejections\":23,\"byte_rejections\":19,\"pointwise_rejections\":14,\"embedding_rejections\":17,\"dense_batches\":2,\"dense_row_views\":1,\"max_arena_bytes\":262144,\"gpu_execution\":false,\"credit\":false}");
 }

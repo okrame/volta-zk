@@ -39,15 +39,11 @@ __device__ bool checked_lookup(uint64_t index,const pcs::Chunk* chunks,unsigned 
     }
     return true;
 }
-template<pcs::Phase phase> __device__ void contribute(uint64_t index,uint64_t original,
-    pcs::Shape shape,const pcs::Chunk* chunks,const pcs::E* tables,pcs::Output output,
-    pcs::CosetShape cosets,const uint64_t* high,pcs::PowerShape powers,const pcs::E* power_low,
-    const pcs::E* power_high,pcs::E* shared,pcs::E& reduced,uint32_t* flag) {
-    pcs::E weight{};
+template<pcs::Phase phase> __device__ void accumulate(uint64_t index,pcs::E value,
+    pcs::Shape shape,pcs::Output output,pcs::CosetShape cosets,const uint64_t* high,
+    pcs::PowerShape powers,const pcs::E* power_low,const pcs::E* power_high,
+    pcs::E* shared,pcs::E& reduced,uint32_t* flag) {
     const uint64_t folded=pcs::folded_index(index,shape);
-    const uint64_t equality_index=phase==pcs::Phase::singleton ? folded : index>>shape.remaining;
-    if(!checked_lookup(equality_index,chunks,shape.equality.chunks,tables,weight,flag)) return;
-    const pcs::E value=pcs::base_mul(weight,original);
     if(pcs::zero(value)) return; // Original visit is still counted by the caller.
     if constexpr(phase==pcs::Phase::singleton) {
         atomic_e(shared+(index>>shape.remaining),value);
@@ -73,6 +69,16 @@ template<pcs::Phase phase> __device__ void contribute(uint64_t index,uint64_t or
         if(!pcs::canonical(lo) || !pcs::canonical(hi)) { atomicExch(flag,1u); return; }
         reduced=pcs::add(reduced,pcs::mul(value,pcs::mul(lo,hi)));
     }
+}
+template<pcs::Phase phase> __device__ void contribute(uint64_t index,uint64_t original,
+    pcs::Shape shape,const pcs::Chunk* chunks,const pcs::E* tables,pcs::Output output,
+    pcs::CosetShape cosets,const uint64_t* high,pcs::PowerShape powers,const pcs::E* power_low,
+    const pcs::E* power_high,pcs::E* shared,pcs::E& reduced,uint32_t* flag) {
+    pcs::E weight{};
+    const uint64_t equality_index=phase==pcs::Phase::singleton ? pcs::folded_index(index,shape) : index>>shape.remaining;
+    if(!checked_lookup(equality_index,chunks,shape.equality.chunks,tables,weight,flag)) return;
+    accumulate<phase>(index,pcs::base_mul(weight,original),shape,output,cosets,high,
+        powers,power_low,power_high,shared,reduced,flag);
 }
 template<pcs::Phase phase> __device__ void finish(pcs::E* shared,pcs::E reduced,pcs::Output output) {
     if constexpr(phase==pcs::Phase::singleton) {
@@ -123,6 +129,39 @@ template<pcs::Phase phase> __global__ void source(const void* input,unsigned kin
         }
     }
     finish<phase>(shared,reduced,output);
+}
+template<pcs::Phase phase> __global__ void resident(pcs::ConstPlanes input,uint64_t count,
+    pcs::Shape shape,const pcs::Chunk* chunks,const pcs::E* tables,pcs::Output output,
+    pcs::CosetShape cosets,const uint64_t* high,pcs::PowerShape powers,const pcs::E* power_low,
+    const pcs::E* power_high,uint32_t* flag) {
+    pcs::E* shared=scratch<phase>(); begin<phase>(shared);
+    pcs::E reduced{};
+    for(uint64_t i=uint64_t(blockIdx.x)*blockDim.x+threadIdx.x;i<count;i+=uint64_t(gridDim.x)*blockDim.x) {
+        const pcs::E original=pcs::load(input,i);
+        if(!pcs::canonical(original)) { atomicExch(flag,1u); continue; }
+        pcs::E weight{};
+        const uint64_t equality_index=phase==pcs::Phase::singleton ? pcs::folded_index(i,shape) : i>>shape.remaining;
+        if(!checked_lookup(equality_index,chunks,shape.equality.chunks,tables,weight,flag)) continue;
+        accumulate<phase>(i,pcs::mul(weight,original),shape,output,cosets,high,
+            powers,power_low,power_high,shared,reduced,flag);
+    }
+    finish<phase>(shared,reduced,output);
+}
+__global__ void ood_pad(pcs::E* reduced,const pcs::E* pads,uint32_t count,uint64_t length,
+    pcs::E point,uint32_t* flag) {
+    __shared__ pcs::E partial[pcs::threads];
+    pcs::E value{};
+    for(uint64_t i=uint64_t(blockIdx.x)*blockDim.x+threadIdx.x;i<count;i+=uint64_t(gridDim.x)*blockDim.x) {
+        const pcs::E coefficient=pads[i];
+        if(!pcs::canonical(coefficient)) { atomicExch(flag,1u); continue; }
+        value=pcs::add(value,pcs::pad_contribution(coefficient,point,length+i));
+    }
+    partial[threadIdx.x]=value; __syncthreads();
+    for(unsigned stride=pcs::threads/2;stride;stride/=2) {
+        if(threadIdx.x<stride) partial[threadIdx.x]=pcs::add(partial[threadIdx.x],partial[threadIdx.x+stride]);
+        __syncthreads();
+    }
+    if(threadIdx.x==0) atomic_e(reduced,partial[0]);
 }
 __global__ void coset_powers(uint64_t* low,uint64_t* high,pcs::Shape shape,pcs::CosetShape cosets,uint64_t omega) {
     const uint64_t count=2*cosets.rows>2*pcs::high_rows(shape,cosets) ? 2*cosets.rows : 2*pcs::high_rows(shape,cosets);
@@ -236,5 +275,127 @@ extern "C" cudaError_t c71_pcs_residual_fold_launch(cudaStream_t stream,pcs::Con
         for(unsigned j=0;j<3;++j) if(targets[i]==sources[j] || (i!=j && (sources[i]==sources[j] || targets[i]==targets[j]))) return cudaErrorInvalidValue;
     }
     fold_kernel<<<blocks(count>>rounds),pcs::threads,0,stream>>>(input,output,count,rounds,r0,r1,flag);
+    return cudaGetLastError();
+}
+
+extern "C" cudaError_t c71_pcs_residual_resident_launch(cudaStream_t stream,pcs::ConstPlanes input,
+    uint64_t count,pcs::Shape shape,const pcs::Chunk* chunks,const pcs::E* tables,pcs::Phase phase,
+    pcs::Output output,pcs::CosetShape cosets,const uint64_t* high,pcs::PowerShape powers,
+    const pcs::E* power_low,const pcs::E* power_high,uint32_t* flag) {
+    if(!stream || !flag || !input.c0 || !input.c1 || !input.c2 ||
+       input.c0==input.c1 || input.c0==input.c2 || input.c1==input.c2 ||
+       !pcs::valid_arguments(shape,phase,output,chunks,tables,cosets,high,powers,power_low,power_high) ||
+       count!=(uint64_t{1}<<shape.dimension) || count>(uint64_t{1}<<28) || shape.live!=count ||
+       (phase!=pcs::Phase::singleton && shape.dimension-shape.remaining>2)) return cudaErrorInvalidValue;
+    const uint64_t* sources[]={input.c0,input.c1,input.c2};
+    const uint64_t* targets[]={output.retained.c0,output.retained.c1,output.retained.c2,output.ring,
+        reinterpret_cast<const uint64_t*>(output.reduced)};
+    for(auto target:targets) for(auto source:sources) if(target && target==source) return cudaErrorInvalidValue;
+#define C71_RESIDUAL_RESIDENT_CASE(PHASE) case pcs::Phase::PHASE: \
+    resident<pcs::Phase::PHASE><<<blocks(count),pcs::threads,0,stream>>>(input,count,shape,chunks,tables,output,cosets,high,powers,power_low,power_high,flag); break
+    switch(phase) {
+        C71_RESIDUAL_RESIDENT_CASE(singleton);
+        C71_RESIDUAL_RESIDENT_CASE(retention);
+        C71_RESIDUAL_RESIDENT_CASE(cosets);
+        C71_RESIDUAL_RESIDENT_CASE(ood);
+        default: return cudaErrorInvalidValue;
+    }
+#undef C71_RESIDUAL_RESIDENT_CASE
+    return cudaGetLastError();
+}
+extern "C" cudaError_t c71_pcs_residual_ood_pad_launch(cudaStream_t stream,pcs::E* reduced,
+    const pcs::E* pads,uint32_t count,uint64_t length,pcs::E point,uint32_t* flag) {
+    if(!stream || !reduced || !pads || !count || count>(1u<<20) || !flag || !pcs::canonical(point) ||
+       !c71_pcs::power_two(length) || length>(uint64_t{1}<<35) || reduced==pads) return cudaErrorInvalidValue;
+    ood_pad<<<blocks(count),pcs::threads,0,stream>>>(reduced,pads,count,length,point,flag);
+    return cudaGetLastError();
+}
+
+namespace {
+using ContractPartial=pcs::ContractResult;
+__device__ ContractPartial contract_value(uint64_t index,pcs::E original,pcs::Shape shape,
+    const pcs::Chunk* chunks,const pcs::E* tables,unsigned kind,uint64_t start,
+    const pcs::E* left,const pcs::E* right,uint32_t* flag) {
+    ContractPartial out{};
+    pcs::E prefix{};
+    if(!pcs::canonical(original) || !checked_lookup(index>>shape.remaining,chunks,shape.equality.chunks,tables,prefix,flag)) {
+        atomicExch(flag,1u); return out;
+    }
+    const pcs::E value=pcs::mul(original,prefix);
+    const uint64_t size=uint64_t{1}<<(shape.remaining-kind),suffix=index&(size-1),local=suffix-start;
+    const auto lower=left[local];
+    if(!pcs::canonical(lower)) { atomicExch(flag,1u); return out; }
+    const auto upper=kind ? right[local] : pcs::E{};
+    if(!pcs::canonical(upper)) { atomicExch(flag,1u); return out; }
+    return pcs::contract_contribution(index,value,shape.remaining,kind,lower,upper);
+}
+__device__ void contract_reduce(ContractPartial partial,pcs::E* output) {
+    __shared__ ContractPartial shared[pcs::threads];
+    shared[threadIdx.x]=partial; __syncthreads();
+    for(unsigned stride=pcs::threads/2;stride;stride/=2) {
+        if(threadIdx.x<stride) for(unsigned i=0;i<2;++i)
+            shared[threadIdx.x].value[i]=pcs::add(shared[threadIdx.x].value[i],shared[threadIdx.x+stride].value[i]);
+        __syncthreads();
+    }
+    if(threadIdx.x==0) for(unsigned i=0;i<2;++i) atomic_e(output+i,shared[0].value[i]);
+}
+__global__ void contract_weights(const int16_t* input,uint64_t input_words,const c71_pcs::WeightTile* tiles,
+    uint64_t tile_count,pcs::Shape shape,const pcs::Chunk* chunks,const pcs::E* tables,unsigned kind,
+    uint64_t start,uint32_t count,const pcs::E* left,const pcs::E* right,pcs::E* output,uint32_t* flag,uint64_t tasks) {
+    ContractPartial partial{};
+    for(uint64_t task=uint64_t(blockIdx.x)*blockDim.x+threadIdx.x;task<tasks;task+=uint64_t(gridDim.x)*blockDim.x) {
+        const uint64_t index=pcs::contract_index(task,shape,kind,start,count);
+        if(index>=shape.live) continue; // Public zero suffix; no W read.
+        const uint64_t address=c71_pcs::packed_address(tiles,tile_count,index,shape.live);
+        uint64_t scalar=0;
+        if(address>=input_words || !pcs::weight_scalar(input[address],scalar)) { atomicExch(flag,1u); continue; }
+        const auto value=contract_value(index,{scalar,0,0},shape,chunks,tables,kind,start,left,right,flag);
+        for(unsigned i=0;i<2;++i) partial.value[i]=pcs::add(partial.value[i],value.value[i]);
+    }
+    contract_reduce(partial,output);
+}
+__global__ void contract_resident(pcs::ConstPlanes input,pcs::Shape shape,const pcs::Chunk* chunks,
+    const pcs::E* tables,unsigned kind,uint64_t start,uint32_t count,const pcs::E* left,const pcs::E* right,
+    pcs::E* output,uint32_t* flag,uint64_t tasks) {
+    ContractPartial partial{};
+    for(uint64_t task=uint64_t(blockIdx.x)*blockDim.x+threadIdx.x;task<tasks;task+=uint64_t(gridDim.x)*blockDim.x) {
+        const uint64_t index=pcs::contract_index(task,shape,kind,start,count);
+        if(index>=shape.live) continue;
+        const auto value=contract_value(index,pcs::load(input,index),shape,chunks,tables,kind,start,left,right,flag);
+        for(unsigned i=0;i<2;++i) partial.value[i]=pcs::add(partial.value[i],value.value[i]);
+    }
+    contract_reduce(partial,output);
+}
+bool valid_contract(pcs::Shape shape,const pcs::Chunk* chunks,const pcs::E* tables,unsigned kind,
+    uint64_t start,uint32_t count,const pcs::E* left,const pcs::E* right,pcs::E* output,uint32_t* flag) {
+    if(!pcs::valid(shape,pcs::Phase::retention) || kind>1 || shape.remaining<kind ||
+       !count || count>(1u<<21) || !left || !output || !flag || ((right!=nullptr)!=(kind!=0)) ||
+       ((chunks!=nullptr)!=(shape.equality.chunks!=0)) || ((tables!=nullptr)!=(shape.equality.entries!=0))) return false;
+    const uint64_t size=uint64_t{1}<<(shape.remaining-kind);
+    return start<=size && count<=size-start;
+}
+
+}
+extern "C" cudaError_t c71_pcs_residual_contract_weights_launch(cudaStream_t stream,const int16_t* input,
+    uint64_t input_words,const c71_pcs::WeightTile* tiles,uint64_t tile_count,pcs::Shape shape,
+    const pcs::Chunk* chunks,const pcs::E* tables,unsigned kind,uint64_t start,uint32_t count,
+    const pcs::E* left,const pcs::E* right,pcs::E* output,uint32_t* flag) {
+    if(!stream || !input || !input_words || !tiles || !tile_count ||
+       !valid_contract(shape,chunks,tables,kind,start,count,left,right,output,flag)) return cudaErrorInvalidValue;
+    const uint64_t tasks=pcs::contract_tasks(shape,kind,count);
+    contract_weights<<<blocks(tasks),pcs::threads,0,stream>>>(input,input_words,tiles,tile_count,shape,chunks,tables,
+        kind,start,count,left,right,output,flag,tasks);
+    return cudaGetLastError();
+}
+extern "C" cudaError_t c71_pcs_residual_contract_resident_launch(cudaStream_t stream,pcs::ConstPlanes input,
+    uint64_t input_count,pcs::Shape shape,const pcs::Chunk* chunks,const pcs::E* tables,unsigned kind,
+    uint64_t start,uint32_t count,const pcs::E* left,const pcs::E* right,pcs::E* output,uint32_t* flag) {
+    if(!stream || !input.c0 || !input.c1 || !input.c2 || input.c0==input.c1 || input.c0==input.c2 || input.c1==input.c2 ||
+       !valid_contract(shape,chunks,tables,kind,start,count,left,right,output,flag) || shape.dimension>28 ||
+       shape.dimension-shape.remaining>2 || input_count!=(uint64_t{1}<<shape.dimension) || shape.live!=input_count)
+        return cudaErrorInvalidValue;
+    const uint64_t tasks=pcs::contract_tasks(shape,kind,count);
+    contract_resident<<<blocks(tasks),pcs::threads,0,stream>>>(input,shape,chunks,tables,kind,start,count,
+        left,right,output,flag,tasks);
     return cudaGetLastError();
 }

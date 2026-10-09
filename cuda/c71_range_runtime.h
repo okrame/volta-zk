@@ -12,13 +12,14 @@
 #include "c71_pcs_salts.cuh"
 #include "c71_pcs_query.cuh"
 #include "c71_linear_native.cuh"
+#include "c71_pcs_residual.cuh"
 
 struct C71RangeContext;
 using C71RangeAccount = int (*)(int64_t);
 enum C71RangeKind : uint32_t { C71_U8, C71_I16, C71_PAIR, C71_CHILDREN, C71_GRAM, C71_CUBIC, C71_I64, C71_BYTE_PENDING, C71_HISTOGRAM_PENDING,
     C71_PCS_BASE, C71_PCS_HASH_PENDING, C71_PCS_DIGEST, C71_PCS_FRONTIER_PENDING,
     C71_PCS_WEIGHT_TILES, C71_PCS_POWERS, C71_PCS_SOURCE_PENDING, C71_PCS_BYTE_COUNTS_PENDING,
-    C71_PCS_PRIVATE, C71_LINEAR_PRIVATE };
+    C71_PCS_PRIVATE, C71_LINEAR_PRIVATE, C71_PCS_RESIDUAL_PRIVATE };
 struct C71RangeStats {
     // ABI 4: actual live device reservations (released after fence), aligned
     // capacities and logical payload. create() sets a budget, not a slab.
@@ -33,6 +34,17 @@ struct C71RangeStats {
     uint64_t d2d_bytes;
 };
 static_assert(sizeof(C71RangeStats)==152);
+
+// Typed proof-consumer handles, distinct from Fp3 MAC and numeric buffers.
+// count describes each plane; all three belong to one immutable generation.
+struct C71PcsResidualPlanes { uint64_t c0,c1,c2,count; };
+struct C71PcsResidualResult {
+    C71PcsResidualPlanes planes;
+    uint64_t ring;
+    uint32_t reduced_count,reserved;
+    c71_pcs_residual::E reduced[128];
+};
+static_assert(sizeof(C71PcsResidualPlanes)==32 && sizeof(C71PcsResidualResult)==3120);
 
 extern "C" {
 uint32_t c71_range_runtime_abi();
@@ -168,4 +180,65 @@ int c71_linear_begin(C71RangeContext*,c71_linear::Shape,const c71_linear::Chunk*
 int c71_linear_source_tile(C71RangeContext*,uint64_t token,uint64_t input,c71_pcs::SourceTile);
 int c71_linear_weights(C71RangeContext*,uint64_t token,uint64_t sealed_tiles);
 int c71_linear_finish(C71RangeContext*,uint64_t token,Fp3* output_five);
+// S1 native PCS arithmetic ONLY, E=Fp[v]/(v^3-v-1). No input D2H.
+// Consumer packets are copied/fenced by begin; original A producers borrow only
+// input handles/tiles. The capability and all PCS challenges stay consumer-side.
+// Retention is explicit: caller must finish the original opening/release first.
+// Cosets produce a sealed private 24*rows ring for two adjacent cosets, with
+// one rows-word FFT scratch. Hash12/salts are a separate typed consumer.
+int c71_pcs_residual_begin(C71RangeContext*,c71_pcs_residual::Shape,c71_pcs_residual::Phase,
+    const c71_pcs_residual::Chunk*,const c71_pcs_residual::E*,c71_pcs_residual::CosetShape,
+    const c71_pcs_residual::E* pads,uint32_t pad_count,c71_pcs_residual::E ood_point,uint64_t* token);
+int c71_pcs_residual_source_tile(C71RangeContext*,uint64_t token,uint64_t original,c71_pcs::SourceTile);
+int c71_pcs_residual_weights(C71RangeContext*,uint64_t token,uint64_t sealed_tiles);
+int c71_pcs_residual_resident(C71RangeContext*,uint64_t token,C71PcsResidualPlanes);
+// Publish handles/scalars only after coverage, flag, fence and auxiliary frees.
+int c71_pcs_residual_finish(C71RangeContext*,uint64_t token,C71PcsResidualResult*);
+// Old+new generations are charged together. The caller's Lease/WHIR release
+// permits promotion; successful fold does not implicitly retire the old one.
+int c71_pcs_residual_fold(C71RangeContext*,C71PcsResidualPlanes,uint32_t rounds,
+    c71_pcs_residual::E r0,c71_pcs_residual::E r1,C71PcsResidualPlanes*);
+int c71_pcs_residual_retire_planes(C71RangeContext*,C71PcsResidualPlanes);
+int c71_pcs_residual_retire_ring(C71RangeContext*,uint64_t ring);
+// Only a completed bounded final polynomial, never a full retained host spill.
+// This terminal read retires all three planes before publishing the values.
+int c71_pcs_residual_final_read(C71RangeContext*,C71PcsResidualPlanes,
+    c71_pcs_residual::E* output,uint32_t count);
+
+// Public covectors include the caller's EQ/power amplitudes. kind0 sums a
+// delta over the whole virtual suffix; kind1 emits (c0,c2) over its half.
+// Ordered bands cover that suffix exactly. A retained generation has at most
+// two virtual prefix bits; W bands decode only congruent original indices.
+int c71_pcs_residual_contract_begin(C71RangeContext*,c71_pcs_residual::Shape,
+    const c71_pcs_residual::Chunk*,const c71_pcs_residual::E*,uint32_t kind,uint32_t band_capacity,uint64_t* token);
+int c71_pcs_residual_contract_weights_band(C71RangeContext*,uint64_t token,uint64_t sealed_tiles,
+    uint64_t start,uint32_t count,const c71_pcs_residual::E* left,const c71_pcs_residual::E* right);
+int c71_pcs_residual_contract_resident_band(C71RangeContext*,uint64_t token,C71PcsResidualPlanes,
+    uint64_t start,uint32_t count,const c71_pcs_residual::E* left,const c71_pcs_residual::E* right);
+int c71_pcs_residual_contract_finish(C71RangeContext*,uint64_t token,c71_pcs_residual::E* output_two);
+
+// Native S1 leaves:12 base limbs+4 salts. Paired output occupies rows digests;
+// first/count/visits cover 2*rows leaves, with each band within one lane.
+// The two-coset ring and pending output are bound to the private stream;
+// old initial128-value group4/32 paths stay unchanged.
+int c71_pcs_short_leaves_private(C71RangeContext*,uint64_t session,uint64_t ring,uint64_t output,
+    uint32_t group,uint64_t first,uint64_t count,uint64_t* completed_bytes);
+
+
+// Native E query: the loader produces all three limbs together. Low storage,
+// EQ tables, private pads and a common failure flag remain owner-private.
+// Blocks are consumed in descending order; every limb must reduce each block
+// before it is replaced. No input D2H or per-block synchronization.
+int c71_pcs_residual_query_begin(C71RangeContext*,c71_pcs_residual::Shape,
+    const c71_pcs_residual::Chunk*,const c71_pcs_residual::E* tables,
+    const c71_pcs_residual::E* pads,uint32_t pad_count,uint32_t capacity,uint32_t column,uint64_t* token);
+int c71_pcs_residual_query_weights(C71RangeContext*,uint64_t token,uint64_t sealed_tiles,c71_pcs::QueryBlock);
+int c71_pcs_residual_query_resident(C71RangeContext*,uint64_t token,C71PcsResidualPlanes,c71_pcs::QueryBlock);
+int c71_pcs_residual_query_root(C71RangeContext*,uint64_t token,uint32_t limb,uint64_t high,
+    uint64_t inverse,uint64_t modulus,uint64_t forward,uint64_t backward,uint64_t work,uint64_t scratch,uint64_t output);
+// Only three completed query columns are downloaded. The common fence,
+// canonical check and successful auxiliary frees precede publication.
+int c71_pcs_residual_query_finish(C71RangeContext*,uint64_t token,const uint64_t final_columns[3],
+    uint32_t count,uint64_t* output_limb_major);
+
 }

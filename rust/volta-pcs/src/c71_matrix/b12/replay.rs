@@ -2,7 +2,7 @@
 use super::*;
 use super::{
     replay_tree::Tree,
-    sourcewise::{power_lookup, Getter, Lease, State},
+    sourcewise::{power_lookup, Getter, Lease, State, NativeView, NativeOriginalStage, Retained},
 };
 use p3_commit::{ExtensionMmcs, Mmcs};
 use p3_dft::TwoAdicSubgroupDft;
@@ -105,6 +105,7 @@ struct Code {
     scan: Option<BaseScan>,
     window: Option<ByteWindow>,
     native_query: Option<NativeQuery>,
+    native_residual:Option<NativeView>,
     len: usize,
     live: usize,
     width: usize,
@@ -531,6 +532,7 @@ impl Code {
         indices: &[usize],
         convert: impl Fn(E) -> Coefficient,
     ) -> Result<DenseMatrix<Goldilocks>, String> {
+        if let Some(view)=&self.native_residual {return self.rows_native_extension(indices,view);}
         if let Some(native)=&self.native_query { return self.rows_native(indices,native); }
         if indices.len() > replay_tree::query_batch_rows(self.height)
             || indices.iter().any(|&index| index >= self.height)
@@ -666,6 +668,95 @@ impl Code {
         phase.finish(json!({"completed_columns": self.width, "output_base_cells": values.len()}))?;
         Ok(DenseMatrix::new(values, self.columns()))
     }
+    fn rows_native_extension(&self,indices:&[usize],view:&NativeView)->Result<DenseMatrix<Goldilocks>,String> {
+        struct Level {degree:usize,inverse:device::Buffer,modulus:device::Buffer,forward:device::Buffer,backward:device::Buffer}
+        let owner=view.owner();
+        let result:Result<DenseMatrix<Goldilocks>,String>=(|| {
+            if self.base() || self.width!=4 || !self.len.is_power_of_two() || self.len<4 || self.pads.len()%4!=0 ||
+                !self.height.is_power_of_two() || self.height>1usize<<32 || self.live!=self.len ||
+                indices.len()>replay_tree::query_batch_rows(self.height) || indices.iter().any(|&i|i>=self.height) {
+                return Err("native E query code geometry differs".into());
+            }
+            if indices.is_empty(){return Ok(DenseMatrix::new(Vec::new(),12));}
+            let n=self.len/4;let pad_rows=self.pads.len()/4;
+            if pad_rows==0 || pad_rows>1536 || n+pad_rows>self.height {return Err("native E query message or pad bound differs".into());}
+            let cap=indices.len().next_power_of_two();
+            let mut runtime=owner.lock().map_err(|_|"native PCS owner poisoned")?;
+            let before=runtime.stats()?;
+            let mut phase=Span::start("pcs_query_remainders",json!({"height":self.height,"query_rows":indices.len(),
+                "columns":4,"base_columns":12,"base":false,"resident":true,"limbs_per_source_pass":3}))?;
+            let root=Goldilocks::two_adic_generator(self.height.ilog2() as usize);
+            let mut points:Vec<_>=indices.iter().map(|&i|root.exp_u64(i as u64)).collect();
+            points.resize(cap,Goldilocks::ZERO);
+            let mut levels=Vec::with_capacity(cap.ilog2() as usize+1);
+            {
+                let dft=Radix2DFTSmallBatch::<Goldilocks>::default();
+                query_tree_with(&points,&dft,|level| {
+                    let inverse=runtime.pcs_words(level.inverse.len())?;
+                    let words:Vec<_>=level.inverse.iter().map(|x|x.as_canonical_u64()).collect();runtime.pcs_upload(&inverse,0,&words)?;drop(words);
+                    let modulus=runtime.pcs_words(level.modulus.len())?;
+                    let words:Vec<_>=level.modulus.iter().map(|x|x.as_canonical_u64()).collect();runtime.pcs_upload(&modulus,0,&words)?;drop(words);
+                    let log=level.factor_len.ilog2() as usize;
+                    let forward=runtime.pcs_transform_twiddles(log,false)?;let backward=runtime.pcs_transform_twiddles(log,true)?;
+                    levels.push(Level {degree:level.factor_len/2,inverse,modulus,forward,backward});Ok(())
+                })?;
+            }
+            drop(points);
+            let work=runtime.pcs_words(2*cap)?;let scratch=runtime.pcs_words(2*cap)?;
+            let remainders=[runtime.pcs_words(cap)?,runtime.pcs_words(cap)?,runtime.pcs_words(cap)?,runtime.pcs_words(cap)?];
+            let pads:Vec<_>=(0..self.pads.len()).map(|i|device::PcsField::from(self.pads.get(i))).collect();
+            drop(runtime);
+            let mut values=vec![Goldilocks::ZERO;12*indices.len()];
+            let mut root_blocks=0u64;let mut child_remainders=0u64;
+            let root_level=levels.last().unwrap();
+            for column in 0..4 {
+                view.with_query(|runtime,packet,input| {
+                    let token=runtime.residual_query_begin(packet,&pads,cap,column)?;
+                    let mut current=[0,1,2];let mut spare=3;
+                    let blocks=(n+pad_rows).div_ceil(cap);
+                    for b in (0..blocks).rev() {
+                        let block=device::PcsQueryBlock {first:(b*cap) as u64,source_rows:(n+pad_rows) as u64,
+                            message_rows:n as u64,active:n as u64,byte_first:(column*n) as u64,
+                            window_first:0,pad_first:(column*pad_rows) as u64,pad_rows:pad_rows as u64,pad_only:0};
+                        match &input {super::sourcewise::NativeQueryInput::Weights(tiles)=>runtime.residual_query_weights(&token,tiles,block)?,
+                            super::sourcewise::NativeQueryInput::Planes(planes)=>runtime.residual_query_resident(&token,planes,block)?}
+                        for limb in 0..3 {
+                            let high=(b+1!=blocks).then_some(&remainders[current[limb]]);
+                            runtime.residual_query_root(&token,limb,high,&root_level.inverse,&root_level.modulus,
+                                &root_level.forward,&root_level.backward,&work,&scratch,&remainders[spare])?;
+                            std::mem::swap(&mut current[limb],&mut spare);
+                        }
+                        root_blocks+=1;
+                    }
+                    for level in levels[..levels.len()-1].iter().rev() {for limb in 0..3 {
+                        runtime.pcs_query_remainder(&remainders[current[limb]],&remainders[current[limb]],&level.inverse,&level.modulus,
+                            &level.forward,&level.backward,&work,&scratch,&remainders[spare],level.degree,true)?;
+                        std::mem::swap(&mut current[limb],&mut spare);child_remainders+=1;
+                    }}
+                    let words=runtime.residual_query_finish(token,current.map(|i|&remainders[i]),indices.len())?;
+                    for limb in 0..3 {for row in 0..indices.len() {values[12*row+3*column+limb]=Goldilocks::new(words[limb*indices.len()+row]);}}
+                    phase.checkpoint(||json!({"completed_columns":column+1,"total_columns":4,
+                        "root_blocks":root_blocks,"child_remainders":child_remainders,"native":runtime.stats().ok()}))?;
+                    Ok(())
+                })?;
+            }
+            let mut runtime=owner.lock().map_err(|_|"native PCS owner poisoned")?;
+            for level in levels {for buffer in [level.inverse,level.modulus,level.forward,level.backward]{runtime.release_buffer(buffer)?;}}
+            for buffer in remainders {runtime.release_buffer(buffer)?;}runtime.release_buffer(work)?;runtime.release_buffer(scratch)?;
+            let after=runtime.stats()?;if after.arena_bytes!=before.arena_bytes{return Err("native E query leaked owner capacity".into());}
+            phase.finish(json!({"completed_columns":4,"output_base_cells":values.len(),"root_blocks":root_blocks,
+                "source_loads_for_three_limbs":root_blocks,"child_remainders":child_remainders,
+                "host_output_payload_bytes":values.len()*size_of::<Goldilocks>(),
+                "host_column_payload_bytes":3*indices.len()*size_of::<u64>(),
+                "native_h2d_bytes":after.h2d_bytes-before.h2d_bytes,"native_d2h_bytes":after.d2h_bytes-before.d2h_bytes,
+                "native_d2d_bytes":after.d2d_bytes-before.d2d_bytes,"native_launches":after.launches-before.launches,
+                "native_fences":after.fences-before.fences,"native":after}))?;
+            Ok(DenseMatrix::new(values,12))
+        })();
+        if let Err(error)=&result {if let Ok(mut runtime)=owner.lock(){let _=runtime.abort::<()>(error);}}
+        result
+    }
+
     fn rows_native(&self, indices: &[usize], native: &NativeQuery) -> Result<DenseMatrix<Goldilocks>,String> {
         struct Level { degree: usize, inverse: device::Buffer, modulus: device::Buffer,
             forward: device::Buffer, backward: device::Buffer }
@@ -836,6 +927,9 @@ impl Code {
         mmcs: &HidingMmcs,
         state: Option<&State>,
     ) -> Result<(replay_tree::Commitment, ZkWhirReplayHandle), String> {
+        if self.native_residual.is_some() {
+            return self.commit_native_extension(mmcs,state.ok_or("native extension sumcheck missing")?);
+        }
         let base = self.base();
         let code = Arc::new(self);
         let rowcode = code.clone();
@@ -861,9 +955,92 @@ impl Code {
         )?;
         let pending_bytes = (group - 1) * rows * code.columns().max(4) * size_of::<u64>();
         tree.memory.peak_coset_bytes += pending_bytes;
-        tree.memory.peak_commit_scratch_bytes += pending_bytes;
+        tree.memory.commit_named_subtotal_bytes += pending_bytes;
         let lease = state.map(State::replay_lease).transpose()?.flatten();
         Ok((root, ZkWhirReplayHandle::new(Oracle { tree: Arc::new(tree), base, lease })))
+    }
+
+    fn commit_native_extension(self,mmcs:&HidingMmcs,state:&State)
+        ->Result<(replay_tree::Commitment,ZkWhirReplayHandle),String> {
+        let view=self.native_residual.clone().ok_or("native extension view missing")?;
+        let owner=view.owner();
+        let result=(|| {
+            if self.base() || self.width!=4 || !self.len.is_power_of_two() || self.pads.len()%4!=0 {
+                return Err("native extension requires four PCS columns".into());
+            }
+            let (rows,cut)=replay_tree::native_extension_geometry(self.height)?;
+            let cosets=self.height/rows;let groups=cosets/2;
+            let n=self.len/4;let pad=self.pads.len()/4;
+            if pad==0 || pad>1536 || n+pad>self.height || n/rows>128 {
+                return Err("native extension pad or accumulation bound differs".into());
+            }
+            let code=Arc::new(self);let rowcode=code.clone();let prepare_owner=owner.clone();
+            let (root,tree)=Tree::commit_resident_extension(mmcs,code.height,
+                Arc::new(move |indices|rowcode.rows(indices)),|rng,starts,offsets| {
+                    let mut runtime=prepare_owner.lock().map_err(|_|"native PCS owner poisoned")?;
+                    let geometry=device::SaltGeometry {rows:rows as u64,origin:rng.position(),cosets:cosets as u32,cut:cut as u32};
+                    let (end,private)=runtime.pcs_salts_prepare(&rng.seed,geometry,2,starts,offsets)?;
+                    Ok((rng.advance_to(end)?,private))
+                },|_stream,current,private| {
+                    let mut private=Some(private);
+                    let before=owner.lock().map_err(|_|"native PCS owner poisoned")?.stats()?;
+                    let frontier=if groups>1 {Some(owner.lock().map_err(|_|"native PCS owner poisoned")?.pcs_frontier(rows,groups)?)}else{None};
+                    let pads:Vec<_>=(0..code.pads.len()).map(|i|device::PcsField::from(code.pads.get(i))).collect();
+                    let mut top=Vec::new();let mut work=replay_tree::ReplayWork::default();
+                    let mut phase=Span::start("pcs_extension_resident",json!({"height":code.height,"rows":rows,
+                        "cosets":cosets,"groups":groups,"base_columns":12,"cosets_per_source_pass":2,
+                        "pad_host_capacity_bytes":pads.capacity()*size_of::<device::PcsField>()}))?;
+                    for group in 0..groups {
+                        let shape=device::ResidualCosets {rows:rows as u64,pad_rows:pad as u32,cosets:cosets as u32,
+                            first_coset:(2*group) as u32,reserved:0};
+                        let device::ResidualResult::Ring(ring)=view.run(device::ResidualPhase::Cosets,shape,&pads,E::ZERO)?
+                            else {return Err("native extension ring publication differs".into());};
+                        let mut runtime=owner.lock().map_err(|_|"native PCS owner poisoned")?;
+                        let mut roots=runtime.pcs_full_hash_begin(rows)?;
+                        let band=rows.min(65536);
+                        for first in (0..2*rows).step_by(band) {
+                            work.salt_candidate_bytes=runtime.residual_short_leaves(private.as_ref().unwrap(),&ring,&mut roots,
+                                group,first,(2*rows-first).min(band))?;
+                        }
+                        if group+1==groups {work.salt_candidate_bytes=runtime.pcs_salts_complete(private.take().unwrap(),current)?;}
+                        runtime.residual_retire_ring(ring)?;
+                        // The second lane publishes paired Merkle roots in place.
+                        if let Some(frontier)=&frontier {runtime.pcs_merge_group(frontier,&roots,group)?;}
+                        work.leaf_hashes+=(2*rows) as u64;
+                        work.node_hashes+=rows as u64*(1+u64::from(group.trailing_ones()));
+                        work.coset_cells+=(24*rows) as u64;
+                        if group+1==groups {
+                            let mut count=rows;
+                            while count>code.height/cut {
+                                let next=runtime.pcs_nodes(&roots)?;runtime.release_buffer(roots)?;roots=next;count/=2;
+                                work.node_hashes+=count as u64;
+                            }
+                            loop {
+                                top.push(runtime.pcs_digests(&roots,0,count)?);
+                                if count==1 {break;}
+                                let next=runtime.pcs_nodes(&roots)?;runtime.release_buffer(roots)?;roots=next;count/=2;
+                                work.node_hashes+=count as u64;
+                            }
+                        }
+                        runtime.release_buffer(roots)?;
+                        phase.checkpoint(||json!({"completed_groups":group+1,"leaf_hashes":work.leaf_hashes,
+                            "node_hashes":work.node_hashes,"salt_candidate_bytes":work.salt_candidate_bytes,"native":runtime.stats().ok()}))?;
+                    }
+                    let mut runtime=owner.lock().map_err(|_|"native PCS owner poisoned")?;
+                    if let Some(frontier)=frontier {runtime.release_buffer(frontier)?;}
+                    let after=runtime.stats()?;
+                    phase.finish(json!({"completed_groups":groups,"equivalent_source_passes":groups,
+                        "fft_base_cells":code.height as u64*12,"analytic_fft_butterflies":code.height as u64*6*rows.ilog2() as u64,
+                        "leaf_hashes":work.leaf_hashes,"node_hashes":work.node_hashes,"native_h2d_bytes":after.h2d_bytes-before.h2d_bytes,
+                        "native_d2h_bytes":after.d2h_bytes-before.d2h_bytes,"native_d2d_bytes":after.d2d_bytes-before.d2d_bytes,
+                        "native_launches":after.launches-before.launches,"native_fences":after.fences-before.fences,"native":after}))?;
+                    Ok((top,work,after.peak_capacity_bytes as usize))
+                })?;
+            let lease=state.replay_lease()?;
+            Ok((root,ZkWhirReplayHandle::new(Oracle {tree:Arc::new(tree),base:false,lease})))
+        })();
+        if let Err(error)=&result {if let Ok(mut runtime)=owner.lock(){let _=runtime.abort::<()>(error);}}
+        result
     }
 
     fn commit_native_source(mut self, mmcs: &HidingMmcs, native: NativeSource)
@@ -1191,8 +1368,8 @@ impl ReplayModel {
             "retained_range_histogram_capacity_bytes": self.range_bytes.as_ref().map_or(0, |source| source.histogram.capacity() * 8)
                 + self.range_words.as_ref().map_or(0, |source| source.histogram.capacity() * 8),
             "initial_coset_bytes": memory.peak_coset_bytes,
-            "initial_merkle_scratch_bytes": memory.peak_commit_scratch_bytes,
-            "initial_native_peak_capacity_bytes": memory.native_peak_capacity_bytes,
+            "initial_merkle_named_subtotal_bytes": memory.commit_named_subtotal_bytes,
+            "initial_native_owner_capacity_high_water_bytes": memory.native_owner_capacity_high_water_bytes,
             "query_subtree_bytes_each": memory.open_subtree_bytes_each,
             "retained_s1_policy": self.retain_first,
             "scope": "Merkle/pad payloads, not total host capacity; initial scratch includes coset and is no longer live; native high-water includes all buffers on the common owner, separately from this Merkle payload; S1 is retained only within active sequential PCS chain, not by this snapshot; other FFT/cache/query/sourcewise temporaries excluded"
@@ -1308,7 +1485,7 @@ impl ReplayModel {
             get: source.clone(),
             scan: scan.clone(),
             window,
-            native_query: None,
+            native_query: None, native_residual:None,
             len,
             live,
             width: 1 << first,
@@ -1415,9 +1592,14 @@ impl ReplayModel {
     pub(in crate::c71_matrix) fn native_original(&self) -> Option<&NativeOriginal> {
         self.native_original.as_ref()
     }
+    fn make_sourcewise_backend<'a>(&self,base:&'a ObservedMmcs,extension:&'a ObservedMmcs,first:usize)->Backend<'a> {
+        Backend {base,extension,source:Mutex::new(Some(self.source.clone())),scan:self.scan.clone(),
+            native_residual:self.native_original.clone(),native_initial:Mutex::new(None),native_retained:Mutex::new(None),
+            first,retain_first:self.retain_first}
+    }
     #[cfg(test)]
     pub(in crate::c71_matrix) fn fixture_native_original(mut self, native: NativeOriginal) -> Self {
-        // Attach only the linear consumer after a CPU initial commitment.
+        // Attach native consumers after a CPU initial commitment.
         // This seam does not replace or cache any PCS opening evaluator.
         self.native_original=Some(native);
         self
@@ -1498,14 +1680,7 @@ pub(in crate::c71_matrix) fn prove_pcs_sourcewise_with_coins(
         extension_mmcs: ExtensionMmcs::new(&extension),
     };
     let claims = [(point, to_p3(terminal.x))];
-    let backend = Backend {
-        base: &base,
-        extension: &extension,
-        source: Mutex::new(Some(model.source.clone())),
-        scan: model.scan.clone(),
-        first: config.round_folding_factor(0),
-        retain_first: model.retain_first,
-    };
+    let backend=model.make_sourcewise_backend(&base,&extension,config.round_folding_factor(0));
     let mut rng = PrivateRng::from_seed(coins.seed);
     let proved = prover.prove_claimless_replay_with_oracle(
         1 << config.num_variables,
@@ -1516,7 +1691,9 @@ pub(in crate::c71_matrix) fn prove_pcs_sourcewise_with_coins(
         &backend,
         fs,
         &mut rng,
-    )?;
+    );
+    let proved=match proved {Ok(proved)=>proved,Err(error)=>{backend.abort_native(&error);return Err(error);}};
+    backend.close_native()?;
     let close_tag =
         mask.m - from_p3(proved.base_case.gamma * proved.target.coefficient) * terminal.m;
     record_values(fs, 0x12, &[close_tag]);
@@ -1574,8 +1751,27 @@ struct Backend<'a> {
     extension: &'a ObservedMmcs,
     source: Mutex<Option<Getter>>,
     scan: Option<(BaseScan, usize)>,
+    native_residual:Option<NativeOriginal>,
+    native_initial:Mutex<Option<Arc<NativeOriginalStage>>>,
+    native_retained:Mutex<Option<Arc<Retained>>>,
     first: usize,
     retain_first: bool,
+}
+impl Backend<'_> {
+    fn abort_native(&self,error:&str) {
+        let owner=match &self.native_residual {Some(NativeOriginal::Source(source))=>Some(&source.runtime),
+            Some(NativeOriginal::Weights(weights))=>Some(&weights.runtime),None=>None};
+        if let Some(owner)=owner {if let Ok(mut runtime)=owner.lock(){let _=runtime.abort::<()>(error);}}
+    }
+    fn close_native(&self)->Result<(),String> {
+        let result:Result<(),String>=(|| {
+            if let Some(stage)=self.native_retained.lock().map_err(|_|"native retained registry poisoned")?.take() {stage.close_native()?;}
+            if let Some(stage)=self.native_initial.lock().map_err(|_|"native initial registry poisoned")?.take() {stage.close()?;}
+            Ok(())
+        })();
+        if let Err(error)=&result {self.abort_native(error);}
+        result
+    }
 }
 impl<'a> ZkWhirOracleCommitter<Goldilocks, E, &'a ObservedMmcs> for Backend<'a> {
     type Error = String;
@@ -1594,14 +1790,18 @@ impl<'a> ZkWhirOracleCommitter<Goldilocks, E, &'a ObservedMmcs> for Backend<'a> 
             return Err("bounded singleton sourcewise claim".into());
         }
         let mut source = self.source.lock().map_err(|_| "source lock poisoned")?;
-        let state = State::new(
-            source.as_ref().ok_or("source already consumed")?.clone(),
-            self.scan.clone(),
-            claims[0].0.as_slice(),
-            self.first,
-            target,
-            self.retain_first,
-        )?;
+        if source.is_none(){return Err("source already consumed".into());}
+        let state=if let Some(native)=&self.native_residual {
+            State::new_native(native.clone(),claims[0].0.as_slice(),self.first,target,self.retain_first)?
+        } else {
+            State::new(source.as_ref().ok_or("source already consumed")?.clone(),self.scan.clone(),
+                claims[0].0.as_slice(),self.first,target,self.retain_first)?
+        };
+        if let Some(stage)=state.native_original_stage() {
+            let mut current=self.native_initial.lock().map_err(|_|"native initial registry poisoned")?;
+            if current.is_some(){return Err("native initial stage registered twice".into());}
+            *current=Some(stage);
+        }
         source.take(); // transfer ownership only after geometry and claim validation
         Ok(state)
     }
@@ -1644,19 +1844,18 @@ impl<'a> ZkWhirOracleCommitter<Goldilocks, E, &'a ObservedMmcs> for Backend<'a> 
         folding: usize,
         height: usize,
     ) -> Result<Option<(replay_tree::Commitment, ZkWhirReplayHandle)>, String> {
-        let get = state.getter();
-        Code {
-            get,
-            scan: None,
-            window: None, native_query: None,
-            len: 1 << state.num_variables(),
-            live: 1 << state.num_variables(),
-            width: 1 << folding,
-            height,
-            pads: Pads::Extension(randomness.to_vec()),
+        let code=Code {
+            get:state.getter(),scan:None,window:None,native_query:None,
+            native_residual:state.native_view(),len:1<<state.num_variables(),live:1<<state.num_variables(),
+            width:1<<folding,height,pads:Pads::Extension(randomness.to_vec()),
+        };
+        let committed=code.commit(&self.extension.inner,Some(state))?;
+        if let Some(stage)=state.native_retained_stage() {
+            let mut current=self.native_retained.lock().map_err(|_|"native retained registry poisoned")?;
+            if current.as_ref().is_some_and(|old|!Arc::ptr_eq(old,&stage)) {return Err("native retained holder changed".into());}
+            *current=Some(stage);
         }
-        .commit(&self.extension.inner, Some(state))
-        .map(Some)
+        Ok(Some(committed))
     }
     fn evaluate_padded_ood_from_sumcheck(
         &self,
@@ -1685,10 +1884,12 @@ impl<'a> ZkWhirOracleCommitter<Goldilocks, E, &'a ObservedMmcs> for Backend<'a> 
     }
     fn release_replay(&self, handle: ZkWhirReplayHandle) -> Result<(), String> {
         let oracle = handle.downcast::<Oracle>().map_err(|_| "replay handle type")?;
-        let Oracle { tree, lease, .. } = *oracle;
+        let Oracle { tree, lease, base } = *oracle;
         drop(tree); // no opening callback survives when the generation is released
         if let Some(lease) = lease {
             lease.release()?;
+        } else if base {
+            if let Some(stage)=self.native_initial.lock().map_err(|_|"native initial registry poisoned")?.as_ref() {stage.release_initial();}
         }
         Ok(())
     }
@@ -1745,13 +1946,13 @@ fn compare_source_with_resident(
     dimension: usize, source: Getter, values: Vec<Goldilocks>, original: Option<&Model>,
     readers: Option<(BaseScan, ByteWindow)>, native: Option<NativeOriginal>, fixture_initial_rows: bool,
 ) {
-    compare_source_with_query(dimension,source,values,original,readers,native,fixture_initial_rows,None)
+    compare_source_with_query(dimension,source,values,original,readers,native,fixture_initial_rows,None,None)
 }
 #[cfg(test)]
 fn compare_source_with_query(
     dimension: usize, source: Getter, values: Vec<Goldilocks>, original: Option<&Model>,
     readers: Option<(BaseScan, ByteWindow)>, native: Option<NativeOriginal>, fixture_initial_rows: bool,
-    native_query: Option<NativeQuery>,
+    native_query: Option<NativeQuery>,native_residual:Option<NativeOriginal>,
 ) {
     use rand_010::RngExt;
     assert!((10..=17).contains(&dimension));
@@ -1811,9 +2012,16 @@ fn compare_source_with_query(
     census::mark("sourcewise_initial_commit").unwrap();
     let mut replay_fs = Fs::new(b"sourcewise C71 observed refinement", request_limit(&config));
     replay_fs.set_phase(0x200);
-    let live = native.as_ref().map_or(1 << dimension, |native| match native {
+    let residual_owner=native_residual.as_ref().map(|native|match native {
+        NativeOriginal::Source(source)=>source.runtime.clone(),NativeOriginal::Weights(weights)=>weights.runtime.clone()});
+    let live = native.as_ref().or(native_residual.as_ref()).map_or(1 << dimension, |native| match native {
         NativeOriginal::Weights(w) => w.weights.len(), NativeOriginal::Source(a) => a.live,
     });
+    let private_getter_calls=Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let source:Getter={let original=source;let calls=private_getter_calls.clone();Arc::new(move |i| {
+        calls.fetch_add(1,std::sync::atomic::Ordering::Relaxed);original(i)
+    })};
+    let residual_source=matches!(&native_residual,Some(NativeOriginal::Source(_)));
     let mut model = ReplayModel::new_source(
         Domain::Flat(dimension),
         root_seed,
@@ -1828,7 +2036,7 @@ fn compare_source_with_query(
     if let Some(native_query)=native_query {
         assert!(!fixture_initial_rows);
         let code=Arc::new(Code { get:Arc::new(|_|panic!("query fixture scalar source")),scan:None,window:None,
-            native_query:Some(native_query),len:1<<dimension,live:model.live,
+            native_query:Some(native_query),native_residual:None,len:1<<dimension,live:model.live,
             width:1<<config.round_folding_factor(0),height:model.tree.geometry().0,pads:Pads::Base(model.pads.clone()) });
         // Replace only the opening evaluator after an ordinary initial
         // commitment: no eager row table or cached query bypass.
@@ -1842,9 +2050,11 @@ fn compare_source_with_query(
         }));
         eprintln!("C71_NATIVE_W_CHAIN_FIXTURE initial_reference_rows_bytes={payload} production_cache=false");
     }
-    if original.is_some() || model.scan.is_some() {
+    if original.is_some() || model.scan.is_some() || matches!(&native_residual,Some(NativeOriginal::Source(_))) ||
+        matches!(&model.native_original,Some(NativeOriginal::Source(_))) {
         model = model.retain_first_fold();
     }
+    if let Some(native)=native_residual {model=model.fixture_native_original(native);}
     let mut initial_rng = PrivateRng::from_seed(root_seed);
     let first = config.round_folding_factor(0);
     let pads: Arc<[Goldilocks]> =
@@ -1864,14 +2074,9 @@ fn compare_source_with_query(
     };
     let mut replay_rng = PrivateRng::from_seed([101; 32]);
     census::mark("sourcewise_open_all_rounds").unwrap();
-    let backend = Backend {
-        base: &base,
-        extension: &extension,
-        source: Mutex::new(Some(source)),
-        scan: model.scan.clone(),
-        first,
-        retain_first: model.retain_first,
-    };
+    let getter_before=private_getter_calls.load(std::sync::atomic::Ordering::Relaxed);
+    if model.native_original.is_some() {model.source=Arc::new(|_|panic!("native residual used private getter"));}
+    let backend=model.make_sourcewise_backend(&base,&extension,first);
     let output = engine
         .prove_claimless_replay_with_oracle(
             1 << dimension,
@@ -1884,6 +2089,9 @@ fn compare_source_with_query(
             &mut replay_rng,
         )
         .unwrap();
+    backend.close_native().unwrap();
+    if residual_source {assert_eq!(private_getter_calls.load(std::sync::atomic::Ordering::Relaxed),getter_before,
+        "native A proof must not call the original/retained host getter");}
     census::mark("codec_and_native_verifier").unwrap();
     assert_eq!(
         serde_json::to_vec(&result.proof).unwrap(),
@@ -1943,6 +2151,11 @@ fn compare_source_with_query(
         &mut wrong_fs
     )
     .is_err());
+    if let Some(owner)=residual_owner {
+        println!("C71_NATIVE_RESIDUAL_QUERY_FULL_WIRE {}",json!({"credit":false,"gpu_execution":false,"dimension":dimension,
+            "native":owner.lock().unwrap().stats().unwrap(),"canonical_bytes":bytes.len(),"native_extension_queries":true,
+            "wire_fs_rng_original_mac_equal":true}));
+    }
     eprintln!("sourcewise_allocator={}", census::finish().unwrap());
 }
 
@@ -2023,7 +2236,7 @@ mod tests {
             let mut rng = PrivateRng::from_seed([65; 32]);
             let code = Code {
                 get: Arc::new(|i| E::from(Goldilocks::new((i * 7919) as u64))),
-                scan: None, window: None, native_query: None, len: 4096, live: 4000, width: 128, height: 512,
+                scan: None, window: None, native_query: None, native_residual:None, len: 4096, live: 4000, width: 128, height: 512,
                 pads: Pads::Base((0..1024).map(|_| rng.random()).collect()),
             };
             let (root, oracle) = code.commit(&mmcs([37; 32]), None).unwrap();
@@ -2216,7 +2429,7 @@ mod tests {
         let dft = Radix2DFTSmallBatch::default();
         let live = 117;
         let mut code = Code {
-            window: None, native_query: None,
+            window: None, native_query: None, native_residual:None,
             get: Arc::new(|i| E::from(Goldilocks::new((i * 7 + 9) as u64))),
             scan: Some(Arc::new(move |emit| {
                 // Deliberately nonmonotone: causal order is not flat order.
@@ -2541,7 +2754,7 @@ mod tests {
             let code = Code {
                 get: Arc::new(move |i| folded[i]),
                 scan: None,
-                window: None, native_query: None,
+                window: None, native_query: None, native_residual:None,
                 len: 32,
                 live: 32,
                 width: 2,
@@ -2585,7 +2798,7 @@ mod tests {
             let mut code = Code {
                 get: Arc::new(|_| panic!("byte query used scalar source")),
                 scan: None,
-                native_query: None,
+                native_query: None, native_residual:None,
                 window: Some(Arc::new(move |first, bytes| {
                     log.lock().unwrap().push((first, bytes.len()));
                     assert!(first + bytes.len() <= live);
@@ -2679,7 +2892,7 @@ mod tests {
             let pads: Vec<_> = (0..6).map(|index| -original(index + 131)).collect();
             let code = Code {
                 scan: None,
-                window: None, native_query: None,
+                window: None, native_query: None, native_residual:None,
                 get: Arc::new(move |index| {
                     counter.fetch_add(1, Ordering::Relaxed);
                     original(index)
@@ -2742,7 +2955,7 @@ mod tests {
 
         let code = Code {
             scan: None,
-            window: None, native_query: None,
+            window: None, native_query: None, native_residual:None,
             get: Arc::new(|_| E::new([Goldilocks::ONE, Goldilocks::ONE, Goldilocks::ZERO])),
             len: 8,
             live: 8,
@@ -2786,7 +2999,7 @@ mod tests {
                     let counter = reads.clone();
                     let code = Code {
                         scan: None,
-                        window: None, native_query: None,
+                        window: None, native_query: None, native_residual:None,
                         get: Arc::new(move |index| {
                             assert!(index < live, "public zero tail must not read the source");
                             counter.fetch_add(1, Ordering::Relaxed);
@@ -2866,7 +3079,7 @@ mod tests {
             let pads: Vec<_> = (0..6).map(|index| -original(index + 131)).collect();
             let code = Code {
                 scan: None,
-                window: None, native_query: None,
+                window: None, native_query: None, native_residual:None,
                 get: Arc::new(original),
                 len: 128,
                 live: 128,
@@ -3103,7 +3316,7 @@ mod tests {
                     out.copy_from_slice(&source[first..first+out.len()]); Ok(())
                 });
                 let mut code=Code { get:Arc::new(|_|panic!("native query used scalar source")),scan:None,
-                    window:Some(window),native_query:None,len:8*n,live,width:8,height,pads:Pads::Base(pads.clone()) };
+                    window:Some(window),native_query:None,native_residual:None,len:8*n,live,width:8,height,pads:Pads::Base(pads.clone()) };
                 let queries=if n==128 && live==1024 {vec![0,1,3,7,9,17,33,65,257]} else {vec![0,1,3,9,17,65]};
                 for count in queries {
                     let indices: Vec<_>=(0..count).map(|i| match i%5 {
@@ -3182,7 +3395,7 @@ mod tests {
             });
             let code=Code { get:Arc::new(|_|panic!("query scalar fallback")),scan:None,
                 window:Some(Arc::new(|_,_|panic!("query host window fallback"))),
-                native_query:Some(NativeQuery {runtime:owner.clone(),read:reader}),
+                native_query:Some(NativeQuery {runtime:owner.clone(),read:reader}),native_residual:None,
                 len:1024,live:1024,width:8,height:2048,pads:Pads::Base(vec![Goldilocks::ONE;48].into()) };
             assert!(code.rows(&[17,0,17]).is_err(),"reader fault {fault}");
             let stats=owner.lock().unwrap().stats().unwrap();
@@ -3207,7 +3420,7 @@ mod tests {
             runtime:owner.clone(),read:Arc::new(move |runtime,first,count| {
                 log.lock().unwrap().push((first,count)); read(runtime,first,count)
             }),
-        }));
+        }),None);
         assert!(!requests.lock().unwrap().is_empty(),"full chain must execute native initial queries");
         let stats=owner.lock().unwrap().close().unwrap(); assert_eq!(stats.stopped,0); assert_eq!(stats.arena_bytes,0);
         println!("C71_NATIVE_QUERY_CHAIN {}",json!({"domain_log2":10,"initial_commitment_fixture":"CPU original",
@@ -3617,7 +3830,7 @@ mod tests {
             let get: Getter = Arc::new(move |i| E::from(Goldilocks::from_u8(original.get(i).copied().unwrap_or(0))));
             let mut rng = PrivateRng::from_seed([112; 32]);
             let pads: Arc<[Goldilocks]> = (0..128 * pad).map(|_| rng.random()).collect();
-            let code = Code { get, scan: None, window: None, native_query: None, len: 128 * n, live: original_bytes.len(),
+            let code = Code { get, scan: None, window: None, native_query: None, native_residual:None, len: 128 * n, live: original_bytes.len(),
                 width: 128, height: rows * cosets, pads: Pads::Base(pads.clone()) };
             let dft = Radix2DFTSmallBatch::<Goldilocks>::default();
             let started = std::time::Instant::now();
@@ -3732,7 +3945,7 @@ mod tests {
             });
             let mut rng = PrivateRng::from_seed([112; 32]);
             let pads: Arc<[Goldilocks]> = (0..128 * pad).map(|_| rng.random()).collect();
-            let code = Code { get, scan: None, window: None, native_query: None, len: 128 * n,
+            let code = Code { get, scan: None, window: None, native_query: None, native_residual:None, len: 128 * n,
                 live: 96 * n, width: 128, height: rows * cosets, pads: Pads::Base(pads.clone()) };
             let dft = Radix2DFTSmallBatch::<Goldilocks>::default();
             let started = std::time::Instant::now();
@@ -3963,4 +4176,155 @@ mod tests {
             println!("C71_INCREMENTAL_COSET_HASH_BUDGET {}", crate::c71_matrix::census::simultaneous());
         }
     }
+    #[test]
+    fn c71_b12_native_residual_paired_tree_root_salts_and_cpu_geometry() {
+        let fixture=device::tests::fixture(512);
+        for (first,height) in [(3,1024),(7,256)] {for source in [false,true] {
+            let (original,values,_scans,owner)=super::super::sourcewise::tests::native_fixture_original(&fixture.config,10,source);
+            let values=Arc::new(values);let data=values.clone();let get:Getter=Arc::new(move |i|E::from(data[i]));
+            let point=vec![E::new([Goldilocks::new(3),Goldilocks::new(5),Goldilocks::new(7)]);10];
+            let target=Poly::new(values.as_ref().clone()).eval_base(&Point::new(point.clone()));
+            let mut cpu=State::new(get,None,&point,first,target,source).unwrap();
+            let mut native=State::new_native(original,&point,first,target,source).unwrap();
+            let initial=native.native_original_stage().unwrap();
+            for round in 0..first {
+                let expected=cpu.round_coefficients().unwrap();let actual=native.round_coefficients().unwrap();assert_eq!(actual,expected);
+                let r=E::new([Goldilocks::new(round as u64+11),Goldilocks::new(13),Goldilocks::new(17)]);
+                cpu.fold_round_with_coefficients(expected.0,expected.1,r).unwrap();
+                native.fold_round_with_coefficients(actual.0,actual.1,r).unwrap();
+            }
+            let length=1<<cpu.num_variables();
+            let pads:Vec<_>=(0..12).map(|i|E::new([Goldilocks::new(i+19),Goldilocks::new(i+23),Goldilocks::new(i+29)])).collect();
+            let make_cpu=||Code {get:cpu.getter(),scan:None,window:None,native_query:None,native_residual:None,
+                len:length,live:length,width:4,height,pads:Pads::Extension(pads.clone())};
+            let started=std::time::Instant::now();
+            let (expected,cpu_handle)=make_cpu().commit(&mmcs([61;32]),Some(&cpu)).unwrap();
+            let cpu_seconds=started.elapsed().as_secs_f64();
+            let native_code=Code {get:Arc::new(|_|panic!("native PCS host getter fallback")),scan:None,window:None,
+                native_query:None,native_residual:native.native_view(),len:length,live:length,width:4,height,
+                pads:Pads::Extension(pads)};
+            let started=std::time::Instant::now();
+            let (actual,native_handle)=native_code.commit(&mmcs([61;32]),Some(&native)).unwrap();
+            let seconds=started.elapsed().as_secs_f64();assert_eq!(actual,expected);
+            let mut native_oracle=native_handle.downcast::<Oracle>().ok().unwrap();
+            let cpu_oracle=cpu_handle.downcast::<Oracle>().ok().unwrap();
+            assert_eq!(native_oracle.tree.work,cpu_oracle.tree.work);
+            if source {initial.release_initial();native.add_powers(&[]).unwrap();}
+            let indices=[height-1,17,0,17,height/2];
+            assert_eq!(serde_json::to_value(native_oracle.tree.open(&indices).unwrap()).unwrap(),
+                serde_json::to_value(cpu_oracle.tree.open(&indices).unwrap()).unwrap());
+            let stats=owner.lock().unwrap().stats().unwrap();
+            println!("C71_NATIVE_RESIDUAL_TREE_COMPONENT {}",json!({"credit":false,"gpu_execution":false,
+                "source_bytes":source,"first_fold":first,"height":height,"seconds":seconds,"cpu_seconds":cpu_seconds,
+                "native_rows":replay_tree::native_extension_geometry(height).unwrap().0,
+                "cpu_rows":replay_tree::geometry(height,12).unwrap().0,
+                "query_extension_integrated":true,"native":stats}));
+            if let Some(lease)=native_oracle.lease.take(){lease.release().unwrap();}
+            if let Some(lease)=cpu_oracle.lease {lease.release().unwrap();}
+            drop(native_oracle.tree);drop(cpu_oracle.tree);
+            if source {native.native_retained_stage().unwrap().close_native().unwrap();}
+            initial.close().unwrap();owner.lock().unwrap().close().unwrap();
+        }}
+    }
+
+    #[test]
+    fn c71_b12_native_residual_query_horner_pads_duplicates_and_virtual_prefixes() {
+        use std::sync::atomic::Ordering;
+        let mut fixture=device::tests::fixture(512);fixture.config.arena_bytes=16<<20;
+        for source in [false,true] {
+            let (original,values,scans,owner)=super::super::sourcewise::tests::native_fixture_original(&fixture.config,10,source);
+            let point=vec![E::ZERO;10];let target=E::from(values[0]);
+            let mut dense:Vec<_>=values.into_iter().map(E::from).collect();
+            let mut native=State::new_native(original,&point,3,target,source).unwrap();
+            let initial=native.native_original_stage().unwrap();
+            let fold=|state:&mut State,values:&mut Vec<E>,round:usize| {
+                let r=match round%3 {0=>E::ZERO,1=>E::ONE,
+                    _=>E::new([Goldilocks::new(round as u64+7),Goldilocks::new(11),Goldilocks::new(13)])};
+                let (c0,c2)=state.round_coefficients().unwrap();state.fold_round_with_coefficients(c0,c2,r).unwrap();
+                let half=values.len()/2;for i in 0..half {let (a,b)=(values[i],values[i+half]);values[i]=a+r*(b-a);}values.truncate(half);
+            };
+            for round in 0..3 {fold(&mut native,&mut dense,round);}
+            let lease=if source {native.replay_lease().unwrap()}else{None};
+            initial.release_initial();native.add_powers(&[]).unwrap();
+            let scans_before=scans.load(Ordering::Relaxed);
+            let height=1024;let root=Goldilocks::two_adic_generator(10);
+            let pads:Vec<_>=(0..4*19).map(|i|E::new([Goldilocks::new(i+19),Goldilocks::new(2*i+23),Goldilocks::new(3*i+29)])).collect();
+            for suffix in 0..=2 {
+                let n=dense.len()/4;
+                let code=Code {get:Arc::new(|_|panic!("native E row used scalar getter")),scan:None,
+                    window:Some(Arc::new(|_,_|panic!("native E row used host window"))),native_query:None,
+                    native_residual:native.native_view(),len:dense.len(),live:dense.len(),width:4,height,pads:Pads::Extension(pads.clone())};
+                for indices in [vec![],vec![0],vec![height-1,17],vec![17,0,17],vec![height-1,1,17,1,0]] {
+                    let before=owner.lock().unwrap().stats().unwrap();
+                    let actual=code.rows(&indices).unwrap();let mut expected=Vec::new();
+                    for &index in &indices {
+                        let x=E::from(root.exp_u64(index as u64));
+                        for column in 0..4 {
+                            let value=dense[column*n..(column+1)*n].iter().chain(&pads[column*19..(column+1)*19])
+                                .rev().fold(E::ZERO,|acc,&coefficient|acc*x+coefficient);
+                            expected.extend_from_slice(<E as BasedVectorSpace<Goldilocks>>::as_basis_coefficients_slice(&value));
+                        }
+                    }
+                    assert_eq!(actual.width,12);assert_eq!(actual.values,expected,"source={source} suffix={suffix} indices={indices:?}");
+                    let after=owner.lock().unwrap().stats().unwrap();
+                    assert_eq!(after.arena_bytes,before.arena_bytes);
+                    assert_eq!(after.d2h_bytes-before.d2h_bytes,if indices.is_empty(){0}else{(96*indices.len()+16) as u64});
+                    assert_eq!(scans.load(Ordering::Relaxed),scans_before,"query cannot reconstruct A originals");
+                }
+                if suffix<2 {fold(&mut native,&mut dense,3+suffix);}
+            }
+            if let Some(lease)=lease {lease.release().unwrap();native.native_retained_stage().unwrap().close_native().unwrap();}
+            initial.close().unwrap();let stats=owner.lock().unwrap().close().unwrap();assert_eq!(stats.arena_bytes,0);
+            println!("C71_NATIVE_QUERY_E_HORNER {}",json!({"credit":false,"gpu_execution":false,"source_bytes":source,
+                "query_caps":[1,2,4,8],"pad_rows":19,"virtual_prefixes":[0,1,2],"exact_horner":true,"native":stats}));
+        }
+    }
+
+
+    #[test]
+    fn c71_b12_native_residual_query_full_whir_a_wire_fs_rng_and_original_mac() {
+        use std::sync::atomic::{AtomicU64,Ordering};
+        let mut fixture=device::tests::fixture(512);fixture.config.arena_bytes=16<<20;
+        let (original,values,scans,owner)=super::super::sourcewise::tests::native_fixture_original(&fixture.config,10,true);
+        let NativeOriginal::Source(source)=&original else {unreachable!()};
+        let requests=Arc::new(Mutex::new(Vec::new()));let log=requests.clone();let reader=source.window.clone();
+        let data=Arc::new(values.clone());let calls=Arc::new(AtomicU64::new(0));let count=calls.clone();
+        let get:Getter=Arc::new(move |i| {count.fetch_add(1,Ordering::Relaxed);E::from(data[i])});
+        let started=std::time::Instant::now();
+        compare_source_with_query(10,get,values,None,None,None,false,
+            Some(NativeQuery {runtime:owner.clone(),read:Arc::new(move |runtime,first,count| {
+                log.lock().unwrap().push((first,count));reader(runtime,first,count)
+            })}),Some(original));
+        let stats=owner.lock().unwrap().stats().unwrap();assert_eq!(stats.stopped,0);
+        assert!(!requests.lock().unwrap().is_empty());
+        let config=config(10).unwrap();let remaining=10-config.round_folding_factor(0);
+        let height=config.inv_rate(0)*(1<<(remaining-config.round_folding_factor(1)));
+        let rows=replay_tree::native_extension_geometry(height).unwrap().0;
+        assert_eq!(scans.load(Ordering::Relaxed),(3+height/rows/2) as u64,
+            "singleton + S1 groups + OOD + late retention only; no query/S2 original replay");
+        // CPU getter is used only by the ordinary initial commitment/histogram;
+        // the explicit native backend installs a panic getter for the proof.
+        println!("C71_NATIVE_RESIDUAL_QUERY_A_CHAIN {}",json!({"credit":false,"gpu_execution":false,"dimension":10,
+            "seconds":started.elapsed().as_secs_f64(),"initial_commitment":"CPU reference",
+            "initial_queries":"resident original bytes","residual_state_and_extension_queries":"native owner",
+            "original_reconstructions":scans.load(Ordering::Relaxed),"initial_cpu_getter_calls":calls.load(Ordering::Relaxed),
+            "initial_query_windows":*requests.lock().unwrap(),"native":stats}));
+        owner.lock().unwrap().close().unwrap();
+    }
+
+    #[test]
+    fn c71_b12_native_residual_query_full_whir_w_wire_fs_rng_and_original_mac() {
+        let mut fixture=device::tests::fixture(512);fixture.config.arena_bytes=16<<20;
+        let (original,values,_scans,owner)=super::super::sourcewise::tests::native_fixture_original(&fixture.config,10,false);
+        let data=Arc::new(values.clone());let get:Getter=Arc::new(move |i|E::from(data[i]));
+        let started=std::time::Instant::now();
+        compare_source_with_query(10,get,values,None,None,None,false,None,Some(original));
+        let stats=owner.lock().unwrap().stats().unwrap();assert_eq!(stats.stopped,0);assert_eq!(stats.arena_bytes,0);
+        println!("C71_NATIVE_RESIDUAL_QUERY_W_CHAIN {}",json!({"credit":false,"gpu_execution":false,"dimension":10,
+            "seconds":started.elapsed().as_secs_f64(),"initial_commitment_and_queries":"unchanged CPU reference",
+            "residual_state_and_extension_queries":"native owner","full_weight_retention":false,"native":stats}));
+        owner.lock().unwrap().close().unwrap();
+    }
+
+
 }

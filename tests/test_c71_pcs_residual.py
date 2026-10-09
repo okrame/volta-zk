@@ -42,3 +42,14 @@ def test_pcs_sourcewise_residual_originals_and_msb_fold(tmp_path):
     assert report["fold_outputs"] > 0 and report["codec_checks"] > 0
     assert report["rejections"] >= 40
     assert report["named_heap_upper_max_bytes"] < 16 * 1024**2
+
+    extension = [json.loads(line.removeprefix("C71_PCS_RESIDUAL_RESIDENT_CONTRACT "))
+                 for line in lines if line.startswith("C71_PCS_RESIDUAL_RESIDENT_CONTRACT ")]
+    assert len(extension) == 1
+    extra = extension[0]
+    assert extra["mapping_cases"] == 216 and extra["ood_pad_cases"] == 75
+    assert extra["original_visits"] == extra["algebra_cases"] > 0
+    assert extra["D35_analytic_visits"] == 2**35 - 1
+    assert extra["contract_shared_bytes"] == 12288
+    assert extra["W_full_scans_per_round"] == 1 and extra["public_tail_reads"] == 0
+    assert not extra["gpu_execution"] and not extra["credit"]

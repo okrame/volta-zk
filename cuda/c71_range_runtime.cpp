@@ -22,6 +22,8 @@ cudaError_t c71_dense_rne_launch(cudaStream_t,const int64_t*,int16_t*,uint64_t,i
 cudaError_t c71_dense_pointwise_launch(cudaStream_t,const int16_t*,const int16_t*,int64_t*,uint64_t,c71_dense::Pointwise,uint32_t*);
 cudaError_t c71_byte_scatter_launch(cudaStream_t,const void*,unsigned,uint64_t,uint8_t*,uint64_t,uint32_t*,c71_byte::Tile);
 cudaError_t c71_pcs_hash_launch(cudaStream_t,unsigned,const uint64_t*,const uint64_t*,c71_pcs::Hash32*,uint64_t,uint64_t,uint64_t,unsigned,uint32_t*);
+cudaError_t c71_pcs_short_pairs_launch(cudaStream_t,const uint64_t*,const uint64_t*,c71_pcs::Hash32*,
+    uint64_t,uint64_t,uint64_t,uint32_t*);
 cudaError_t c71_pcs_nodes_launch(cudaStream_t,const c71_pcs::Hash32*,c71_pcs::Hash32*,uint64_t,uint64_t);
 cudaError_t c71_pcs_merge_launch(cudaStream_t,c71_pcs::Hash32*,c71_pcs::Hash32*,uint64_t,unsigned,unsigned);
 cudaError_t c71_pcs_powers_launch(cudaStream_t,uint64_t*,uint64_t*,c71_pcs::WeightShape);
@@ -46,6 +48,37 @@ cudaError_t c71_linear_weights_launch(cudaStream_t,const int16_t*,const c71_pcs:
 cudaError_t c71_linear_source_launch(cudaStream_t,const void*,unsigned,c71_pcs::SourceTile,c71_linear::Shape,
     const c71_linear::Chunk*,const Fp3*,const c71_linear::Group*,const c71_linear::Interval*,
     const Fp3*,c71_linear::Result*,uint32_t*);
+cudaError_t c71_pcs_residual_weights_launch(cudaStream_t,const int16_t*,uint64_t,const c71_pcs::WeightTile*,uint64_t,uint64_t,uint64_t,
+    c71_pcs_residual::Shape,const c71_pcs_residual::Chunk*,const c71_pcs_residual::E*,c71_pcs_residual::Phase,
+    c71_pcs_residual::Output,c71_pcs_residual::CosetShape,const uint64_t*,c71_pcs_residual::PowerShape,
+    const c71_pcs_residual::E*,const c71_pcs_residual::E*,uint32_t*);
+cudaError_t c71_pcs_residual_source_launch(cudaStream_t,const void*,uint64_t,unsigned,c71_pcs::SourceTile,
+    c71_pcs_residual::Shape,const c71_pcs_residual::Chunk*,const c71_pcs_residual::E*,c71_pcs_residual::Phase,
+    c71_pcs_residual::Output,c71_pcs_residual::CosetShape,const uint64_t*,c71_pcs_residual::PowerShape,
+    const c71_pcs_residual::E*,const c71_pcs_residual::E*,uint32_t*);
+cudaError_t c71_pcs_residual_resident_launch(cudaStream_t,c71_pcs_residual::ConstPlanes,uint64_t,
+    c71_pcs_residual::Shape,const c71_pcs_residual::Chunk*,const c71_pcs_residual::E*,c71_pcs_residual::Phase,
+    c71_pcs_residual::Output,c71_pcs_residual::CosetShape,const uint64_t*,c71_pcs_residual::PowerShape,
+    const c71_pcs_residual::E*,const c71_pcs_residual::E*,uint32_t*);
+cudaError_t c71_pcs_residual_contract_weights_launch(cudaStream_t,const int16_t*,uint64_t,const c71_pcs::WeightTile*,uint64_t,
+    c71_pcs_residual::Shape,const c71_pcs_residual::Chunk*,const c71_pcs_residual::E*,unsigned,uint64_t,uint32_t,
+    const c71_pcs_residual::E*,const c71_pcs_residual::E*,c71_pcs_residual::E*,uint32_t*);
+cudaError_t c71_pcs_residual_contract_resident_launch(cudaStream_t,c71_pcs_residual::ConstPlanes,uint64_t,
+    c71_pcs_residual::Shape,const c71_pcs_residual::Chunk*,const c71_pcs_residual::E*,unsigned,uint64_t,uint32_t,
+    const c71_pcs_residual::E*,const c71_pcs_residual::E*,c71_pcs_residual::E*,uint32_t*);
+cudaError_t c71_pcs_residual_coset_powers_launch(cudaStream_t,uint64_t*,uint64_t*,c71_pcs_residual::Shape,c71_pcs_residual::CosetShape);
+cudaError_t c71_pcs_residual_ood_powers_launch(cudaStream_t,c71_pcs_residual::E*,c71_pcs_residual::E*,c71_pcs_residual::PowerShape,c71_pcs_residual::E);
+cudaError_t c71_pcs_residual_pad_launch(cudaStream_t,uint64_t*,const c71_pcs_residual::E*,const uint64_t*,const uint64_t*,
+    c71_pcs_residual::Shape,c71_pcs_residual::CosetShape,uint32_t*);
+cudaError_t c71_pcs_residual_ood_pad_launch(cudaStream_t,c71_pcs_residual::E*,const c71_pcs_residual::E*,uint32_t,uint64_t,c71_pcs_residual::E,uint32_t*);
+cudaError_t c71_pcs_residual_query_weights_launch(cudaStream_t,const int16_t*,uint64_t,
+    const c71_pcs::WeightTile*,uint64_t,c71_pcs_residual::Shape,const c71_pcs_residual::Chunk*,
+    const c71_pcs_residual::E*,const c71_pcs_residual::E*,uint64_t,uint64_t*,uint64_t,c71_pcs::QueryBlock,uint32_t*,unsigned*);
+cudaError_t c71_pcs_residual_query_resident_launch(cudaStream_t,c71_pcs_residual::ConstPlanes,uint64_t,
+    c71_pcs_residual::Shape,const c71_pcs_residual::Chunk*,const c71_pcs_residual::E*,
+    const c71_pcs_residual::E*,uint64_t,uint64_t*,uint64_t,c71_pcs::QueryBlock,uint32_t*);
+cudaError_t c71_pcs_residual_fold_launch(cudaStream_t,c71_pcs_residual::ConstPlanes,c71_pcs_residual::Planes,
+    uint64_t,unsigned,c71_pcs_residual::E,c71_pcs_residual::E,uint32_t*);
 cudaError_t c71_pcs_source_powers_launch(cudaStream_t,uint64_t*,uint64_t*,c71_pcs::SourceShape);
 cudaError_t c71_pcs_source_tile_launch(cudaStream_t,const void*,unsigned,c71_pcs::SourceTile,const uint64_t*,
     uint64_t*,uint64_t*,uint64_t*,c71_pcs::SourceShape,uint32_t*);
@@ -76,6 +109,8 @@ struct Buffer {
     uint64_t flag=0;
     uint64_t visits=0;
     bool release_failed=false;
+    uint32_t residual_role=0;
+    uint64_t residual_group=0;
 };
 struct LinearTransaction {
     c71_linear::Shape shape{};
@@ -83,6 +118,26 @@ struct LinearTransaction {
     uint32_t phase=0,mode=0;
 };
 static_assert(sizeof(LinearTransaction)==120);
+struct ResidualTransaction {
+    c71_pcs_residual::Shape shape{};
+    c71_pcs_residual::SourceCoverage coverage{};
+    c71_pcs_residual::CosetShape cosets{};
+    c71_pcs_residual::PowerShape powers{};
+    c71_pcs_residual::E point{};
+    c71_pcs_residual::Phase phase=c71_pcs_residual::Phase::singleton;
+    uint64_t meta=0,offsets[4]{},low=0,high=0,scratch=0,twiddles=0,flag=0,reduced=0,planes[3]{},ring=0,visited=0;
+    uint32_t active=0,mode=0,pad_count=0;
+};
+struct ContractTransaction {
+    c71_pcs_residual::Shape shape{};
+    uint64_t meta=0,offsets[3]{},band=0,output=0,flag=0,cursor=0,visited=0,source[3]{};
+    uint32_t active=0,kind=0,capacity=0,mode=0;
+};
+struct ResidualQueryTransaction {
+    c71_pcs_residual::Shape shape{};
+    uint64_t meta=0,offsets[4]{},low=0,flag=0,cursor=0,source[3]{},last[3]{};
+    uint32_t phase=0,mode=0,pad_rows=0,capacity=0,column=0,loaded=0,mask=0;
+};
 struct C71RangeContext {
     C71RangeAccount account=nullptr;
     int device=0;
@@ -104,16 +159,19 @@ struct C71RangeContext {
         c71_salts::Chunk chunk{};
         uint64_t meta=0,scratch=0,current=0,offsets=0,band=0,end=0,completed_bytes=0;
         uint32_t group_cosets=0,group=0,phase=0;
-        uint64_t first=0;
+        uint64_t first=0,short_ring=0,short_output=0;
     } salts;
     LinearTransaction linear{};
+    ResidualTransaction residual{};
+    ContractTransaction contract{};
+    ResidualQueryTransaction residual_query{};
 };
 namespace {
-constexpr uint64_t sizes[]={1,2,48,96,24,96,8,1,8,8,32,32,32,40,8,8,8,1,1};
+constexpr uint64_t sizes[]={1,2,48,96,24,96,8,1,8,8,32,32,32,40,8,8,8,1,1,8};
 constexpr uint64_t caps[]={uint64_t{1}<<31,uint64_t{1}<<27,uint64_t{1}<<24,
                           uint64_t{1}<<24,256*32*32,65536,uint64_t(c71_dense::max_m)*c71_dense::max_n,uint64_t{1}<<31,65535,
-                          uint64_t{1}<<28,uint64_t{1}<<25,uint64_t{1}<<25,uint64_t{1}<<25,65536,uint64_t{1}<<25,
-                          uint64_t{1}<<28,256,uint64_t{1}<<28,uint64_t{1}<<30};
+                          uint64_t{1}<<28,uint64_t{1}<<25,uint64_t{1}<<25,uint64_t{1}<<26,65536,uint64_t{1}<<25,
+                          uint64_t{1}<<28,256,uint64_t{1}<<28,uint64_t{1}<<30,uint64_t{1}<<28};
 std::atomic<uint64_t> next_handle{1};
 bool canonical(Fp3 a) { return a.c0<P && a.c1<P && a.c2<P; }
 bool power2(uint64_t n) { return n && !(n&(n-1)); }
@@ -218,7 +276,7 @@ extern "C" int c71_range_close(C71RangeContext* c,C71RangeStats* out) {
 namespace {
 int allocate(C71RangeContext* c,uint32_t kind,uint64_t count,uint64_t* out) {
     if(!ready(c)) return -1;
-    if(!out || kind>C71_LINEAR_PRIVATE || !count || count>caps[kind]) return fail(c,"range allocation shape");
+    if(!out || kind>C71_PCS_RESIDUAL_PRIVATE || !count || count>caps[kind]) return fail(c,"range allocation shape");
     const uint64_t capacity=(count*sizes[kind]+255)&~uint64_t{255};
     Buffer* slot=nullptr;
     for(auto& b:c->buffers) if(!b.id) { slot=&b; break; }
@@ -243,6 +301,7 @@ extern "C" int c71_range_alloc(C71RangeContext* c,uint32_t kind,uint64_t count,u
 }
 extern "C" int c71_range_release(C71RangeContext* c,uint64_t id) {
     if(!ready(c)) return -1;
+    if(c->residual_query.phase) return fail(c,"PCS E query keeps inputs and workspaces private");
     auto* b=buffer(c,id); if(!b) return -1;
     if(b->kind>=C71_PCS_PRIVATE) return fail(c,"private release requires consumer capability");
     if(b->flag && c71_range_release(c,b->flag)) return -1;
@@ -256,6 +315,7 @@ extern "C" int c71_range_release(C71RangeContext* c,uint64_t id) {
 }
 extern "C" int c71_range_upload(C71RangeContext* c,uint64_t id,const void* input,uint64_t bytes) {
     if(!ready(c)) return -1;
+    if(c->residual_query.phase) return fail(c,"PCS E query keeps inputs and workspaces private");
     auto* b=buffer(c,id);
     if(!b || b->kind>C71_I16 || !input || bytes!=b->count*sizes[b->kind]) return fail(c,"range upload shape");
     if(b->kind==C71_I16) for(uint64_t i=0;i<b->count;++i) {
@@ -546,6 +606,7 @@ extern "C" int c71_signed_append_at(C71RangeContext* context,uint64_t input,uint
 }
 extern "C" int c71_original_read(C71RangeContext* context,uint64_t input,uint32_t kind,uint64_t first,uint64_t count,void* output) {
     if(!ready(context)) return -1;
+    if(context->residual_query.phase) return fail(context,"PCS E query keeps inputs and workspaces private");
     auto* source=buffer(context,input); uintptr_t end=0;
     if(!source || (kind!=C71_U8 && kind!=C71_I16 && kind!=C71_I64) || source->kind!=kind ||
         !count || count>268435456/sizes[kind] || first>source->initialized || count>source->initialized-first ||
@@ -727,6 +788,7 @@ extern "C" int c71_byte_seal(C71RangeContext* c,uint64_t out) {
 
 extern "C" int c71_pcs_words_upload(C71RangeContext* c,uint64_t out,uint64_t first,const uint64_t* words,uint64_t count) {
     if(!ready(c)) return -1;
+    if(c->residual_query.phase) return fail(c,"PCS E query keeps inputs and workspaces private");
     auto* b=buffer(c,out);
     if(!b || b->kind!=C71_PCS_BASE || !words || !count || count>(uint64_t{1}<<25) ||
        first>b->count || count>b->count-first || (b->initialized!=b->count && first!=b->initialized))
@@ -796,7 +858,7 @@ extern "C" int c71_pcs_frontier_begin(C71RangeContext* c,uint64_t out,uint64_t r
     if(!b || b->kind!=C71_PCS_FRONTIER_PENDING || b->initialized || !power2(rows) ||
        !power2(groups) || groups<2 || groups>4096) return fail(c,"PCS frontier geometry or state");
     unsigned levels=0; while((1u<<levels)<groups) ++levels;
-    if(rows>(uint64_t{1}<<25)/levels || b->count!=rows*levels) return fail(c,"PCS frontier capacity");
+    if(rows>caps[C71_PCS_FRONTIER_PENDING]/levels || b->count!=rows*levels) return fail(c,"PCS frontier capacity");
     // initialized stores row geometry, not full validity: this kind has no
     // reader. visits packs immutable levels and the next consecutive group.
     b->initialized=rows; b->visits=uint64_t(levels)<<32; return 0;
@@ -861,6 +923,7 @@ extern "C" int c71_pcs_transform_twiddles(C71RangeContext* c,uint64_t out,uint32
 extern "C" int c71_pcs_transform(C71RangeContext* c,uint64_t values,uint64_t scratch,uint64_t twiddles,
     uint32_t log_rows,uint32_t batch,uint32_t inverse) {
     if(!ready(c)) return -1;
+    if(c->residual_query.phase) return fail(c,"PCS E query keeps remainder lineage immutable");
     auto* b=buffer(c,values); auto* s=buffer(c,scratch); auto* t=buffer(c,twiddles);
     if(!full(b,C71_PCS_BASE) || !s || s->kind!=C71_PCS_BASE || !full(t,C71_PCS_POWERS) ||
        b==s || b==t || s==t || log_rows<1 || log_rows>24 || inverse>1 || !batch || batch>(1u<<20) ||
@@ -879,6 +942,7 @@ extern "C" int c71_pcs_transform(C71RangeContext* c,uint64_t values,uint64_t scr
 }
 extern "C" int c71_pcs_read_words(C71RangeContext* c,uint64_t input,uint64_t first,uint64_t count,uint64_t* output) {
     if(!ready(c)) return -1;
+    if(c->residual_query.phase) return fail(c,"PCS E query keeps inputs and workspaces private");
     auto* b=buffer(c,input); uintptr_t end=0;
     if(!full(b,C71_PCS_BASE) || c->salts.phase || !output || !count || count>(uint64_t{1}<<20) ||
        first>b->count || count>b->count-first || reinterpret_cast<uintptr_t>(output)%8 ||
@@ -900,6 +964,7 @@ bool query_output(const Buffer* b,uint64_t count) {
 }
 extern "C" int c71_pcs_query_low(C71RangeContext* c,uint64_t bytes,uint64_t pads,uint64_t low,c71_pcs::QueryBlock s) {
     if(!ready(c)) return -1;
+    if(c->residual_query.phase) return fail(c,"PCS E query keeps inputs and workspaces private");
     auto* b=bytes?buffer(c,bytes):nullptr; auto* p=buffer(c,pads); auto* l=buffer(c,low);
     if(bytes && !b) return -1;
     if(!l || l->kind!=C71_PCS_BASE || !power2(l->count) || l->count>(uint64_t{1}<<20) ||
@@ -934,17 +999,28 @@ extern "C" int c71_pcs_query_remainder(C71RangeContext* c,uint64_t high,uint64_t
         return fail(c,"PCS query remainder type, degree or factor geometry");
     for(auto* read:{h,l,i,m,f,b}) if(read==w || read==s || read==o)
         return fail(c,"PCS query remainder output alias");
+    if(c->residual_query.phase && (c->residual_query.phase!=2 || !children ||
+       h->residual_group!=c->residual_query.meta || h->residual_role<3 || h->residual_role>5 ||
+       h->visits!=2*degree || high!=c->residual_query.last[h->residual_role-3]))
+        return fail(c,"PCS E query child lineage or phase differs");
+    if(c->residual_query.phase) for(unsigned limb=0;limb<3;++limb)
+        if(limb!=h->residual_role-3 && output==c->residual_query.last[limb])
+            return fail(c,"PCS E query child overwrites another limb");
     unsigned attempted=0; uint64_t copied=0;
     const auto status=c71_pcs_query_remainder_launch(c->stream,ptr<uint64_t>(c,h),ptr<uint64_t>(c,l),
         ptr<uint64_t>(c,i),ptr<uint64_t>(c,m),ptr<uint64_t>(c,f),ptr<uint64_t>(c,b),ptr<uint64_t>(c,w),
         ptr<uint64_t>(c,s),ptr<uint64_t>(c,o),degree,o->count,children,&attempted,&copied);
     c->stats.launches+=attempted; c->stats.d2d_bytes+=copied;
     if(checked(c,status)) return -1;
-    o->initialized=o->count; return 0; // final bounded read fences the same stream
+    o->initialized=o->count;
+    if(c->residual_query.phase) { o->residual_group=c->residual_query.meta; o->residual_role=h->residual_role; o->visits=degree;
+        c->residual_query.last[o->residual_role-3]=output; }
+    return 0; // final bounded read fences the same stream
 }
 extern "C" int c71_pcs_query_shift(C71RangeContext* c,uint64_t values,uint64_t shift,uint64_t forward,uint64_t backward,
     uint64_t work,uint64_t scratch,uint64_t low,uint64_t high) {
     if(!ready(c)) return -1;
+    if(c->residual_query.phase) return fail(c,"PCS E query keeps inputs and workspaces private");
     auto* v=buffer(c,values); auto* t=buffer(c,shift); auto* f=buffer(c,forward); auto* b=buffer(c,backward);
     auto* w=buffer(c,work); auto* s=buffer(c,scratch); auto* l=buffer(c,low); auto* h=buffer(c,high);
     if(!full(v,C71_PCS_BASE) || !power2(v->count) || v->count>(uint64_t{1}<<20) ||
@@ -964,6 +1040,7 @@ extern "C" int c71_pcs_query_shift(C71RangeContext* c,uint64_t values,uint64_t s
 }
 extern "C" int c71_pcs_query_add(C71RangeContext* c,uint64_t values,uint64_t correction) {
     if(!ready(c)) return -1;
+    if(c->residual_query.phase) return fail(c,"PCS E query keeps inputs and workspaces private");
     auto* v=buffer(c,values); auto* a=buffer(c,correction);
     if(!full(v,C71_PCS_BASE) || !full(a,C71_PCS_BASE) || v==a || v->count!=a->count || v->count>(uint64_t{1}<<20))
         return fail(c,"PCS query correction geometry or alias");
@@ -971,6 +1048,7 @@ extern "C" int c71_pcs_query_add(C71RangeContext* c,uint64_t values,uint64_t cor
 }
 extern "C" int c71_pcs_ring_zero(C71RangeContext* c,uint64_t out) {
     if(!ready(c)) return -1;
+    if(c->residual_query.phase) return fail(c,"PCS E query keeps inputs and workspaces private");
     auto* b=buffer(c,out);
     if(!b || b->kind!=C71_PCS_BASE || b->initialized) return fail(c,"PCS ring initialization state");
     if(checked(c,cudaMemsetAsync(ptr<void>(c,b),0,b->count*8,c->stream))) return -1;
@@ -1038,7 +1116,7 @@ extern "C" int c71_pcs_source_begin(C71RangeContext* c,uint64_t first,uint64_t s
     auto* l=buffer(c,low); auto* h=buffer(c,high);
     auto* counts=histogram?buffer(c,histogram):nullptr;
     const uint64_t binding=(uint64_t(s.cosets)<<32)|s.first_coset;
-    if(!c71_pcs::valid(s) || c->source.values[0] || c->linear.phase || !a || !b || a==b || a->flag || b->flag ||
+    if(!c71_pcs::valid(s) || c->source.values[0] || c->linear.phase || c->residual.active || c->contract.active || c->residual_query.phase || !a || !b || a==b || a->flag || b->flag ||
        a->kind!=C71_PCS_SOURCE_PENDING || b->kind!=C71_PCS_SOURCE_PENDING || a->initialized || b->initialized ||
        a->count!=256*s.rows || b->count!=a->count || l==h || !full(l,C71_PCS_POWERS) || !full(h,C71_PCS_POWERS) ||
        l->count!=4*s.rows || h->count!=4*c71_pcs::high_rows(s) || l->visits!=binding || h->visits!=binding ||
@@ -1154,7 +1232,8 @@ int retire_private(C71RangeContext* c,uint64_t& id) {
 bool private_band(C71RangeContext* c,uint64_t session,uint32_t group,uint64_t first,uint64_t count) {
     const uint64_t rows=c->salts.geometry.rows*c->salts.group_cosets;
     if(!private_session(c,session,3) || group!=c->salts.group || first!=c->salts.first ||
-       !count || count!=std::min(uint64_t{65536},rows) || first>rows || count>rows-first) {
+       !count || count!=std::min(uint64_t{65536},c->salts.group_cosets==2?c->salts.geometry.rows:rows) ||
+       first>rows || count>rows-first || (c->salts.group_cosets==2 && count>c->salts.geometry.rows-first%c->salts.geometry.rows)) {
         fail(c,"private PCS group or band coverage"); return false;
     }
     return true;
@@ -1165,15 +1244,16 @@ int private_replay(C71RangeContext* c,Buffer* out,uint64_t first,uint64_t count)
         ptr<uint64_t>(c,buffer(c,c->salts.current)),c->salts.geometry.rows,first,count,
         ptr<uint64_t>(c,buffer(c,c->salts.band)),&m->consumed,ptr<uint32_t>(c,buffer(c,out->flag))));
 }
-int private_hash_complete(C71RangeContext* c,Buffer* out,uint64_t count,uint64_t* completed) {
+int private_hash_complete(C71RangeContext* c,Buffer* out,uint64_t count,uint64_t* completed,uint64_t expected_leaves=0) {
+    if(!expected_leaves) expected_leaves=out->count;
     c->salts.first+=count;
-    if(c->salts.first!=out->count) { *completed=c->salts.completed_bytes; return 0; }
+    if(c->salts.first!=expected_leaves) { *completed=c->salts.completed_bytes; return 0; }
     uint64_t consumed=0;
     if(checked(c,cudaMemcpyAsync(&consumed,&private_meta(c)->consumed,8,cudaMemcpyDeviceToHost,c->stream))) return -1;
     c->stats.d2h_bytes+=8;
     if(dense_complete(c,out->flag,out)) return -1;
     const uint64_t total=c->salts.end-c->salts.geometry.origin;
-    const uint64_t minimum=uint64_t(c->salts.group+1)*out->count*32;
+    const uint64_t minimum=uint64_t(c->salts.group+1)*expected_leaves*32;
     const bool last=c->salts.group+1==c->salts.geometry.cosets/c->salts.group_cosets;
     if(consumed<=c->salts.completed_bytes || consumed<minimum || consumed>total || (last && consumed!=total))
         return fail(c,"private PCS replay consumption differs");
@@ -1188,8 +1268,11 @@ extern "C" int c71_pcs_salts_begin(C71RangeContext* c,const uint8_t seed[32],c71
     uint32_t group_cosets,uint32_t capacity,uint64_t* session) {
     if(!ready(c)) return -1;
     if(session) *session=0;
-    if(!session || !seed || c->salts.phase || c->linear.phase || !c71_salts::valid(g) || g.cut<g.cosets ||
-       (group_cosets!=4 && group_cosets!=32) || group_cosets>g.cosets || !c71_salts::valid_capacity(capacity))
+    if(!session || !seed || c->salts.phase || c->linear.phase || c->residual.active || c->contract.active || c->residual_query.phase || !c71_salts::valid(g) || g.cut<g.cosets ||
+       (group_cosets!=2 && group_cosets!=4 && group_cosets!=32) || group_cosets>g.cosets ||
+       (group_cosets==2 ? (g.cosets<2 || g.rows>(uint64_t{1}<<23) || g.rows*g.cosets>(uint64_t{1}<<32) ||
+           (g.rows>(uint64_t{1}<<20) && g.cut!=4096)) : g.rows>(uint64_t{1}<<20)) ||
+       !c71_salts::valid_capacity(capacity))
         return fail(c,"private PCS seed or geometry");
     auto& s=c->salts;
     s.phase=1; s.geometry=g; s.group_cosets=group_cosets;
@@ -1291,6 +1374,33 @@ extern "C" int c71_pcs_full_leaves_private(C71RangeContext* c,uint64_t session,u
     return private_hash_complete(c,out,count,completed);
 }
 
+extern "C" int c71_pcs_short_leaves_private(C71RangeContext* c,uint64_t session,uint64_t ring,uint64_t states,
+    uint32_t group,uint64_t first,uint64_t count,uint64_t* completed) {
+    if(!ready(c)) return -1;
+    auto* values=buffer(c,ring); auto* out=buffer(c,states);
+    const auto geometry=c->salts.geometry;
+    uintptr_t end=0;
+    if(!completed || reinterpret_cast<uintptr_t>(completed)%8 || !c71_dense::span(completed,8,end) ||
+       !private_band(c,session,group,first,count) || c->salts.group_cosets!=2 || geometry.rows>(uint64_t{1}<<23) ||
+       c->residual.active || c->contract.active || !full(values,C71_PCS_RESIDUAL_PRIVATE) ||
+       values->residual_role!=2 || values->count!=24*geometry.rows ||
+       values->visits!=((uint64_t(geometry.cosets)<<32)|uint64_t(2*group)) ||
+       !out || out->kind!=C71_PCS_HASH_PENDING || out->count!=geometry.rows || first!=out->visits ||
+       (first==0 ? (out->flag || out->initialized || c->salts.short_ring || c->salts.short_output) :
+           (!out->flag || out->initialized!=std::min(first,geometry.rows) ||
+            ring!=c->salts.short_ring || states!=c->salts.short_output)))
+        return fail(c,"private PCS paired S1 leaf type, geometry, ring binding or coverage");
+    if(!first && dense_flag(c,&out->flag)) return -1;
+    if(private_replay(c,out,first,count) || launched(c,c71_pcs_short_pairs_launch(c->stream,ptr<uint64_t>(c,values),
+        ptr<uint64_t>(c,buffer(c,c->salts.band)),ptr<c71_pcs::Hash32>(c,out),geometry.rows,first,count,
+        ptr<uint32_t>(c,buffer(c,out->flag))))) return -1;
+    c->salts.short_ring=ring; c->salts.short_output=states;
+    out->visits+=count; out->initialized=std::min(out->visits,geometry.rows);
+    const auto result=private_hash_complete(c,out,count,completed,2*geometry.rows);
+    if(!result && !c->salts.first) c->salts.short_ring=c->salts.short_output=0;
+    return result;
+}
+
 extern "C" int c71_pcs_salts_complete(C71RangeContext* c,uint64_t session,uint64_t* current,uint64_t rows,uint64_t* consumed) {
     if(!ready(c)) return -1;
     uintptr_t current_end=0,consumed_end=0;
@@ -1338,7 +1448,7 @@ extern "C" int c71_linear_begin(C71RangeContext* c,c71_linear::Shape shape,const
     if(!ready(c)) return -1;
     uintptr_t token_end=0;
     if(!token || reinterpret_cast<uintptr_t>(token)%alignof(uint64_t) || !c71_dense::span(token,8,token_end) ||
-       !c71_linear::valid(shape) || table_count>1280 || c->linear.phase || c->salts.phase || c->source.values[0])
+       !c71_linear::valid(shape) || table_count>1280 || c->linear.phase || c->salts.phase || c->source.values[0] || c->residual.active || c->contract.active || c->residual_query.phase)
         return fail(c,"linear begin shape, output or active consumer");
     const void* arrays[]={&shape,chunks,tables,groups,intervals,points};
     const uint64_t lengths[]={sizeof(shape),uint64_t(shape.chunks)*sizeof(*chunks),uint64_t(table_count)*sizeof(*tables),
@@ -1434,4 +1544,674 @@ extern "C" int c71_linear_finish(C71RangeContext* c,uint64_t token,Fp3* output) 
     for(auto value:staged.values) if(!canonical(value)) return fail(c,"linear noncanonical result");
     if(retire_linear(c,s.flag) || retire_linear(c,s.output) || retire_linear(c,s.meta)) return -1;
     std::memcpy(output,staged.values,sizeof(staged)); s={}; return 0;
+}
+
+namespace {
+namespace residual=c71_pcs_residual;
+constexpr unsigned residual_plane_role=3, residual_ring_role=2;
+bool residual_idle(C71RangeContext* c) {
+    if(c->residual_query.phase || c->residual.active || c->contract.active || c->linear.phase || c->salts.phase || c->source.values[0]) {
+        fail(c,"PCS residual consumer already active"); return false;
+    }
+    return true;
+}
+bool residual_session(C71RangeContext* c,uint64_t token) {
+    if(!token || !c->residual.active || token!=c->residual.meta || !full(buffer(c,token),C71_PCS_PRIVATE)) {
+        fail(c,"PCS residual capability or private packet differs"); return false;
+    }
+    return true;
+}
+int residual_retire(C71RangeContext* c,uint64_t& id) {
+    if(!id) return 0;
+    auto* b=buffer(c,id);
+    if(!b || (b->kind!=C71_PCS_PRIVATE && b->kind!=C71_PCS_RESIDUAL_PRIVATE))
+        return fail(c,"PCS residual retirement type");
+    if(checked(c,cudaFree(b->allocation))) { b->release_failed=true; return -1; }
+    if(c->account) c->account(-int64_t(b->capacity));
+    *b={}; id=0; ++c->stats.releases; recount(c); return 0;
+}
+int residual_zero(C71RangeContext* c,uint64_t id) {
+    auto* b=buffer(c,id);
+    if(!b || b->initialized) return fail(c,"PCS residual zero state");
+    if(checked(c,cudaMemsetAsync(ptr<void>(c,b),0,b->count*sizes[b->kind],c->stream))) return -1;
+    c->stats.zeroed_bytes+=b->count*sizes[b->kind]; return 0;
+}
+residual::Planes residual_outputs(C71RangeContext* c) {
+    auto& s=c->residual;
+    return {s.planes[0]?ptr<uint64_t>(c,buffer(c,s.planes[0])):nullptr,
+        s.planes[1]?ptr<uint64_t>(c,buffer(c,s.planes[1])):nullptr,
+        s.planes[2]?ptr<uint64_t>(c,buffer(c,s.planes[2])):nullptr};
+}
+residual::Output residual_output(C71RangeContext* c) {
+    auto& s=c->residual;
+    return {residual_outputs(c),s.ring?ptr<uint64_t>(c,buffer(c,s.ring)):nullptr,
+        s.reduced?ptr<residual::E>(c,buffer(c,s.reduced)):nullptr};
+}
+template<class T> const T* residual_packet(C71RangeContext* c,unsigned span,bool present) {
+    if(!present) return nullptr;
+    return reinterpret_cast<const T*>(ptr<uint8_t>(c,buffer(c,c->residual.meta))+c->residual.offsets[span]);
+}
+bool residual_planes(C71RangeContext* c,C71PcsResidualPlanes p,residual::ConstPlanes& values) {
+    if(!p.c0 || !p.c1 || !p.c2 || p.c0==p.c1 || p.c0==p.c2 || p.c1==p.c2 ||
+       !power2(p.count) || p.count>(uint64_t{1}<<28)) { fail(c,"PCS residual plane geometry or alias"); return false; }
+    auto* a=buffer(c,p.c0); auto* b=buffer(c,p.c1); auto* d=buffer(c,p.c2);
+    Buffer* ordered[]={a,b,d};
+    for(unsigned limb=0;limb<3;++limb) if(!full(ordered[limb],C71_PCS_RESIDUAL_PRIVATE) || ordered[limb]->count!=p.count ||
+        ordered[limb]->residual_role!=residual_plane_role+limb || ordered[limb]->residual_group!=p.c0) {
+        fail(c,"PCS residual plane generation, coverage or type"); return false;
+    }
+    values={ptr<uint64_t>(c,a),ptr<uint64_t>(c,b),ptr<uint64_t>(c,d)}; return true;
+}
+int residual_submit(C71RangeContext* c,uint64_t input,const c71_pcs::SourceTile* tile,
+    const C71PcsResidualPlanes* resident_planes,uint64_t sealed_weights) {
+    auto& s=c->residual;
+    const auto* chunks=residual_packet<residual::Chunk>(c,1,s.shape.equality.chunks!=0);
+    const auto* tables=residual_packet<residual::E>(c,2,s.shape.equality.entries!=0);
+    const uint64_t* high=s.phase==residual::Phase::cosets?ptr<uint64_t>(c,buffer(c,s.high)):nullptr;
+    const auto* low_power=s.phase==residual::Phase::ood?ptr<residual::E>(c,buffer(c,s.low)):nullptr;
+    const auto* high_power=s.phase==residual::Phase::ood?ptr<residual::E>(c,buffer(c,s.high)):nullptr;
+    auto* flag=ptr<uint32_t>(c,buffer(c,s.flag));
+    uint64_t visits=0;
+    cudaError_t status=cudaSuccess;
+    if(tile) {
+        auto* original=buffer(c,input);
+        if(s.mode==2 || s.mode==3 || !original || (original->kind!=C71_I16 && original->kind!=C71_I64) ||
+           original->initialized!=original->count || !c71_pcs::valid(*tile,original->kind,original->count,s.shape.live))
+            return fail(c,"PCS residual original tile type, coverage or mode");
+        visits=tile->rows*tile->columns*tile->width;
+        if(visits>s.shape.live-s.visited || !s.coverage.insert(tile->original_first,visits,s.shape.live))
+            return fail(c,"PCS residual original tile overlap, excess or frontier capacity");
+        status=c71_pcs_residual_source_launch(c->stream,ptr<void>(c,original),original->count,original->kind,*tile,
+            s.shape,chunks,tables,s.phase,residual_output(c),s.cosets,high,s.powers,low_power,high_power,flag);
+        s.mode=1;
+    } else if(resident_planes) {
+        residual::ConstPlanes values{};
+        if(s.mode || s.visited || s.shape.live!=resident_planes->count ||
+           s.shape.dimension>28 || resident_planes->count!=(uint64_t{1}<<s.shape.dimension) ||
+           (s.phase!=residual::Phase::singleton && s.shape.dimension-s.shape.remaining>2) ||
+           !residual_planes(c,*resident_planes,values)) return fail(c,"PCS residual resident source shape or generation");
+        visits=resident_planes->count;
+        status=c71_pcs_residual_resident_launch(c->stream,values,visits,s.shape,chunks,tables,s.phase,
+            residual_output(c),s.cosets,high,s.powers,low_power,high_power,flag);
+        s.mode=3;
+    } else {
+        auto* tiles=buffer(c,sealed_weights);
+        if(s.mode || s.visited || !c->stats.weights_sealed || !full(tiles,C71_PCS_WEIGHT_TILES) ||
+           tiles->visits!=s.shape.live || s.shape.live!=c->stats.weights_bytes/2)
+            return fail(c,"PCS residual sealed W mapping or duplicate scan");
+        visits=s.shape.live;
+        status=c71_pcs_residual_weights_launch(c->stream,c->weights,c->stats.weights_bytes/2,
+            ptr<c71_pcs::WeightTile>(c,tiles),tiles->count,0,visits,s.shape,chunks,tables,s.phase,
+            residual_output(c),s.cosets,high,s.powers,low_power,high_power,flag);
+        s.mode=2;
+    }
+    if(launched(c,status)) return -1;
+    s.visited+=visits; return 0;
+}
+int residual_free_aux(C71RangeContext* c) {
+    auto& s=c->residual;
+    for(auto* id:{&s.flag,&s.scratch,&s.twiddles,&s.low,&s.high,&s.reduced,&s.meta})
+        if(residual_retire(c,*id)) return -1;
+    return 0;
+}
+}
+extern "C" int c71_pcs_residual_begin(C71RangeContext* c,residual::Shape shape,residual::Phase phase,
+    const residual::Chunk* chunks,const residual::E* tables,residual::CosetShape cosets,
+    const residual::E* pads,uint32_t pad_count,residual::E point,uint64_t* token) {
+    if(!ready(c)) return -1;
+    uintptr_t token_end=0;
+    const bool salts_bound=!c->salts.phase || (phase==residual::Phase::cosets && c->salts.phase==3 &&
+        c->salts.group_cosets==2 && cosets.rows==c->salts.geometry.rows &&
+        cosets.cosets==c->salts.geometry.cosets && cosets.first_coset==2*c->salts.group && !c->salts.first);
+    if(c->residual_query.phase || c->residual.active || c->contract.active || c->linear.phase || c->source.values[0] || !salts_bound ||
+       !token || reinterpret_cast<uintptr_t>(token)%8 || !c71_dense::span(token,8,token_end) ||
+       !residual::valid(shape,phase) || !residual::canonical(point) ||
+       (phase==residual::Phase::cosets ? (!residual::valid(cosets,shape) || pad_count!=4*cosets.pad_rows || !residual::zero(point)) :
+        (!residual::empty(cosets) || (phase!=residual::Phase::ood && (pad_count || !residual::zero(point))))) ||
+       pad_count>(1u<<20) || (pad_count && !pads)) return fail(c,"PCS residual begin geometry, phase or output");
+    if((phase==residual::Phase::retention && shape.remaining>28)) return fail(c,"PCS residual retained capacity");
+    const void* arrays[]={&shape,chunks,tables,pads};
+    const uint64_t lengths[]={sizeof(shape),uint64_t(shape.equality.chunks)*sizeof(*chunks),
+        uint64_t(shape.equality.entries)*sizeof(*tables),uint64_t(pad_count)*sizeof(*pads)};
+    const unsigned alignments[]={alignof(residual::Shape),alignof(residual::Chunk),alignof(residual::E),alignof(residual::E)};
+    uint64_t offsets[4]{},bytes=0;
+    for(unsigned i=0;i<4;++i) {
+        uintptr_t end=0;
+        if(lengths[i] && (reinterpret_cast<uintptr_t>(arrays[i])%alignments[i] ||
+           !c71_dense::span(arrays[i],lengths[i],end) || c71_dense::overlaps(token,token_end,arrays[i],end)))
+            return fail(c,"PCS residual host packet span, alignment or token alias");
+        offsets[i]=bytes; bytes+=aligned(lengths[i]);
+    }
+    if(bytes>caps[C71_PCS_PRIVATE] || !residual::valid_packet(shape.equality,chunks,tables))
+        return fail(c,"PCS residual equality packet noncanonical or incomplete");
+    for(uint32_t i=0;i<pad_count;++i) if(!residual::canonical(pads[i])) return fail(c,"PCS residual pad noncanonical");
+    uint64_t required=aligned(bytes)+aligned(4);
+    if(phase==residual::Phase::singleton || phase==residual::Phase::ood)
+        required+=aligned((phase==residual::Phase::singleton?128:1)*sizeof(residual::E));
+    else if(phase==residual::Phase::retention) required+=3*aligned((uint64_t{1}<<shape.remaining)*8);
+    else required+=aligned(24*cosets.rows*8)+aligned(2*cosets.rows*8)+
+        aligned(2*residual::high_rows(shape,cosets)*8)+2*aligned(cosets.rows*8);
+    if(phase==residual::Phase::ood) {
+        const residual::PowerShape powers{shape.remaining,(shape.remaining+1)/2,0,0};
+        required+=aligned(residual::low_count(powers)*sizeof(residual::E))+
+            aligned(residual::high_count(powers)*sizeof(residual::E));
+    }
+    if(required>c->usable || c->stats.arena_bytes>c->usable-required)
+        return fail(c,"PCS residual simultaneous arena admission failed");
+    *token=0;
+    auto& s=c->residual; s.shape=shape; s.phase=phase; s.cosets=cosets; s.point=point; s.pad_count=pad_count; s.active=1;
+    std::memcpy(s.offsets,offsets,sizeof(offsets));
+    if(allocate(c,C71_PCS_PRIVATE,bytes,&s.meta) || allocate(c,C71_PCS_PRIVATE,4,&s.flag)) return -1;
+    if(phase==residual::Phase::singleton || phase==residual::Phase::ood) {
+        const uint64_t count=phase==residual::Phase::singleton ? 128 : 1;
+        if(allocate(c,C71_PCS_PRIVATE,count*sizeof(residual::E),&s.reduced)) return -1;
+    } else if(phase==residual::Phase::retention) {
+        for(auto& id:s.planes) if(allocate(c,C71_PCS_RESIDUAL_PRIVATE,uint64_t{1}<<shape.remaining,&id)) return -1;
+    } else {
+        const uint64_t rows=cosets.rows;
+        if(allocate(c,C71_PCS_RESIDUAL_PRIVATE,24*rows,&s.ring) ||
+           allocate(c,C71_PCS_PRIVATE,2*rows*8,&s.low) ||
+           allocate(c,C71_PCS_PRIVATE,2*residual::high_rows(shape,cosets)*8,&s.high) ||
+           allocate(c,C71_PCS_PRIVATE,rows*8,&s.scratch) || allocate(c,C71_PCS_PRIVATE,rows*8,&s.twiddles)) return -1;
+    }
+    if(phase==residual::Phase::ood) {
+        s.powers={shape.remaining,(shape.remaining+1)/2,0,0};
+        if(allocate(c,C71_PCS_PRIVATE,residual::low_count(s.powers)*sizeof(residual::E),&s.low) ||
+           allocate(c,C71_PCS_PRIVATE,residual::high_count(s.powers)*sizeof(residual::E),&s.high)) return -1;
+    }
+    bool submitted_error=false;
+    auto* meta=ptr<uint8_t>(c,buffer(c,s.meta));
+    for(unsigned i=0;i<4;++i) if(lengths[i]) {
+        if(checked(c,cudaMemcpyAsync(meta+offsets[i],arrays[i],lengths[i],cudaMemcpyHostToDevice,c->stream))) {
+            submitted_error=true; break;
+        }
+        c->stats.h2d_bytes+=lengths[i];
+    }
+    if(!submitted_error) for(auto id:{s.flag,s.reduced,s.planes[0],s.planes[1],s.planes[2],s.ring})
+        if(id && residual_zero(c,id)) { submitted_error=true; break; }
+    if(!submitted_error && phase==residual::Phase::cosets) {
+        if(launched(c,c71_pcs_residual_coset_powers_launch(c->stream,ptr<uint64_t>(c,buffer(c,s.low)),
+            ptr<uint64_t>(c,buffer(c,s.high)),shape,cosets))) submitted_error=true;
+        if(!submitted_error) {
+            unsigned log=0; while((uint64_t{1}<<log)<cosets.rows) ++log;
+            if(launched(c,c71_pcs_transform_twiddles_launch(c->stream,ptr<uint64_t>(c,buffer(c,s.twiddles)),log,0))) submitted_error=true;
+        }
+    }
+    if(!submitted_error && phase==residual::Phase::ood &&
+       launched(c,c71_pcs_residual_ood_powers_launch(c->stream,ptr<residual::E>(c,buffer(c,s.low)),
+           ptr<residual::E>(c,buffer(c,s.high)),s.powers,point))) submitted_error=true;
+    // Drain accepted uploads while the host packet and Shape still exist,
+    // including a later failed submit. No capability is published on failure.
+    const int synced=fence(c);
+    if(submitted_error || synced) return -1;
+    buffer(c,s.meta)->initialized=buffer(c,s.meta)->count;
+    *token=s.meta; return 0;
+}
+extern "C" int c71_pcs_residual_source_tile(C71RangeContext* c,uint64_t token,uint64_t input,c71_pcs::SourceTile tile) {
+    if(!ready(c) || !residual_session(c,token)) return -1;
+    return residual_submit(c,input,&tile,nullptr,0);
+}
+extern "C" int c71_pcs_residual_weights(C71RangeContext* c,uint64_t token,uint64_t sealed_tiles) {
+    if(!ready(c) || !residual_session(c,token)) return -1;
+    return residual_submit(c,0,nullptr,nullptr,sealed_tiles);
+}
+extern "C" int c71_pcs_residual_resident(C71RangeContext* c,uint64_t token,C71PcsResidualPlanes planes) {
+    if(!ready(c) || !residual_session(c,token)) return -1;
+    return residual_submit(c,0,nullptr,&planes,0);
+}
+extern "C" int c71_pcs_residual_finish(C71RangeContext* c,uint64_t token,C71PcsResidualResult* output) {
+    if(!ready(c) || !residual_session(c,token)) return -1;
+    uintptr_t end=0;
+    auto& s=c->residual;
+    if(!output || reinterpret_cast<uintptr_t>(output)%alignof(C71PcsResidualResult) ||
+       !c71_dense::span(output,sizeof(*output),end) || !s.mode || s.visited!=s.shape.live ||
+       (s.mode==1 && !s.coverage.complete(s.shape.live)))
+        return fail(c,"PCS residual finish output or original scan incomplete");
+    bool submitted_error=false;
+    if(s.phase==residual::Phase::cosets) {
+        if(launched(c,c71_pcs_residual_pad_launch(c->stream,ptr<uint64_t>(c,buffer(c,s.ring)),
+            residual_packet<residual::E>(c,3,true),ptr<uint64_t>(c,buffer(c,s.low)),ptr<uint64_t>(c,buffer(c,s.high)),
+            s.shape,s.cosets,ptr<uint32_t>(c,buffer(c,s.flag))))) submitted_error=true;
+        unsigned log=0; while((uint64_t{1}<<log)<s.cosets.rows) ++log;
+        for(unsigned column=0;column<24 && !submitted_error;++column) {
+            unsigned attempted=0;
+            const auto status=c71_pcs_transform_launch(c->stream,ptr<uint64_t>(c,buffer(c,s.ring))+uint64_t(column)*s.cosets.rows,
+                ptr<uint64_t>(c,buffer(c,s.scratch)),ptr<uint64_t>(c,buffer(c,s.twiddles)),log,1,0,&attempted);
+            c->stats.launches+=attempted;
+            if(log%2 && log>1 && attempted>1) c->stats.d2d_bytes+=s.cosets.rows*8;
+            if(checked(c,status)) submitted_error=true;
+        }
+    } else if(s.phase==residual::Phase::ood && s.pad_count &&
+        launched(c,c71_pcs_residual_ood_pad_launch(c->stream,ptr<residual::E>(c,buffer(c,s.reduced)),
+            residual_packet<residual::E>(c,3,true),s.pad_count,uint64_t{1}<<s.shape.remaining,s.point,
+            ptr<uint32_t>(c,buffer(c,s.flag))))) submitted_error=true;
+    C71PcsResidualResult staged{};
+    staged.reduced_count=s.phase==residual::Phase::singleton ? 1u<<(s.shape.dimension-s.shape.remaining) :
+        s.phase==residual::Phase::ood ? 1 : 0;
+    if(!submitted_error && staged.reduced_count) {
+        const size_t bytes=size_t(staged.reduced_count)*sizeof(residual::E);
+        if(checked(c,cudaMemcpyAsync(staged.reduced,ptr<void>(c,buffer(c,s.reduced)),bytes,cudaMemcpyDeviceToHost,c->stream))) submitted_error=true;
+        else c->stats.d2h_bytes+=bytes;
+    }
+    uint32_t flag=0;
+    if(!submitted_error) {
+        if(checked(c,cudaMemcpyAsync(&flag,ptr<void>(c,buffer(c,s.flag)),4,cudaMemcpyDeviceToHost,c->stream))) submitted_error=true;
+        else c->stats.d2h_bytes+=4;
+    }
+    const int synced=fence(c);
+    if(submitted_error || synced) return -1;
+    if(flag) return fail(c,"PCS residual source/pad arithmetic failed");
+    for(unsigned i=0;i<staged.reduced_count;++i) if(!residual::canonical(staged.reduced[i])) return fail(c,"PCS residual result noncanonical");
+    staged.planes={s.planes[0],s.planes[1],s.planes[2],s.planes[0]?uint64_t{1}<<s.shape.remaining:0};
+    staged.ring=s.ring;
+    const auto cosets=s.cosets;
+    if(residual_free_aux(c)) return -1;
+    if(staged.planes.c0) {
+        const uint64_t ids[]={staged.planes.c0,staged.planes.c1,staged.planes.c2};
+        for(unsigned limb=0;limb<3;++limb) {
+            auto* b=buffer(c,ids[limb]); b->initialized=b->count;
+            b->residual_role=residual_plane_role+limb; b->residual_group=staged.planes.c0;
+        }
+    }
+    if(staged.ring) {
+        auto* b=buffer(c,staged.ring); b->initialized=b->count; b->residual_role=residual_ring_role;
+        b->visits=(uint64_t(cosets.cosets)<<32)|cosets.first_coset;
+    }
+    *output=staged; s={}; return 0;
+}
+extern "C" int c71_pcs_residual_fold(C71RangeContext* c,C71PcsResidualPlanes input,uint32_t rounds,
+    residual::E r0,residual::E r1,C71PcsResidualPlanes* output) {
+    if(!ready(c)) return -1;
+    residual::ConstPlanes values{};
+    uintptr_t end=0;
+    if(!residual_idle(c) || !output || reinterpret_cast<uintptr_t>(output)%alignof(C71PcsResidualPlanes) ||
+       !c71_dense::span(output,sizeof(*output),end) || !residual::valid_fold(input.count,rounds,r0,r1) ||
+       !residual_planes(c,input,values)) return fail(c,"PCS residual fold generation, output or challenge");
+    const uint64_t required=3*aligned((input.count>>rounds)*8)+aligned(4);
+    if(required>c->usable || c->stats.arena_bytes>c->usable-required)
+        return fail(c,"PCS residual paired fold arena admission failed");
+    uint64_t ids[3]{},flag_id=0;
+    for(auto& id:ids) if(allocate(c,C71_PCS_RESIDUAL_PRIVATE,input.count>>rounds,&id)) return -1;
+    if(allocate(c,C71_PCS_PRIVATE,4,&flag_id)) return -1;
+    if(residual_zero(c,flag_id)) return -1;
+    residual::Planes target{ptr<uint64_t>(c,buffer(c,ids[0])),ptr<uint64_t>(c,buffer(c,ids[1])),ptr<uint64_t>(c,buffer(c,ids[2]))};
+    bool submitted_error=launched(c,c71_pcs_residual_fold_launch(c->stream,values,target,input.count,rounds,r0,r1,
+        ptr<uint32_t>(c,buffer(c,flag_id))))!=0;
+    uint32_t flag=0;
+    if(!submitted_error) {
+        if(checked(c,cudaMemcpyAsync(&flag,ptr<void>(c,buffer(c,flag_id)),4,cudaMemcpyDeviceToHost,c->stream))) submitted_error=true;
+        else c->stats.d2h_bytes+=4;
+    }
+    const int synced=fence(c);
+    if(submitted_error || synced) return -1;
+    if(flag) return fail(c,"PCS residual fold noncanonical input");
+    if(residual_retire(c,flag_id)) return -1;
+    for(unsigned limb=0;limb<3;++limb) {
+        auto* b=buffer(c,ids[limb]); b->initialized=b->count;
+        b->residual_role=residual_plane_role+limb; b->residual_group=ids[0];
+    }
+    *output={ids[0],ids[1],ids[2],input.count>>rounds}; return 0;
+}
+extern "C" int c71_pcs_residual_retire_planes(C71RangeContext* c,C71PcsResidualPlanes planes) {
+    if(!ready(c)) return -1;
+    residual::ConstPlanes values{};
+    if(!residual_idle(c) || !residual_planes(c,planes,values)) return -1;
+    if(fence(c)) return -1;
+    for(auto* id:{&planes.c0,&planes.c1,&planes.c2}) if(residual_retire(c,*id)) return -1;
+    return 0;
+}
+extern "C" int c71_pcs_residual_retire_ring(C71RangeContext* c,uint64_t ring) {
+    if(!ready(c)) return -1;
+    auto* b=buffer(c,ring);
+    if(c->residual_query.phase || c->residual.active || c->contract.active || c->linear.phase || c->source.values[0] || (c->salts.phase && c->salts.phase!=3 && c->salts.phase!=4) ||
+       (c->salts.short_ring==ring && c->salts.first) ||
+       !full(b,C71_PCS_RESIDUAL_PRIVATE) || b->residual_role!=residual_ring_role)
+        return fail(c,"PCS residual ring retirement type or state");
+    if(fence(c)) return -1;
+    return residual_retire(c,ring);
+}
+extern "C" int c71_pcs_residual_final_read(C71RangeContext* c,C71PcsResidualPlanes planes,residual::E* output,uint32_t count) {
+    if(!ready(c)) return -1;
+    residual::ConstPlanes values{};
+    uintptr_t end=0;
+    if(!residual_idle(c) || !output || reinterpret_cast<uintptr_t>(output)%alignof(residual::E) ||
+       !count || count>128 || count!=planes.count || !c71_dense::span(output,uint64_t(count)*sizeof(*output),end) ||
+       !residual_planes(c,planes,values)) return fail(c,"PCS residual final polynomial shape or generation");
+    uint64_t limbs[3][128]{};
+    const uint64_t* inputs[]={values.c0,values.c1,values.c2};
+    bool submitted_error=false;
+    for(unsigned component=0;component<3;++component) {
+        if(checked(c,cudaMemcpyAsync(limbs[component],inputs[component],uint64_t(count)*8,cudaMemcpyDeviceToHost,c->stream))) {
+            submitted_error=true; break;
+        }
+        c->stats.d2h_bytes+=uint64_t(count)*8;
+    }
+    const int synced=fence(c);
+    if(submitted_error || synced) return -1;
+    residual::E staged[128]{};
+    for(unsigned i=0;i<count;++i) {
+        staged[i]={limbs[0][i],limbs[1][i],limbs[2][i]};
+        if(!residual::canonical(staged[i])) return fail(c,"PCS residual final polynomial noncanonical");
+    }
+    // Terminal publication consumes these planes after the final lease has
+    // been released. Even a partial free failure leaves output untouched.
+    for(auto* id:{&planes.c0,&planes.c1,&planes.c2}) if(residual_retire(c,*id)) return -1;
+    std::memcpy(output,staged,size_t(count)*sizeof(*output)); return 0;
+}
+
+namespace {
+bool contract_session(C71RangeContext* c,uint64_t token) {
+    if(!token || !c->contract.active || token!=c->contract.meta || !full(buffer(c,token),C71_PCS_PRIVATE)) {
+        fail(c,"PCS contraction capability or phase differs"); return false;
+    }
+    return true;
+}
+template<class T> const T* contract_packet(C71RangeContext* c,unsigned span,bool present) {
+    if(!present) return nullptr;
+    return reinterpret_cast<const T*>(ptr<uint8_t>(c,buffer(c,c->contract.meta))+c->contract.offsets[span]);
+}
+int contract_band(C71RangeContext* c,uint64_t token,uint64_t weights,const C71PcsResidualPlanes* planes,
+    uint64_t start,uint32_t count,const residual::E* left,const residual::E* right) {
+    if(!ready(c) || !contract_session(c,token)) return -1;
+    auto& s=c->contract;
+    const uint64_t length=uint64_t{1}<<(s.shape.remaining-s.kind);
+    uintptr_t left_end=0,right_end=0;
+    if(start!=s.cursor || !count || count>s.capacity || count>length-start || !left ||
+       reinterpret_cast<uintptr_t>(left)%alignof(residual::E) || !c71_dense::span(left,uint64_t(count)*sizeof(*left),left_end) ||
+       ((right!=nullptr)!=(s.kind!=0)) || (right && (reinterpret_cast<uintptr_t>(right)%alignof(residual::E) ||
+       !c71_dense::span(right,uint64_t(count)*sizeof(*right),right_end))))
+        return fail(c,"PCS contraction band order, span or shape");
+    for(uint32_t i=0;i<count;++i) if(!residual::canonical(left[i]) || (right && !residual::canonical(right[i])))
+        return fail(c,"PCS contraction covector noncanonical");
+    residual::ConstPlanes resident_values{};
+    Buffer* tile_buffer=nullptr;
+    if(planes) {
+        if(s.mode==1 || s.shape.dimension>28 || s.shape.dimension-s.shape.remaining>2 ||
+           planes->count!=(uint64_t{1}<<s.shape.dimension) || planes->count!=s.shape.live ||
+           (s.mode==2 && (s.source[0]!=planes->c0 || s.source[1]!=planes->c1 || s.source[2]!=planes->c2)) ||
+           !residual_planes(c,*planes,resident_values)) return fail(c,"PCS contraction resident generation changed");
+    } else {
+        tile_buffer=buffer(c,weights);
+        if(s.mode==2 || !c->stats.weights_sealed || !full(tile_buffer,C71_PCS_WEIGHT_TILES) ||
+           tile_buffer->visits!=s.shape.live || s.shape.live!=c->stats.weights_bytes/2 ||
+           (s.mode==1 && s.source[0]!=weights)) return fail(c,"PCS contraction sealed W mapping changed");
+    }
+    auto* band=ptr<residual::E>(c,buffer(c,s.band));
+    bool submitted_error=false;
+    const uint64_t bytes=uint64_t(count)*sizeof(residual::E);
+    if(checked(c,cudaMemcpyAsync(band,left,bytes,cudaMemcpyHostToDevice,c->stream))) submitted_error=true;
+    else c->stats.h2d_bytes+=bytes;
+    if(!submitted_error && right) {
+        if(checked(c,cudaMemcpyAsync(band+s.capacity,right,bytes,cudaMemcpyHostToDevice,c->stream))) submitted_error=true;
+        else c->stats.h2d_bytes+=bytes;
+    }
+    if(!submitted_error) {
+        const auto* chunks=contract_packet<residual::Chunk>(c,1,s.shape.equality.chunks!=0);
+        const auto* tables=contract_packet<residual::E>(c,2,s.shape.equality.entries!=0);
+        auto* output=ptr<residual::E>(c,buffer(c,s.output)); auto* flag=ptr<uint32_t>(c,buffer(c,s.flag));
+        const auto status=planes ? c71_pcs_residual_contract_resident_launch(c->stream,resident_values,planes->count,
+            s.shape,chunks,tables,s.kind,start,count,band,right?band+s.capacity:nullptr,output,flag) :
+            c71_pcs_residual_contract_weights_launch(c->stream,c->weights,c->stats.weights_bytes/2,
+                ptr<c71_pcs::WeightTile>(c,tile_buffer),tile_buffer->count,s.shape,chunks,tables,s.kind,start,count,
+                band,right?band+s.capacity:nullptr,output,flag);
+        if(launched(c,status)) submitted_error=true;
+    }
+    // Covector storage and each caller-owned host array may be reused only
+    // after this same-stream fence, including accepted copies before failure.
+    const int synced=fence(c);
+    if(submitted_error || synced) return -1;
+    if(planes) { s.mode=2; s.source[0]=planes->c0; s.source[1]=planes->c1; s.source[2]=planes->c2; }
+    else { s.mode=1; s.source[0]=weights; }
+    s.cursor+=count; s.visited+=residual::contract_band_visits(s.shape,s.kind,start,count); return 0;
+}
+}
+extern "C" int c71_pcs_residual_contract_begin(C71RangeContext* c,residual::Shape shape,
+    const residual::Chunk* chunks,const residual::E* tables,uint32_t kind,uint32_t capacity,uint64_t* token) {
+    if(!ready(c)) return -1;
+    uintptr_t token_end=0;
+    if(!residual_idle(c) || !token || reinterpret_cast<uintptr_t>(token)%8 || !c71_dense::span(token,8,token_end) ||
+       !residual::valid(shape,residual::Phase::retention) || kind>1 || shape.remaining<kind ||
+       !capacity || capacity>(1u<<21) || capacity>(uint64_t{1}<<(shape.remaining-kind)))
+        return fail(c,"PCS contraction begin shape or output");
+    const void* arrays[]={&shape,chunks,tables};
+    const uint64_t lengths[]={sizeof(shape),uint64_t(shape.equality.chunks)*sizeof(*chunks),uint64_t(shape.equality.entries)*sizeof(*tables)};
+    const unsigned alignments[]={alignof(residual::Shape),alignof(residual::Chunk),alignof(residual::E)};
+    uint64_t offsets[3]{},bytes=0;
+    for(unsigned i=0;i<3;++i) {
+        uintptr_t end=0;
+        if(lengths[i] && (reinterpret_cast<uintptr_t>(arrays[i])%alignments[i] || !c71_dense::span(arrays[i],lengths[i],end) ||
+           c71_dense::overlaps(token,token_end,arrays[i],end))) return fail(c,"PCS contraction packet span or token alias");
+        offsets[i]=bytes; bytes+=aligned(lengths[i]);
+    }
+    if(!residual::valid_packet(shape.equality,chunks,tables)) return fail(c,"PCS contraction prefix packet differs");
+    const uint64_t band_bytes=(uint64_t(capacity)<<kind)*sizeof(residual::E);
+    const uint64_t required=aligned(bytes)+aligned(band_bytes)+aligned(2*sizeof(residual::E))+aligned(4);
+    if(required>c->usable || c->stats.arena_bytes>c->usable-required) return fail(c,"PCS contraction simultaneous arena admission failed");
+    *token=0;
+    auto& s=c->contract; s.shape=shape; s.kind=kind; s.capacity=capacity; s.active=1;
+    std::memcpy(s.offsets,offsets,sizeof(offsets));
+    if(allocate(c,C71_PCS_PRIVATE,bytes,&s.meta) || allocate(c,C71_PCS_PRIVATE,band_bytes,&s.band) ||
+       allocate(c,C71_PCS_PRIVATE,2*sizeof(residual::E),&s.output) || allocate(c,C71_PCS_PRIVATE,4,&s.flag)) return -1;
+    bool submitted_error=false;
+    auto* meta=ptr<uint8_t>(c,buffer(c,s.meta));
+    for(unsigned i=0;i<3;++i) if(lengths[i]) {
+        if(checked(c,cudaMemcpyAsync(meta+offsets[i],arrays[i],lengths[i],cudaMemcpyHostToDevice,c->stream))) {
+            submitted_error=true; break;
+        }
+        c->stats.h2d_bytes+=lengths[i];
+    }
+    if(!submitted_error && (residual_zero(c,s.output) || residual_zero(c,s.flag))) submitted_error=true;
+    const int synced=fence(c);
+    if(submitted_error || synced) return -1;
+    buffer(c,s.meta)->initialized=buffer(c,s.meta)->count;
+    *token=s.meta; return 0;
+}
+extern "C" int c71_pcs_residual_contract_weights_band(C71RangeContext* c,uint64_t token,uint64_t weights,
+    uint64_t start,uint32_t count,const residual::E* left,const residual::E* right) {
+    return contract_band(c,token,weights,nullptr,start,count,left,right);
+}
+extern "C" int c71_pcs_residual_contract_resident_band(C71RangeContext* c,uint64_t token,C71PcsResidualPlanes planes,
+    uint64_t start,uint32_t count,const residual::E* left,const residual::E* right) {
+    return contract_band(c,token,0,&planes,start,count,left,right);
+}
+extern "C" int c71_pcs_residual_contract_finish(C71RangeContext* c,uint64_t token,residual::E* output) {
+    if(!ready(c) || !contract_session(c,token)) return -1;
+    auto& s=c->contract;
+    uintptr_t end=0;
+    if(!output || reinterpret_cast<uintptr_t>(output)%alignof(residual::E) || !c71_dense::span(output,2*sizeof(*output),end) ||
+       !s.mode || s.cursor!=(uint64_t{1}<<(s.shape.remaining-s.kind)) || s.visited!=s.shape.live)
+        return fail(c,"PCS contraction finish band coverage or output");
+    residual::E staged[2]{}; uint32_t flag=0;
+    bool submitted_error=false;
+    if(checked(c,cudaMemcpyAsync(staged,ptr<void>(c,buffer(c,s.output)),sizeof(staged),cudaMemcpyDeviceToHost,c->stream))) submitted_error=true;
+    else c->stats.d2h_bytes+=sizeof(staged);
+    if(!submitted_error) {
+        if(checked(c,cudaMemcpyAsync(&flag,ptr<void>(c,buffer(c,s.flag)),4,cudaMemcpyDeviceToHost,c->stream))) submitted_error=true;
+        else c->stats.d2h_bytes+=4;
+    }
+    const int synced=fence(c);
+    if(submitted_error || synced) return -1;
+    if(flag || !residual::canonical(staged[0]) || !residual::canonical(staged[1]) || (!s.kind && !residual::zero(staged[1])))
+        return fail(c,"PCS contraction arithmetic or canonicality failed");
+    for(auto* id:{&s.flag,&s.output,&s.band,&s.meta}) if(residual_retire(c,*id)) return -1;
+    std::memcpy(output,staged,sizeof(staged)); s={}; return 0;
+}
+
+namespace {
+bool residual_query_session(C71RangeContext* c,uint64_t token) {
+    if(!token || !c->residual_query.phase || token!=c->residual_query.meta || !full(buffer(c,token),C71_PCS_PRIVATE)) {
+        fail(c,"PCS E query capability or private packet differs"); return false;
+    }
+    return true;
+}
+template<class T> const T* residual_query_packet(C71RangeContext* c,unsigned span,bool present) {
+    if(!present) return nullptr;
+    return reinterpret_cast<const T*>(ptr<uint8_t>(c,buffer(c,c->residual_query.meta))+c->residual_query.offsets[span]);
+}
+int residual_query_load(C71RangeContext* c,uint64_t token,uint64_t weights,const C71PcsResidualPlanes* planes,c71_pcs::QueryBlock block) {
+    if(!ready(c) || !residual_query_session(c,token)) return -1;
+    auto& q=c->residual_query;
+    const uint64_t n=uint64_t{1}<<(q.shape.remaining-2);
+    if(q.phase!=1 || q.loaded || block.first!=q.cursor || block.source_rows!=n+q.pad_rows ||
+       block.message_rows!=n || block.active!=n || block.byte_first!=uint64_t(q.column)*n || block.window_first ||
+       block.pad_first!=uint64_t(q.column)*q.pad_rows || block.pad_rows!=q.pad_rows || block.pad_only)
+        return fail(c,"PCS E query block order, pads or original column differs");
+    const auto* chunks=residual_query_packet<residual::Chunk>(c,1,q.shape.equality.chunks!=0);
+    const auto* tables=residual_query_packet<residual::E>(c,2,q.shape.equality.entries!=0);
+    const auto* pads=residual_query_packet<residual::E>(c,3,true);
+    auto* low=ptr<uint64_t>(c,buffer(c,q.low)); auto* flag=ptr<uint32_t>(c,buffer(c,q.flag));
+    cudaError_t status=cudaSuccess;
+    unsigned attempted=0;
+    if(planes) {
+        residual::ConstPlanes values{};
+        if(q.mode==1 || q.shape.dimension>28 || q.shape.dimension-q.shape.remaining>2 ||
+           planes->count!=(uint64_t{1}<<q.shape.dimension) || planes->count!=q.shape.live ||
+           (q.mode==2 && (q.source[0]!=planes->c0 || q.source[1]!=planes->c1 || q.source[2]!=planes->c2)) ||
+           !residual_planes(c,*planes,values)) return fail(c,"PCS E query resident generation changed");
+        status=c71_pcs_residual_query_resident_launch(c->stream,values,planes->count,q.shape,chunks,tables,pads,
+            4*q.pad_rows,low,q.capacity,block,flag);
+        q.mode=2; q.source[0]=planes->c0; q.source[1]=planes->c1; q.source[2]=planes->c2;
+    } else {
+        auto* tiles=buffer(c,weights);
+        if(q.mode==2 || !c->stats.weights_sealed || !full(tiles,C71_PCS_WEIGHT_TILES) ||
+           tiles->visits!=q.shape.live || q.shape.live!=c->stats.weights_bytes/2 ||
+           (q.mode==1 && q.source[0]!=weights)) return fail(c,"PCS E query original W mapping changed");
+        status=c71_pcs_residual_query_weights_launch(c->stream,c->weights,c->stats.weights_bytes/2,
+            ptr<c71_pcs::WeightTile>(c,tiles),tiles->count,q.shape,chunks,tables,pads,4*q.pad_rows,low,q.capacity,block,flag,&attempted);
+        q.mode=1; q.source[0]=weights;
+    }
+    if(planes) { if(launched(c,status)) return -1; }
+    else { c->stats.launches+=attempted; if(checked(c,status)) return -1; }
+    q.loaded=1; q.mask=0; return 0;
+}
+}
+extern "C" int c71_pcs_residual_query_begin(C71RangeContext* c,residual::Shape shape,const residual::Chunk* chunks,
+    const residual::E* tables,const residual::E* pads,uint32_t pad_count,uint32_t capacity,uint32_t column,uint64_t* token) {
+    if(!ready(c)) return -1;
+    uintptr_t token_end=0;
+    if(!residual_idle(c) || !token || reinterpret_cast<uintptr_t>(token)%8 || !c71_dense::span(token,8,token_end) ||
+       !residual::valid(shape,residual::Phase::retention) || shape.remaining<2 || shape.remaining>29 ||
+       !power2(capacity) || capacity>(1u<<20) || column>=4 || !pad_count || pad_count%4 || pad_count>4*1536 || !pads)
+        return fail(c,"PCS E query begin shape, capacity, column or output");
+    const void* arrays[]={&shape,chunks,tables,pads};
+    const uint64_t lengths[]={sizeof(shape),uint64_t(shape.equality.chunks)*sizeof(*chunks),
+        uint64_t(shape.equality.entries)*sizeof(*tables),uint64_t(pad_count)*sizeof(*pads)};
+    const unsigned alignments[]={alignof(residual::Shape),alignof(residual::Chunk),alignof(residual::E),alignof(residual::E)};
+    uint64_t offsets[4]{},bytes=0;
+    for(unsigned i=0;i<4;++i) {
+        uintptr_t end=0;
+        if(lengths[i] && (reinterpret_cast<uintptr_t>(arrays[i])%alignments[i] || !c71_dense::span(arrays[i],lengths[i],end) ||
+           c71_dense::overlaps(token,token_end,arrays[i],end))) return fail(c,"PCS E query packet span, alignment or token alias");
+        offsets[i]=bytes; bytes+=aligned(lengths[i]);
+    }
+    if(!residual::valid_packet(shape.equality,chunks,tables)) return fail(c,"PCS E query equality packet differs");
+    for(uint32_t i=0;i<pad_count;++i) if(!residual::canonical(pads[i])) return fail(c,"PCS E query pad noncanonical");
+    const uint64_t required=aligned(bytes)+aligned(uint64_t(capacity)*24)+aligned(4);
+    if(required>c->usable || c->stats.arena_bytes>c->usable-required) return fail(c,"PCS E query simultaneous arena admission failed");
+    *token=0;
+    auto& q=c->residual_query; q.shape=shape; q.capacity=capacity; q.column=column; q.pad_rows=pad_count/4; q.phase=1;
+    const uint64_t source_rows=(uint64_t{1}<<(shape.remaining-2))+q.pad_rows;
+    q.cursor=((source_rows+capacity-1)/capacity-1)*capacity;
+    std::memcpy(q.offsets,offsets,sizeof(offsets));
+    if(allocate(c,C71_PCS_PRIVATE,bytes,&q.meta) || allocate(c,C71_PCS_PRIVATE,uint64_t(capacity)*24,&q.low) ||
+       allocate(c,C71_PCS_PRIVATE,4,&q.flag)) return -1;
+    bool submitted_error=false;
+    auto* meta=ptr<uint8_t>(c,buffer(c,q.meta));
+    for(unsigned i=0;i<4;++i) if(lengths[i]) {
+        if(checked(c,cudaMemcpyAsync(meta+offsets[i],arrays[i],lengths[i],cudaMemcpyHostToDevice,c->stream))) {
+            submitted_error=true; break;
+        }
+        c->stats.h2d_bytes+=lengths[i];
+    }
+    if(!submitted_error && residual_zero(c,q.flag)) submitted_error=true;
+    const int synced=fence(c); // all consumer packet pointers may now be retired
+    if(submitted_error || synced) return -1;
+    buffer(c,q.meta)->initialized=buffer(c,q.meta)->count;
+    *token=q.meta; return 0;
+}
+extern "C" int c71_pcs_residual_query_weights(C71RangeContext* c,uint64_t token,uint64_t tiles,c71_pcs::QueryBlock block) {
+    return residual_query_load(c,token,tiles,nullptr,block);
+}
+extern "C" int c71_pcs_residual_query_resident(C71RangeContext* c,uint64_t token,C71PcsResidualPlanes planes,c71_pcs::QueryBlock block) {
+    return residual_query_load(c,token,0,&planes,block);
+}
+extern "C" int c71_pcs_residual_query_root(C71RangeContext* c,uint64_t token,uint32_t limb,uint64_t high,
+    uint64_t inverse,uint64_t modulus,uint64_t forward,uint64_t backward,uint64_t work,uint64_t scratch,uint64_t output) {
+    if(!ready(c) || !residual_query_session(c,token)) return -1;
+    auto& q=c->residual_query;
+    auto* h=high?buffer(c,high):nullptr; auto* i=buffer(c,inverse); auto* m=buffer(c,modulus);
+    auto* f=buffer(c,forward); auto* b=buffer(c,backward); auto* w=buffer(c,work); auto* s=buffer(c,scratch); auto* o=buffer(c,output);
+    if(q.phase!=1 || !q.loaded || limb>=3 || (q.mask&(1u<<limb)) || high!=q.last[limb] ||
+       (high && (!full(h,C71_PCS_BASE) || h->count!=q.capacity || h->residual_group!=q.meta || h->residual_role!=3+limb)) ||
+       !full(i,C71_PCS_BASE) || !full(m,C71_PCS_BASE) || i==m || i->count!=2*q.capacity || m->count!=2*q.capacity ||
+       !query_twiddles(f,2*q.capacity,0) || !query_twiddles(b,2*q.capacity,1) ||
+       !query_output(w,2*q.capacity) || !query_output(s,2*q.capacity) || !query_output(o,q.capacity) || w==s || w==o || s==o)
+        return fail(c,"PCS E query root order, lineage, factors or workspace differs");
+    for(auto* read:{h,i,m,f,b}) if(read && (read==w || read==s || read==o)) return fail(c,"PCS E query root output alias");
+    for(unsigned other=0;other<3;++other) if(other!=limb && output==q.last[other])
+        return fail(c,"PCS E query root overwrites another limb");
+    const auto* low=ptr<uint64_t>(c,buffer(c,q.low))+uint64_t(limb)*q.capacity;
+    if(!high) {
+        const uint64_t bytes=uint64_t(q.capacity)*8;
+        // The first block has degree < capacity: its remainder is itself.
+        if(checked(c,cudaMemcpyAsync(ptr<void>(c,o),low,bytes,cudaMemcpyDeviceToDevice,c->stream))) return -1;
+        c->stats.d2d_bytes+=bytes;
+    } else {
+        unsigned attempted=0; uint64_t copied=0;
+        const auto status=c71_pcs_query_remainder_launch(c->stream,ptr<uint64_t>(c,h),low,ptr<uint64_t>(c,i),ptr<uint64_t>(c,m),
+            ptr<uint64_t>(c,f),ptr<uint64_t>(c,b),ptr<uint64_t>(c,w),ptr<uint64_t>(c,s),ptr<uint64_t>(c,o),
+            q.capacity,q.capacity,0,&attempted,&copied);
+        c->stats.launches+=attempted; c->stats.d2d_bytes+=copied;
+        if(checked(c,status)) return -1;
+    }
+    o->initialized=o->count; o->residual_group=q.meta; o->residual_role=3+limb; o->visits=q.capacity;
+    q.last[limb]=output; q.mask|=1u<<limb;
+    if(q.mask==7) { q.loaded=0; if(q.cursor) q.cursor-=q.capacity; else q.phase=2; }
+    return 0;
+}
+extern "C" int c71_pcs_residual_query_finish(C71RangeContext* c,uint64_t token,const uint64_t final_columns[3],
+    uint32_t count,uint64_t* output) {
+    if(!ready(c) || !residual_query_session(c,token)) return -1;
+    auto& q=c->residual_query;
+    uintptr_t ids_end=0,output_end=0;
+    if(q.phase!=2 || q.loaded || q.mask!=7 || !final_columns || reinterpret_cast<uintptr_t>(final_columns)%8 ||
+       !c71_dense::span(final_columns,24,ids_end) || !count || count>q.capacity || !output || reinterpret_cast<uintptr_t>(output)%8 ||
+       !c71_dense::span(output,uint64_t(count)*24,output_end) || c71_dense::overlaps(final_columns,ids_end,output,output_end))
+        return fail(c,"PCS E query finish coverage or output span");
+    Buffer* finals[3]{};
+    for(unsigned limb=0;limb<3;++limb) {
+        finals[limb]=buffer(c,final_columns[limb]);
+        if(!full(finals[limb],C71_PCS_BASE) || finals[limb]->count!=q.capacity || finals[limb]->residual_group!=q.meta ||
+           finals[limb]->residual_role!=3+limb || finals[limb]->visits!=1 || final_columns[limb]!=q.last[limb])
+            return fail(c,"PCS E query final column lineage differs");
+    }
+    const uint64_t bytes=uint64_t(count)*24;
+    if(c->account && c->account(int64_t(bytes))) return fail(c,"PCS E query host publication budget exhausted");
+    auto* staged=new(std::nothrow) uint64_t[uint64_t(count)*3];
+    if(!staged) { if(c->account) c->account(-int64_t(bytes)); return fail(c,"PCS E query host staging unavailable"); }
+    c->stats.host_owner_bytes+=bytes;
+    const auto cleanup=[&](int status) {
+        delete[] staged;
+        c->stats.host_owner_bytes-=bytes;
+        if(c->account) c->account(-int64_t(bytes));
+        return status;
+    };
+    bool submitted_error=false;
+    for(unsigned limb=0;limb<3;++limb) {
+        if(checked(c,cudaMemcpyAsync(staged+uint64_t(limb)*count,ptr<void>(c,finals[limb]),uint64_t(count)*8,cudaMemcpyDeviceToHost,c->stream))) {
+            submitted_error=true; break;
+        }
+        c->stats.d2h_bytes+=uint64_t(count)*8;
+    }
+    uint32_t flag=0;
+    if(!submitted_error) {
+        if(checked(c,cudaMemcpyAsync(&flag,ptr<void>(c,buffer(c,q.flag)),4,cudaMemcpyDeviceToHost,c->stream))) submitted_error=true;
+        else c->stats.d2h_bytes+=4;
+    }
+    const int synced=fence(c);
+    if(submitted_error || synced) return cleanup(-1);
+    if(flag) return cleanup(fail(c,"PCS E query original/retained/pad arithmetic failed"));
+    for(uint64_t i=0;i<uint64_t(count)*3;++i) if(staged[i]>=P) return cleanup(fail(c,"PCS E query final column noncanonical"));
+    for(auto* id:{&q.flag,&q.low,&q.meta}) if(residual_retire(c,*id)) return cleanup(-1);
+    std::memcpy(output,staged,size_t(bytes)); q={}; return cleanup(0);
 }

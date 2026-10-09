@@ -453,6 +453,57 @@ void rejections(Counters& counts) {
     assert(pcs::valid_fold(uint64_t{1}<<28,2,{0,1,0},{0,0,1}));
 }
 
+
+void resident_and_contract_checks() {
+    uint64_t mappings=0,visits=0,algebra=0,pads=0;
+    for(unsigned dimension:{3u,7u,11u}) for(unsigned prefix:{0u,1u,2u})
+        for(unsigned kind:{0u,1u}) for(unsigned capacity:{1u,3u,7u,64u})
+            for(uint64_t live:{uint64_t{1},(uint64_t{1}<<dimension)-3,uint64_t{1}<<dimension}) {
+                const unsigned remaining=dimension-prefix;
+                const auto coordinates=point(prefix,2); const auto packet=prepare(coordinates);
+                const auto shape=pcs::Shape{live,dimension,remaining,packet.shape};
+                const uint64_t length=uint64_t{1}<<(remaining-kind);
+                std::vector<unsigned> seen(live);
+                uint64_t counted=0;
+                for(uint64_t start=0;start<length;start+=capacity) {
+                    const uint32_t count=uint32_t(std::min<uint64_t>(capacity,length-start));
+                    uint64_t band_visits=0;
+                    for(uint64_t task=0;task<pcs::contract_tasks(shape,kind,count);++task) {
+                        const auto index=pcs::contract_index(task,shape,kind,start,count);
+                        assert((index&(length-1))>=start && (index&(length-1))<start+count);
+                        if(index>=live) continue;
+                        ++seen[index]; ++band_visits;
+                        const auto original=random_e(),lower=random_e(),upper=random_e();
+                        const auto value=oracle::mul(original,oracle::eq(coordinates,index>>remaining));
+                        assert(same(pcs::retained_contribution(index,native(original),shape,packet.chunks.data(),packet.values.data()),value));
+                        const auto actual=pcs::contract_contribution(index,native(value),remaining,kind,native(lower),native(upper));
+                        oracle::E expected0{},expected2{};
+                        if(!kind) expected0=oracle::mul(value,lower);
+                        else if(index&(uint64_t{1}<<(remaining-1))) expected2=oracle::mul(value,oracle::sub(upper,lower));
+                        else { expected0=oracle::mul(value,lower); expected2=oracle::sub(oracle::E{},oracle::mul(value,oracle::sub(upper,lower))); }
+                        assert(same(actual.value[0],expected0) && same(actual.value[1],expected2)); ++algebra;
+                    }
+                    assert(band_visits==pcs::contract_band_visits(shape,kind,start,count)); counted+=band_visits;
+                }
+                assert(counted==live); for(auto count:seen) assert(count==1);
+                ++mappings; visits+=counted;
+            }
+    for(const auto value:{oracle::E{},oracle::E{{1,0,0}},oracle::E{{0,1,0}},oracle::E{{0,0,1}},random_e()})
+        for(const auto coefficient:{oracle::E{},oracle::E{{1,0,0}},random_e()})
+            for(uint64_t index:{uint64_t{0},uint64_t{1},uint64_t{127},(uint64_t{1}<<28)+1535,(uint64_t{1}<<35)+1048575}) {
+                assert(same(pcs::pad_contribution(native(coefficient),native(value),index),oracle::mul(coefficient,oracle::power(value,index)))); ++pads;
+            }
+    // Analytic D35 bounds only: enumerate 64 public bands, no W allocation.
+    const auto shape=pcs::Shape{(uint64_t{1}<<35)-1,35,28,{7,1,128,0}};
+    uint64_t counted=0;
+    for(uint64_t start=0;start<(uint64_t{1}<<27);start+=uint64_t{1}<<21)
+        counted+=pcs::contract_band_visits(shape,1,start,1u<<21);
+    assert(counted==shape.live);
+    std::printf("C71_PCS_RESIDUAL_RESIDENT_CONTRACT {\"mapping_cases\":%llu,\"original_visits\":%llu,\"algebra_cases\":%llu,\"ood_pad_cases\":%llu,\"contract_shared_bytes\":%zu,\"D35_analytic_visits\":%llu,\"W_full_scans_per_round\":1,\"public_tail_reads\":0,\"gpu_execution\":false,\"credit\":false}\n",
+        static_cast<unsigned long long>(mappings),static_cast<unsigned long long>(visits),static_cast<unsigned long long>(algebra),
+        static_cast<unsigned long long>(pads),pcs::contract_shared_bytes,static_cast<unsigned long long>(counted));
+}
+
 int main() {
     Counters counts;
     check_arithmetic(counts);
@@ -464,6 +515,7 @@ int main() {
     check_case(15,7,2,0,true,counts);
     check_case(17,7,2,3,true,counts);
     rejections(counts);
+    resident_and_contract_checks();
     std::printf("C71_PCS_RESIDUAL_HOST {\"arithmetic_cases\":%llu,\"equality_cases\":%llu,\"phase_cases\":%llu,\"original_scans\":%llu,\"input_word_loads\":%llu,\"original_visits\":%llu,\"singleton_outputs\":%llu,\"retained_outputs\":%llu,\"ood_outputs\":%llu,\"coset_prefft_words\":%llu,\"fold_outputs\":%llu,\"codec_checks\":%llu,\"rejections\":%llu,\"named_heap_upper_max_bytes\":%llu,\"singleton_shared_bytes\":%zu,\"ood_shared_bytes\":%zu,\"PCS_basis_v3_v1\":true,\"max_dimension\":35,\"max_coset_log_rows\":23,\"gpu_execution\":false,\"integrated\":false,\"credit\":false}\n",
         static_cast<unsigned long long>(counts.arithmetic),static_cast<unsigned long long>(counts.equality),static_cast<unsigned long long>(counts.cases),
         static_cast<unsigned long long>(counts.scans),static_cast<unsigned long long>(counts.loads),static_cast<unsigned long long>(counts.original_visits),

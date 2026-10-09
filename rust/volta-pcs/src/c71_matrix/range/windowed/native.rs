@@ -157,6 +157,64 @@ impl LinearPacket {
 const _: () = assert!(size_of::<Field>() == 24 && size_of::<LinearShape>() == 32
     && size_of::<LinearChunk>() == 16 && size_of::<LinearGroup>() == 16
     && size_of::<LinearInterval>() == 64 && size_of::<[Field; 5]>() == 120);
+// PCS v^3=v+1 basis. MAC Field is deliberately a different Rust type.
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub(in crate::c71_matrix) struct PcsField { limbs:[u64;3] }
+impl From<E> for PcsField {
+    fn from(value:E)->Self {
+        let basis=<E as BasedVectorSpace<Goldilocks>>::as_basis_coefficients_slice(&value);
+        Self {limbs:[basis[0].as_canonical_u64(),basis[1].as_canonical_u64(),basis[2].as_canonical_u64()]}
+    }
+}
+impl PcsField {
+    fn decode(self)->Result<E,String> {
+        if self.limbs.iter().any(|&value|value>=volta_field::P) {return Err("native PCS noncanonical limb".into());}
+        <E as BasedVectorSpace<Goldilocks>>::from_basis_coefficients_slice(
+            &self.limbs.map(Goldilocks::new)).ok_or("native PCS basis dimension differs".into())
+    }
+}
+#[repr(C)]
+#[derive(Clone,Copy,Default)]
+pub(in crate::c71_matrix) struct ResidualChunk {pub shift:u32,pub bits:u32,pub first:u32,pub reserved:u32}
+#[repr(C)]
+#[derive(Clone,Copy,Default)]
+pub(in crate::c71_matrix) struct ResidualEq {pub bits:u32,pub chunks:u32,pub entries:u32,pub reserved:u32}
+#[repr(C)]
+#[derive(Clone,Copy,Default)]
+pub(in crate::c71_matrix) struct ResidualShape {pub live:u64,pub dimension:u32,pub remaining:u32,pub equality:ResidualEq}
+#[repr(u32)]
+#[derive(Clone,Copy,Eq,PartialEq)]
+pub(in crate::c71_matrix) enum ResidualPhase {Singleton=0,Retention=1,Cosets=2,Ood=3}
+#[repr(C)]
+#[derive(Clone,Copy,Default)]
+pub(in crate::c71_matrix) struct ResidualCosets {pub rows:u64,pub pad_rows:u32,pub cosets:u32,pub first_coset:u32,pub reserved:u32}
+#[repr(C)]
+#[derive(Clone,Copy,Default)]
+struct RawPlanes {c0:u64,c1:u64,c2:u64,count:u64}
+#[repr(C)]
+struct RawResidual {planes:RawPlanes,ring:u64,reduced_count:u32,reserved:u32,reduced:[PcsField;128]}
+impl Default for RawResidual {
+    fn default()->Self {Self {planes:RawPlanes::default(),ring:0,reduced_count:0,reserved:0,reduced:[PcsField::default();128]}}
+}
+pub(in crate::c71_matrix) struct ResidualPacket {pub shape:ResidualShape,pub chunks:Vec<ResidualChunk>,pub tables:Vec<PcsField>}
+impl ResidualPacket {
+    pub(in crate::c71_matrix) fn host_capacity_bytes(&self)->usize {
+        size_of::<Self>()+self.chunks.capacity()*size_of::<ResidualChunk>()+self.tables.capacity()*size_of::<PcsField>()
+    }
+}
+pub(in crate::c71_matrix) struct ResidualToken {id:u64,owner:Arc<()>,phase:ResidualPhase,count:u64}
+pub(in crate::c71_matrix) struct ResidualContract {id:u64,owner:Arc<()>,kind:u32}
+pub(in crate::c71_matrix) struct ResidualQuery {id:u64,owner:Arc<()>,capacity:usize}
+// Descriptors do not free device capacity on drop. Their typed runtime
+// retirement is required after the last oracle lease has been consumed.
+pub(in crate::c71_matrix) struct ResidualPlanes {raw:RawPlanes,owner:Arc<()>}
+impl ResidualPlanes {pub(in crate::c71_matrix) fn count(&self)->usize {self.raw.count as usize}}
+pub(in crate::c71_matrix) struct ResidualRing {id:u64,count:usize,owner:Arc<()>}
+pub(in crate::c71_matrix) enum ResidualResult {Reduced(Vec<E>),Planes(ResidualPlanes),Ring(ResidualRing)}
+const _:()=assert!(size_of::<PcsField>()==24 && size_of::<ResidualChunk>()==16 && size_of::<ResidualEq>()==16
+    && size_of::<ResidualShape>()==32 && size_of::<ResidualCosets>()==24 && size_of::<RawPlanes>()==32 && size_of::<RawResidual>()==3120);
+
 #[repr(C)]
 struct Group {
     alpha: Field,
@@ -472,6 +530,26 @@ api! {
     linear_source: unsafe extern "C" fn(Raw,u64,u64,PcsSourceTile)->i32 => "c71_linear_source_tile",
     linear_weights: unsafe extern "C" fn(Raw,u64,u64)->i32 => "c71_linear_weights",
     linear_finish: unsafe extern "C" fn(Raw,u64,*mut Field)->i32 => "c71_linear_finish",
+    residual_begin:unsafe extern "C" fn(Raw,ResidualShape,ResidualPhase,*const ResidualChunk,*const PcsField,ResidualCosets,*const PcsField,u32,PcsField,*mut u64)->i32=>"c71_pcs_residual_begin",
+    residual_source:unsafe extern "C" fn(Raw,u64,u64,PcsSourceTile)->i32=>"c71_pcs_residual_source_tile",
+    residual_weights:unsafe extern "C" fn(Raw,u64,u64)->i32=>"c71_pcs_residual_weights",
+    residual_resident:unsafe extern "C" fn(Raw,u64,RawPlanes)->i32=>"c71_pcs_residual_resident",
+    residual_finish:unsafe extern "C" fn(Raw,u64,*mut RawResidual)->i32=>"c71_pcs_residual_finish",
+    residual_fold:unsafe extern "C" fn(Raw,RawPlanes,u32,PcsField,PcsField,*mut RawPlanes)->i32=>"c71_pcs_residual_fold",
+    residual_retire_planes:unsafe extern "C" fn(Raw,RawPlanes)->i32=>"c71_pcs_residual_retire_planes",
+    residual_retire_ring:unsafe extern "C" fn(Raw,u64)->i32=>"c71_pcs_residual_retire_ring",
+    residual_final:unsafe extern "C" fn(Raw,RawPlanes,*mut PcsField,u32)->i32=>"c71_pcs_residual_final_read",
+    contract_begin:unsafe extern "C" fn(Raw,ResidualShape,*const ResidualChunk,*const PcsField,u32,u32,*mut u64)->i32=>"c71_pcs_residual_contract_begin",
+    contract_weights:unsafe extern "C" fn(Raw,u64,u64,u64,u32,*const PcsField,*const PcsField)->i32=>"c71_pcs_residual_contract_weights_band",
+    contract_resident:unsafe extern "C" fn(Raw,u64,RawPlanes,u64,u32,*const PcsField,*const PcsField)->i32=>"c71_pcs_residual_contract_resident_band",
+    contract_finish:unsafe extern "C" fn(Raw,u64,*mut PcsField)->i32=>"c71_pcs_residual_contract_finish",
+    residual_query_begin:unsafe extern "C" fn(Raw,ResidualShape,*const ResidualChunk,*const PcsField,*const PcsField,u32,u32,u32,*mut u64)->i32=>"c71_pcs_residual_query_begin",
+    residual_query_weights:unsafe extern "C" fn(Raw,u64,u64,PcsQueryBlock)->i32=>"c71_pcs_residual_query_weights",
+    residual_query_resident:unsafe extern "C" fn(Raw,u64,RawPlanes,PcsQueryBlock)->i32=>"c71_pcs_residual_query_resident",
+    residual_query_root:unsafe extern "C" fn(Raw,u64,u32,u64,u64,u64,u64,u64,u64,u64,u64)->i32=>"c71_pcs_residual_query_root",
+    residual_query_finish:unsafe extern "C" fn(Raw,u64,*const u64,u32,*mut u64)->i32=>"c71_pcs_residual_query_finish",
+    short_private:unsafe extern "C" fn(Raw,u64,u64,u64,u32,u64,u64,*mut u64)->i32=>"c71_pcs_short_leaves_private",
+
 }
 pub(in crate::c71_matrix) struct Runtime {
     api: Api,
@@ -485,6 +563,194 @@ pub(in crate::c71_matrix) struct Runtime {
 unsafe impl Send for Runtime {}
 
 impl Runtime {
+    pub(in crate::c71_matrix) fn residual_query_begin(&mut self,packet:&ResidualPacket,pads:&[PcsField],
+        capacity:usize,column:usize)->Result<ResidualQuery,String> {
+        self.require_residual_packet(packet)?;
+        if !capacity.is_power_of_two() || capacity>1<<20 || column>=4 || pads.is_empty() || pads.len()%4!=0 || pads.len()>4*1536 {
+            return self.abort("native E query geometry or pads differ");
+        }
+        let mut id=0;
+        let status=unsafe {(self.api.residual_query_begin)(self.raw,packet.shape,packet.chunks.as_ptr(),packet.tables.as_ptr(),
+            pads.as_ptr(),pads.len() as u32,capacity as u32,column as u32,&mut id)};
+        self.check(status)?;if id==0 {return self.abort("native E query null capability");}
+        Ok(ResidualQuery {id,owner:self.owner.clone(),capacity})
+    }
+    fn require_residual_query(&mut self,token:&ResidualQuery)->Result<(),String> {
+        self.ready()?;if token.id==0 || !Arc::ptr_eq(&self.owner,&token.owner) {return self.abort("native E query capability owner differs");}
+        Ok(())
+    }
+    pub(in crate::c71_matrix) fn residual_query_weights(&mut self,token:&ResidualQuery,tiles:&Buffer,
+        block:PcsQueryBlock)->Result<(),String> {
+        self.require_residual_query(token)?;self.require_buffer(tiles)?;
+        let status=unsafe {(self.api.residual_query_weights)(self.raw,token.id,tiles.id,block)};self.check(status)
+    }
+    pub(in crate::c71_matrix) fn residual_query_resident(&mut self,token:&ResidualQuery,planes:&ResidualPlanes,
+        block:PcsQueryBlock)->Result<(),String> {
+        self.require_residual_query(token)?;self.require_planes(planes)?;
+        let status=unsafe {(self.api.residual_query_resident)(self.raw,token.id,planes.raw,block)};self.check(status)
+    }
+    pub(in crate::c71_matrix) fn residual_query_root(&mut self,token:&ResidualQuery,limb:usize,high:Option<&Buffer>,
+        inverse:&Buffer,modulus:&Buffer,forward:&Buffer,backward:&Buffer,work:&Buffer,scratch:&Buffer,output:&Buffer)->Result<(),String> {
+        self.require_residual_query(token)?;if limb>=3 {return self.abort("native E query limb differs");}
+        for buffer in high.into_iter().chain([inverse,modulus,forward,backward,work,scratch,output]) {self.require_buffer(buffer)?;}
+        let status=unsafe {(self.api.residual_query_root)(self.raw,token.id,limb as u32,high.map_or(0,|b|b.id),
+            inverse.id,modulus.id,forward.id,backward.id,work.id,scratch.id,output.id)};self.check(status)
+    }
+    pub(in crate::c71_matrix) fn residual_query_finish(&mut self,token:ResidualQuery,finals:[&Buffer;3],
+        count:usize)->Result<Vec<u64>,String> {
+        self.require_residual_query(&token)?;
+        if count==0 || count>token.capacity {return self.abort("native E query output exceeds cap");}
+        for buffer in finals {self.require_buffer(buffer)?;}
+        let ids=finals.map(|b|b.id);
+        let mut output=vec![0;3*count];
+        let status=unsafe {(self.api.residual_query_finish)(self.raw,token.id,ids.as_ptr(),count as u32,output.as_mut_ptr())};
+        self.check(status)?;if output.iter().any(|&x|x>=volta_field::P){return self.abort("native E query noncanonical output");}
+        Ok(output)
+    }
+    fn require_residual_packet(&mut self,packet:&ResidualPacket)->Result<(),String> {
+        self.ready()?;
+        if packet.shape.equality.chunks as usize!=packet.chunks.len() || packet.shape.equality.entries as usize!=packet.tables.len() {
+            return self.abort("native PCS EQ packet lengths differ");
+        }
+        Ok(())
+    }
+    pub(in crate::c71_matrix) fn residual_begin(&mut self,packet:&ResidualPacket,phase:ResidualPhase,
+        cosets:ResidualCosets,pads:&[PcsField],point:E)->Result<ResidualToken,String> {
+        self.require_residual_packet(packet)?;
+        if pads.len()>4*1536 {return self.abort("native PCS pad packet exceeds cap");}
+        let mut id=0;
+        let status=unsafe {(self.api.residual_begin)(self.raw,packet.shape,phase,packet.chunks.as_ptr(),packet.tables.as_ptr(),
+            cosets,pads.as_ptr(),pads.len() as u32,point.into(),&mut id)};
+        self.check(status)?;
+        if id==0 {return self.abort("native PCS null capability");}
+        let count=match phase {ResidualPhase::Singleton=>1u64<<(packet.shape.dimension-packet.shape.remaining),
+            ResidualPhase::Retention=>1u64<<packet.shape.remaining,ResidualPhase::Cosets=>24*cosets.rows,ResidualPhase::Ood=>1};
+        Ok(ResidualToken {id,owner:self.owner.clone(),phase,count})
+    }
+    fn require_residual(&mut self,token:&ResidualToken)->Result<(),String> {
+        self.ready()?;
+        if token.id==0 || !Arc::ptr_eq(&self.owner,&token.owner) {return self.abort("native PCS capability owner differs");}
+        Ok(())
+    }
+    fn require_planes(&mut self,planes:&ResidualPlanes)->Result<(),String> {
+        self.ready()?;
+        if !Arc::ptr_eq(&self.owner,&planes.owner) {return self.abort("native PCS planes owner differs");}
+        Ok(())
+    }
+    pub(in crate::c71_matrix) fn residual_source_tile(&mut self,token:&ResidualToken,input:&Buffer,tile:PcsSourceTile)->Result<(),String> {
+        self.require_residual(token)?;self.require_buffer(input)?;
+        let status=unsafe {(self.api.residual_source)(self.raw,token.id,input.id,tile)};self.check(status)
+    }
+    pub(in crate::c71_matrix) fn residual_weights(&mut self,token:&ResidualToken,tiles:&Buffer)->Result<(),String> {
+        self.require_residual(token)?;self.require_buffer(tiles)?;
+        let status=unsafe {(self.api.residual_weights)(self.raw,token.id,tiles.id)};self.check(status)
+    }
+    pub(in crate::c71_matrix) fn residual_resident(&mut self,token:&ResidualToken,planes:&ResidualPlanes)->Result<(),String> {
+        self.require_residual(token)?;self.require_planes(planes)?;
+        let status=unsafe {(self.api.residual_resident)(self.raw,token.id,planes.raw)};self.check(status)
+    }
+    fn wrap_planes(&mut self,raw:RawPlanes,count:u64)->Result<ResidualPlanes,String> {
+        if raw.count!=count || raw.c0==0 || raw.c1==0 || raw.c2==0 || raw.c0==raw.c1 || raw.c0==raw.c2 || raw.c1==raw.c2 {
+            return self.abort("native PCS planes publication differs");
+        }
+        Ok(ResidualPlanes {raw,owner:self.owner.clone()})
+    }
+    pub(in crate::c71_matrix) fn residual_finish(&mut self,token:ResidualToken)->Result<ResidualResult,String> {
+        self.require_residual(&token)?;
+        let mut raw=RawResidual::default();
+        let status=unsafe {(self.api.residual_finish)(self.raw,token.id,&mut raw)};self.check(status)?;
+        if raw.reserved!=0 {return self.abort("native PCS reserved publication differs");}
+        let empty_planes=raw.planes.c0==0 && raw.planes.c1==0 && raw.planes.c2==0 && raw.planes.count==0;
+        match token.phase {
+            ResidualPhase::Singleton|ResidualPhase::Ood=>{
+                if !empty_planes || raw.ring!=0 || u64::from(raw.reduced_count)!=token.count || token.count>128 {
+                    return self.abort("native PCS reduction publication differs");
+                }
+                let mut values=Vec::with_capacity(token.count as usize);
+                for field in &raw.reduced[..token.count as usize] {
+                    values.push(match field.decode() {Ok(value)=>value,Err(error)=>return self.abort(error)});
+                }
+                Ok(ResidualResult::Reduced(values))
+            }
+            ResidualPhase::Retention=>{
+                if raw.ring!=0 || raw.reduced_count!=0 {return self.abort("native PCS retention publication differs");}
+                self.wrap_planes(raw.planes,token.count).map(ResidualResult::Planes)
+            }
+            ResidualPhase::Cosets=>{
+                if !empty_planes || raw.ring==0 || raw.reduced_count!=0 {return self.abort("native PCS coset publication differs");}
+                Ok(ResidualResult::Ring(ResidualRing {id:raw.ring,count:token.count as usize,owner:self.owner.clone()}))
+            }
+        }
+    }
+    pub(in crate::c71_matrix) fn residual_fold(&mut self,input:&ResidualPlanes,point:&[E])->Result<ResidualPlanes,String> {
+        self.require_planes(input)?;
+        if !(1..=2).contains(&point.len()) {return self.abort("native PCS fold width differs");}
+        let mut output=RawPlanes::default();
+        let status=unsafe {(self.api.residual_fold)(self.raw,input.raw,point.len() as u32,point[0].into(),
+            point.get(1).copied().unwrap_or(E::ZERO).into(),&mut output)};self.check(status)?;
+        self.wrap_planes(output,input.raw.count>>point.len())
+    }
+    pub(in crate::c71_matrix) fn residual_retire_planes(&mut self,input:&ResidualPlanes)->Result<(),String> {
+        self.require_planes(input)?;
+        let status=unsafe {(self.api.residual_retire_planes)(self.raw,input.raw)};self.check(status)
+    }
+    pub(in crate::c71_matrix) fn residual_retire_ring(&mut self,input:ResidualRing)->Result<(),String> {
+        self.ready()?;
+        if !Arc::ptr_eq(&self.owner,&input.owner) {return self.abort("native PCS ring owner differs");}
+        let status=unsafe {(self.api.residual_retire_ring)(self.raw,input.id)};self.check(status)
+    }
+    pub(in crate::c71_matrix) fn residual_final_read(&mut self,input:ResidualPlanes)->Result<Vec<E>,String> {
+        self.require_planes(&input)?;
+        if input.count()==0 || input.count()>128 {return self.abort("native PCS final read exceeds bound");}
+        let mut fields=vec![PcsField::default();input.count()];
+        let status=unsafe {(self.api.residual_final)(self.raw,input.raw,fields.as_mut_ptr(),fields.len() as u32)};self.check(status)?;
+        fields.into_iter().map(PcsField::decode).collect::<Result<Vec<_>,_>>().or_else(|error|self.abort(error))
+    }
+    pub(in crate::c71_matrix) fn residual_contract_begin(&mut self,packet:&ResidualPacket,kind:u32,capacity:usize)->Result<ResidualContract,String> {
+        self.require_residual_packet(packet)?;
+        if kind>1 || capacity==0 || capacity>1<<21 {return self.abort("native PCS contraction kind or band exceeds cap");}
+        let mut id=0;
+        let status=unsafe {(self.api.contract_begin)(self.raw,packet.shape,packet.chunks.as_ptr(),packet.tables.as_ptr(),kind,capacity as u32,&mut id)};
+        self.check(status)?;if id==0 {return self.abort("native PCS contraction null capability");}
+        Ok(ResidualContract {id,owner:self.owner.clone(),kind})
+    }
+    fn require_contract(&mut self,token:&ResidualContract,left:&[PcsField],right:&[PcsField])->Result<(),String> {
+        self.ready()?;
+        if token.id==0 || !Arc::ptr_eq(&self.owner,&token.owner) || left.is_empty() || left.len()>1<<21 ||
+            (token.kind==0 && !right.is_empty()) || (token.kind==1 && right.len()!=left.len()) {
+            return self.abort("native PCS contraction owner or public band differs");
+        }
+        Ok(())
+    }
+    pub(in crate::c71_matrix) fn residual_contract_weights(&mut self,token:&ResidualContract,tiles:&Buffer,
+        first:usize,left:&[PcsField],right:&[PcsField])->Result<(),String> {
+        self.require_contract(token,left,right)?;self.require_buffer(tiles)?;
+        let status=unsafe {(self.api.contract_weights)(self.raw,token.id,tiles.id,first as u64,left.len() as u32,
+            left.as_ptr(),if right.is_empty(){ptr::null()}else{right.as_ptr()})};self.check(status)
+    }
+    pub(in crate::c71_matrix) fn residual_contract_resident(&mut self,token:&ResidualContract,input:&ResidualPlanes,
+        first:usize,left:&[PcsField],right:&[PcsField])->Result<(),String> {
+        self.require_contract(token,left,right)?;self.require_planes(input)?;
+        let status=unsafe {(self.api.contract_resident)(self.raw,token.id,input.raw,first as u64,left.len() as u32,
+            left.as_ptr(),if right.is_empty(){ptr::null()}else{right.as_ptr()})};self.check(status)
+    }
+    pub(in crate::c71_matrix) fn residual_contract_finish(&mut self,token:ResidualContract)->Result<[E;2],String> {
+        self.ready()?;if !Arc::ptr_eq(&self.owner,&token.owner) {return self.abort("native PCS contraction owner differs");}
+        let mut fields=[PcsField::default();2];
+        let status=unsafe {(self.api.contract_finish)(self.raw,token.id,fields.as_mut_ptr())};self.check(status)?;
+        let left=fields[0].decode().or_else(|error|self.abort(error))?;
+        let right=fields[1].decode().or_else(|error|self.abort(error))?;Ok([left,right])
+    }
+    pub(in crate::c71_matrix) fn residual_short_leaves(&mut self,private:&PrivateSalts,ring:&ResidualRing,
+        output:&mut Buffer,group:usize,first:usize,count:usize)->Result<u64,String> {
+        self.ready()?;self.require_buffer(output)?;
+        if !Arc::ptr_eq(&self.owner,&private.owner) || !Arc::ptr_eq(&self.owner,&ring.owner) || ring.count==0 || group>u32::MAX as usize {
+            return self.abort("native PCS short leaf owner or group differs");
+        }
+        let mut completed=0;
+        let status=unsafe {(self.api.short_private)(self.raw,private.id,ring.id,output.id,group as u32,first as u64,count as u64,&mut completed)};
+        self.check(status)?;if first.checked_add(count)==output.count.checked_mul(2){output.kind=11;}Ok(completed)
+    }
     pub(in crate::c71_matrix) fn linear_begin(&mut self, packet: &LinearPacket) -> Result<LinearToken, String> {
         self.ready()?;
         let s=packet.shape;
@@ -1922,6 +2188,172 @@ impl<'a, T: Word> Evaluator<'a, T> {
 #[cfg(test)]
 pub(in crate::c71_matrix) mod tests {
     use super::*;
+    #[test]
+    fn c71_b12_native_residual_pcs_basis_is_distinct_and_canonical() {
+        let v=E::new([Goldilocks::ZERO,Goldilocks::ONE,Goldilocks::ZERO]);
+        assert_eq!(v*v*v,v+E::ONE);
+        let field=PcsField::from(v);assert_eq!(field.limbs,[0,1,0]);assert_eq!(field.decode().unwrap(),v);
+        let value=E::new([Goldilocks::new(3),Goldilocks::new(5),Goldilocks::new(7)]);
+        assert_eq!(PcsField::from(value).decode().unwrap(),value);
+        assert_ne!(PcsField::from(crate::c71_matrix::to_p3(Fp3::new(Fp::ZERO,Fp::ONE,Fp::ZERO))).limbs,[0,1,0]);
+        for limb in 0..3 {let mut field=PcsField::from(value);field.limbs[limb]=volta_field::P;assert!(field.decode().is_err());}
+    }
+    fn residual_missing_symbols(symbols:&[&str]) {
+        assert!(symbols.len()<=4);
+        for symbol in symbols {
+            let fixture=fixture_library(512,Some(symbol));assert!(Runtime::new(&fixture.config).is_err(),"{symbol}");
+        }
+    }
+    #[test]
+    fn c71_b12_native_residual_symbols_1() {
+        residual_missing_symbols(&["c71_pcs_residual_begin","c71_pcs_residual_source_tile","c71_pcs_residual_weights","c71_pcs_residual_resident"]);
+    }
+    #[test]
+    fn c71_b12_native_residual_symbols_2() {
+        residual_missing_symbols(&["c71_pcs_residual_finish","c71_pcs_residual_fold","c71_pcs_residual_retire_planes","c71_pcs_residual_retire_ring"]);
+    }
+    #[test]
+    fn c71_b12_native_residual_symbols_3() {
+        residual_missing_symbols(&["c71_pcs_residual_final_read","c71_pcs_residual_contract_begin","c71_pcs_residual_contract_weights_band","c71_pcs_residual_contract_resident_band"]);
+    }
+    #[test]
+    fn c71_b12_native_residual_symbols_4() {
+        residual_missing_symbols(&["c71_pcs_residual_contract_finish","c71_pcs_short_leaves_private"]);
+    }
+    fn residual_fixture_packet(remaining:usize,point:&[E])->ResidualPacket {
+        let tables=Poly::new_from_point(point,E::ONE).as_slice().iter().copied().map(PcsField::from).collect();
+        ResidualPacket {shape:ResidualShape {live:8,dimension:3,remaining:remaining as u32,
+            equality:ResidualEq {bits:point.len() as u32,chunks:1,entries:1<<point.len(),reserved:0}},
+            chunks:vec![ResidualChunk {shift:0,bits:point.len() as u32,first:0,reserved:0}],tables}
+    }
+    #[test]
+    fn c71_b12_native_residual_owner_coverage_private_tokens_and_faults() {
+        let fixture=fixture(512);let injection=Injection::new(&fixture.config);
+        for fault in 0..27 {
+            let mut runtime=Runtime::new(&fixture.config).unwrap();
+            let input=runtime.upload_signed(&[-32767,-1,0,1,32767,17,-13,9]).unwrap();
+            let tile=PcsSourceTile {input_first:0,input_stride:1,rows:8,columns:1,original_first:0,
+                byte_first:0,width:1,signed_width:2};
+            let mut packet=residual_fixture_packet(2,&[E::ZERO,E::ONE]);
+            let result:Result<(),String>=if fault<=6 {
+                match fault {0=>packet.shape.equality.entries+=1,1=>packet.tables[0].limbs[2]=volta_field::P,
+                    3=>injection.set(2),4=>packet.shape.equality.bits+=1,5=>injection.set(10),6=>injection.set(11),_=>()}
+                if fault==2 {runtime.allocate_buffer(19,8).map(|_|())}
+                else {runtime.residual_begin(&packet,ResidualPhase::Singleton,ResidualCosets::default(),&[],E::ZERO).map(|_|())}
+            } else {
+                let token=runtime.residual_begin(&packet,ResidualPhase::Singleton,ResidualCosets::default(),&[],E::ZERO).unwrap();
+                match fault {
+                    7=>runtime.residual_begin(&packet,ResidualPhase::Singleton,ResidualCosets::default(),&[],E::ZERO).map(|_|()),
+                    8=>runtime.residual_source_tile(&ResidualToken {id:0,owner:token.owner.clone(),phase:token.phase,count:token.count},&input,tile),
+                    9=>{let other=Runtime::new(&fixture.config).unwrap();runtime.residual_source_tile(&ResidualToken {id:token.id,owner:other.owner.clone(),phase:token.phase,count:token.count},&input,tile)},
+                    10=>{let pending=runtime.allocate_buffer(1,8).unwrap();runtime.residual_source_tile(&token,&pending,tile)},
+                    11=>{runtime.residual_source_tile(&token,&input,PcsSourceTile {rows:7,..tile}).unwrap();runtime.residual_finish(token).map(|_|())},
+                    12=>{runtime.residual_source_tile(&token,&input,tile).unwrap();runtime.residual_source_tile(&token,&input,tile)},
+                    13=>runtime.residual_source_tile(&token,&input,PcsSourceTile {original_first:8,..tile}),
+                    14=>{let wrong=runtime.pcs_words(8).unwrap();runtime.residual_weights(&token,&wrong)},
+                    15=>{injection.set(1);runtime.residual_source_tile(&token,&input,tile)},
+                    16..=21=>{
+                        if fault==16 {injection.set(9);}
+                        runtime.residual_source_tile(&token,&input,tile).unwrap();
+                        if fault!=16 {injection.set(match fault {17=>7,18=>8,19=>3,20=>4,21=>2,_=>unreachable!()});}
+                        runtime.residual_finish(token).map(|_|())
+                    },
+                    22=>{let stale=ResidualToken {id:token.id,owner:token.owner.clone(),phase:token.phase,count:token.count};
+                        runtime.residual_source_tile(&token,&input,tile).unwrap();runtime.residual_finish(token).unwrap();runtime.residual_finish(stale).map(|_|())},
+                    23=>{let private=Buffer {id:token.id,kind:17,count:8,owner:token.owner.clone()};
+                        let before=runtime.stats().unwrap().d2h_bytes;let result=runtime.download_bytes(&private,0,&mut [0;8]);
+                        assert_eq!(runtime.stats().unwrap().d2h_bytes,before);result},
+                    24=>runtime.release_buffer(Buffer {id:token.id,kind:17,count:8,owner:token.owner.clone()}),
+                    25=>{let mut other=Runtime::new(&fixture.config).unwrap();let foreign=other.upload_signed(&[1;8]).unwrap();runtime.residual_source_tile(&token,&foreign,tile)},
+                    26=>{let wrong=runtime.upload_table(&[0;8]).unwrap();runtime.residual_source_tile(&token,&wrong,tile)},
+                    _=>unreachable!(),
+                }
+            };
+            injection.set(0);assert!(result.is_err(),"residual fault {fault}");
+            assert_eq!(runtime.stats().unwrap().stopped,1);assert!(runtime.pcs_words(1).is_err());
+            if fault==19 {assert!(runtime.close().is_err());}else{runtime.close().unwrap();}
+        }
+        println!("C71_NATIVE_RESIDUAL_OWNER_FAILURE {{\"terminal_rejections\":27,\"gpu_execution\":false,\"credit\":false}}");
+    }
+
+    #[test]
+    fn c71_b12_native_residual_query_symbols_1() {
+        residual_missing_symbols(&["c71_pcs_residual_query_begin","c71_pcs_residual_query_weights","c71_pcs_residual_query_resident"]);
+    }
+    #[test]
+    fn c71_b12_native_residual_query_symbols_2() {
+        residual_missing_symbols(&["c71_pcs_residual_query_root","c71_pcs_residual_query_finish"]);
+    }
+    #[test]
+    fn c71_b12_native_residual_query_owner_final_values_and_faults() {
+        let fixture=fixture(512);let injection=Injection::new(&fixture.config);
+        for fault in 0..28 {
+            let mut runtime=Runtime::new(&fixture.config).unwrap();
+            let weights=Arc::new(vec![2i16,-3,5,-7,11,-13,17,-19]);runtime.install_weights(weights.clone(),[53;32]).unwrap();
+            let tiles=runtime.pcs_weight_tiles(&weights,[53;32],&[WeightTile {first:0,count:8,packed_first:0,packed_stride:1,columns:1}]).unwrap();
+            let mut packet=ResidualPacket {shape:ResidualShape {live:8,dimension:3,remaining:3,equality:ResidualEq::default()},chunks:vec![],tables:vec![]};
+            let pads=[PcsField::from(E::ONE);4];
+            let inverse=runtime.pcs_words(2).unwrap();runtime.pcs_upload(&inverse,0,&[1,1]).unwrap();
+            let modulus=runtime.pcs_words(2).unwrap();runtime.pcs_upload(&modulus,0,&[1,volta_field::P-1]).unwrap();
+            let forward=runtime.pcs_transform_twiddles(1,false).unwrap();let backward=runtime.pcs_transform_twiddles(1,true).unwrap();
+            let work=runtime.pcs_words(2).unwrap();let scratch=runtime.pcs_words(2).unwrap();
+            let remainders=[runtime.pcs_words(1).unwrap(),runtime.pcs_words(1).unwrap(),runtime.pcs_words(1).unwrap(),runtime.pcs_words(1).unwrap()];
+            let mut current=[0,1,2];let mut spare=3;
+            let block=PcsQueryBlock {first:2,source_rows:3,message_rows:2,active:2,byte_first:0,window_first:0,pad_first:0,pad_rows:1,pad_only:0};
+            let result:Result<Vec<u64>,String>=if (1..=6).contains(&fault) {
+                match fault {3=>injection.set(2),4=>packet.shape.remaining=1,5=>injection.set(10),6=>injection.set(11),_=>()}
+                runtime.residual_query_begin(&packet,if fault==2 {&pads[..3]}else{&pads},if fault==1 {3}else{1},0).map(|_|Vec::new())
+            } else {
+                let token=runtime.residual_query_begin(&packet,&pads,1,0).unwrap();
+                match fault {
+                    7=>runtime.residual_query_begin(&packet,&pads,1,0).map(|_|Vec::new()),
+                    8=>runtime.residual_query_weights(&ResidualQuery {id:0,owner:token.owner.clone(),capacity:1},&tiles,block).map(|_|Vec::new()),
+                    9=>{let other=Runtime::new(&fixture.config).unwrap();runtime.residual_query_weights(&ResidualQuery {id:token.id,owner:other.owner.clone(),capacity:1},&tiles,block).map(|_|Vec::new())},
+                    10=>runtime.residual_query_weights(&token,&inverse,block).map(|_|Vec::new()),
+                    11=>runtime.residual_query_weights(&token,&tiles,PcsQueryBlock {first:0,..block}).map(|_|Vec::new()),
+                    12=>runtime.residual_query_weights(&token,&tiles,PcsQueryBlock {active:1,..block}).map(|_|Vec::new()),
+                    13=>runtime.residual_query_weights(&token,&tiles,PcsQueryBlock {byte_first:2,..block}).map(|_|Vec::new()),
+                    14=>{runtime.residual_query_weights(&token,&tiles,block).unwrap();runtime.residual_query_weights(&token,&tiles,block).map(|_|Vec::new())},
+                    15=>{let private=Buffer {id:token.id,kind:17,count:1,owner:token.owner.clone()};let before=runtime.stats().unwrap().d2h_bytes;
+                        let result=runtime.download_bytes(&private,0,&mut [0;8]).map(|_|Vec::new());assert_eq!(runtime.stats().unwrap().d2h_bytes,before);result},
+                    16=>{injection.set(1);runtime.residual_query_weights(&token,&tiles,block).map(|_|Vec::new())},
+                    _=>{
+                        if fault==17 {injection.set(9);}
+                        let mut error=None;
+                        for b in (0..3).rev() {
+                            runtime.residual_query_weights(&token,&tiles,PcsQueryBlock {first:b,..block}).unwrap();
+                            for limb in 0..3 {
+                                if fault==18 && b==2 && limb==0 {injection.set(5);}
+                                let high=(b!=2).then_some(&remainders[current[limb]]);
+                                let high=if fault==19 && b==1 && limb==0 {None}else{high};
+                                let operation=runtime.residual_query_root(&token,if fault==20 && b==2 && limb==1 {0}else{limb},high,
+                                    &inverse,&modulus,&forward,&backward,&work,&scratch,&remainders[spare]);
+                                if let Err(failure)=operation {error=Some(failure);break;}
+                                std::mem::swap(&mut current[limb],&mut spare);
+                            }
+                            if error.is_some(){break;}
+                        }
+                        if let Some(error)=error {Err(error)}else{
+                            if (21..=24).contains(&fault){injection.set([7,8,3,4][fault-21]);}
+                            if fault==27 {injection.set(12);}
+                            let finals=if fault==25 {[&remainders[current[0]];3]}else{current.map(|i|&remainders[i])};
+                            runtime.residual_query_finish(token,finals,if fault==26 {0}else{1})
+                        }
+                    }
+                }
+            };
+            injection.set(0);
+            if fault==0 {
+                assert_eq!(result.unwrap(),[2,0,0]);
+                for buffer in remainders {runtime.release_buffer(buffer).unwrap();}
+                for buffer in [inverse,modulus,forward,backward,work,scratch,tiles]{runtime.release_buffer(buffer).unwrap();}
+                let stats=runtime.stats().unwrap();assert_eq!(stats.d2h_bytes,28);assert_eq!(stats.arena_bytes,0);
+            } else {assert!(result.is_err(),"query E fault {fault}");assert_eq!(runtime.stats().unwrap().stopped,1);assert!(runtime.pcs_words(1).is_err());}
+            if fault==23 {assert!(runtime.close().is_err());}else{runtime.close().unwrap();}
+        }
+        println!("C71_NATIVE_QUERY_E_OWNER_FAILURE {{\"terminal_rejections\":27,\"canonical_decode_rejection\":true,\"gpu_execution\":false,\"credit\":false}}");
+    }
+
     fn linear_fixture_packet() -> LinearPacket {
         LinearPacket {shape:LinearShape {live:8,dimension:3,remaining:3,chunks:0,groups:1,intervals:1,points:2},
             chunks:vec![],tables:vec![],groups:vec![LinearGroup {bits:2,first:0,count:1,reserved:0}],

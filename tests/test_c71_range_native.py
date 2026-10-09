@@ -29,6 +29,63 @@ def test_native_range_owner_with_deferred_fake_driver(tmp_path):
          "-o", str(binary)], check=True, timeout=30,
     )
     result = subprocess.run([str(binary)], check=True, capture_output=True, text=True, timeout=10)
-    report = json.loads(result.stdout.removeprefix("C71_RANGE_OWNER_HOST "))
+    reports = {}
+    for line in result.stdout.splitlines():
+        marker, payload = line.split(" ", 1)
+        assert marker not in reports
+        reports[marker] = json.loads(payload)
+    print(result.stdout.strip())
+    report = reports.pop("C71_RANGE_OWNER_HOST")
     assert report == {"rejections": 13, "dense_rejections": 23, "byte_rejections": 19, "pointwise_rejections": 14, "embedding_rejections": 17, "dense_batches": 2, "dense_row_views": 1, "max_arena_bytes": 262144,
                       "gpu_execution": False, "credit": False}
+
+    expected_components = {
+        "C71_PCS_RESIDUAL_OWNER_COMPONENT": {
+            "singleton": 1, "original_retention": 1, "ood_original": 1,
+            "ood_resident": 3, "paired_folds": 2, "bounded_consuming_reads": 3,
+            "gpu_execution": False, "credit": False,
+        },
+        "C71_PCS_RESIDUAL_CONTRACT_OWNER": {
+            "cases": 8, "W_bands_one_scan": True, "resident_virtual_bits": 2,
+            "consumer_d2h_bytes": 52, "public_tail_reads": 0,
+            "gpu_execution": False, "credit": False,
+        },
+        "C71_PCS_RESIDUAL_OWNER_FAILURE": {
+            "terminal_rejections": 45, "private_read_d2h_bytes": 0,
+            "publication_after_free": True, "gpu_execution": False, "credit": False,
+        },
+        "C71_PCS_RESIDUAL_CONTRACT_FAILURE": {
+            "terminal_rejections": 19, "gpu_execution": False, "credit": False,
+        },
+        "C71_PCS_SHORT_OWNER": {
+            "two_coset_groups": 16, "private_salts": 1024,
+            "ring_words_checked": 3072, "odd_fft_log_rows": 3,
+            "input_d2h_bytes": 0, "gpu_execution": False, "credit": False,
+        },
+        "C71_PCS_SHORT_OWNER_FAILURE": {
+            "terminal_rejections": 13, "old_groups_large_rows_rejected": 2,
+            "gpu_execution": False, "credit": False,
+        },
+    }
+    expected_components["C71_PCS_QUERY_E_OWNER"] = {
+        "column_cases": 80, "query_rows": 448, "original_or_plane_visits": 400,
+        "root_blocks": 204, "private_limb_loads": 3, "fences_per_column": 2,
+        "input_d2h_bytes": 0, "W_scans_per_batch": 1,
+        "gpu_execution": False, "credit": False,
+    }
+    expected_components["C71_PCS_QUERY_E_FAILURE"] = {
+        "terminal_rejections": 56, "forbidden_read_d2h_bytes": 0,
+        "publication_after_free": True, "root_columns_are_not_queries": True,
+        "gpu_execution": False, "credit": False,
+    }
+    expected_components["C71_PCS_QUERY_E_WEIGHT_FAILURE"] = {
+        "terminal_rejections": 2, "pad_only_launches": 1, "real_work_launches": 2,
+        "accepted_init_drained": True, "gpu_execution": False, "credit": False,
+    }
+    expected_components["C71_PCS_SOURCE_COVERAGE"] = {
+        "reversed_ragged_cases": 1, "overlap_rejections": 1, "frontier_overflow_rejections": 1,
+        "source_frontier_highwater_reduced": 2, "source_frontier_capacity": 4096,
+        "source_frontier_bytes": 65544, "pinned_gap_bound_verified": False,
+        "gpu_execution": False, "credit": False,
+    }
+    assert reports == expected_components

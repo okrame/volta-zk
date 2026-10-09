@@ -141,6 +141,34 @@ extern "C" int c71_pcs_twiddles_launch(cudaStream_t stream,uint64_t* output,unsi
         for(uint64_t row=0;row<rows;++row) output[row]=c71_pcs::power(root,row);
     });
 }
+extern "C" int c71_pcs_transform_twiddles_launch(cudaStream_t stream,uint64_t* output,unsigned log_rows,unsigned inverse) {
+    return launch(stream,[=] {
+        const uint64_t rows=uint64_t{1}<<log_rows;
+        uint64_t root=c71_pcs::power(7,(P-1)/rows);
+        if(inverse) root=c71_pcs::power(root,P-2);
+        for(uint64_t row=0;row<rows;++row) output[row]=c71_pcs::power(root,row);
+    });
+}
+extern "C" int c71_pcs_transform_launch(cudaStream_t stream,uint64_t* values,uint64_t* scratch,
+    const uint64_t* twiddles,unsigned log_rows,unsigned batch,unsigned inverse,unsigned* attempted) {
+    const size_t rows=size_t{1}<<log_rows;
+    if(fail_launch) { ++*attempted; return launch(stream,[]{}); }
+    *attempted+=(log_rows==1 ? 1 : 5+(log_rows%2))*((uint64_t(batch)+32766)/32767);
+    if(log_rows%2 && log_rows>1) ++*attempted;
+    return launch(stream,[=] {
+        if(log_rows%2 && log_rows>1) {
+            for(size_t i=0;i<rows*batch;++i) {
+                scratch[c71_fft::parity_index(i,rows)]=values[i];
+            }
+        }
+        // Shared five-pass/odd adapter model; actual CUDA is not executed.
+        for(unsigned b=0;b<batch;++b) {
+            std::vector<uint64_t> current(values+b*rows,values+(b+1)*rows);
+            c71_fft::natural_fft_host(current,log_rows,twiddles[1],inverse!=0);
+            std::copy(current.begin(),current.end(),values+b*rows);
+        }
+    });
+}
 extern "C" int c71_pcs_weight_launch(cudaStream_t stream,const int16_t* weights,const c71_pcs::WeightTile* tiles,
     uint64_t tile_count,uint64_t live,const uint64_t* pads,const uint64_t* low,const uint64_t* high,
     uint64_t* ring,c71_pcs::WeightShape s,uint32_t* failed) {

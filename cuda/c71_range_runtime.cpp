@@ -32,6 +32,8 @@ cudaError_t c71_pcs_weight_tensor_launch(cudaStream_t,const int16_t*,const c71_p
 cudaError_t c71_pcs_compare_words_launch(cudaStream_t,const uint64_t*,const uint64_t*,uint64_t,uint32_t*);
 cudaError_t c71_pcs_fft_launch(cudaStream_t,uint64_t*,const uint64_t*,unsigned,unsigned,unsigned*);
 cudaError_t c71_pcs_twiddles_launch(cudaStream_t,uint64_t*,unsigned);
+cudaError_t c71_pcs_transform_twiddles_launch(cudaStream_t,uint64_t*,unsigned,unsigned);
+cudaError_t c71_pcs_transform_launch(cudaStream_t,uint64_t*,uint64_t*,const uint64_t*,unsigned,unsigned,unsigned,unsigned*);
 cudaError_t c71_pcs_source_powers_launch(cudaStream_t,uint64_t*,uint64_t*,c71_pcs::SourceShape);
 cudaError_t c71_pcs_source_tile_launch(cudaStream_t,const void*,unsigned,c71_pcs::SourceTile,const uint64_t*,
     uint64_t*,uint64_t*,uint64_t*,c71_pcs::SourceShape,uint32_t*);
@@ -828,6 +830,45 @@ extern "C" int c71_pcs_twiddles(C71RangeContext* c,uint64_t out,uint32_t log_row
        b->count!=(uint64_t{1}<<log_rows)) return fail(c,"PCS FFT twiddle geometry or state");
     if(launched(c,c71_pcs_twiddles_launch(c->stream,ptr<uint64_t>(c,b),log_rows))) return -1;
     b->initialized=b->count; b->visits=(uint64_t{1}<<63)|b->count; return 0;
+}
+extern "C" int c71_pcs_transform_twiddles(C71RangeContext* c,uint64_t out,uint32_t log_rows,uint32_t inverse) {
+    if(!ready(c)) return -1;
+    auto* b=buffer(c,out);
+    if(!b || b->kind!=C71_PCS_POWERS || b->initialized || log_rows<1 || log_rows>24 || inverse>1 ||
+       b->count!=(uint64_t{1}<<log_rows)) return fail(c,"PCS transform twiddle geometry or state");
+    if(launched(c,c71_pcs_transform_twiddles_launch(c->stream,ptr<uint64_t>(c,b),log_rows,inverse))) return -1;
+    b->initialized=b->count; b->visits=(uint64_t{1}<<63)|(uint64_t(inverse)<<62)|b->count; return 0;
+}
+extern "C" int c71_pcs_transform(C71RangeContext* c,uint64_t values,uint64_t scratch,uint64_t twiddles,
+    uint32_t log_rows,uint32_t batch,uint32_t inverse) {
+    if(!ready(c)) return -1;
+    auto* b=buffer(c,values); auto* s=buffer(c,scratch); auto* t=buffer(c,twiddles);
+    if(!full(b,C71_PCS_BASE) || !s || s->kind!=C71_PCS_BASE || !full(t,C71_PCS_POWERS) ||
+       b==s || b==t || s==t || log_rows<1 || log_rows>24 || inverse>1 || !batch || batch>(1u<<20) ||
+       b->count!=(uint64_t{1}<<log_rows)*batch || s->count!=b->count || t->count!=(uint64_t{1}<<log_rows) ||
+       t->visits!=((uint64_t{1}<<63)|(uint64_t(inverse)<<62)|t->count))
+        return fail(c,"PCS natural transform type, geometry or orientation");
+    unsigned attempted=0;
+    const auto status=c71_pcs_transform_launch(c->stream,ptr<uint64_t>(c,b),ptr<uint64_t>(c,s),
+        ptr<uint64_t>(c,t),log_rows,batch,inverse,&attempted);
+    c->stats.launches+=attempted;
+    // Reaching the FFT launch means the odd scatter's D2D copy was queued.
+    if(log_rows%2 && log_rows>1 && attempted>1) c->stats.d2d_bytes+=b->count*8;
+    if(checked(c,status)) return -1;
+    if(log_rows%2 && log_rows>1) s->initialized=s->count;
+    return 0; // The consuming operation or download fences the same stream.
+}
+extern "C" int c71_pcs_read_words(C71RangeContext* c,uint64_t input,uint64_t first,uint64_t count,uint64_t* output) {
+    if(!ready(c)) return -1;
+    auto* b=buffer(c,input); uintptr_t end=0;
+    if(!full(b,C71_PCS_BASE) || c->salts.phase || !output || !count || count>(uint64_t{1}<<20) ||
+       first>b->count || count>b->count-first || reinterpret_cast<uintptr_t>(output)%8 ||
+       !c71_dense::span(output,count*8,end)) return fail(c,"PCS base read shape, type or private phase");
+    if(checked(c,cudaMemcpyAsync(output,ptr<uint64_t>(c,b)+first,count*8,cudaMemcpyDeviceToHost,c->stream))) return -1;
+    c->stats.d2h_bytes+=count*8;
+    if(fence(c)) return -1;
+    for(uint64_t i=0;i<count;++i) if(output[i]>=P) return fail(c,"noncanonical PCS base output");
+    return 0;
 }
 extern "C" int c71_pcs_ring_zero(C71RangeContext* c,uint64_t out) {
     if(!ready(c)) return -1;

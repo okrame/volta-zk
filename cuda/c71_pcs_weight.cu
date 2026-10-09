@@ -96,3 +96,17 @@ extern "C" cudaError_t c71_pcs_twiddles_launch(cudaStream_t stream,uint64_t* twi
     fill_twiddles<<<unsigned((rows+255)/256),256,0,stream>>>(twiddles,rows,root);
     return cudaGetLastError();
 }
+extern "C" cudaError_t c71_pcs_transform_twiddles_launch(cudaStream_t stream,uint64_t* twiddles,
+    unsigned log_rows,unsigned inverse) {
+    if(!stream || !twiddles || log_rows<1 || log_rows>24 || inverse>1) return cudaErrorInvalidValue;
+    const uint64_t rows=uint64_t{1}<<log_rows;
+    uint64_t root=c71_pcs::power(7,(P-1)/rows);
+    if(inverse) root=c71_pcs::power(root,P-2);
+    fill_twiddles<<<unsigned((rows+255)/256),256,0,stream>>>(twiddles,rows,root);
+    return cudaGetLastError();
+}
+extern "C" cudaError_t c71_pcs_transform_launch(cudaStream_t stream,uint64_t* values,uint64_t* scratch,
+    const uint64_t* twiddles,unsigned log_rows,unsigned batch,unsigned inverse,unsigned* attempted) {
+    if(!stream || inverse>1 || !attempted) return cudaErrorInvalidValue;
+    return c71_fft::launch_natural(stream,values,scratch,twiddles,log_rows,batch,inverse!=0,attempted);
+}

@@ -7,6 +7,10 @@
 #define C71_FFT_HD
 #endif
 namespace c71_fft {
+C71_FFT_HD inline size_t parity_index(size_t index,size_t length) {
+    const size_t local=index%length;
+    return index-local+(local&1)*(length/2)+local/2;
+}
 C71_FFT_HD inline uint64_t fp_pow(uint64_t base, uint64_t exponent) {
     uint64_t out = 1;
     while (exponent) {
@@ -89,6 +93,30 @@ inline void five_pass_fft(std::vector<uint64_t>& values, size_t m, uint64_t omeg
     }
     transpose(values, m);
     (void)n;
+}
+
+inline void natural_fft_host(std::vector<uint64_t>& values,unsigned log_length,uint64_t omega,bool inverse) {
+    const size_t length=size_t{1}<<log_length,side=size_t{1}<<(log_length/2);
+    if(log_length%2==0) five_pass_fft(values,side,omega);
+    else {
+        const size_t half=length/2;
+        std::vector<uint64_t> scattered(length);
+        for(size_t i=0;i<length;++i) scattered[parity_index(i,length)]=values[i];
+        for(unsigned part=0;part<2;++part) {
+            std::vector<uint64_t> current(scattered.begin()+part*half,scattered.begin()+(part+1)*half);
+            if(log_length>1) five_pass_fft(current,side,fp_mul(omega,omega));
+            std::copy(current.begin(),current.end(),scattered.begin()+part*half);
+        }
+        uint64_t twiddle=1;
+        for(size_t k=0;k<half;++k) {
+            const uint64_t a=scattered[k],b=fp_mul(twiddle,scattered[half+k]);
+            values[k]=fp_add(a,b); values[half+k]=fp_sub(a,b); twiddle=fp_mul(twiddle,omega);
+        }
+    }
+    if(inverse) {
+        const uint64_t scale=fp_pow(length,P-2);
+        for(auto& x:values) x=fp_mul(x,scale);
+    }
 }
 
 #ifdef __CUDACC__
@@ -198,6 +226,67 @@ inline cudaError_t launch_five_pass(
     else
         tiled_transpose_kernel<false><<<grid, threads, 0, stream>>>(values, nullptr, m, twiddle_stride);
     if (const auto error=cudaGetLastError(); error!=cudaSuccess) return error;
+    return cudaSuccess;
+}
+
+template<bool NORMALIZE=false>
+__global__ void radix2_merge_kernel(uint64_t* values,const uint64_t* twiddles,
+    size_t half,size_t butterflies,uint64_t scale=1) {
+    const size_t i=size_t(blockIdx.x)*blockDim.x+threadIdx.x;
+    if(i>=butterflies) return;
+    const size_t k=i%half,base=2*(i-k);
+    const uint64_t a=values[base+k],b=fp_mul(twiddles[k],values[base+half+k]);
+    values[base+k]=NORMALIZE ? fp_mul(fp_add(a,b),scale) : fp_add(a,b);
+    values[base+half+k]=NORMALIZE ? fp_mul(fp_sub(a,b),scale) : fp_sub(a,b);
+}
+
+// Input consists of the even and odd coefficient halves of each polynomial.
+inline cudaError_t launch_odd(cudaStream_t stream,uint64_t* values,const uint64_t* twiddles,
+    size_t m,int log_side,size_t batch,bool inverse=false,unsigned* attempted=nullptr) {
+    const size_t half=m*m,butterflies=batch*half;
+    if(log_side) {
+        const auto status=launch_five_pass(stream,values,twiddles,m,log_side,2*batch,2,false,attempted);
+        if(status!=cudaSuccess) return status;
+    }
+    if(attempted) ++*attempted;
+    if(inverse)
+        radix2_merge_kernel<true><<<unsigned((butterflies+255)/256),256,0,stream>>>(
+            values,twiddles,half,butterflies,fp_pow(2*half,P-2));
+    else
+        radix2_merge_kernel<false><<<unsigned((butterflies+255)/256),256,0,stream>>>(
+            values,twiddles,half,butterflies);
+    return cudaGetLastError();
+}
+
+__global__ void parity_scatter_kernel(const uint64_t* values,uint64_t* scratch,size_t length,size_t count) {
+    const size_t i=size_t(blockIdx.x)*blockDim.x+threadIdx.x;
+    if(i>=count) return;
+    scratch[parity_index(i,length)]=values[i];
+}
+
+inline cudaError_t launch_natural(cudaStream_t stream,uint64_t* values,uint64_t* scratch,
+    const uint64_t* twiddles,unsigned log_length,unsigned batch,bool inverse,unsigned* attempted) {
+    if(log_length<1 || log_length>24 || !batch || batch>(1u<<20) || !values || !twiddles ||
+        !scratch || (uint64_t{1}<<log_length)*batch>(uint64_t{1}<<28) ||
+        values==scratch || values==twiddles || scratch==twiddles) return cudaErrorInvalidValue;
+    const size_t length=size_t{1}<<log_length;
+    if(log_length%2 && log_length>1) {
+        if(attempted) ++*attempted;
+        parity_scatter_kernel<<<unsigned((length*batch+255)/256),256,0,stream>>>(values,scratch,length,length*batch);
+        if(const auto status=cudaGetLastError();status!=cudaSuccess) return status;
+        if(const auto status=cudaMemcpyAsync(values,scratch,length*batch*8,cudaMemcpyDeviceToDevice,stream);
+            status!=cudaSuccess) return status;
+    }
+    // Two half-polynomials per odd transform must fit grid.z <= 65535.
+    for(unsigned first=0;first<batch;) {
+        const unsigned count=std::min(32767u,batch-first);
+        const unsigned log_side=log_length/2;
+        const auto status=log_length%2
+            ? launch_odd(stream,values+size_t(first)*length,twiddles,size_t{1}<<log_side,log_side,count,inverse,attempted)
+            : launch_five_pass(stream,values+size_t(first)*length,twiddles,size_t{1}<<log_side,log_side,count,1,inverse,attempted);
+        if(status!=cudaSuccess) return status;
+        first+=count;
+    }
     return cudaSuccess;
 }
 

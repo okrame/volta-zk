@@ -377,6 +377,9 @@ api! {
     pcs_tiles: unsafe extern "C" fn(Raw,u64,*const WeightTile,u64)->i32 => "c71_pcs_tiles_upload",
     pcs_powers: unsafe extern "C" fn(Raw,u64,u64,WeightShape)->i32 => "c71_pcs_powers",
     pcs_twiddles: unsafe extern "C" fn(Raw,u64,u32)->i32 => "c71_pcs_twiddles",
+    transform_twiddles: unsafe extern "C" fn(Raw,u64,u32,u32)->i32 => "c71_pcs_transform_twiddles",
+    transform: unsafe extern "C" fn(Raw,u64,u64,u64,u32,u32,u32)->i32 => "c71_pcs_transform",
+    pcs_words_read: unsafe extern "C" fn(Raw,u64,u64,u64,*mut u64)->i32 => "c71_pcs_read_words",
     pcs_zero: unsafe extern "C" fn(Raw,u64)->i32 => "c71_pcs_ring_zero",
     pcs_weight: unsafe extern "C" fn(Raw,u64,u64,u64,u64,u64,u64,WeightShape)->i32 => "c71_pcs_weight",
     pcs_weight_tensor: unsafe extern "C" fn(Raw,u64,u64,u64,u64,u64,u64,WeightShape)->i32 => "c71_pcs_weight_tensor",
@@ -655,6 +658,28 @@ impl Runtime {
         let status = unsafe { (self.api.pcs_twiddles)(self.raw, output.id, log_rows as u32) };
         self.check(status)?;
         Ok(output)
+    }
+    pub(in crate::c71_matrix) fn pcs_transform_twiddles(&mut self, log_rows: usize, inverse: bool) -> Result<Buffer,String> {
+        if !(1..=24).contains(&log_rows) { return self.abort("native PCS transform shape differs"); }
+        let output=self.allocate_buffer(14,1<<log_rows)?;
+        let status=unsafe { (self.api.transform_twiddles)(self.raw,output.id,log_rows as u32,u32::from(inverse)) };
+        self.check(status)?; Ok(output)
+    }
+    pub(in crate::c71_matrix) fn pcs_transform(&mut self, values: &Buffer, scratch: &Buffer,
+        twiddles: &Buffer, log_rows: usize, batch: usize, inverse: bool) -> Result<(),String> {
+        for b in [values,scratch,twiddles] { self.require_buffer(b)?; }
+        if !(1..=24).contains(&log_rows) || !(1..=1<<20).contains(&batch) {
+            return self.abort("native PCS transform geometry differs");
+        }
+        let status=unsafe { (self.api.transform)(self.raw,values.id,scratch.id,twiddles.id,
+            log_rows as u32,batch as u32,u32::from(inverse)) };
+        self.check(status)
+    }
+    pub(in crate::c71_matrix) fn pcs_download_words(&mut self, values: &Buffer, first: usize, output: &mut [u64])
+        -> Result<(),String> {
+        self.require_buffer(values)?;
+        let status=unsafe { (self.api.pcs_words_read)(self.raw,values.id,first as u64,output.len() as u64,output.as_mut_ptr()) };
+        self.check(status)
     }
     pub(in crate::c71_matrix) fn pcs_ring(&mut self, rows: usize) -> Result<Buffer, String> {
         if rows == 0 || rows > 1 << 20 { return self.abort("native PCS ring capacity differs"); }
@@ -1749,6 +1774,115 @@ impl<'a, T: Word> Evaluator<'a, T> {
 #[cfg(test)]
 pub(in crate::c71_matrix) mod tests {
     use super::*;
+    #[test]
+    fn c71_b12_native_transform_natural_forward_inverse_and_work() {
+        use p3_dft::{Radix2DFTSmallBatch,TwoAdicSubgroupDft};
+        use p3_field::PrimeField64;
+        use p3_goldilocks::Goldilocks;
+        let mut fixture=fixture(512); fixture.config.arena_bytes=16<<20;
+        let weights=Arc::new(Vec::new());
+        let _budget=crate::c71_matrix::census::Budget::new(&weights).unwrap();
+        let mut runtime=Runtime::new(&fixture.config).unwrap();
+        let dft=Radix2DFTSmallBatch::<Goldilocks>::default();
+        let cases=(1..=10).flat_map(|log| [1usize,3,4].map(move |batch|(log,batch)))
+            .chain([(3,32767),(3,32768),(3,65530),(3,65536),(16,3),(17,3)]);
+        for (log,batch) in cases {
+            let rows=1usize<<log;
+                let original: Vec<u64>=(0..rows*batch).map(|i| match i%5 {
+                    0=>0,1=>1,2=>Goldilocks::ORDER_U64-1,_=>(i*1237+19) as u64 }).collect();
+                let values=runtime.pcs_words(original.len()).unwrap();
+                runtime.pcs_upload(&values,0,&original).unwrap();
+                let scratch=runtime.pcs_words(original.len()).unwrap();
+                let forward=runtime.pcs_transform_twiddles(log,false).unwrap();
+                let inverse=runtime.pcs_transform_twiddles(log,true).unwrap();
+                let before=runtime.stats().unwrap();
+                let started=std::time::Instant::now();
+                runtime.pcs_transform(&values,&scratch,&forward,log,batch,false).unwrap();
+                let mut actual=vec![0;original.len()];
+                runtime.pcs_download_words(&values,0,&mut actual).unwrap();
+                let forward_s=started.elapsed().as_secs_f64();
+                let expected: Vec<_>=original.chunks_exact(rows).flat_map(|c|
+                    dft.dft(c.iter().copied().map(Goldilocks::new).collect()).into_iter()
+                        .map(|x| x.as_canonical_u64())).collect();
+                assert_eq!(actual,expected,"forward log {log} batch {batch}");
+                let started=std::time::Instant::now();
+                runtime.pcs_transform(&values,&scratch,&inverse,log,batch,true).unwrap();
+                runtime.pcs_download_words(&values,0,&mut actual).unwrap();
+                let inverse_s=started.elapsed().as_secs_f64();
+                assert_eq!(actual,original,"roundtrip log {log} batch {batch}");
+                let after=runtime.stats().unwrap();
+                assert_eq!(after.h2d_bytes,before.h2d_bytes);
+                assert_eq!(after.d2h_bytes-before.d2h_bytes,(16*original.len()) as u64);
+                assert_eq!(after.fences-before.fences,2);
+                let launches=(if log==1 {1} else if log%2==0 {5} else {6})*batch.div_ceil(32767)
+                    + usize::from(log%2!=0 && log>1);
+                assert_eq!(after.launches-before.launches,(2*launches) as u64);
+                assert_eq!(after.d2d_bytes-before.d2d_bytes,if log%2!=0 && log>1 {(16*original.len()) as u64} else {0});
+                for buffer in [values,scratch,forward,inverse] { runtime.release_buffer(buffer).unwrap(); }
+                if batch>4 || log>10 { println!("C71_NATIVE_TRANSFORM_BENCH {}",serde_json::json!({
+                    "log_length":log,"batch":batch,"forward_owner_host_s":forward_s,"inverse_owner_host_s":inverse_s,
+                    "launches_per_transform":launches,"gpu_execution":false,"credit":false})); }
+        }
+        let stats=runtime.close().unwrap(); assert_eq!(stats.arena_bytes,0);
+        println!("C71_NATIVE_TRANSFORM {}",serde_json::json!({"cases":36,"log_lengths":[1,17],
+            "natural_forward_and_inverse":true,"host_owner_bytes":stats.host_owner_bytes,
+            "capacity_peak_bytes":stats.peak_capacity_bytes,"census":crate::c71_matrix::census::simultaneous(),
+            "gpu_execution":false,"credit":false}));
+    }
+
+    #[test]
+    fn c71_b12_native_transform_rejections_and_fail_closed() {
+        let fixture=fixture(512); let injection=Injection::new(&fixture.config);
+        for fault in 0..18 {
+            let mut runtime=Runtime::new(&fixture.config).unwrap();
+            let values=runtime.pcs_words(8).unwrap();
+            if fault!=7 { runtime.pcs_upload(&values,0,&[1;8]).unwrap(); }
+            let scratch=runtime.pcs_words(if fault==4 {4} else {8}).unwrap();
+            let twiddles=runtime.pcs_transform_twiddles(3,fault==5).unwrap();
+            let result=match fault {
+                0=>runtime.pcs_transform_twiddles(0,false).map(|_|()),
+                1=>runtime.pcs_transform_twiddles(25,false).map(|_|()),
+                2=>runtime.pcs_transform(&values,&scratch,&twiddles,3,0,false),
+                3=>runtime.pcs_transform(&values,&scratch,&twiddles,25,1,false),
+                4..=5|7=>runtime.pcs_transform(&values,&scratch,&twiddles,3,1,false),
+                6=>runtime.pcs_transform(&values,&values,&twiddles,3,1,false),
+                8=>runtime.pcs_transform(&twiddles,&scratch,&twiddles,3,1,false),
+                9=>runtime.pcs_download_words(&twiddles,0,&mut[0]),
+                10=>runtime.pcs_download_words(&values,8,&mut[0]),
+                11=>runtime.pcs_download_words(&values,0,&mut[]),
+                12=>{
+                    let status=unsafe{(runtime.api.pcs_words_read)(runtime.raw,values.id,0,(1<<20)+1,&mut 0)};
+                    runtime.check(status)
+                },
+                13=>{ injection.set(1); runtime.pcs_transform(&values,&scratch,&twiddles,3,1,false) },
+                14..=15=>{
+                    runtime.pcs_transform(&values,&scratch,&twiddles,3,1,false).unwrap();
+                    injection.set(if fault==14 {2} else {4});
+                    runtime.pcs_download_words(&values,0,&mut[0;8])
+                },
+                16=>{
+                    let mut other=Runtime::new(&fixture.config).unwrap();
+                    let foreign=other.pcs_words(8).unwrap();
+                    runtime.pcs_transform(&values,&foreign,&twiddles,3,1,false)
+                },
+                17=>runtime.pcs_transform(&values,&scratch,&twiddles,3,2,false),
+                _=>unreachable!(),
+            };
+            assert!(result.is_err(),"fault {fault}"); injection.set(0);
+            assert_eq!(runtime.stats().unwrap().stopped,1); assert!(runtime.pcs_words(1).is_err());
+            runtime.close().unwrap();
+        }
+        println!("C71_NATIVE_TRANSFORM_FAILURE {{\"terminal_rejections\":18,\"gpu_execution\":false,\"credit\":false}}");
+    }
+
+    #[test]
+    fn c71_b12_native_transform_symbols_are_mandatory() {
+        for symbol in ["c71_pcs_transform_twiddles","c71_pcs_transform","c71_pcs_read_words"] {
+            let legacy=fixture_library(512,Some(symbol));
+            let error=Runtime::new(&legacy.config).err().unwrap(); assert!(error.contains(symbol),"{error}");
+        }
+    }
+
     fn salt_values(runtime: &mut Runtime, rows: usize, column: usize, count: usize, bias: u64) -> Buffer {
         let values = runtime.pcs_words(rows * count).unwrap();
         let words: Vec<_> = (0..rows * count).map(|i| ((column + i / rows) * 17) as u64 + bias).collect();

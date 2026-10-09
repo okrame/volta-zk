@@ -110,6 +110,10 @@ int c71_pcs_merge_group(C71RangeContext*,uint64_t frontier,uint64_t roots,uint32
 int c71_pcs_tiles_upload(C71RangeContext*,uint64_t output,const c71_pcs::WeightTile*,uint64_t count);
 int c71_pcs_powers(C71RangeContext*,uint64_t low,uint64_t high,c71_pcs::WeightShape);
 int c71_pcs_twiddles(C71RangeContext*,uint64_t output,uint32_t log_rows);
+int c71_pcs_transform_twiddles(C71RangeContext*,uint64_t output,uint32_t log_rows,uint32_t inverse);
+int c71_pcs_transform(C71RangeContext*,uint64_t values,uint64_t scratch,uint64_t twiddles,
+    uint32_t log_rows,uint32_t batch,uint32_t inverse);
+int c71_pcs_read_words(C71RangeContext*,uint64_t input,uint64_t first,uint64_t count,uint64_t* output);
 int c71_pcs_ring_zero(C71RangeContext*,uint64_t output);
 // Fused host submission: signed-wide original accumulation, private pads,
 // then the existing finite FFT on four columns. Only arithmetic flag D2H.

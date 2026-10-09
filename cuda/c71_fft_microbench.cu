@@ -610,31 +610,10 @@ __global__ void odd_init_kernel(uint64_t* values, size_t n, size_t count) {
     values[base + (local & 1) * half + local / 2] = canonical(splitmix64(SEED + i));
 }
 
-template <bool NORMALIZE = false>
-__global__ void radix2_merge_kernel(
-    uint64_t* values, const uint64_t* twiddles, size_t half, size_t butterflies,
-    uint64_t scale = 1) {
-    const size_t i = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-    if (i >= butterflies) return;
-    const size_t k = i % half, base = 2 * (i - k);
-    const uint64_t a = values[base + k];
-    const uint64_t b = fp_mul(twiddles[k], values[base + half + k]);
-    values[base + k] = NORMALIZE ? fp_mul(fp_add(a, b), scale) : fp_add(a, b);
-    values[base + half + k] = NORMALIZE ? fp_mul(fp_sub(a, b), scale) : fp_sub(a, b);
-}
-
 void launch_odd_fft(
     uint64_t* values, const uint64_t* twiddles, size_t m, int log2_m, size_t batch,
     bool inverse = false) {
-    const size_t half = m * m, butterflies = batch * half;
-    launch_five_pass(values, twiddles, m, log2_m, 2 * batch, 2);
-    if (inverse)
-        radix2_merge_kernel<true><<<(butterflies + BLOCK - 1) / BLOCK, BLOCK>>>(
-            values, twiddles, half, butterflies, fp_pow(2 * half, P - 2));
-    else
-        radix2_merge_kernel<false><<<(butterflies + BLOCK - 1) / BLOCK, BLOCK>>>(
-            values, twiddles, half, butterflies);
-    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(c71_fft::launch_odd(nullptr,values,twiddles,m,log2_m,batch,inverse));
 }
 
 __global__ void remainder_high_kernel(

@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+    "c71_original_claim_batch_releases_construction_capacity",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk/rust",
+  "exit_code": 0,
+  "wall_s": 0.004040773957967758,
+  "max_rss_bytes": 10309632,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 0.001323,
+  "system_s": 0.002294,
+  "log": "/tmp/c71-closure-retire-claim-pre01-20261009.log"
+}

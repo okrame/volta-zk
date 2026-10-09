@@ -1,0 +1,82 @@
+{
+  "command": [
+    "cargo",
+    "rustc",
+    "--offline",
+    "--locked",
+    "-j",
+    "1",
+    "-p",
+    "volta-pcs",
+    "--features",
+    "c71-seed6-reference",
+    "--lib",
+    "--profile",
+    "test",
+    "--config",
+    "profile.dev.package.volta-pcs.opt-level=0",
+    "--config",
+    "profile.dev.package.volta-pcs.codegen-units=256",
+    "--",
+    "-Clink-arg=-fuse-ld=lld",
+    "-Clink-arg=-B/home/okrame/.rustup/toolchains/stable-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/bin/gcc-ld",
+    "-Clink-arg=-Wl,--threads=1"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk/rust",
+  "exit_code": 0,
+  "wall_s": 56.676019022241235,
+  "max_rss_bytes": 2441273344,
+  "sampled_aggregate_live_rss_peak_bytes": 2483892224,
+  "sampled_processes": {
+    "5": {
+      "name": "timeout",
+      "max_rss_bytes": 1630208,
+      "cpu_ticks": 0,
+      "first_seen_s": 0.0009104222990572453,
+      "last_seen_s": 56.67587173031643
+    },
+    "6": {
+      "name": "cargo",
+      "max_rss_bytes": 52953088,
+      "cpu_ticks": 20,
+      "first_seen_s": 0.10162668209522963,
+      "last_seen_s": 56.574606384150684
+    },
+    "21": {
+      "name": "rustc",
+      "max_rss_bytes": 2429308928,
+      "cpu_ticks": 5528,
+      "first_seen_s": 0.30427791737020016,
+      "last_seen_s": 56.57465175911784
+    },
+    "283": {
+      "name": "cc",
+      "max_rss_bytes": 2240512,
+      "cpu_ticks": 1,
+      "first_seen_s": 55.557014767080545,
+      "last_seen_s": 56.473821874242276
+    },
+    "284": {
+      "name": "collect2",
+      "max_rss_bytes": 1568768,
+      "cpu_ticks": 0,
+      "first_seen_s": 55.55707505904138,
+      "last_seen_s": 56.47388391615823
+    },
+    "285": {
+      "name": "rust-lld",
+      "max_rss_bytes": 582881280,
+      "cpu_ticks": 97,
+      "first_seen_s": 55.557138393167406,
+      "last_seen_s": 56.473935874179006
+    }
+  },
+  "sample_interval_s": 0.1,
+  "clock_ticks_per_s": 100,
+  "deadline_s": 60,
+  "workers": 1,
+  "as_limit_mib": null,
+  "user_s": 48.963631,
+  "system_s": 7.764533,
+  "log": "/tmp/c71-closure-retire-build-pre01-20261009.log"
+}

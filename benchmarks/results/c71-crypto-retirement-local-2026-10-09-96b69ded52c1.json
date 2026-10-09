@@ -1,0 +1,286 @@
+{
+  "accounting": {
+    "A_batch_released_after_close_before_encoding": true,
+    "A_claim_batch_codec_capacity_upper_bytes": 457768960,
+    "A_proof_released_after_encoding": true,
+    "W_batch_released_after_close_before_encoding": true,
+    "W_claim_batch_codec_capacity_upper_bytes": 470351872,
+    "W_claims_and_proof_released_before_A": true,
+    "both_claim_batches_codec_capacity_upper_bytes": 928120832,
+    "claim_capacity_note": "Codec-max source-derived upper bounds; actual proof/codec/certificate capacities and moving reallocations remain charged. No fixed capacity slot is assumed.",
+    "complete_joint_peak_measured": false,
+    "joint_admitted": false
+  },
+  "artifacts": [
+    {
+      "bytes": 13982,
+      "path": "benchmarks/results/c71-crypto-retirement-local-2026-10-09-96b69ded52c1-logs/c71-closure-retire-clean-build-20261009.log",
+      "sha256": "91b7fabc422936a73fe8b640c7a454923de6fe579701cbfb168b9f66b1899dc9"
+    },
+    {
+      "bytes": 1355,
+      "path": "benchmarks/results/c71-crypto-retirement-local-2026-10-09-96b69ded52c1-logs/c71-closure-retire-clean-build-20261009.json",
+      "sha256": "4abee37a7e5b4bd87386b55d688abff91cb5bcbc4a59d5d89dcbac2cbcb9f2ac"
+    },
+    {
+      "bytes": 427,
+      "path": "benchmarks/results/c71-crypto-retirement-local-2026-10-09-96b69ded52c1-logs/c71-closure-retire-clean-claim-20261009.log",
+      "sha256": "d2b16638dedb02425a1ae4f7966c0a676a20d78c93e87431f04576822a0d353c"
+    },
+    {
+      "bytes": 524,
+      "path": "benchmarks/results/c71-crypto-retirement-local-2026-10-09-96b69ded52c1-logs/c71-closure-retire-clean-claim-20261009.json",
+      "sha256": "6b23ec9f955bf0ea695b768c35de27106e5da1d9e60ea36f6389ffa3505eba7c"
+    },
+    {
+      "bytes": 14061,
+      "path": "benchmarks/results/c71-crypto-retirement-local-2026-10-09-96b69ded52c1-logs/c71-closure-retire-build-pre01-20261009.log",
+      "sha256": "8be7ffbca23c2bc0cd172631eac3a52a282dc09c212b2502411eb1e88667c385"
+    },
+    {
+      "bytes": 2082,
+      "path": "benchmarks/results/c71-crypto-retirement-local-2026-10-09-96b69ded52c1-logs/c71-closure-retire-build-pre01-20261009.json",
+      "sha256": "7501481f6604e7e331d3a0f8ae29da5cd83421d9873f1714bc223ece64271de6"
+    },
+    {
+      "bytes": 8105,
+      "path": "benchmarks/results/c71-crypto-retirement-local-2026-10-09-96b69ded52c1-logs/c71-closure-retire-native-pre01-20261009.log",
+      "sha256": "7c4cc3416786de11c7c9ccfa3d69bffd522295b1d28ff3ba72611b621fbec7cf"
+    },
+    {
+      "bytes": 530,
+      "path": "benchmarks/results/c71-crypto-retirement-local-2026-10-09-96b69ded52c1-logs/c71-closure-retire-native-pre01-20261009.json",
+      "sha256": "ed478eecf2be950454b95e36b4cd7bd874e48e84d8691305b57fec1f09ac65e9"
+    },
+    {
+      "bytes": 427,
+      "path": "benchmarks/results/c71-crypto-retirement-local-2026-10-09-96b69ded52c1-logs/c71-closure-retire-claim-pre01-20261009.log",
+      "sha256": "d2b16638dedb02425a1ae4f7966c0a676a20d78c93e87431f04576822a0d353c"
+    },
+    {
+      "bytes": 512,
+      "path": "benchmarks/results/c71-crypto-retirement-local-2026-10-09-96b69ded52c1-logs/c71-closure-retire-claim-pre01-20261009.json",
+      "sha256": "c506c6ca35b51cbca3c8cde9a4af4171754e360d424fa2363957766837ef4d00"
+    }
+  ],
+  "artifacts_total_bytes": 42005,
+  "canonical_execution": false,
+  "clean_source_checks": [
+    {
+      "as_limit_mib": null,
+      "clock_ticks_per_s": 100,
+      "command": [
+        "cargo",
+        "rustc",
+        "--offline",
+        "--locked",
+        "-j",
+        "1",
+        "-p",
+        "volta-pcs",
+        "--features",
+        "c71-seed6-reference",
+        "--lib",
+        "--profile",
+        "test",
+        "--config",
+        "profile.dev.package.volta-pcs.opt-level=0",
+        "--config",
+        "profile.dev.package.volta-pcs.codegen-units=256",
+        "--",
+        "-Clink-arg=-fuse-ld=lld",
+        "-Clink-arg=-B/home/okrame/.rustup/toolchains/stable-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/bin/gcc-ld",
+        "-Clink-arg=-Wl,--threads=1"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk/rust",
+      "deadline_s": 60,
+      "exit_code": 0,
+      "log": "/tmp/c71-closure-retire-clean-build-20261009.log",
+      "max_rss_bytes": 52948992,
+      "sample_interval_s": 0.1,
+      "sampled_aggregate_live_rss_peak_bytes": 42164224,
+      "sampled_processes": {
+        "5": {
+          "cpu_ticks": 0,
+          "first_seen_s": 0.0008366722613573074,
+          "last_seen_s": 0.20423236908391118,
+          "max_rss_bytes": 1572864,
+          "name": "timeout"
+        },
+        "6": {
+          "cpu_ticks": 9,
+          "first_seen_s": 0.10222239326685667,
+          "last_seen_s": 0.10222401935607195,
+          "max_rss_bytes": 40591360,
+          "name": "cargo"
+        }
+      },
+      "system_s": 0.107628,
+      "user_s": 0.084558,
+      "wall_s": 0.20427024411037564,
+      "workers": 1
+    },
+    {
+      "as_limit_mib": 2048,
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_original_claim_batch_releases_construction_capacity",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk/rust",
+      "deadline_s": 60,
+      "exit_code": 0,
+      "log": "/tmp/c71-closure-retire-clean-claim-20261009.log",
+      "max_rss_bytes": 10321920,
+      "system_s": 0.001205,
+      "user_s": 0.004497999999999999,
+      "wall_s": 0.006055410020053387,
+      "workers": 1
+    }
+  ],
+  "complete_certificate_parity": false,
+  "credit": false,
+  "cuda_compilation": false,
+  "date": "2026-10-09",
+  "git_dirty": false,
+  "gpu_execution": false,
+  "milestone": "c71-crypto-retirement-local",
+  "precommit_checks": {
+    "checks": [
+      {
+        "as_limit_mib": null,
+        "clock_ticks_per_s": 100,
+        "command": [
+          "cargo",
+          "rustc",
+          "--offline",
+          "--locked",
+          "-j",
+          "1",
+          "-p",
+          "volta-pcs",
+          "--features",
+          "c71-seed6-reference",
+          "--lib",
+          "--profile",
+          "test",
+          "--config",
+          "profile.dev.package.volta-pcs.opt-level=0",
+          "--config",
+          "profile.dev.package.volta-pcs.codegen-units=256",
+          "--",
+          "-Clink-arg=-fuse-ld=lld",
+          "-Clink-arg=-B/home/okrame/.rustup/toolchains/stable-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/bin/gcc-ld",
+          "-Clink-arg=-Wl,--threads=1"
+        ],
+        "cwd": "/home/okrame/projects/volta-zk/rust",
+        "deadline_s": 60,
+        "exit_code": 0,
+        "log": "/tmp/c71-closure-retire-build-pre01-20261009.log",
+        "max_rss_bytes": 2441273344,
+        "sample_interval_s": 0.1,
+        "sampled_aggregate_live_rss_peak_bytes": 2483892224,
+        "sampled_processes": {
+          "21": {
+            "cpu_ticks": 5528,
+            "first_seen_s": 0.30427791737020016,
+            "last_seen_s": 56.57465175911784,
+            "max_rss_bytes": 2429308928,
+            "name": "rustc"
+          },
+          "283": {
+            "cpu_ticks": 1,
+            "first_seen_s": 55.557014767080545,
+            "last_seen_s": 56.473821874242276,
+            "max_rss_bytes": 2240512,
+            "name": "cc"
+          },
+          "284": {
+            "cpu_ticks": 0,
+            "first_seen_s": 55.55707505904138,
+            "last_seen_s": 56.47388391615823,
+            "max_rss_bytes": 1568768,
+            "name": "collect2"
+          },
+          "285": {
+            "cpu_ticks": 97,
+            "first_seen_s": 55.557138393167406,
+            "last_seen_s": 56.473935874179006,
+            "max_rss_bytes": 582881280,
+            "name": "rust-lld"
+          },
+          "5": {
+            "cpu_ticks": 0,
+            "first_seen_s": 0.0009104222990572453,
+            "last_seen_s": 56.67587173031643,
+            "max_rss_bytes": 1630208,
+            "name": "timeout"
+          },
+          "6": {
+            "cpu_ticks": 20,
+            "first_seen_s": 0.10162668209522963,
+            "last_seen_s": 56.574606384150684,
+            "max_rss_bytes": 52953088,
+            "name": "cargo"
+          }
+        },
+        "system_s": 7.764533,
+        "user_s": 48.963631,
+        "wall_s": 56.676019022241235,
+        "workers": 1
+      },
+      {
+        "as_limit_mib": 2048,
+        "command": [
+          "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+          "c71_b12_native_composed_three_attempts_close_one_fs_and_promote_same_w_kv",
+          "--test-threads=1",
+          "--nocapture"
+        ],
+        "cwd": "/home/okrame/projects/volta-zk/rust",
+        "deadline_s": 60,
+        "exit_code": 124,
+        "log": "/tmp/c71-closure-retire-native-pre01-20261009.log",
+        "max_rss_bytes": 171220992,
+        "system_s": 0.2095,
+        "user_s": 59.781415,
+        "wall_s": 60.00974919181317,
+        "workers": 1
+      },
+      {
+        "as_limit_mib": 2048,
+        "command": [
+          "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+          "c71_original_claim_batch_releases_construction_capacity",
+          "--test-threads=1",
+          "--nocapture"
+        ],
+        "cwd": "/home/okrame/projects/volta-zk/rust",
+        "deadline_s": 60,
+        "exit_code": 0,
+        "log": "/tmp/c71-closure-retire-claim-pre01-20261009.log",
+        "max_rss_bytes": 10309632,
+        "system_s": 0.002294,
+        "user_s": 0.001323,
+        "wall_s": 0.004040773957967758,
+        "workers": 1
+      }
+    ],
+    "edited_protocol_rs_sha256": "c8a78804d57b5f4fd31b714a6fa65cbb84c789d4fc01e97c4ab553c836b58ea0",
+    "failure": "Reduced composed three-attempt proof reached the unchanged 60-second deadline; exit124/RSS171220992 bytes. No positive complete-proof claim and no heavier retry.",
+    "git_dirty": true,
+    "parent_git_sha": "43b8176164203832ee0870b4b54f76303c0688c8"
+  },
+  "related_linear_record": "benchmarks/results/c71-crypto-linear-local-2026-10-09-31280382f681.json",
+  "scope": "Explicit ownership retirement only; no numerical/protocol/transcript/PCG changes. Batch has no Drop implementation; proof encoding completes before proof retirement.",
+  "source_files_sha256": {
+    "rust/volta-pcs/src/c71_matrix/gemma/native/protocol.rs": "c8a78804d57b5f4fd31b714a6fa65cbb84c789d4fc01e97c4ab553c836b58ea0"
+  },
+  "source_git_sha": "96b69ded52c16a32962bf22c93352bd89f30c3c9",
+  "test_binary": {
+    "bytes": 92670336,
+    "path": "rust/target/debug/deps/volta_pcs-efe6791186972026",
+    "sha256": "9d03a9f71b2cac73902325292eb6a4a93e0824babe6d43a4a33684767f6c7c3f"
+  }
+}

@@ -11,8 +11,12 @@ minuti riservati alla chiusura: fine calcolo 21:57:24 UTC, guard
 Priorità: spike A, pool/fill separati sui caller reali, poi motore
 ottimizzato e RMS coarser. Γ ammesso resta il riferimento; NoPeek,
 MAC originali, AES reale, correlazioni monouso e limiti restano invariati.
-Nuovi trial usano journal e capacità nuovi; nessun nuovo certificato,
-bound fisico o risultato prestazionale è ancora acquisito.
+Nuovi trial usano journal e capacità nuovi. Zero nuovi certificati;
+bound e tempi completi restano aperti. Il [prefisso diagnostico canonico](../c7.1-history/h100-followup-spike-prefix-2026-10-10.md)
+completa 35/512 gruppi A con W/setup presenti, poi esaurisce il logger
+da 16 MiB. Il picco stabile campionato è 6.141.582.848 B: non è
+un picco completo né una soluzione dello spike. Il trial default senza
+logger/profiler è in corso, con timeout 90 minuti entro la deadline.
 
 La [precedente campagna H100 è conclusa](../c7.1-history/h100-campaign-close-2026-10-10.md),
 con pod spento entro la deadline e zero certificati canonici. A04 termina per cap fisico dopo 86/512 gruppi, wall 780,205 s.

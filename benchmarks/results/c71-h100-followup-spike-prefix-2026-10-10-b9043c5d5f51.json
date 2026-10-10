@@ -1,0 +1,210 @@
+{
+  "a_prefix": {
+    "completed_groups": 35,
+    "last_completed_native": {
+      "allocations": 3571765,
+      "arena_bytes": 913715456,
+      "cleanup_failed": 0,
+      "d2d_bytes": 291609600,
+      "d2h_bytes": 111609428,
+      "fences": 5602941,
+      "h2d_bytes": 69984020616,
+      "host_owner_bytes": 42128,
+      "launches": 6537691,
+      "live_capacity_bytes": 913715456,
+      "logical_bytes": 913714044,
+      "peak_capacity_bytes": 5436230400,
+      "peak_reserved_bytes": 66830920960,
+      "releases": 3571455,
+      "stopped": 0,
+      "weights_bytes": 61394690560,
+      "weights_loaded_bytes": 61394690560,
+      "weights_sealed": 1,
+      "zeroed_bytes": 436097027268
+    },
+    "last_six_complete_group_samples": [
+      {
+        "allocations": 31740,
+        "completed_groups": 30,
+        "launches": 148203,
+        "wall_seconds": 5.706458567
+      },
+      {
+        "allocations": 31740,
+        "completed_groups": 31,
+        "launches": 148203,
+        "wall_seconds": 5.753090785
+      },
+      {
+        "allocations": 31740,
+        "completed_groups": 32,
+        "launches": 148203,
+        "wall_seconds": 5.753520824
+      },
+      {
+        "allocations": 31740,
+        "completed_groups": 33,
+        "launches": 148203,
+        "wall_seconds": 5.760075605
+      },
+      {
+        "allocations": 31740,
+        "completed_groups": 34,
+        "launches": 148203,
+        "wall_seconds": 5.726645707
+      },
+      {
+        "allocations": 31740,
+        "completed_groups": 35,
+        "launches": 148203,
+        "wall_seconds": 5.731330872
+      }
+    ],
+    "total_groups": 512
+  },
+  "admitted_gamma_reused": true,
+  "attribution": "Open. This negative measures logger coverage with canonical W/setup retained. It does not reproduce or rule out the prior physical spike; the unprofiled default trial is independent.",
+  "canonical_certificates_verified": 0,
+  "canonical_complete": false,
+  "clock_alignment_probe": {
+    "credit": false,
+    "matched_fences": 253,
+    "method": "Ordered one-to-one CUDA stream synchronize calls enclosed by owner before/after CLOCK_MONOTONIC records. Offset belongs only to this capture; recompute for every window.",
+    "offset_uncertainty_ns": 1292,
+    "passed": true,
+    "profiler_to_monotonic_offset_lower_ns": 14678397869917429,
+    "profiler_to_monotonic_offset_upper_ns": 14678397869918721
+  },
+  "clock_alignment_scope": "Separate finite transform capture, not this A capture. Nsight 2025.1.1 warns about driver 13.0; finite coverage was checked, broad compatibility is unproven.",
+  "contexts_started": [
+    0
+  ],
+  "credit": false,
+  "date": "2026-10-10",
+  "fresh_real_aes_session": true,
+  "git_dirty": false,
+  "git_sha": "b9043c5d5f514c171ae5a6fc2623d00a3283b398",
+  "gpu_uuid": "GPU-e05e977b-758d-f3f4-cbe8-5720b83d1ae1",
+  "instrument_memory": {
+    "complete_physical_peak": false,
+    "default_allowance_verified": false,
+    "maximum_trace_file_cache_bytes": 16777216,
+    "owner_extra_host_bytes": 32
+  },
+  "mode": "experiment-cuda",
+  "monitor": {
+    "authorized_end_epoch": 1791671244.0,
+    "close_reserve_seconds": 1800,
+    "compute_end_epoch": 1791669444.0,
+    "exit_code": 1,
+    "gpu_uuid": "GPU-e05e977b-758d-f3f4-cbe8-5720b83d1ae1",
+    "incomplete_samples": 2,
+    "label": "canonical-spike01",
+    "mode": "canonical",
+    "observed_payload_peak_bytes": 5632780917,
+    "payload_limit_bytes": 5905580032,
+    "physical_complete_peak": false,
+    "physical_temporary_limit_bytes": 6174015488,
+    "resource_failure": "ValueError: unresolved W residency transition",
+    "sample_interval_clock": "Linux CLOCK_MONOTONIC, absolute nanoseconds on this host boot",
+    "sample_interval_scope": "Start/end bracket collection of the resource sample; no GPU synchronization or instantaneous peak. External profiler clock alignment requires a matching clock or explicit anchor.",
+    "sampled_host_rss_peak_bytes": 61697916928,
+    "sampled_stable_temporary_peak_bytes": 6141582848,
+    "sampled_whole_gpu_peak_bytes": 67240984576,
+    "samples": 11322,
+    "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+    "sampling_target_seconds": 0.2,
+    "smaps_read_failures": 0,
+    "stable_samples": 11320,
+    "start_unix_seconds": 1791653349.2546182,
+    "wall_seconds": 2267.418344024569
+  },
+  "owner_trace": {
+    "build": "C71_OWNER_TRACE + C71_OWNER_TRACE_LARGE_ONLY",
+    "bytes": 16776993,
+    "covered_complete_groups": [
+      30,
+      31,
+      32,
+      33,
+      34
+    ],
+    "duration_seconds": 32.38407109,
+    "external_cuda_timeline": false,
+    "first_group": 30,
+    "groups_records": {
+      "30": 9777,
+      "31": 9462,
+      "32": 9462,
+      "33": 9462,
+      "34": 9462,
+      "35": 7562
+    },
+    "limit_bytes": 16777216,
+    "limit_records": 131072,
+    "operations": {
+      "allocate": 27424,
+      "c71_pcs_source_begin": 12,
+      "c71_range_release": 27416,
+      "dense_complete": 20,
+      "retained_buffer": 314,
+      "retained_weights": 1
+    },
+    "partial_group": 35,
+    "records": 55187,
+    "sha256": "01b21fc40ff8206354b8ea7b03bbc32b1722c6d140f497f9989fa6e5013e97fc",
+    "termination": "Owner logger refused the next record at the byte cap; native owner stopped; cleanup reported failure and W retirement was unresolved."
+  },
+  "phase_timing_scope": "Nested roles overlap; do not sum duplicate setup spans.",
+  "phases": [
+    {
+      "complete": true,
+      "phase": "installation_w_commitment",
+      "wall_seconds": 212.492631727
+    },
+    {
+      "complete": true,
+      "phase": "seed6_setup",
+      "wall_seconds": 1487.902400364
+    },
+    {
+      "complete": true,
+      "phase": "seed6_setup",
+      "wall_seconds": 1487.901223612
+    },
+    {
+      "complete": true,
+      "phase": "preparation_including_inference",
+      "wall_seconds": 76.012905101
+    }
+  ],
+  "pod_id": "z6wx2kkn69eoc0",
+  "private_evidence": {
+    "bundle": "artifact/c7.1-pod/h100-followup-spike-20261010T183000Z",
+    "files": 47,
+    "manifest_sha256": "efe11553a57efbadee303344a23bd86ca69216de3f83a8cb3ab4361ff3c2449f"
+  },
+  "provenance": {
+    "binary": {
+      "bytes": 9853000,
+      "path": "/workspace/c71-h100-20261010/binaries/c71_canonical_reference-cfc04b6f",
+      "sha256": "fbb773cc231995f8336f09f57be2d4efc5fb99a5ace2a7eb23ac2d91a8948f06"
+    },
+    "binary_build_sha": "cfc04b6f38226c4315e7bf96eeb4f5cd2fb0db2a",
+    "credit": false,
+    "fresh_session": true,
+    "git_dirty": false,
+    "git_sha": "b9043c5d5f514c171ae5a6fc2623d00a3283b398",
+    "library": {
+      "bytes": 3576696,
+      "path": "/workspace/c71-h100-20261010/libc71_large_trace.so",
+      "sha256": "a82727e73df18f2f8d768a9fa4bfccf9e53615f503d6b4896a9caefda8d848c6"
+    },
+    "library_source_sha": "b9043c5d5f514c171ae5a6fc2623d00a3283b398",
+    "nsight": false,
+    "reason": "Measure changed pool/fill and large owner allocations with canonical W commitment and fresh AES setup retained; do not reuse previous terminal session.",
+    "trace_first_group": 30
+  },
+  "reference_recalibrated": false,
+  "schema": "volta-c71-h100-followup-spike-prefix-v1"
+}

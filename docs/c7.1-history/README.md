@@ -29,6 +29,9 @@ le nuove domande hardware; non esegue una nuova campagna.
 
 ## Campagne recenti e decisioni operative
 
+- [Avvio del seguito H100](h100-followup-start-2026-10-10.md): nuova autorizzazione e deadline del pod già attivo.
+- [Prefisso canonico del seguito](h100-followup-spike-prefix-2026-10-10.md): W/setup e 35 gruppi A; saturazione del logger, clock ridotto verificato.
+- [Metodo del confronto d'inferenza](h100-comparison-plan-2026-10-10.md): workload, due precisioni e criteri fissati prima delle misure.
 - [Ultimo diagnostico H100 terminale](h100-a-blocking-terminal-2026-10-10.md): stop fisico anche con lanci sincroni, dopo 86 gruppi A.
 - [Chiusura campagna H100](h100-campaign-close-2026-10-10.md): spegnimento confermato, misure separate, guadagni e limiti residui.
 - [Code ridotte e diagnostico A](h100-a-quarter-2026-10-10.md): A03 supera il cap, parità sincrona 15/15 prima dell’ultimo diagnostico.

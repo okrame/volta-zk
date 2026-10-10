@@ -11,8 +11,12 @@ minuti riservati alla chiusura: fine calcolo 21:57:24 UTC, guard
 Priorità: spike A, pool/fill separati sui caller reali, poi motore
 ottimizzato e RMS coarser. Γ ammesso resta il riferimento; NoPeek,
 MAC originali, AES reale, correlazioni monouso e limiti restano invariati.
-Nuovi trial usano journal e capacità nuovi; nessun nuovo certificato,
-bound fisico o risultato prestazionale è ancora acquisito.
+Nuovi trial usano journal e capacità nuovi. Zero nuovi certificati;
+bound e tempi completi restano aperti. Il [prefisso diagnostico canonico](../c7.1-history/h100-followup-spike-prefix-2026-10-10.md)
+completa 35/512 gruppi A con W/setup presenti, poi esaurisce il logger
+da 16 MiB. Il picco stabile campionato è 6.141.582.848 B: non è
+un picco completo né una soluzione dello spike. Il trial default senza
+logger/profiler è in corso, con timeout 90 minuti entro la deadline.
 
 La [precedente campagna H100 del 9–10 ottobre è chiusa](../c7.1-history/h100-campaign-close-2026-10-10.md).
 Pod spento e confermato `EXITED`, runtime assente, alle **01:49:55 UTC**
@@ -42,8 +46,8 @@ verifica degli artefatti conservati, riuso di un solo flag numerico sincrono
 (256 B device trattenuti e 8 B aggiunti all'owner host) e quattro screening
 di scale A alternative. Il flag viene azzerato prima di ogni operazione;
 kernel, letture di stato, fence necessari e controlli restano invariati.
-La parità locale usa il driver simulato: parità CUDA reale, guadagno H100
-e sufficienza dell'allowance restano da misurare. Il conto del setup AES
+La parità CUDA ridotta delle tre librerie passa nel nuovo preflight;
+guadagno sui caller reali e sufficienza dell'allowance restano da misurare. Il conto del setup AES
 reale include anche cache W e owner già installati.
 
 Γ ammesso resta il riferimento. Gli screening mantengono W, architettura,
@@ -344,7 +348,7 @@ esatta delle istruzioni MMA/shuffle e della ricomposizione intera verificata
 su fixture; nessun lemma Lean la raffina.
 Il nuovo fill dello zero pubblico assume inoltre la corrispondenza fra
 memset ordinato CUDA e output i64 zero, con guardie/flag/fence preservati;
-le fixture simulano quel driver, senza lemma Lean o nuova parità CUDA.
+la parità CUDA ridotta passa, senza lemma Lean di raffinamento.
 La traccia diagnostica e l'allineamento dei clock sono strumenti di
 laboratorio, senza nuovo credito di raffinamento o di picco fisico.
 

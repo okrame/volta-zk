@@ -46,9 +46,19 @@ def test_synthetic_RNE_uses_fixed_physical_input_and_checks_real_output_differen
     same = screen.numerical_fixture(base, base)
     finer = screen.numerical_fixture(base, [(2, -8, -4, -6, True)])
     assert same["checked_outputs"] == finer["checked_outputs"] == 3
+    assert same["baseline_nonzero_outputs"] == finer["candidate_nonzero_outputs"] == 3
     assert same["max_abs_dequantized_difference"] == 0
     assert finer["RNE_error_bound_checked"]
     assert not finer["real_weights"] and not finer["token_quality_checked"]
+    baseline, oracle = public_fixture()
+    oracle["sources"] = [{"id": i} for i in range(6)]
+    extents = [{"minimum": -1, "maximum": 1} for _ in range(6)]
+    extents[2]["maximum"] = 16384
+    replay = {"responses": [{"old_tokens": old, "extents": extents} for old in (0, 150, 300)]}
+    candidate = screen.candidates(baseline, oracle)["rms-output-finer-one"]
+    risk = screen.baseline_range_screen(baseline, candidate, oracle, replay)
+    assert [c["finer_RMS_outputs_outside_i16"] for c in risk["contexts"]] == [1, 1, 1]
+    assert not risk["candidate_integer_execution"] and not risk["promotion_without_full_validation"]
 
 
 def test_prepare_verifies_all_retained_hashes_and_never_overwrites(tmp_path):

@@ -206,10 +206,11 @@ def aggregate(keys, blueprints, baseline_rms):
 
 def numerical_fixture(base_keys, trial_keys):
     checked, rejected, changed, maximum_error = 0, 0, 0, 0.0
+    base_nonzero = trial_nonzero = 0
     for base, trial in zip(base_keys, trial_keys):
         d, ex, ew, ey, weighted = base
         source = [4 * ((i % 17) - 8) for i in range(d)]
-        weights = [1 + i % 3 for i in range(d)] if weighted else [1] * d
+        weights = [257 + i % 17 for i in range(d)] if weighted else [1] * d
         delta = trial[1] - ex
         inputs = [x // (1 << delta) if delta >= 0 else x * (1 << -delta) for x in source]
         assert all(x * 2.0 ** ex == y * 2.0 ** trial[1] for x, y in zip(source, inputs))
@@ -222,17 +223,45 @@ def numerical_fixture(base_keys, trial_keys):
                 rejected += 1
                 continue
             checked += 1
+            base_nonzero += y0 != 0
+            trial_nonzero += y1 != 0
             difference = abs(y0 * 2.0 ** ey - y1 * 2.0 ** trial[3])
             maximum_error = max(maximum_error, difference)
             changed += difference != 0
             # Fixed physical inputs and W imply the same real RMS result;
             # independent exact RNE may differ by at most half of each step.
             assert difference <= 0.5 * (2.0 ** ey + 2.0 ** trial[3])
+    assert checked > 0 and base_nonzero > 0 and trial_nonzero > 0
     return {"scope": "synthetic exact-dyadic physical input; Python integer RMS only",
         "checked_outputs": checked, "overflow_rejections": rejected,
+        "baseline_nonzero_outputs": base_nonzero, "candidate_nonzero_outputs": trial_nonzero,
         "changed_dequantized_outputs": changed, "max_abs_dequantized_difference": maximum_error,
         "RNE_error_bound_checked": True, "real_weights": False,
         "token_quality_checked": False, "admission_credit": False}
+
+
+def baseline_range_screen(baseline, candidate, oracle, replay):
+    norms, _ = norms_and_keys(baseline, oracle)
+    norm_inputs = {str(n["inputs"][0]) for n in norms}
+    norm_outputs = {str(n["outputs"][-1]) for n in norms}
+    original = baseline["activation_exponents_by_source"]
+    finer = {int(k): original[k] - e for k, e in candidate["activation_exponents_by_source"].items()
+             if e < original[k]}
+    contexts = []
+    for response in replay["responses"]:
+        extents = response["extents"]
+        assert len(extents) == len(oracle["sources"])
+        peak = lambda source: max(abs(extents[source]["minimum"]), abs(extents[source]["maximum"]))
+        risky = {source for source, shift in finer.items() if peak(source) * (1 << shift) > 32767}
+        contexts.append({"old_tokens": response["old_tokens"],
+            "baseline_RMS_outputs_above_half_symmetric_i16": sum(peak(int(s)) > 16383 for s in norm_outputs),
+            "finer_requantized_baseline_sources_outside_i16": len(risky),
+            "finer_RMS_inputs_outside_i16": sum(str(s) in norm_inputs for s in risky),
+            "finer_RMS_outputs_outside_i16": sum(str(s) in norm_outputs for s in risky)})
+    assert [c["old_tokens"] for c in contexts] == [0, 150, 300]
+    return {"scope": "requantization of admitted baseline extrema at fixed physical source values; upstream candidate values can change",
+        "contexts": contexts, "candidate_integer_execution": False, "quality_checked": False,
+        "promotion_without_full_validation": False}
 
 
 def summarize(bundle, directory, output):
@@ -253,6 +282,11 @@ def summarize(bundle, directory, output):
             blueprints[key] = row
     oracle = docs["oracle-plan-original.json"]["contexts"][0]
     baseline = docs["candidate.json"]
+    replay_path = "artifact/c7.1-pod/integer-complete-20261007T144500Z/integer-2-attention-budgeted.json"
+    replay_sha = next(e["sha256"] for e in docs["admission.json"]["evidence"] if e["path"] == replay_path)
+    assert sha(ROOT / replay_path) == replay_sha
+    replay = json.loads((ROOT / replay_path).read_text())
+    assert replay["complete_integer_trial"] and replay["candidate_sha256"] == sha(bundle / "candidate.json")
     base_keys = norms_and_keys(baseline, oracle)[1]
     historical = docs["ledger-original.json"]["contexts"][0]
     rows = {}
@@ -274,6 +308,7 @@ def summarize(bundle, directory, output):
             candidate["activation_exponents_by_source"][k] != e
             for k, e in baseline["activation_exponents_by_source"].items())
         row["numerical_fixture"] = numerical_fixture(base_keys, keys)
+        row["baseline_range_screen"] = baseline_range_screen(baseline, candidate, oracle, replay)
         rows[name] = row
     denominator = rows["admitted"]["selected_coefficient_core_Fp3"]["Fp3_mul"]
     for row in rows.values():
@@ -286,6 +321,8 @@ def summarize(bundle, directory, output):
         "source_git_sha": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "git_dirty": bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT)),
         "input_manifest_sha256": sha(directory / "manifest.json"),
+        "baseline_range_evidence": {"path": replay_path, "sha256": replay_sha,
+                                    "verified_against_original_admission_receipt": True},
         "program_outputs_sha256": {b["output"]: sha(directory / b["output"]) for b in manifest["batches"]},
         "baseline_identity_preserved": sha(bundle / "candidate.json") == manifest["baseline_candidate_sha256"],
         "candidate_ranking_by_selected_partial_RMS_multiplications": ranking, "candidates": rows,
@@ -295,9 +332,11 @@ def summarize(bundle, directory, output):
             "A_domain": 34, "W_domain": 35, "initial_A_reconstructions": 512,
             "PCS_configuration_and_byte_codec": "unchanged; no per-token proof or PCS",
             "RMS_checkpoint_PYS_bytes": 2023511878},
+        "memory_scope": "actual per-Circuit descriptor/Vec capacities; excludes compiler Builder peak, allocator, packed workspace, and complete simultaneous two-role budget",
         "remaining_validation": ["complete compiler recipes/aliases in all three contexts",
             "certified tables for changed recipes; unchanged bodies may be reused only by exact recipe identity",
             "real-weight overflow and numerical drift on fixed teacher-forced inputs in O=0/150/300",
+            "observed finer-scale baseline requantization risks preclude promotion without fresh numerical validation",
             "dequantized layer RMS/max error, attention and logits compared with admitted Gamma and binary64 reference",
             "nonzero/saturation fractions and argmax margins; predeclare acceptable quality thresholds before admission",
             "two complete integer replays, independent exact trace comparison, final KV and all five admission checks",

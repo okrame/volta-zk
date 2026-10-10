@@ -1,0 +1,1 @@
+C71_PUBLIC_ZERO_COMPARISON {"operations":7,"output_write_bytes":134288,"allocations":8,"releases_before_close":7,"retained_device_bytes":256,"host_owner_bytes":42096,"application_kernel_launches":0,"fences_including_observation_and_release":21,"d2h_bytes_including_observation":134316,"memset_api_bytes":134316,"gpu_execution":false,"credit":false}

@@ -1,0 +1,7 @@
+
+running 1 test
+test c71_matrix::gemma::native::canonical::resident::device::tests::c71_canonical_device_replay_original_rows_windows_and_failure ... C71_PCS_SOURCE_STREAM {"credit":false,"d2h_flag_bytes":8,"gpu_execution":false,"launches":2,"native_peak_capacity_bytes":33631232,"numeric_flag_initialized_on_first_fixture_scan":true,"original_bytes":6451200,"original_rows_downloaded":0,"producer_capacity_after_scan":25567232,"producer_capacity_before_scan":25566976,"producer_temporaries_retired_before_PCS_hash":true,"reconstructions":1,"retained_numeric_flag_capacity_bytes":256,"source_h2d_bytes":0,"tiles":36}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 604 filtered out; finished in 12.29s
+

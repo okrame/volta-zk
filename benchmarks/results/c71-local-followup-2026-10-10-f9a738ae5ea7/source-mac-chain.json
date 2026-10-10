@@ -1,0 +1,20 @@
+{
+  "command": [
+    "rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+    "c71_b12_native_source_composed_full_chain_original_mac_and_transcript",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "source_git_sha": "e785fb1e848b7094b843bab8f068e1356c733328",
+  "git_dirty": false,
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 53.24779071705416,
+  "max_rss_bytes": 330571776,
+  "deadline_s": 60,
+  "as_limit_bytes": 2147483648,
+  "workers": 1,
+  "recorded_at_utc": "2026-10-10T08:39:55.616728+00:00",
+  "log": "/tmp/c71-local-followup-20261010-0802/source-mac-chain.log",
+  "sha256": "a6b2c5115ff8d106d3cac98757c231d6dc3af36017048c66ad48915317c96a3b"
+}

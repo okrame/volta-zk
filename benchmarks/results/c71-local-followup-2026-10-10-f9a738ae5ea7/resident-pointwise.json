@@ -1,0 +1,20 @@
+{
+  "command": [
+    "rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+    "c71_canonical_resident_pointwise_",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "source_git_sha": "e785fb1e848b7094b843bab8f068e1356c733328",
+  "git_dirty": false,
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 25.50292439898476,
+  "max_rss_bytes": 330964992,
+  "deadline_s": 60,
+  "as_limit_bytes": 2147483648,
+  "workers": 1,
+  "recorded_at_utc": "2026-10-10T08:38:36.143533+00:00",
+  "log": "/tmp/c71-local-followup-20261010-0802/resident-pointwise.log",
+  "sha256": "ac330f5f99c978f56c28b73b2d5db2f04283bf863a78b64f7252f87352f1d1c5"
+}

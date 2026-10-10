@@ -1,0 +1,20 @@
+{
+  "command": [
+    "rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+    "c71_gamma_reduced_unweighted_rms_original_predicate_packed_and_support",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "source_git_sha": "e785fb1e848b7094b843bab8f068e1356c733328",
+  "git_dirty": false,
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 101,
+  "wall_s": 0.5221981001086533,
+  "max_rss_bytes": 45699072,
+  "deadline_s": 60,
+  "as_limit_bytes": 2147483648,
+  "workers": 1,
+  "recorded_at_utc": "2026-10-10T08:37:54.529733+00:00",
+  "log": "/tmp/c71-local-followup-20261010-0802/gamma-unweighted.log",
+  "sha256": "8e7af58e8f8e20f2466d1e4de1765f09bf001111248f4c825262b4f9414ffad6"
+}

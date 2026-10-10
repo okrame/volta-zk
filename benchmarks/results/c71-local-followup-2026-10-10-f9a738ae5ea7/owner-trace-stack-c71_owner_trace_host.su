@@ -1,0 +1,11 @@
+tests/c71_owner_trace_host.cpp:21:23:main(int, char**)::<lambda(const char*)>	112	static
+cuda/c71_owner_trace.h:96:10:bool c71_owner_trace::Trace::arm(unsigned int)	0	static
+cuda/c71_owner_trace.h:149:10:bool c71_owner_trace::Trace::close()	48	static
+cuda/c71_owner_trace.h:167:17:static bool c71_owner_trace::Trace::sync(int)	32	static
+cuda/c71_owner_trace.h:42:10:bool c71_owner_trace::Trace::open()	4288	static
+cuda/c71_owner_trace.h:188:14:void c71_owner_trace::Trace::Record::text(const char*)	0	static
+cuda/c71_owner_trace.h:194:14:void c71_owner_trace::Trace::Record::number(uint64_t)	32	static
+cuda/c71_owner_trace.h:201:14:void c71_owner_trace::Trace::Record::signed_number(int)	32	static
+cuda/c71_owner_trace.h:104:10:bool c71_owner_trace::Trace::emit(const char*, const char*, int, uint32_t, uint64_t, uint64_t, uint64_t, uint64_t, int, unsigned int)	656	static
+tests/c71_owner_trace_host.cpp:12:20:std::string read(const std::string&)	640	static
+tests/c71_owner_trace_host.cpp:18:5:int main(int, char**)	656	static

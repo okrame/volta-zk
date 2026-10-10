@@ -256,6 +256,15 @@ Scale nuove cambiano la relazione. Il layout byte A, i domini PCS e le
 riduce automaticamente questi costi. Risultati e obblighi sono nella
 [chiusura locale del 10 ottobre](../c7.1-history/local-exploration-close-2026-10-10.md); nessuna candidata sostituisce Γ ammesso.
 
+Il [seguito locale](../c7.1-history/local-followup-2026-10-10.md#screening-γ-predicato-originale-supporti-e-memoria-packed)
+confronta Integer, predicato Boolean, packed e supporti Fp3 originali su
+due ricette pesata/non pesata con nonzero e pareggi signed. Le soglie
+predicate-only non sono witness coupled di righe reali. Il nuovo upper
+packed usa metadati già compilati, ordine del caller e capacità massime
+trattenute; circuiti e PYS restano simultanei. Esclude altro stato delle
+statistiche/GKR, PCG, allocator e lifetime dei due ruoli: non aggiorna il
+ledger completo né concede memoria/prestazione/ammissione Γ.
+
 ### Confronto indipendente
 
 L'export dei valori è disponibile. `c71_calibration run-trace` e il modo
@@ -1292,6 +1301,26 @@ primo producer fino al cleanup dell'owner. La capacità resta addebitata
 anche inattiva e occupa uno dei 512 descrittori. I flag sticky delle
 transazioni PCS/byte restano separati. Raw e RNE rimangono entrambi
 addebitati fino al rilascio; nessun controllo viene eliminato.
+Il [seguito locale](../c7.1-history/local-followup-2026-10-10.md) usa un
+fill ordinato sullo stream per pointwise pubblico `(0,0,false)` dopo le
+stesse guardie del launcher. Score/Z zero sono gli unici caller nel
+padding A; E resta `2^30`. Reset, D2H del flag, fence, initialized,
+allocazioni e lifetime sono invariati. Il contatore dei memset include
+gli `8N` byte d'output; il minor numero di lanci applicativi non riduce
+i byte scritti e non conta il lavoro interno CUDA.
+
+Solo la build `C71_OWNER_TRACE` conserva 32 B addizionali nell'owner e
+registra alloc/free/fence before/after con slot/linea/capacità/ledger e
+CLOCK_MONOTONIC, senza valori o puntatori. File nuovo privato indicato da
+`C71_OWNER_TRACE_PATH`, massimo 16 MiB/131.072 record, errori terminali
+con cleanup e debito conservati. `C71_OWNER_TRACE_A_FIRST=0..511` può
+armare al begin A validato, registrando snapshot dei buffer già vivi.
+`a_group` è l'ultimo begin validato: allocazioni preparatorie successive
+possono ancora avere il gruppo precedente. Cache file, stack, filesystem
+e profiler sono costi ulteriori; la capacità della finestra reale non
+è verificata. Il ledger/default ABI 4 non cambia. Il journal aggiunge
+un'ancora CLOCK_MONOTONIC intorno all'origine Instant e il monitor un
+intervallo monotonic per raccolta; nessuno dei due sincronizza la GPU.
 Non scarica gli intermedi sullo host né rialloca W fra i batch.
 Il consumer range Rust controlla questa ABI; una catena ridotta Rust/C
 confronta RNE con `rne::integer`, poi la root range con gli stessi interi.

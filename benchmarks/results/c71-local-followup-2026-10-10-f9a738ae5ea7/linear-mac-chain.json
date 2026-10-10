@@ -1,0 +1,20 @@
+{
+  "command": [
+    "rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+    "c71_b12_native_linear_full_wire_fs_point_and_original_mac",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "source_git_sha": "e785fb1e848b7094b843bab8f068e1356c733328",
+  "git_dirty": false,
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 43.261067882180214,
+  "max_rss_bytes": 330944512,
+  "deadline_s": 60,
+  "as_limit_bytes": 2147483648,
+  "workers": 1,
+  "recorded_at_utc": "2026-10-10T08:40:44.891420+00:00",
+  "log": "/tmp/c71-local-followup-20261010-0802/linear-mac-chain.log",
+  "sha256": "ae28baa927ce2a6ad916be5c56932d1c75bc9235eef8c936dea052d0fa8cbc67"
+}

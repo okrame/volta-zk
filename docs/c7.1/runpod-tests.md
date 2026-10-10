@@ -36,6 +36,19 @@ PCG AES e fail-closed restano quelli del percorso selezionato.
 
 ## Stato e sequenza operativa
 
+Il [seguito locale e piano aggiornato](../c7.1-history/local-followup-2026-10-10.md#verifiche-hardware-prioritarie-dopo-il-seguito-locale)
+prepara la traccia owner bounded e distingue pool, padding A zero e
+candidate RMS. Per attribuire lo spike servono eventi CUDA e correlation
+ID del profiler esterno, oltre a live capacity e clock monotonic comuni;
+il logger da solo non li produce. Fissare la finestra prima del gruppo
+sospetto, verificare tasso/copertura entro 16 MiB/131.072 record e contare
+owner diagnostico 42.128 B, stack, cache file/FS e profiler. Gli snapshot
+all'arming sono capacità già vive; il gruppo indica l'ultimo begin
+validato, comprese le allocazioni preparatorie con etichetta precedente.
+Stop anche per dati persi o finestra incompleta, senza aumentare cap.
+Confronti temporali senza profiler e parità CUDA reale precedono ogni
+credito prestazionale. Nessuna fase hardware è eseguita o autorizzata.
+
 Γ è ammesso e riusato dopo verifica dei cinque controlli, degli input e
 dei tre piani pubblici. Campagna sul pod `z6wx2kkn69eoc0` **conclusa**:
 conferma provider `EXITED`/runtime assente alle 01:49:55 UTC del 10 ottobre,

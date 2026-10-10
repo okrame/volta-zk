@@ -1,0 +1,19 @@
+{
+  "command": [
+    "python3",
+    "/tmp/c71-gamma-packed-upper-20261010-02.py",
+    "/tmp/c71-local-followup-20261010-0802/packed-analytic-upper-output.json"
+  ],
+  "source_git_sha": "f9a738ae5ea77da98fa0dbaffa369480fcb9b0f5",
+  "git_dirty": false,
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 0.41121331602334976,
+  "max_rss_bytes": 45404160,
+  "deadline_s": 60,
+  "as_limit_bytes": 2147483648,
+  "workers": 1,
+  "recorded_at_utc": "2026-10-10T08:44:59.132260+00:00",
+  "log": "/tmp/c71-local-followup-20261010-0802/packed-analytic-upper.log",
+  "sha256": "4f5f84661f2b00ae149b044bfbd620eba19b35d247c5824c5a16a29f315c96e5"
+}

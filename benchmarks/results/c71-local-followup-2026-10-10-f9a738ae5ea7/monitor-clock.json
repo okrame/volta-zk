@@ -1,0 +1,23 @@
+{
+  "command": [
+    ".venv/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "tests/test_c71_campaign_measure.py"
+  ],
+  "source_git_sha": "f9a738ae5ea77da98fa0dbaffa369480fcb9b0f5",
+  "git_dirty": false,
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 2.0870908270590007,
+  "max_rss_bytes": 31789056,
+  "deadline_s": 60,
+  "as_limit_bytes": 2147483648,
+  "workers": 1,
+  "recorded_at_utc": "2026-10-10T08:43:40.660741+00:00",
+  "log": "/tmp/c71-local-followup-20261010-0802/monitor-clock.log",
+  "sha256": "022ca303c4d9d61beb56dcdcbbdff6869c3846a2e2c2ffa18545307d056076f5"
+}

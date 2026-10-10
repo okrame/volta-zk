@@ -1,0 +1,37 @@
+{
+  "baseline": {
+    "operations": 7,
+    "output_write_bytes": 134288,
+    "allocations": 8,
+    "releases_before_close": 7,
+    "retained_device_bytes": 256,
+    "host_owner_bytes": 42096,
+    "application_kernel_launches": 7,
+    "fences_including_observation_and_release": 21,
+    "d2h_bytes_including_observation": 134316,
+    "memset_api_bytes": 28,
+    "gpu_execution": false,
+    "credit": false
+  },
+  "zero": {
+    "operations": 7,
+    "output_write_bytes": 134288,
+    "allocations": 8,
+    "releases_before_close": 7,
+    "retained_device_bytes": 256,
+    "host_owner_bytes": 42096,
+    "application_kernel_launches": 0,
+    "fences_including_observation_and_release": 21,
+    "d2h_bytes_including_observation": 134316,
+    "memset_api_bytes": 134316,
+    "gpu_execution": false,
+    "credit": false
+  },
+  "baseline_runtime_git_sha": "8421fada206669641b2800aae94b4016004c9ccc",
+  "baseline_runtime_sha256": "7fea763e7d1eba80231d373949dd67fb5030b090df9967aac36cc31c01db7326",
+  "shared_headers_and_deferred_driver": "current source; launcher validation extracted without changing conditions",
+  "exact_raw_parity": true,
+  "performance_measured": false,
+  "gpu_execution": false,
+  "credit": false
+}

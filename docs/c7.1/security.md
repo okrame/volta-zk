@@ -681,6 +681,15 @@ non espongono W/A/KV, intermedi o ragioni private di arresto. Tempi e
 accessi fisici restano fuori dal claim ZK matematico. Le ipotesi B12,
 EA-LPN-SL-reg* e di raffinamento aperte non sono scaricate da queste misure.
 
+Il [seguito locale](../c7.1-history/local-followup-2026-10-10.md) conserva
+questo confine: fill dello zero pubblico con le stesse guardie/flag/fence,
+traccia owner solo diagnostica con schema pubblico revisionato e file
+privato bounded, senza handle/puntatori/monete/valori W/A/KV. Errori di
+logging fermano l'owner ma non omettono cleanup o debito di free fallite.
+Clock anchor e snapshot di capacità non sono ricevute o witness importabili.
+Le parità RMS/predicate/packed/supporto ridotte e gli upper analitici non
+concedono qualità Γ, nuovo budget completo o raffinamento Rust/CUDA.
+
 Il buffering mantiene lo stream privato B12, rejection sampling e cap
 monouso 2^40. Seek/snapshot usano il cursore logico, non quello fisico
 dopo prefetch; il replay strided non copia buffer o crea nuove monete.

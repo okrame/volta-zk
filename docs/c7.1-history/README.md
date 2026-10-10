@@ -11,6 +11,9 @@ con [baseline/inventario](local-baseline-exploration-2026-10-10.md),
 [esecutore](local-executor-2026-10-10.md),
 [screening Γ/RMS](gamma-screen-2026-10-10.md) e
 [piano hardware](local-hardware-plan-2026-10-10.md).
+Il [seguito locale](local-followup-2026-10-10.md) conserva padding zero,
+traccia owner/clock, predicato RMS/replay/supporti ridotti, upper packed e
+le nuove domande hardware; non esegue una nuova campagna.
 
 ## Percorsi di lettura
 

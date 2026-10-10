@@ -1,0 +1,2 @@
+{"schema":"volta-c71-owner-trace-v1","credit":false,"seq":0,"a_first":34,"a_group":34,"monotonic_ns":3207366623255681,"op":"snapshot","edge":"after","slot":0,"kind":1,"logical_bytes":16,"capacity_bytes":256,"arena_bytes":256,"weights_bytes":1024,"status":0,"line":12}
+{"schema":"volta-c71-owner-trace-v1","credit":false,"seq":1,"a_first":34,"a_group":35,"monotonic_ns":3207366623258764,"op":"allocate","edge":"before","slot":1,"kind":1,"logical_bytes":16,"capacity_bytes":256,"arena_bytes":256,"weights_bytes":1024,"status":0,"line":12}

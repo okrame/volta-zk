@@ -1,0 +1,26 @@
+.F
+=================================== FAILURES ===================================
+______________ test_native_range_owner_with_deferred_fake_driver _______________
+
+tmp_path = PosixPath('/tmp/pytest-of-okrame/pytest-624/test_native_range_owner_with_d0')
+
+    def test_native_range_owner_with_deferred_fake_driver(tmp_path):
+        binary = tmp_path / "native-range-owner"
+        subprocess.run(
+            ["g++", "-std=c++17", "-O2", "-Wall", "-Wextra", "-Werror",
+             "-fsanitize=undefined", "-fno-sanitize-recover=all",
+             "-I", str(ROOT / "tests/cuda_stub"), "-I", str(ROOT / "cuda"),
+             str(ROOT / "cuda/c71_range_runtime.cpp"), str(ROOT / "tests/c71_range_runtime_host.cpp"),
+             "-o", str(binary)], check=True, timeout=30,
+        )
+        result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=10)
+>       assert result.returncode == 0, result.stdout + result.stderr
+E       AssertionError: native-range-owner: /home/okrame/projects/volta-zk/tests/c71_range_runtime_host.cpp:1367: void pointwise_zero_checks(): Assertion `c71_byte_seal(c,bytes) && stats(c).stopped' failed.
+E         
+E       assert -6 == 0
+E        +  where -6 = CompletedProcess(args=['/tmp/pytest-of-okrame/pytest-624/test_native_range_owner_with_d0/native-range-owner'], returnc...runtime_host.cpp:1367: void pointwise_zero_checks(): Assertion `c71_byte_seal(c,bytes) && stats(c).stopped' failed.\n").returncode
+
+tests/test_c71_range_native.py:33: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_c71_range_native.py::test_native_range_owner_with_deferred_fake_driver
+1 failed, 1 passed in 14.21s

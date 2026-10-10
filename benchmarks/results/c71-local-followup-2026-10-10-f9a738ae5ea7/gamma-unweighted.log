@@ -1,0 +1,15 @@
+
+running 1 test
+test c71_matrix::rms::gkr::gamma_screen_fixture::c71_gamma_reduced_unweighted_rms_original_predicate_packed_and_support ... 
+thread 'c71_matrix::rms::gkr::gamma_screen_fixture::c71_gamma_reduced_unweighted_rms_original_predicate_packed_and_support' (14) panicked at volta-pcs/src/c71_matrix/rms/gkr/gamma_screen_fixture.rs:312:5:
+assertion failed: signs.iter().all(|&n| n > 0)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    c71_matrix::rms::gkr::gamma_screen_fixture::c71_gamma_reduced_unweighted_rms_original_predicate_packed_and_support
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 604 filtered out; finished in 0.52s
+

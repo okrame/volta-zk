@@ -64,6 +64,25 @@ Builder, packed replay, allocator e workspace richiedono nuovi bound.
 Tutte le candidate restano screening non ammessi; margini, errore numerico,
 qualità/token, due replay interi e confronto indipendente restano da validare.
 
+Il [seguito locale](../c7.1-history/local-followup-2026-10-10.md) aggiunge il
+fill dello zero pubblico score/Z: 7→0 lanci applicativi nella fixture
+identica, senza cambiare raw, controlli, fence, allocazioni o lifetime.
+Il census predice 3.840 lanci evitati per scan A completa, 1.966.080 nei
+512 replay; non riguarda inferenza né lavoro interno CUDA del memset.
+La traccia owner è una build diagnostica esplicita, bounded 16 MiB,
+owner 42.128 B (32 B aggiuntivi), con clock comune a journal/monitor e
+cleanup fail-closed. Copertura della finestra reale, eventi CUDA e costo
+fisico della strumentazione restano da verificare. Il default e il suo
+ledger rimangono quelli sopra.
+
+Passano anche predicato RMS originale, replay packed e supporti GKR su
+fixture ridotte pesata/non pesata. Lo screen dai metadati conservati dà
+upper packed 325.906.729/191.732.984/193.965.966 B per riferimento/coarser/
+finer, compreso fixed storico: differenze fra upper, non memoria risparmiata
+misurata. Circuiti e PYS coesistono; altro stato del caller/PCG e picco
+dei due ruoli restano esclusi. Nessun nuovo bound completo o ammissione.
+Il seguito precisa le quattro domande hardware e gli stop, senza eseguirli.
+
 ## Obiettivo e relazione dimostrata
 
 C7.1 dimostra a un verificatore designato l'inferenza intera di un modello
@@ -307,6 +326,11 @@ reale, e compilazione sm_90 non scaricano
 queste premesse. La selezione W limb16 assume inoltre la corrispondenza
 esatta delle istruzioni MMA/shuffle e della ricomposizione intera verificata
 su fixture; nessun lemma Lean la raffina.
+Il nuovo fill dello zero pubblico assume inoltre la corrispondenza fra
+memset ordinato CUDA e output i64 zero, con guardie/flag/fence preservati;
+le fixture simulano quel driver, senza lemma Lean o nuova parità CUDA.
+La traccia diagnostica e l'allineamento dei clock sono strumenti di
+laboratorio, senza nuovo credito di raffinamento o di picco fisico.
 
 ### Evidenze e decisioni
 

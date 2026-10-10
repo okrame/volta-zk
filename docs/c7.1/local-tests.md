@@ -52,6 +52,26 @@ pesi reali, ammissione Γ o previsione di accelerazione H100.
 
 ## Limiti e ambiente
 
+Il [seguito locale](../c7.1-history/local-followup-2026-10-10.md) conserva
+nove test Rust distinti e 40 Python passati, più il failure iniziale della
+fixture RMS non pesata e la correzione degli indici sintetici. I due filtri
+`c71_gamma_reduced_weighted_rms_original_predicate_packed_and_support` e
+`c71_gamma_reduced_unweighted_rms_original_predicate_packed_and_support`
+verificano il predicato originale, RNE signed, replay/packed e supporti
+Fp3 contro il calcolo letterale, ciascuno separatamente entro 60 s/2 GiB.
+Non sono calibrazione, qualità sui pesi reali o ammissione.
+
+`tests/test_c71_range_native.py` include lo zero pubblico e fault di
+reset/fill/copia/fence; `tests/test_c71_owner_trace.py` verifica 26 casi
+dell'header e 12 scenari di cleanup/logger, solo con driver simulato.
+Eseguire questi file e `tests/test_c71_campaign_measure.py` separatamente
+con i limiti sotto. La build diagnostica della traccia non è necessaria
+ai test default e aggiunge 32 B owner più stack/cache file/strumenti;
+16 MiB/131.072 record non garantiscono copertura hardware. Journal e CSV
+condividono CLOCK_MONOTONIC senza sincronizzare letture o eventi CUDA.
+Le due nuove build Rust restano entro 120 s e stop RSS3 GiB. I confronti
+di contatori e upper packed non misurano accelerazione o risparmio H100.
+
 I controlli locali usano input piccoli, un solo processo di test per volta,
 un worker Rayon e 60 s / 2 GiB per invocazione. La compilazione è mirata,
 con un solo job, 64 codegen unit, deadline 120 s e monitor del RSS

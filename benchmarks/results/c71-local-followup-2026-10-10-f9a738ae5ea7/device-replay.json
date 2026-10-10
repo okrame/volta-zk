@@ -1,0 +1,20 @@
+{
+  "command": [
+    "rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+    "c71_canonical_device_replay_original_rows_windows_and_failure",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "source_git_sha": "e785fb1e848b7094b843bab8f068e1356c733328",
+  "git_dirty": false,
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 12.295687478035688,
+  "max_rss_bytes": 330960896,
+  "deadline_s": 60,
+  "as_limit_bytes": 2147483648,
+  "workers": 1,
+  "recorded_at_utc": "2026-10-10T08:38:55.595521+00:00",
+  "log": "/tmp/c71-local-followup-20261010-0802/device-replay.log",
+  "sha256": "809e9cbb86cc853a4c74afc01091c6b0058b730b85e7006a064cff55bc3d6e0c"
+}

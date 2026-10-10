@@ -1,0 +1,69 @@
+{
+  "pod_id": "z6wx2kkn69eoc0",
+  "before": {
+    "action": "get",
+    "observed_epoch": 1791596970.8615677,
+    "pod": {
+      "id": "z6wx2kkn69eoc0",
+      "desiredStatus": "RUNNING",
+      "imageName": "runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404",
+      "gpuCount": 1,
+      "memoryInGb": 251,
+      "vcpuCount": 28,
+      "volumeInGb": 0,
+      "containerDiskInGb": 230,
+      "runtime": {
+        "uptimeInSeconds": 23974,
+        "ports": [
+          {
+            "ip": "100.65.33.149",
+            "isIpPublic": false,
+            "privatePort": 8888,
+            "publicPort": 60897,
+            "type": "http"
+          },
+          {
+            "ip": "100.65.33.149",
+            "isIpPublic": false,
+            "privatePort": 19123,
+            "publicPort": 60898,
+            "type": "http"
+          },
+          {
+            "ip": "103.207.149.92",
+            "isIpPublic": true,
+            "privatePort": 22,
+            "publicPort": 13758,
+            "type": "tcp"
+          },
+          {
+            "ip": "103.207.149.92",
+            "isIpPublic": true,
+            "privatePort": 22,
+            "publicPort": 13759,
+            "type": "udp"
+          }
+        ]
+      }
+    }
+  },
+  "confirmed": {
+    "action": "get",
+    "observed_epoch": 1791596995.2970717,
+    "pod": {
+      "id": "z6wx2kkn69eoc0",
+      "desiredStatus": "EXITED",
+      "imageName": "runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404",
+      "gpuCount": 1,
+      "memoryInGb": 251,
+      "vcpuCount": 28,
+      "volumeInGb": 0,
+      "containerDiskInGb": 230,
+      "runtime": null
+    }
+  },
+  "deadline_epoch": 1791601722.4788783,
+  "within_authorized_deadline": true,
+  "elapsed_from_conservative_provider_start_seconds": 24072.81819343567,
+  "evidence_log": "shutdown-events.jsonl"
+}

@@ -1,0 +1,14 @@
+{
+  "epoch": 1791597001.14689,
+  "guard_pid": 3980533,
+  "verified_argv": [
+    "python3",
+    "/tmp/c71-guard-z6wx2kkn69eoc0.py",
+    "/tmp/c71-session-z6wx2kkn69eoc0-20261009"
+  ],
+  "process_start_ticks": "315869749",
+  "signal": "SIGTERM",
+  "guard_retired_after_confirmed_shutdown": true,
+  "confirmed_shutdown_epoch": 1791596995.2970717,
+  "guard_sha256": "48406b7e355ba482c138b2c9d697c50362d046f8b18b5778d1f9e36526501278"
+}

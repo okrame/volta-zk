@@ -1,0 +1,8 @@
+{
+  "schema": "c71-operational-helper-failure-v1",
+  "operation": "render closure documentation",
+  "error": "ValueError: relative input record path was not relative to the absolute repository root",
+  "writes_before_failure": false,
+  "correction": "Invoke the same helper with an absolute record path; no benchmark or shutdown repeated",
+  "record": "benchmarks/results/c71-h100-campaign-close-2026-10-10-304e0d74d5a9.json"
+}

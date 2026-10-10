@@ -3,35 +3,29 @@
 [Design](design.md) · [Specifiche](specs.md) · [Sicurezza](security.md) ·
 [Test locali](local-tests.md) · [Archivio](../c7.1-history/README.md)
 
-La campagna H100 del 9–10 ottobre è in corso sul pod autorizzato;
-limiti e deadline sono nel [runbook](runpod-tests.md#stato-e-sequenza-operativa).
-Il [sesto trial](../c7.1-history/h100-canonical-06-2026-10-10.md) completa W,
-setup e preparazione O=0, poi termina sul cap fisico dopo 35 gruppi A:
-6.560.767.488 B contro 6.174.015.488 B. **Zero certificati**; O=150/300
-non iniziati. Tempi completi di prova/verifica e picco completo rimangono
-non misurati.
+La [campagna H100 del 9–10 ottobre è chiusa](../c7.1-history/h100-campaign-close-2026-10-10.md).
+Pod spento e confermato `EXITED`, runtime assente, alle **01:49:55 UTC**
+(03:49:55 Italia), entro otto ore dall'avvio provider. **Zero certificati**;
+O=150/300 non iniziati. Il sesto trial completa W/setup/preparazione O=0,
+poi supera il cap fisico: 6.560.767.488 B contro 6.174.015.488 B.
+Tempi completi di prova/verifica e picco completo restano non misurati.
 
-Il [checkpoint completo W/setup](../c7.1-history/h100-setup06-checkpoint-2026-10-10.md)
-misura PCS W 190,425 s e setup 1.493,833 s, −24,799% osservato rispetto
-al precedente. L'[inferenza O=0 separata](../c7.1-history/h100-queue1-2026-10-09.md)
-misura 84,382 s con token esatti; non è il tempo di una risposta certificata.
-Il [diagnostico A03 con code ridotte](../c7.1-history/h100-a-quarter-2026-10-10.md)
-termina anch'esso sul cap: 6.441.455.104 B dopo 22/512 gruppi.
-Anche il [diagnostico finale A04 sincrono](../c7.1-history/h100-a-blocking-terminal-2026-10-10.md)
-termina sul cap: 6.535.814.656 B dopo 86/512 gruppi. Le esecuzioni sono
-concluse; sono in corso esportazione finale e spegnimento del pod.
-La causa dello spike GPU resta aperta. I diagnostici omettono lo stato
-W/setup: anche un esito positivo non dimostra il picco canonico.
+PCS W misura 190,425 s, installazione 212,418 s e setup 1.493,833 s
+(−24,799% osservato rispetto al precedente). L'inferenza separata esatta
+misura 84,382 s. A04 termina per cap fisico dopo 86/512 gruppi, wall 780,205 s.
+I diagnostici A omettono lo stato W/setup e non dimostrano il picco canonico.
+La causa dello spike resta aperta; il target 65 s non è raggiunto.
 
 ## Stato e sequenza operativa
 
 Γ è ammesso e riusato dopo verifica dei cinque controlli, degli input e
-dei tre piani pubblici. La campagna H100 sul pod `z6wx2kkn69eoc0` è
-in corso, autorizzata per otto ore dall'avvio provider. Deadline
-**10 ottobre 03:08:42 UTC** (05:08:42 Italia), fine calcolo 02:38:42 UTC,
-guard indipendente 03:03:42 UTC. La conferma finale `EXITED` con runtime
-assente è obbligatoria. Nessun altro hardware o tempo è autorizzato.
-Git HTTPS usa il branch `runpod/z6wx2kkn69eoc0/c71-h100-20261009`.
+dei tre piani pubblici. Campagna sul pod `z6wx2kkn69eoc0` **conclusa**:
+conferma provider `EXITED`/runtime assente alle 01:49:55 UTC del 10 ottobre,
+dopo 6 h 41 min, prima della deadline 03:08:42 UTC.
+Fine calcolo prevista 02:38:42, guard indipendente 03:03:42; ritiro del
+guard solo dopo lo stop confermato. La campagna termina qui; non è previsto
+un riavvio del pod. Codice ed evidenze sono sul branch Git HTTPS
+`runpod/z6wx2kkn69eoc0/c71-h100-20261009`.
 
 | Trial canonico | Esito conservato |
 |---|---|
@@ -57,14 +51,13 @@ terminale nel massimo. I campioni recuperati mantengono il cap ma non
 ricevono credito al picco stabile. Trentasei test del monitor passano.
 
 Il [diagnostico A03](../c7.1-history/h100-a-quarter-2026-10-10.md) con code
-`0.25x` fallisce sul cap dopo 529,424 s, prima del timeout di 3.900 s.
-Il [diagnostico finale A04](../c7.1-history/h100-a-blocking-terminal-2026-10-10.md)
-con lanci sincroni termina anch'esso sul cap, dopo 86/512 gruppi:
-6.535.814.656 B. Nessun altro run è previsto. Si verificano gli export e
-si conferma lo spegnimento provider; il guard resta attivo fino alla
-conferma. La causa dello spike è aperta e il picco canonico non è ammesso.
-I [diagnostici precedenti](../c7.1-history/h100-a-prefix-progress-2026-10-10.md)
-conservano anche l'errore iniziale e lo stop pianificato dopo tre gruppi.
+ridotte fallisce sul cap dopo 22 gruppi. A04 termina per cap fisico dopo 86/512 gruppi, wall 780,205 s.
+L'[esito finale](../c7.1-history/h100-campaign-close-2026-10-10.md) conserva
+lanci sincroni, parità reale 15/15, geometria D34, monete fresche e cap.
+È un componente senza W commitment/setup/prova/promozione, non una
+validazione del picco canonico. La causa dello spike rimane aperta.
+I record precedenti conservano anche il rifiuto iniziale e lo stop
+pianificato dopo tre gruppi. Non è previsto un altro trial in questa campagna.
 
 Il runner `experiment-cuda` è misto: inferenza/replay/range A e commitment
 iniziali W/A con sali residenti e

@@ -3,25 +3,18 @@
 [Specifiche](specs.md) · [Sicurezza](security.md) · [Test locali](local-tests.md) ·
 [Test su RunPod](runpod-tests.md) · [Archivio](../c7.1-history/README.md)
 
-La campagna H100 del 9–10 ottobre è in corso sul pod autorizzato;
-limiti e deadline sono nel [runbook](runpod-tests.md#stato-e-sequenza-operativa).
-Il [sesto trial](../c7.1-history/h100-canonical-06-2026-10-10.md) completa W,
-setup e preparazione O=0, poi termina sul cap fisico dopo 35 gruppi A:
-6.560.767.488 B contro 6.174.015.488 B. **Zero certificati**; O=150/300
-non iniziati. Tempi completi di prova/verifica e picco completo rimangono
-non misurati.
+La [campagna H100 del 9–10 ottobre è chiusa](../c7.1-history/h100-campaign-close-2026-10-10.md).
+Pod spento e confermato `EXITED`, runtime assente, alle **01:49:55 UTC**
+(03:49:55 Italia), entro otto ore dall'avvio provider. **Zero certificati**;
+O=150/300 non iniziati. Il sesto trial completa W/setup/preparazione O=0,
+poi supera il cap fisico: 6.560.767.488 B contro 6.174.015.488 B.
+Tempi completi di prova/verifica e picco completo restano non misurati.
 
-Il [checkpoint completo W/setup](../c7.1-history/h100-setup06-checkpoint-2026-10-10.md)
-misura PCS W 190,425 s e setup 1.493,833 s, −24,799% osservato rispetto
-al precedente. L'[inferenza O=0 separata](../c7.1-history/h100-queue1-2026-10-09.md)
-misura 84,382 s con token esatti; non è il tempo di una risposta certificata.
-Il [diagnostico A03 con code ridotte](../c7.1-history/h100-a-quarter-2026-10-10.md)
-termina anch'esso sul cap: 6.441.455.104 B dopo 22/512 gruppi.
-Anche il [diagnostico finale A04 sincrono](../c7.1-history/h100-a-blocking-terminal-2026-10-10.md)
-termina sul cap: 6.535.814.656 B dopo 86/512 gruppi. Le esecuzioni sono
-concluse; sono in corso esportazione finale e spegnimento del pod.
-La causa dello spike GPU resta aperta. I diagnostici omettono lo stato
-W/setup: anche un esito positivo non dimostra il picco canonico.
+PCS W misura 190,425 s, installazione 212,418 s e setup 1.493,833 s
+(−24,799% osservato rispetto al precedente). L'inferenza separata esatta
+misura 84,382 s. A04 termina per cap fisico dopo 86/512 gruppi, wall 780,205 s.
+I diagnostici A omettono lo stato W/setup e non dimostrano il picco canonico.
+La causa dello spike resta aperta; il target 65 s non è raggiunto.
 
 I consumer PCS iniziale, residual e closure lineare limitano gli span
 al prefisso `initialized`, rifiutando coda non scritta, overflow e contatori
@@ -161,7 +154,7 @@ e ricette pinned. Si riusa dopo verifica di identità e impatto delle
 modifiche; si ripete la calibrazione solo quando l'ammissione pertinente
 è invalidata. È l'unico Γ ammesso finora, non un optimum prestazionale
 dimostrato. Cambiare scale può semplificare i circuiti ma cambia la
-relazione numerica; la ricerca di un altro Γ è distinta dal goal corrente.
+relazione numerica; la ricerca di un altro Γ resta un lavoro distinto dalla campagna conclusa.
 La baseline della campagna è `c7e05cf`, che include `24b54d4`.
 I [sei trial](runpod-tests.md#stato-e-sequenza-operativa) mantengono Γ,
 semantica, MAC originali, correlazioni monouso e PCG AES. Ogni nuovo trial
@@ -193,8 +186,8 @@ da 1.024 scansioni, non una misura dell'attuale commitment H100.
 
 Il [passaggio operativo](../c7.1-history/crypto-preh100-operations-2026-10-09.md)
 conserva 65 test locali, ingresso CUDA esplicito, timeout diagnostico distinto
-dal target 65 s e monitor con cap fisici. Il [runbook](runpod-tests.md)
-regola la campagna corrente; nuovo hardware o tempo oltre la deadline
+dal target 65 s e monitor con cap fisici. La [chiusura](../c7.1-history/h100-campaign-close-2026-10-10.md)
+registra spegnimento e limiti residui; nuovo hardware o nuova durata
 richiedono nuova autorizzazione. I campioni durante transizioni W non
 attribuiscono credito congiunto. Raffinamento Seed6/CUDA, allowance,
 picco completo e target della risposta rimangono aperti.

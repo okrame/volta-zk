@@ -1,0 +1,55 @@
+{
+  "epoch": 1791596917.3470204,
+  "transport": "anonymous Git HTTPS",
+  "git_sha": "304e0d74d5a929899d0c3338d2dc8d98b9f7d179",
+  "git_dirty": false,
+  "final_runtime_source": "47af19bbe888fdc03152cf025621c07d7ae8c788",
+  "runtime_source_in_published_history": true,
+  "files": [
+    {
+      "path": "docs/c7.1/design.md",
+      "bytes": 26284,
+      "sha256": "5a32d8bcb88e43a34713c871f8254bdb1db7d823b72f7045e10662ebc1f781d9"
+    },
+    {
+      "path": "docs/c7.1/local-tests.md",
+      "bytes": 52218,
+      "sha256": "96bf2de931c97b34f5398f30e8ad2715cc41a42cb9c0d7b29ec46c8a8ed45945"
+    },
+    {
+      "path": "docs/c7.1/runpod-tests.md",
+      "bytes": 52041,
+      "sha256": "4f53818261dff70192c66041cc7562fa5be7000c80388a3bca93d9822f40364a"
+    },
+    {
+      "path": "docs/c7.1/security.md",
+      "bytes": 55432,
+      "sha256": "ceb8f4b264d43376e4d3a9bac58db0e0878cfed93d88209d8b708a674de0d5dc"
+    },
+    {
+      "path": "docs/c7.1/specs.md",
+      "bytes": 106992,
+      "sha256": "c10017bb424a30e1aba0741233fcb33c6602345456ae42d345024c210e99f0a9"
+    },
+    {
+      "path": "cuda/c71_range_runtime.cpp",
+      "bytes": 142735,
+      "sha256": "d78c208a21f15613373866807dd77b9a0fc5b44777c0d72728a7de82f29b1433"
+    },
+    {
+      "path": "rust/volta-pcs/src/c71_matrix/gemma/native/canonical_runner.rs",
+      "bytes": 39686,
+      "sha256": "4f14f67243e85e4c2c54b01cf72180a6675640ec8b83142dec950c6c70e351e1"
+    },
+    {
+      "path": "scripts/c71_campaign_measure.py",
+      "bytes": 24104,
+      "sha256": "685763a8889b4c7294890197ab30b38f9f5e47b80414166e678a59eefa4e2d4f"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-a-component04-2026-10-10-47af19bbe888.json",
+      "bytes": 10250,
+      "sha256": "2181c2395338b6d579a1326cfaa17797302469eb86434a12abf662256056c8eb"
+    }
+  ]
+}

@@ -3,6 +3,10 @@
 [Design](design.md) · [Specifiche](specs.md) · [Sicurezza](security.md) ·
 [Test su RunPod](runpod-tests.md) · [Evidenze storiche](../c7.1-history/evidence.md)
 
+La [campagna H100 è conclusa](../c7.1-history/h100-campaign-close-2026-10-10.md),
+con pod spento entro la deadline e zero certificati canonici. A04 termina per cap fisico dopo 86/512 gruppi, wall 780,205 s.
+Prova/verifica complete e O=150/300 restano non verificati.
+
 Le correzioni della campagna conservano [fallimenti e controlli](../c7.1-history/h100-canonical-06-2026-10-10.md)
 nei record datati. Localmente passano 36 test del monitor, due test Python
 dell'owner CUDA e i nove controlli documentali. Le regressioni Rust ridotte

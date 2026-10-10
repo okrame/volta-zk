@@ -1,0 +1,15 @@
+{
+  "pod_id": "z6wx2kkn69eoc0",
+  "start_epoch": 1791572922.4788783,
+  "deadline_epoch": 1791601722.4788783,
+  "campaign_end_epoch": 1791599922.4788783,
+  "guard_stop_epoch": 1791601422.4788783,
+  "close_reserve_seconds": 1800,
+  "shutdown_owner": "root agent and independent VM guard",
+  "start_definition": "first provider observation 1791573081.4788783 minus uptime 99 seconds minus conservative 60 seconds",
+  "authorization": "Owner 2026-10-09: this H100 80 GB pod, maximum eight hours from provider start; Git HTTPS preauthorized",
+  "start_utc": "2026-10-09T19:08:42.478878+00:00",
+  "deadline_utc": "2026-10-10T03:08:42.478878+00:00",
+  "campaign_end_utc": "2026-10-10T02:38:42.478878+00:00",
+  "guard_stop_utc": "2026-10-10T03:03:42.478878+00:00"
+}

@@ -17,6 +17,30 @@ struct Log {
 static LOG: Mutex<Option<Log>> = Mutex::new(None);
 static ACTIVE: AtomicBool = AtomicBool::new(false);
 
+#[cfg(target_os = "linux")]
+fn monotonic_ns() -> Result<u64, String> {
+    #[repr(C)]
+    struct Timespec { seconds: std::ffi::c_long, nanoseconds: std::ffi::c_long }
+    unsafe extern "C" {
+        fn clock_gettime(clock: std::ffi::c_int, value: *mut Timespec) -> std::ffi::c_int;
+    }
+    let mut value = Timespec { seconds: 0, nanoseconds: 0 };
+    // Linux CLOCK_MONOTONIC is shared by the owner trace and external monitor.
+    if unsafe { clock_gettime(1, &mut value) } != 0 {
+        return Err(std::io::Error::last_os_error().to_string());
+    }
+    if value.seconds < 0 || !(0..1_000_000_000).contains(&value.nanoseconds) {
+        return Err("invalid monotonic clock sample".into());
+    }
+    (value.seconds as u64).checked_mul(1_000_000_000)
+        .and_then(|seconds| seconds.checked_add(value.nanoseconds as u64))
+        .ok_or_else(|| "monotonic clock overflow".into())
+}
+#[cfg(not(target_os = "linux"))]
+fn monotonic_ns() -> Result<u64, String> {
+    Err("durable progress requires Linux CLOCK_MONOTONIC".into())
+}
+
 pub(super) struct Recording;
 impl Recording {
     pub(super) fn start(path: &Path) -> Result<Self, String> {
@@ -34,9 +58,16 @@ impl Recording {
         File::open(path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new(".")))
             .and_then(|directory| directory.sync_all())
             .map_err(|e| e.to_string())?;
-        *log = Some(Log { file, started: Instant::now(), sequence: 0, error: None });
+        let lower = monotonic_ns()?;
+        let started = Instant::now();
+        let upper = monotonic_ns()?;
+        *log = Some(Log { file, started, sequence: 0, error: None });
         ACTIVE.store(true, Ordering::Relaxed);
-        Ok(Self)
+        drop(log);
+        let recording = Self;
+        emit(json!({"kind": "clock_anchor", "clock": "CLOCK_MONOTONIC",
+            "instant_origin_lower_ns": lower, "instant_origin_upper_ns": upper}))?;
+        Ok(recording)
     }
 }
 impl Drop for Recording {
@@ -190,8 +221,14 @@ mod tests {
             .lines()
             .map(|line| serde_json::from_str(line).unwrap())
             .collect();
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0]["event"]["kind"], "start");
+        assert_eq!(rows.len(), 2);
+        let anchor = &rows[0]["event"];
+        assert_eq!(anchor["kind"], "clock_anchor");
+        assert_eq!(anchor["clock"], "CLOCK_MONOTONIC");
+        let lower = anchor["instant_origin_lower_ns"].as_u64().unwrap();
+        let upper = anchor["instant_origin_upper_ns"].as_u64().unwrap();
+        assert!(0 < lower && lower <= upper && upper <= monotonic_ns().unwrap());
+        assert_eq!(rows[1]["event"]["kind"], "start");
         drop(span);
         Span::start("fft", Value::Null).unwrap().finish(json!({"columns": 8})).unwrap();
         check().unwrap();
@@ -202,9 +239,9 @@ mod tests {
             .lines()
             .map(|line| serde_json::from_str(line).unwrap())
             .collect();
-        assert_eq!(rows.len(), 4);
-        assert_eq!(rows[1]["event"]["complete"], false);
-        assert_eq!(rows[3]["event"]["work"]["columns"], 8);
+        assert_eq!(rows.len(), 5);
+        assert_eq!(rows[2]["event"]["complete"], false);
+        assert_eq!(rows[4]["event"]["work"]["columns"], 8);
         for (i, row) in rows.iter().enumerate() {
             assert_eq!(row["sequence"], i);
         }

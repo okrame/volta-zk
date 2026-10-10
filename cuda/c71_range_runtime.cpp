@@ -5,6 +5,9 @@
 #include <algorithm>
 #include <cstring>
 #include <new>
+#ifdef C71_OWNER_TRACE
+#include "c71_owner_trace.h"
+#endif
 using namespace c71_range;
 
 extern "C" {
@@ -140,6 +143,9 @@ struct ResidualQueryTransaction {
     uint32_t phase=0,mode=0,pad_rows=0,capacity=0,column=0,loaded=0,mask=0;
 };
 struct C71RangeContext {
+#ifdef C71_OWNER_TRACE
+    c71_owner_trace::Trace diagnostic;
+#endif
     C71RangeAccount account=nullptr;
     int device=0;
     cudaStream_t stream=nullptr;
@@ -199,9 +205,36 @@ bool full(const Buffer* b,uint32_t kind) {
     return b && b->kind==kind && b->initialized==b->count;
 }
 bool original(const Buffer* b) { return b && b->kind<=C71_I16 && b->initialized==b->count; }
+#ifdef C71_OWNER_TRACE
+struct TraceAllocation { int slot; uint32_t kind; uint64_t logical,capacity; };
+TraceAllocation trace_buffer(C71RangeContext* c,const Buffer* b) {
+    return {int(b-c->buffers),b->kind,b->count*sizes[b->kind],b->capacity};
+}
+int trace_event(C71RangeContext* c,const char* op,const char* edge,
+    TraceAllocation a,int status,unsigned line) {
+    return c->diagnostic.emit(op,edge,a.slot,a.kind,a.logical,a.capacity,
+        c->stats.arena_bytes,c->stats.weights_bytes,status,line)
+        ? 0 : fail(c,"bounded owner trace failed");
+}
+#define C71_TRACE_BUFFER(c,b) const auto diagnostic_allocation=trace_buffer(c,b)
+#define C71_TRACE_VALUE(slot,kind,logical,capacity) const TraceAllocation diagnostic_allocation={slot,kind,logical,capacity}
+#define C71_TRACE_EVENT(c,edge,status) trace_event(c,__func__,edge,diagnostic_allocation,status,__LINE__)
+#define C71_TRACE_RECOUNT(c) recount(c)
+#else
+#define C71_TRACE_BUFFER(c,b)
+#define C71_TRACE_VALUE(slot,kind,logical,capacity)
+#define C71_TRACE_EVENT(c,edge,status) 0
+#define C71_TRACE_RECOUNT(c)
+#endif
 int fence(C71RangeContext* c) {
+    C71_TRACE_VALUE(-1,0,0,0);
+    const bool trace_failed=C71_TRACE_EVENT(c,"before",0)!=0;
     ++c->stats.fences;
-    return checked(c,cudaStreamSynchronize(c->stream));
+    // Drain accepted work even when a diagnostic write failed during cleanup.
+    const auto status=cudaStreamSynchronize(c->stream);
+    const int result=checked(c,status);
+    const bool after_failed=C71_TRACE_EVENT(c,"after",status)!=0;
+    return result || trace_failed || after_failed ? -1 : 0;
 }
 int launched(C71RangeContext* c,cudaError_t e) { ++c->stats.launches; return checked(c,e); }
 void recount(C71RangeContext* c) {
@@ -249,6 +282,11 @@ extern "C" int c71_range_create(int device,uint64_t bytes,uint64_t reserve,C71Ra
     c->device=device; c->usable=bytes-reserve; c->stats.host_owner_bytes=sizeof(*c);
     // On an initialization error return the stopped owner for diagnostics/close.
     *out=c;
+#ifdef C71_OWNER_TRACE
+    if(!c->diagnostic.open()) return fail(c,"private owner trace initialization failed");
+#endif
+    C71_TRACE_VALUE(-1,0,sizeof(*c),0);
+    if(C71_TRACE_EVENT(c,"before",0)) return -1;
     if(checked(c,cudaSetDevice(device))) return -1;
     // sm_90 kernels need at most 216 B; avoid the unused default stack reserve.
     size_t stack=0;
@@ -256,26 +294,45 @@ extern "C" int c71_range_create(int device,uint64_t bytes,uint64_t reserve,C71Ra
        checked(c,cudaDeviceGetLimit(&stack,cudaLimitStackSize))) return -1;
     if(stack!=256) return fail(c,"CUDA initial stack reservation differs");
     if(checked(c,cudaStreamCreateWithFlags(&c->stream,cudaStreamNonBlocking))) return -1;
+    if(C71_TRACE_EVENT(c,"after",0)) return -1;
     return 0; // Budget only: idle device capacity must not coexist with host PCS.
 }
 extern "C" int c71_range_close(C71RangeContext* c,C71RangeStats* out) {
     if(!c || !out) return -1;
+    C71_TRACE_VALUE(-1,0,sizeof(*c),0);
+    const bool diagnostic_error=C71_TRACE_EVENT(c,"before",0)!=0;
     bool error=checked(c,cudaSetDevice(c->device))!=0;
     if(!error) {
         if(c->stream && fence(c)) error=true;
         if(c->weights) {
-            if(checked(c,cudaFree(c->weights))) error=true;
+            C71_TRACE_VALUE(-1,C71_I16,c->stats.weights_bytes,c->stats.weights_bytes);
+            const bool trace_failed=C71_TRACE_EVENT(c,"before",0)!=0;
+            const auto status=cudaFree(c->weights);
+            if(checked(c,status)) error=true;
             else c->stats.weights_bytes=0;
+            if(C71_TRACE_EVENT(c,"after",status) || trace_failed) error=true;
         }
         for(auto& b:c->buffers) if(b.id) {
             // A failed cudaFree has uncertain ownership. Never submit the same
             // pointer again; keep its entire capacity in the failure ledger.
-            if(b.release_failed || checked(c,cudaFree(b.allocation))) error=true;
+            if(b.release_failed) { error=true; continue; }
+            C71_TRACE_BUFFER(c,&b);
+            const bool trace_failed=C71_TRACE_EVENT(c,"before",0)!=0;
+            const auto status=cudaFree(b.allocation);
+            if(checked(c,status)) error=true;
             else { if(c->account) c->account(-int64_t(b.capacity)); b={}; ++c->stats.releases; }
+            C71_TRACE_RECOUNT(c);
+            if(C71_TRACE_EVENT(c,"after",status) || trace_failed) error=true;
         }
         recount(c);
         if(c->stream && checked(c,cudaStreamDestroy(c->stream))) error=true;
     }
+#ifdef C71_OWNER_TRACE
+    if(C71_TRACE_EVENT(c,"after",error?1:0) || diagnostic_error) error=true;
+    if(!c->diagnostic.close()) error=true;
+#else
+    (void)diagnostic_error;
+#endif
     c->stats.cleanup_failed=error;
     *out=c->stats;
     if(c->account) c->account(-int64_t(sizeof(*c)));
@@ -295,12 +352,20 @@ int allocate(C71RangeContext* c,uint32_t kind,uint64_t count,uint64_t* out) {
     while(!next_handle.compare_exchange_weak(id,id+1));
     void* allocation=nullptr;
     if(c->account && c->account(int64_t(capacity))) return fail(c,"joint temporary budget exhausted");
-    if(checked(c,cudaMalloc(&allocation,capacity))) {
+    C71_TRACE_VALUE(int(slot-c->buffers),kind,count*sizes[kind],capacity);
+    if(C71_TRACE_EVENT(c,"before",0)) {
         if(c->account) c->account(-int64_t(capacity));
         return -1;
     }
+    const auto status=cudaMalloc(&allocation,capacity);
+    if(checked(c,status)) {
+        if(c->account) c->account(-int64_t(capacity));
+        (void)C71_TRACE_EVENT(c,"after",status);
+        return -1;
+    }
     *slot={id,allocation,capacity,count,0,kind}; *out=id;
-    ++c->stats.allocations; recount(c); return 0;
+    ++c->stats.allocations; recount(c);
+    return C71_TRACE_EVENT(c,"after",status) ? -1 : 0;
 }
 }
 extern "C" int c71_range_alloc(C71RangeContext* c,uint32_t kind,uint64_t count,uint64_t* out) {
@@ -316,10 +381,13 @@ extern "C" int c71_range_release(C71RangeContext* c,uint64_t id) {
     // Actual release, not a logical Vec-style truncation or a retained pool.
     // Fence even on the deferred test driver; a failure keeps capacity charged.
     if(fence(c)) return -1;
-    if(checked(c,cudaFree(b->allocation))) { b->release_failed=true; return -1; }
+    C71_TRACE_BUFFER(c,b);
+    if(C71_TRACE_EVENT(c,"before",0)) return -1;
+    const auto status=cudaFree(b->allocation);
+    if(checked(c,status)) { b->release_failed=true; (void)C71_TRACE_EVENT(c,"after",status); return -1; }
     if(c->account) c->account(-int64_t(b->capacity));
     *b={}; ++c->stats.releases; recount(c);
-    return 0;
+    return C71_TRACE_EVENT(c,"after",status) ? -1 : 0;
 }
 extern "C" int c71_range_upload(C71RangeContext* c,uint64_t id,const void* input,uint64_t bytes) {
     if(!ready(c)) return -1;
@@ -449,9 +517,13 @@ extern "C" int c71_dense_weights_begin(C71RangeContext* c,uint64_t words) {
     if(checked(c,cudaMemGetInfo(&free,&total))) return -1;
     if(free<margin || bytes>free-margin || bytes+c->stats.arena_bytes>80000000000ULL-margin)
         return fail(c,"dense W device margin exhausted");
-    if(checked(c,cudaMalloc(reinterpret_cast<void**>(&c->weights),bytes))) return -1;
+    C71_TRACE_VALUE(-1,C71_I16,bytes,bytes);
+    if(C71_TRACE_EVENT(c,"before",0)) return -1;
+    const auto status=cudaMalloc(reinterpret_cast<void**>(&c->weights),bytes);
+    if(checked(c,status)) { (void)C71_TRACE_EVENT(c,"after",status); return -1; }
     c->stats.weights_bytes=bytes;
     c->stats.peak_reserved_bytes=std::max(c->stats.peak_reserved_bytes,c->stats.arena_bytes+bytes);
+    if(C71_TRACE_EVENT(c,"after",status)) return -1;
     // Recheck after allocation; other device users are outside this owner's
     // control. This is an admission check, not a whole-pipeline peak meter.
     if(checked(c,cudaMemGetInfo(&free,&total))) return -1;
@@ -499,9 +571,13 @@ int dense_complete(C71RangeContext* c,uint64_t flag,Buffer* output) {
     // after the same fence. Public release still requires its own fence.
     if(flag!=c->numeric_flag) {
         auto* completed_flag=buffer(c,flag);
-        if(checked(c,cudaFree(completed_flag->allocation))) { completed_flag->release_failed=true; return -1; }
+        C71_TRACE_BUFFER(c,completed_flag);
+        if(C71_TRACE_EVENT(c,"before",0)) return -1;
+        const auto status=cudaFree(completed_flag->allocation);
+        if(checked(c,status)) { completed_flag->release_failed=true; (void)C71_TRACE_EVENT(c,"after",status); return -1; }
         if(c->account) c->account(-int64_t(completed_flag->capacity));
         *completed_flag={}; ++c->stats.releases; recount(c);
+        if(C71_TRACE_EVENT(c,"after",status)) return -1;
     }
     output->initialized=output->count; return 0;
 }
@@ -1159,12 +1235,28 @@ extern "C" int c71_pcs_source_begin(C71RangeContext* c,uint64_t first,uint64_t s
        l->count!=4*s.rows || h->count!=4*c71_pcs::high_rows(s) || l->visits!=binding || h->visits!=binding ||
        (histogram && (!counts || counts->kind!=C71_PCS_BYTE_COUNTS_PENDING || counts->initialized || counts->count!=256 || s.first_coset)))
         return fail(c,"PCS source begin geometry, powers or state");
+#ifdef C71_OWNER_TRACE
+    // Select a public A group so inference cannot consume the diagnostic cap.
+    // Existing allocations are snapshots, never fabricated malloc events.
+    if(c->diagnostic.arm(s.first_coset/4)) {
+        if(c->stats.weights_bytes && trace_event(c,"retained_weights","after",
+            {-1,C71_I16,c->stats.weights_bytes,c->stats.weights_bytes},0,__LINE__)) return -1;
+        for(const auto& retained:c->buffers) if(retained.id &&
+            trace_event(c,"retained_buffer","after",trace_buffer(c,&retained),0,__LINE__)) return -1;
+    }
+    C71_TRACE_VALUE(-1,0,0,0);
+    if(C71_TRACE_EVENT(c,"before",0)) return -1;
+#endif
     if(dense_flag(c,&a->flag)) return -1;
     for(auto* out: {a,b,counts}) if(out) {
         if(checked(c,cudaMemsetAsync(ptr<void>(c,out),0,out->count*8,c->stream))) return -1;
         c->stats.zeroed_bytes+=out->count*8;
     }
-    c->source={s,{first,second},low,high,histogram,0}; return 0;
+    c->source={s,{first,second},low,high,histogram,0};
+#ifdef C71_OWNER_TRACE
+    if(C71_TRACE_EVENT(c,"after",0)) return -1;
+#endif
+    return 0;
 }
 extern "C" int c71_pcs_source_tile(C71RangeContext* c,uint64_t original,const c71_pcs::SourceTile* tile) {
     if(!ready(c)) return -1;
@@ -1263,9 +1355,13 @@ int retire_private(C71RangeContext* c,uint64_t& id) {
     if(!id) return 0;
     auto* b=buffer(c,id);
     if(!b || b->kind!=C71_PCS_PRIVATE) return fail(c,"private PCS retirement type");
-    if(checked(c,cudaFree(b->allocation))) { b->release_failed=true; return -1; }
+    C71_TRACE_BUFFER(c,b);
+    if(C71_TRACE_EVENT(c,"before",0)) return -1;
+    const auto status=cudaFree(b->allocation);
+    if(checked(c,status)) { b->release_failed=true; (void)C71_TRACE_EVENT(c,"after",status); return -1; }
     if(c->account) c->account(-int64_t(b->capacity));
-    *b={}; id=0; ++c->stats.releases; recount(c); return 0;
+    *b={}; id=0; ++c->stats.releases; recount(c);
+    return C71_TRACE_EVENT(c,"after",status) ? -1 : 0;
 }
 bool private_band(C71RangeContext* c,uint64_t session,uint32_t group,uint64_t first,uint64_t count) {
     const uint64_t rows=c->salts.geometry.rows*c->salts.group_cosets;
@@ -1475,9 +1571,13 @@ template<class T> const T* linear_span(C71RangeContext* c,unsigned index) {
 int retire_linear(C71RangeContext* c,uint64_t& id) {
     auto* b=buffer(c,id);
     if(!b || b->kind!=C71_LINEAR_PRIVATE) return fail(c,"linear private retirement type");
-    if(checked(c,cudaFree(b->allocation))) { b->release_failed=true; return -1; }
+    C71_TRACE_BUFFER(c,b);
+    if(C71_TRACE_EVENT(c,"before",0)) return -1;
+    const auto status=cudaFree(b->allocation);
+    if(checked(c,status)) { b->release_failed=true; (void)C71_TRACE_EVENT(c,"after",status); return -1; }
     if(c->account) c->account(-int64_t(b->capacity));
-    *b={}; id=0; ++c->stats.releases; recount(c); return 0;
+    *b={}; id=0; ++c->stats.releases; recount(c);
+    return C71_TRACE_EVENT(c,"after",status) ? -1 : 0;
 }
 }
 extern "C" int c71_linear_begin(C71RangeContext* c,c71_linear::Shape shape,const c71_linear::Chunk* chunks,
@@ -1604,9 +1704,13 @@ int residual_retire(C71RangeContext* c,uint64_t& id) {
     auto* b=buffer(c,id);
     if(!b || (b->kind!=C71_PCS_PRIVATE && b->kind!=C71_PCS_RESIDUAL_PRIVATE))
         return fail(c,"PCS residual retirement type");
-    if(checked(c,cudaFree(b->allocation))) { b->release_failed=true; return -1; }
+    C71_TRACE_BUFFER(c,b);
+    if(C71_TRACE_EVENT(c,"before",0)) return -1;
+    const auto status=cudaFree(b->allocation);
+    if(checked(c,status)) { b->release_failed=true; (void)C71_TRACE_EVENT(c,"after",status); return -1; }
     if(c->account) c->account(-int64_t(b->capacity));
-    *b={}; id=0; ++c->stats.releases; recount(c); return 0;
+    *b={}; id=0; ++c->stats.releases; recount(c);
+    return C71_TRACE_EVENT(c,"after",status) ? -1 : 0;
 }
 int residual_zero(C71RangeContext* c,uint64_t id) {
     auto* b=buffer(c,id);

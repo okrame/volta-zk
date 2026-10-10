@@ -1,5 +1,6 @@
 """Campaign-controller fixtures only: no GPU, model, provider, or hardware credit."""
 import argparse
+import csv
 import io
 import json
 import os
@@ -252,10 +253,32 @@ def campaign(tmp_path, monkeypatch):
 def test_fake_GPU_process_success_private_outputs_and_no_overwrite(campaign):
     campaign.command = [sys.executable, '-c',
         'import os,time; print(os.environ["C71_DIAGNOSTIC_TIMEOUT_SECONDS"]); time.sleep(0.3)']
+    before_ns = time.clock_gettime_ns(time.CLOCK_MONOTONIC)
     assert monitor.run(campaign) == 0
+    after_ns = time.clock_gettime_ns(time.CLOCK_MONOTONIC)
     log = campaign.root / 'logs'
     report = json.loads((log / 'fixture.summary.json').read_text())
     assert report['samples'] > 0 and not report['physical_complete_peak']
+    assert 'CLOCK_MONOTONIC' in report['sample_interval_clock']
+    assert 'no GPU synchronization' in report['sample_interval_scope']
+    with (log / 'fixture.memory.csv').open(newline='') as handle:
+        reader = csv.DictReader(handle)
+        assert reader.fieldnames == [
+            'unix_seconds', 'sample_duration_seconds', 'host_tree_rss_bytes',
+            'host_tree_swap_bytes', 'whole_gpu_used_bytes', 'whole_gpu_free_bytes',
+            'resident_host_W_lower_bound_bytes', 'resident_device_W_bytes',
+            'sampled_temporary_bytes', 'W_transition_incomplete',
+            'cgroup_memory_current_bytes', 'disk_available_bytes', 'smaps_read_failures',
+            'monotonic_sample_start_ns', 'monotonic_sample_end_ns',
+        ]
+        rows = list(reader)
+    assert len(rows) == report['samples']
+    previous_end_ns = before_ns
+    for row in rows:
+        start_ns, end_ns = (int(row[name]) for name in
+                            ('monotonic_sample_start_ns', 'monotonic_sample_end_ns'))
+        assert before_ns <= previous_end_ns <= start_ns < end_ns <= after_ns
+        previous_end_ns = end_ns
     assert (log / 'fixture.stdout').read_text().strip() == '2'
     assert all(path.stat().st_mode & 0o777 == 0o600 for path in log.iterdir())
     original = (log / 'fixture.summary.json').read_bytes()

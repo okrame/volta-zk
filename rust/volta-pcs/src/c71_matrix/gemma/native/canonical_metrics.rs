@@ -289,6 +289,7 @@ mod tests {
         // Max resource: weight/current/two prior model census objects <=17
         // fields each; phase/slot/time/values/sample and three values keys.
         let resource = record(5+3+4*17+47,10,4,10);
+        // The four-field clock anchor is smaller than the existing progress bound.
         let progress = record(160,20,16,24);
         let stored = 44*phase+6*resource+64*size_of::<serde_json::Value>()
             +8*size_of::<serde_json::Value>()+8*size_of::<(&str,Option<usize>,Traffic)>();

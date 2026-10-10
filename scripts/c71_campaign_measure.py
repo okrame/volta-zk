@@ -349,7 +349,8 @@ def run(args):
                          'host_tree_swap_bytes', 'whole_gpu_used_bytes', 'whole_gpu_free_bytes',
                          'resident_host_W_lower_bound_bytes', 'resident_device_W_bytes',
                          'sampled_temporary_bytes', 'W_transition_incomplete',
-                         'cgroup_memory_current_bytes', 'disk_available_bytes', 'smaps_read_failures'])
+                         'cgroup_memory_current_bytes', 'disk_available_bytes', 'smaps_read_failures',
+                         'monotonic_sample_start_ns', 'monotonic_sample_end_ns'])
         environment = dict(os.environ, C71_DIAGNOSTIC_TIMEOUT_SECONDS=str(args.seconds))
         if progress:
             environment['C71_CANONICAL_MONITOR'] = '1'
@@ -368,6 +369,7 @@ def run(args):
         try:
             while process.poll() is None:
                 before = time.monotonic()
+                monotonic_sample_start_ns = time.clock_gettime_ns(time.CLOCK_MONOTONIC)
                 remaining = min(stop_at - before, end - time.time())
                 if remaining <= 0:
                     raise TimeoutError('phase or authorized compute deadline reached')
@@ -410,8 +412,10 @@ def run(args):
                 disk = disk_state.f_bavail * disk_state.f_frsize
                 temporary = None if transitioning or args.mode == 'calibration' else rss + used - host_w - device_w
                 smaps_failures = progress.smaps_read_failures - smaps_before if progress else 0
+                monotonic_sample_end_ns = time.clock_gettime_ns(time.CLOCK_MONOTONIC)
                 writer.writerow([time.time(), time.monotonic() - before, rss, swap, used, free,
-                                 host_w, device_w, temporary, int(transitioning), cgroup, disk, smaps_failures])
+                                 host_w, device_w, temporary, int(transitioning), cgroup, disk, smaps_failures,
+                                 monotonic_sample_start_ns, monotonic_sample_end_ns])
                 files['memory.csv'].flush()
                 samples += 1
                 incomplete += int(transitioning or smaps_failures > 0)
@@ -458,6 +462,8 @@ def run(args):
             'stable_samples': samples - incomplete,
             'smaps_read_failures': progress.smaps_read_failures if progress else 0,
             'sampling_target_seconds': SAMPLE_SECONDS,
+            'sample_interval_clock': 'Linux CLOCK_MONOTONIC, absolute nanoseconds on this host boot',
+            'sample_interval_scope': 'Start/end bracket collection of the resource sample; no GPU synchronization or instantaneous peak. External profiler clock alignment requires a matching clock or explicit anchor.',
             'sampled_stable_temporary_peak_bytes': joint_peak,
             'sampled_host_rss_peak_bytes': host_peak, 'sampled_whole_gpu_peak_bytes': gpu_peak,
             'observed_payload_peak_bytes': progress.peak if progress else None,

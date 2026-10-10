@@ -10,6 +10,10 @@ coprono marker non selezionati/selezionati, entrambi gli errori di ruolo,
 reader W con pagine grandi, codec cGGM e span del prefisso originale.
 I timeout locali rimangono esiti negativi; i limiti sotto non cambiano.
 
+Il [diagnostico A finale](../c7.1-history/h100-a-blocking-terminal-2026-10-10.md)
+conserva lo stop fisico anche con lanci sincroni: 86/512 gruppi, nessun
+certificato. I test finiti passati non sostituiscono il percorso completo.
+
 La [regressione del prefisso](../c7.1-history/h100-prefix-candidate-2026-10-10.md)
 fallisce prima della correzione e passa dopo sullo stesso binario della
 fixture C++: sei test, 12 casi di span, rifiuti precedenti dell'owner,

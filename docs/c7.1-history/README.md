@@ -19,6 +19,7 @@ valgono soltanto per il checkpoint che descrivono.
 
 ## Campagne recenti e decisioni operative
 
+- [Ultimo diagnostico H100 terminale](h100-a-blocking-terminal-2026-10-10.md): stop fisico anche con lanci sincroni, dopo 86 gruppi A.
 - [Code ridotte e diagnostico A](h100-a-quarter-2026-10-10.md): A03 supera il cap, parità sincrona 15/15 prima dell’ultimo diagnostico.
 - [Sesto trial H100 terminale](h100-canonical-06-2026-10-10.md): stop fisico dopo 35 gruppi A e diagnosi ancora aperta.
 - [W e setup del sesto trial H100](h100-setup06-checkpoint-2026-10-10.md): tempi completi, confronto cGGM e limiti della misura.

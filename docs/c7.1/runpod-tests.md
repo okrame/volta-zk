@@ -17,8 +17,9 @@ al precedente. L'[inferenza O=0 separata](../c7.1-history/h100-queue1-2026-10-09
 misura 84,382 s con token esatti; non è il tempo di una risposta certificata.
 Il [diagnostico A03 con code ridotte](../c7.1-history/h100-a-quarter-2026-10-10.md)
 termina anch'esso sul cap: 6.441.455.104 B dopo 22/512 gruppi.
-Il diagnostico finale A04 aggiunge lanci sincroni, dopo
-[15/15 parità reali](../../benchmarks/results/c71-h100-blocking-parity-2026-10-10-47af19bbe888.json).
+Anche il [diagnostico finale A04 sincrono](../c7.1-history/h100-a-blocking-terminal-2026-10-10.md)
+termina sul cap: 6.535.814.656 B dopo 86/512 gruppi. Le esecuzioni sono
+concluse; sono in corso esportazione finale e spegnimento del pod.
 La causa dello spike GPU resta aperta. I diagnostici omettono lo stato
 W/setup: anche un esito positivo non dimostra il picco canonico.
 
@@ -57,13 +58,11 @@ ricevono credito al picco stabile. Trentasei test del monitor passano.
 
 Il [diagnostico A03](../c7.1-history/h100-a-quarter-2026-10-10.md) con code
 `0.25x` fallisce sul cap dopo 529,424 s, prima del timeout di 3.900 s.
-A04 mantiene code ridotte e aggiunge `CUDA_LAUNCH_BLOCKING=1`, dopo
-[15/15 test reali più non lineare](../../benchmarks/results/c71-h100-blocking-parity-2026-10-10-47af19bbe888.json).
-È l'ultimo diagnostico, con deadline prima della fine calcolo: geometria
-D34 originale, 512 ricostruzioni, monete nuove e stessi cap fisici.
-Omette commitment W, setup, prova e promozione. La configurazione è
-esclusivamente diagnostica, senza selezione o guadagno di produzione
-asserito. La causa dello spike GPU del sesto trial rimane aperta.
+Il [diagnostico finale A04](../c7.1-history/h100-a-blocking-terminal-2026-10-10.md)
+con lanci sincroni termina anch'esso sul cap, dopo 86/512 gruppi:
+6.535.814.656 B. Nessun altro run è previsto. Si verificano gli export e
+si conferma lo spegnimento provider; il guard resta attivo fino alla
+conferma. La causa dello spike è aperta e il picco canonico non è ammesso.
 I [diagnostici precedenti](../c7.1-history/h100-a-prefix-progress-2026-10-10.md)
 conservano anche l'errore iniziale e lo stop pianificato dopo tre gruppi.
 

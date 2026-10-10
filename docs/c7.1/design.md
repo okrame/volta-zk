@@ -17,8 +17,9 @@ al precedente. L'[inferenza O=0 separata](../c7.1-history/h100-queue1-2026-10-09
 misura 84,382 s con token esatti; non è il tempo di una risposta certificata.
 Il [diagnostico A03 con code ridotte](../c7.1-history/h100-a-quarter-2026-10-10.md)
 termina anch'esso sul cap: 6.441.455.104 B dopo 22/512 gruppi.
-Il diagnostico finale A04 aggiunge lanci sincroni, dopo
-[15/15 parità reali](../../benchmarks/results/c71-h100-blocking-parity-2026-10-10-47af19bbe888.json).
+Anche il [diagnostico finale A04 sincrono](../c7.1-history/h100-a-blocking-terminal-2026-10-10.md)
+termina sul cap: 6.535.814.656 B dopo 86/512 gruppi. Le esecuzioni sono
+concluse; sono in corso esportazione finale e spegnimento del pod.
 La causa dello spike GPU resta aperta. I diagnostici omettono lo stato
 W/setup: anche un esito positivo non dimostra il picco canonico.
 

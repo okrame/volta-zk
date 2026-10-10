@@ -18,7 +18,10 @@ non sostituisce il percorso canonico; serve a diagnosticare questo stop.
 Il [diagnostico A](../c7.1-history/h100-a-diagnostic-2026-10-10.md) riproduce
 un rifiuto del tile originale: i consumer PCS/lineari richiedono capacità
 interamente scritta, mentre KV contiene un prefisso inizializzato. La
-correzione deve limitare gli span a quel prefisso, senza ammettere la coda.
+correzione limita gli span a quel prefisso, senza ammettere la coda.
+La [validazione sm_90](../c7.1-history/h100-prefix-validation-2026-10-10.md)
+passa 15/15 test CUDA reali con fixture aggiornate e il controllo non lineare;
+il commitment A completo resta da misurare.
 
 La correzione dei tre consumer usa `initialized` come limite degli span,
 come il gather già esistente; capacità, byte originali e ordine restano

@@ -18,12 +18,16 @@ non sostituisce il percorso canonico; serve a diagnosticare questo stop.
 Il [diagnostico A](../c7.1-history/h100-a-diagnostic-2026-10-10.md) riproduce
 un rifiuto del tile originale: i consumer PCS/lineari richiedono capacità
 interamente scritta, mentre KV contiene un prefisso inizializzato. La
-correzione deve limitare gli span a quel prefisso, senza ammettere la coda.
+correzione limita gli span a quel prefisso, senza ammettere la coda.
+La [validazione sm_90](../c7.1-history/h100-prefix-validation-2026-10-10.md)
+passa 15/15 test CUDA reali con fixture aggiornate e il controllo non lineare;
+il commitment A completo resta da misurare.
 
 La [candidata sul prefisso KV](../c7.1-history/h100-prefix-candidate-2026-10-10.md)
 passa sei test locali, inclusa regressione prima/dopo, 12 span validi e
-invalidi nei tre consumer, parità A e MAC originali. Attende ricompilazione
-sm_90 e nuova parità reale prima di un altro trial.
+invalidi nei tre consumer, parità A e MAC originali. La successiva
+ricompilazione sm_90 e parità reale 15/15 sono complete; il componente A
+con monete fresche verifica il punto di errore prima del nuovo trial.
 
 ## Stato e sequenza operativa
 
@@ -90,14 +94,17 @@ caricamento sale a 153,661 s; temporanee circa invariate, monitor più rapido.
 Le [due connessioni CUDA a 1](../c7.1-history/h100-queue1-2026-10-09.md)
 passano 15/15 reali e inferenza esatta a 84,382 s; massimo temporaneo
 campionato 1.216.531.968 B, riduzione misurata 50.434.048 B.
-`canonical-05` è in corso dalle 23:13:42 UTC su checkout `749b598`,
+`canonical-05` è stato avviato alle 23:13:42 UTC su checkout `749b598`,
 binario `920e684`, libreria `a32a6c3`: nuovo W/setup AES/journal, stesso Γ,
 cap e timeout 7.200 s. Il picco canonico completo rimane da dimostrare.
 Il [checkpoint W concluso](../c7.1-history/h100-w05-checkpoint-2026-10-09.md)
 riporta PCS 190,200 s, installazione 207,973 s e massimo campionato
 4.301.200.896 B. Caricamento 322,159 s; W pronto a 571,376 s dall'avvio.
-Il setup è in corso. La diagnostica locale del massimo replay non cambia
-il binario del trial né autorizza credito al picco completo.
+Il [trial terminale](../c7.1-history/h100-canonical-05-2026-10-09.md)
+completa il setup in 1.986,453 s, poi fallisce nel primo gruppo A:
+nessun certificato, nessuna violazione fisica osservata. La diagnostica
+locale del massimo replay non cambia il binario del trial né autorizza
+credito al picco completo.
 Deadline e guard della campagna restano invariati.
 
 La precedente campagna chiusa conserva il proprio fallimento nel commitment

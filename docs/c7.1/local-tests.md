@@ -70,12 +70,16 @@ input canonici si esegue soltanto sul pod autorizzato.
 Il [diagnostico A](../c7.1-history/h100-a-diagnostic-2026-10-10.md) riproduce
 un rifiuto del tile originale: i consumer PCS/lineari richiedono capacità
 interamente scritta, mentre KV contiene un prefisso inizializzato. La
-correzione deve limitare gli span a quel prefisso, senza ammettere la coda.
+correzione limita gli span a quel prefisso, senza ammettere la coda.
+La [validazione sm_90](../c7.1-history/h100-prefix-validation-2026-10-10.md)
+passa 15/15 test CUDA reali con fixture aggiornate e il controllo non lineare;
+il commitment A completo resta da misurare.
 
 La [candidata sul prefisso KV](../c7.1-history/h100-prefix-candidate-2026-10-10.md)
 passa sei test locali, inclusa regressione prima/dopo, 12 span validi e
-invalidi nei tre consumer, parità A e MAC originali. Attende ricompilazione
-sm_90 e nuova parità reale prima di un altro trial.
+invalidi nei tre consumer, parità A e MAC originali. La successiva
+ricompilazione sm_90 e parità reale 15/15 sono complete; il componente A
+con monete fresche verifica il punto di errore prima del nuovo trial.
 
 ## Limiti e ambiente
 

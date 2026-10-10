@@ -1,0 +1,471 @@
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function 'c71_argmax_slack_kernel' for 'sm_90'
+ptxas info    : Function properties for c71_argmax_slack_kernel
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 20 registers, used 0 barriers
+ptxas info    : Compile time = 10.094 ms
+ptxas info    : Compiling entry function 'c71_argmax_kernel' for 'sm_90'
+ptxas info    : Function properties for c71_argmax_kernel
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 17 registers, used 1 barriers, 2048 bytes smem
+ptxas info    : Compile time = 8.797 ms
+ptxas info    : Compiling entry function 'c71_rope_kernel' for 'sm_90'
+ptxas info    : Function properties for c71_rope_kernel
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 30 registers, used 0 barriers
+ptxas info    : Compile time = 9.896 ms
+ptxas info    : Compiling entry function 'c71_histogram_seal_kernel' for 'sm_90'
+ptxas info    : Function properties for c71_histogram_seal_kernel
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 8 registers, used 0 barriers
+ptxas info    : Compile time = 1.471 ms
+ptxas info    : Compiling entry function 'c71_lookup_kernel' for 'sm_90'
+ptxas info    : Function properties for c71_lookup_kernel
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 20 registers, used 0 barriers
+ptxas info    : Compile time = 3.407 ms
+ptxas info    : Compiling entry function 'c71_softmax_kernel' for 'sm_90'
+ptxas info    : Function properties for c71_softmax_kernel
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 30 registers, used 1 barriers, 3072 bytes smem
+ptxas info    : Compile time = 20.592 ms
+ptxas info    : Compiling entry function 'c71_pv_kernel' for 'sm_90'
+ptxas info    : Function properties for c71_pv_kernel
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 27 registers, used 0 barriers
+ptxas info    : Compile time = 11.277 ms
+ptxas info    : Compiling entry function 'c71_qk_kernel' for 'sm_90'
+ptxas info    : Function properties for c71_qk_kernel
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 32 registers, used 0 barriers
+ptxas info    : Compile time = 15.116 ms
+ptxas info    : Compiling entry function 'c71_rms_kernel' for 'sm_90'
+ptxas info    : Function properties for c71_rms_kernel
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 37 registers, used 1 barriers, 2048 bytes smem
+ptxas info    : Compile time = 19.224 ms
+ptxas info    : Compiling entry function 'c71_byte_scatter_kernel' for 'sm_90'
+ptxas info    : Function properties for c71_byte_scatter_kernel
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 32 registers, used 0 barriers
+ptxas info    : Compile time = 17.041 ms
+ptxas info    : Compiling entry function 'c71_dense_pointwise_kernel' for 'sm_90'
+ptxas info    : Function properties for c71_dense_pointwise_kernel
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 18 registers, used 0 barriers
+ptxas info    : Compile time = 4.429 ms
+ptxas info    : Compiling entry function 'c71_dense_rne' for 'sm_90'
+ptxas info    : Function properties for c71_dense_rne
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 16 registers, used 0 barriers
+ptxas info    : Compile time = 4.241 ms
+ptxas info    : Compiling entry function 'c71_dense_i16_mma' for 'sm_90'
+ptxas info    : Function properties for c71_dense_i16_mma
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 56 registers, used 0 barriers
+ptxas info    : Compile time = 27.116 ms
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function 'c71_range_h_coefficients' for 'sm_90'
+ptxas info    : Function properties for c71_range_h_coefficients
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 86 registers, used 0 barriers
+ptxas info    : Compile time = 202.024 ms
+ptxas info    : Compiling entry function 'c71_range_reduce' for 'sm_90'
+ptxas info    : Function properties for c71_range_reduce
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 39 registers, used 1 barriers, 24576 bytes smem
+ptxas info    : Compile time = 9.749 ms
+ptxas info    : Compiling entry function 'c71_range_coefficients' for 'sm_90'
+ptxas info    : Function properties for c71_range_coefficients
+    216 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 103 registers, used 1 barriers, 216 bytes cumulative stack size, 24576 bytes smem
+ptxas info    : Compile time = 259.761 ms
+ptxas info    : Compiling entry function 'c71_range_child_fold' for 'sm_90'
+ptxas info    : Function properties for c71_range_child_fold
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 54 registers, used 0 barriers
+ptxas info    : Compile time = 50.752 ms
+ptxas info    : Compiling entry function 'c71_range_h_fold' for 'sm_90'
+ptxas info    : Function properties for c71_range_h_fold
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 40 registers, used 0 barriers
+ptxas info    : Compile time = 33.857 ms
+ptxas info    : Compiling entry function 'c71_range_h_sum' for 'sm_90'
+ptxas info    : Function properties for c71_range_h_sum
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 32 registers, used 0 barriers
+ptxas info    : Compile time = 9.400 ms
+ptxas info    : Compiling entry function 'c71_range_groups_i16' for 'sm_90'
+ptxas info    : Function properties for c71_range_groups_i16
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 101 registers, used 1 barriers
+ptxas info    : Compile time = 278.846 ms
+ptxas info    : Compiling entry function 'c71_range_groups_u8' for 'sm_90'
+ptxas info    : Function properties for c71_range_groups_u8
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 101 registers, used 1 barriers
+ptxas info    : Compile time = 277.396 ms
+ptxas info    : Compiling entry function 'c71_range_canopy' for 'sm_90'
+ptxas info    : Function properties for c71_range_canopy
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 70 registers, used 0 barriers
+ptxas info    : Compile time = 31.608 ms
+ptxas info    : Compiling entry function 'c71_range_roots_i16' for 'sm_90'
+ptxas info    : Function properties for c71_range_roots_i16
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 66 registers, used 1 barriers
+ptxas info    : Compile time = 48.047 ms
+ptxas info    : Compiling entry function 'c71_range_roots_u8' for 'sm_90'
+ptxas info    : Function properties for c71_range_roots_u8
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 66 registers, used 1 barriers
+ptxas info    : Compile time = 47.460 ms
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_ZN48_GLOBAL__N__f49a62a0_15_c71_pcs_hash_cu_c43562605mergeEPN10c71_blake36Hash32ES2_mjj' for 'sm_90'
+ptxas info    : Function properties for _ZN48_GLOBAL__N__f49a62a0_15_c71_pcs_hash_cu_c43562605mergeEPN10c71_blake36Hash32ES2_mjj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 48 registers, used 0 barriers
+ptxas info    : Compile time = 39.275 ms
+ptxas info    : Compiling entry function '_ZN48_GLOBAL__N__f49a62a0_15_c71_pcs_hash_cu_c435626011short_pairsEPKmS1_PN10c71_blake36Hash32EmmmPj' for 'sm_90'
+ptxas info    : Function properties for _ZN48_GLOBAL__N__f49a62a0_15_c71_pcs_hash_cu_c435626011short_pairsEPKmS1_PN10c71_blake36Hash32EmmmPj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 56 registers, used 0 barriers
+ptxas info    : Compile time = 98.707 ms
+ptxas info    : Compiling entry function '_ZN48_GLOBAL__N__f49a62a0_15_c71_pcs_hash_cu_c435626012short_leavesEPKmS1_PN10c71_blake36Hash32EmmmPj' for 'sm_90'
+ptxas info    : Function properties for _ZN48_GLOBAL__N__f49a62a0_15_c71_pcs_hash_cu_c435626012short_leavesEPKmS1_PN10c71_blake36Hash32EmmmPj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 56 registers, used 0 barriers
+ptxas info    : Compile time = 54.732 ms
+ptxas info    : Compiling entry function '_ZN48_GLOBAL__N__f49a62a0_15_c71_pcs_hash_cu_c43562605nodesEPKN10c71_blake36Hash32EPS1_mm' for 'sm_90'
+ptxas info    : Function properties for _ZN48_GLOBAL__N__f49a62a0_15_c71_pcs_hash_cu_c43562605nodesEPKN10c71_blake36Hash32EPS1_mm
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 32 registers, used 0 barriers
+ptxas info    : Compile time = 40.503 ms
+ptxas info    : Compiling entry function '_ZN48_GLOBAL__N__f49a62a0_15_c71_pcs_hash_cu_c43562604leafEjPKmS1_PN10c71_blake36Hash32EmmmjPj' for 'sm_90'
+ptxas info    : Function properties for _ZN48_GLOBAL__N__f49a62a0_15_c71_pcs_hash_cu_c43562604leafEjPKmS1_PN10c71_blake36Hash32EmmmjPj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 40 registers, used 0 barriers
+ptxas info    : Compile time = 73.866 ms
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_ZN50_GLOBAL__N__9d8216be_17_c71_pcs_weight_cu_45df1ae510accumulateEPKsPKN7c71_pcs10WeightTileEmmPKmS7_S7_PmNS2_11WeightShapeEPj' for 'sm_90'
+ptxas info    : Function properties for _ZN50_GLOBAL__N__9d8216be_17_c71_pcs_weight_cu_45df1ae510accumulateEPKsPKN7c71_pcs10WeightTileEmmPKmS7_S7_PmNS2_11WeightShapeEPj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 44 registers, used 0 barriers
+ptxas info    : Compile time = 31.006 ms
+ptxas info    : Compiling entry function '_ZN50_GLOBAL__N__9d8216be_17_c71_pcs_weight_cu_45df1ae513compare_wordsEPKmS1_mPj' for 'sm_90'
+ptxas info    : Function properties for _ZN50_GLOBAL__N__9d8216be_17_c71_pcs_weight_cu_45df1ae513compare_wordsEPKmS1_mPj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 8 registers, used 0 barriers
+ptxas info    : Compile time = 2.153 ms
+ptxas info    : Compiling entry function '_ZN50_GLOBAL__N__9d8216be_17_c71_pcs_weight_cu_45df1ae56powersEPmS0_N7c71_pcs11WeightShapeEm' for 'sm_90'
+ptxas info    : Function properties for _ZN50_GLOBAL__N__9d8216be_17_c71_pcs_weight_cu_45df1ae56powersEPmS0_N7c71_pcs11WeightShapeEm
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 26 registers, used 0 barriers
+ptxas info    : Compile time = 13.889 ms
+ptxas info    : Compiling entry function '_ZN50_GLOBAL__N__9d8216be_17_c71_pcs_weight_cu_45df1ae513fill_twiddlesEPmmm' for 'sm_90'
+ptxas info    : Function properties for _ZN50_GLOBAL__N__9d8216be_17_c71_pcs_weight_cu_45df1ae513fill_twiddlesEPmmm
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 23 registers, used 0 barriers
+ptxas info    : Compile time = 3.946 ms
+ptxas info    : Compiling entry function '_ZN7c71_fft21parity_scatter_kernelEPKmPmmm' for 'sm_90'
+ptxas info    : Function properties for _ZN7c71_fft21parity_scatter_kernelEPKmPmmm
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 20 registers, used 0 barriers
+ptxas info    : Compile time = 5.635 ms
+ptxas info    : Compiling entry function '_ZN7c71_fft19radix2_merge_kernelILb0EEEvPmPKmmmm' for 'sm_90'
+ptxas info    : Function properties for _ZN7c71_fft19radix2_merge_kernelILb0EEEvPmPKmmmm
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 22 registers, used 0 barriers
+ptxas info    : Compile time = 7.119 ms
+ptxas info    : Compiling entry function '_ZN7c71_fft19radix2_merge_kernelILb1EEEvPmPKmmmm' for 'sm_90'
+ptxas info    : Function properties for _ZN7c71_fft19radix2_merge_kernelILb1EEEvPmPKmmmm
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 24 registers, used 0 barriers
+ptxas info    : Compile time = 8.681 ms
+ptxas info    : Compiling entry function '_ZN7c71_fft22tiled_transpose_kernelILb0ELb1EEEvPmPKmmmm' for 'sm_90'
+ptxas info    : Function properties for _ZN7c71_fft22tiled_transpose_kernelILb0ELb1EEEvPmPKmmmm
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 40 registers, used 1 barriers, 16896 bytes smem
+ptxas info    : Compile time = 11.410 ms
+ptxas info    : Compiling entry function '_ZN7c71_fft22tiled_transpose_kernelILb1ELb0EEEvPmPKmmmm' for 'sm_90'
+ptxas info    : Function properties for _ZN7c71_fft22tiled_transpose_kernelILb1ELb0EEEvPmPKmmmm
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 40 registers, used 1 barriers, 16896 bytes smem
+ptxas info    : Compile time = 12.302 ms
+ptxas info    : Compiling entry function '_ZN7c71_fft22tiled_transpose_kernelILb0ELb0EEEvPmPKmmmm' for 'sm_90'
+ptxas info    : Function properties for _ZN7c71_fft22tiled_transpose_kernelILb0ELb0EEEvPmPKmmmm
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 40 registers, used 1 barriers, 16896 bytes smem
+ptxas info    : Compile time = 8.469 ms
+ptxas info    : Compiling entry function '_ZN7c71_fft14row_fft_kernelEPmPKmmimm' for 'sm_90'
+ptxas info    : Function properties for _ZN7c71_fft14row_fft_kernelEPmPKmmimm
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 32 registers, used 1 barriers
+ptxas info    : Compile time = 7.488 ms
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_ZN57_GLOBAL__N__c13336da_24_c71_pcs_weight_tensor_cu_f8cd9a5610accumulateEPKsPKN7c71_pcs10WeightTileEmmPKmS7_S7_PmNS2_11WeightShapeEPj' for 'sm_90'
+ptxas info    : Function properties for _ZN57_GLOBAL__N__c13336da_24_c71_pcs_weight_tensor_cu_f8cd9a5610accumulateEPKsPKN7c71_pcs10WeightTileEmmPKmS7_S7_PmNS2_11WeightShapeEPj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 72 registers, used 1 barriers, 8448 bytes smem
+ptxas info    : Compile time = 107.290 ms
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_ZN50_GLOBAL__N__3dbe3f03_17_c71_pcs_source_cu_f972792c6leavesEPKmS1_S1_PN10c71_blake36Hash32EmmmPj' for 'sm_90'
+ptxas info    : Function properties for _ZN50_GLOBAL__N__3dbe3f03_17_c71_pcs_source_cu_f972792c6leavesEPKmS1_S1_PN10c71_blake36Hash32EmmmPj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 56 registers, used 0 barriers
+ptxas info    : Compile time = 84.504 ms
+ptxas info    : Compiling entry function '_ZN50_GLOBAL__N__3dbe3f03_17_c71_pcs_source_cu_f972792c3padEPmPKmS2_S2_N7c71_pcs11SourceShapeEjPj' for 'sm_90'
+ptxas info    : Function properties for _ZN50_GLOBAL__N__3dbe3f03_17_c71_pcs_source_cu_f972792c3padEPmPKmS2_S2_N7c71_pcs11SourceShapeEjPj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 30 registers, used 0 barriers
+ptxas info    : Compile time = 14.882 ms
+ptxas info    : Compiling entry function '_ZN50_GLOBAL__N__3dbe3f03_17_c71_pcs_source_cu_f972792c4tileEPKvjN7c71_pcs10SourceTileEPKmPmS6_S6_NS2_11SourceShapeEPj' for 'sm_90'
+ptxas info    : Function properties for _ZN50_GLOBAL__N__3dbe3f03_17_c71_pcs_source_cu_f972792c4tileEPKvjN7c71_pcs10SourceTileEPKmPmS6_S6_NS2_11SourceShapeEPj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 32 registers, used 1 barriers, 1024 bytes smem
+ptxas info    : Compile time = 34.660 ms
+ptxas info    : Compiling entry function '_ZN50_GLOBAL__N__3dbe3f03_17_c71_pcs_source_cu_f972792c6powersEPmS0_N7c71_pcs11SourceShapeEm' for 'sm_90'
+ptxas info    : Function properties for _ZN50_GLOBAL__N__3dbe3f03_17_c71_pcs_source_cu_f972792c6powersEPmS0_N7c71_pcs11SourceShapeEm
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 26 registers, used 0 barriers
+ptxas info    : Compile time = 13.365 ms
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_ZN49_GLOBAL__N__0fb3c83f_16_c71_pcs_salts_cu_8fbbb6916replayEPKN9c71_salts10DescriptorEPmmmmS4_S4_Pj' for 'sm_90'
+ptxas info    : Function properties for _ZN49_GLOBAL__N__0fb3c83f_16_c71_pcs_salts_cu_8fbbb6916replayEPKN9c71_salts10DescriptorEPmmmmS4_S4_Pj
+    112 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 64 registers, used 0 barriers, 112 bytes cumulative stack size
+ptxas info    : Compile time = 39.235 ms
+ptxas info    : Compiling entry function '_ZN49_GLOBAL__N__0fb3c83f_16_c71_pcs_salts_cu_8fbbb69111empty_chunkEN9c71_salts5ChunkENS0_8GeometryEPmS3_PNS0_8ProgressEPj' for 'sm_90'
+ptxas info    : Function properties for _ZN49_GLOBAL__N__0fb3c83f_16_c71_pcs_salts_cu_8fbbb69111empty_chunkEN9c71_salts5ChunkENS0_8GeometryEPmS3_PNS0_8ProgressEPj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 22 registers, used 0 barriers
+ptxas info    : Compile time = 1.933 ms
+ptxas info    : Compiling entry function '_ZN49_GLOBAL__N__0fb3c83f_16_c71_pcs_salts_cu_8fbbb69117select_boundariesEN9c71_salts5ChunkENS0_8GeometryEPKhPKjS6_S6_PmS7_PNS0_8ProgressE' for 'sm_90'
+ptxas info    : Function properties for _ZN49_GLOBAL__N__0fb3c83f_16_c71_pcs_salts_cu_8fbbb69117select_boundariesEN9c71_salts5ChunkENS0_8GeometryEPKhPKjS6_S6_PmS7_PNS0_8ProgressE
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 32 registers, used 0 barriers
+ptxas info    : Compile time = 15.420 ms
+ptxas info    : Compiling entry function '_ZN49_GLOBAL__N__0fb3c83f_16_c71_pcs_salts_cu_8fbbb69117prefix_group_sumsEN9c71_salts5ChunkENS0_8GeometryEPjPNS0_8ProgressES3_' for 'sm_90'
+ptxas info    : Function properties for _ZN49_GLOBAL__N__0fb3c83f_16_c71_pcs_salts_cu_8fbbb69117prefix_group_sumsEN9c71_salts5ChunkENS0_8GeometryEPjPNS0_8ProgressES3_
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 20 registers, used 1 barriers, 1024 bytes smem
+ptxas info    : Compile time = 6.500 ms
+ptxas info    : Compiling entry function '_ZN49_GLOBAL__N__0fb3c83f_16_c71_pcs_salts_cu_8fbbb69117prefix_block_sumsEN9c71_salts5ChunkEPjS2_' for 'sm_90'
+ptxas info    : Function properties for _ZN49_GLOBAL__N__0fb3c83f_16_c71_pcs_salts_cu_8fbbb69117prefix_block_sumsEN9c71_salts5ChunkEPjS2_
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 13 registers, used 1 barriers, 1024 bytes smem
+ptxas info    : Compile time = 4.137 ms
+ptxas info    : Compiling entry function '_ZN49_GLOBAL__N__0fb3c83f_16_c71_pcs_salts_cu_8fbbb69116masks_and_prefixEPKN9c71_salts10DescriptorENS0_5ChunkEPhPjS6_' for 'sm_90'
+ptxas info    : Function properties for _ZN49_GLOBAL__N__0fb3c83f_16_c71_pcs_salts_cu_8fbbb69116masks_and_prefixEPKN9c71_salts10DescriptorENS0_5ChunkEPhPjS6_
+    128 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 56 registers, used 1 barriers, 128 bytes cumulative stack size, 1024 bytes smem
+ptxas info    : Compile time = 62.424 ms
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_ZN49_GLOBAL__N__19f53393_16_c71_pcs_query_cu_0c1279be14add_correctionEPmPKmm' for 'sm_90'
+ptxas info    : Function properties for _ZN49_GLOBAL__N__19f53393_16_c71_pcs_query_cu_0c1279be14add_correctionEPmPKmm
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 14 registers, used 0 barriers
+ptxas info    : Compile time = 3.192 ms
+ptxas info    : Compiling entry function '_ZN49_GLOBAL__N__19f53393_16_c71_pcs_query_cu_0c1279be13split_productEPKmPmS2_m' for 'sm_90'
+ptxas info    : Function properties for _ZN49_GLOBAL__N__19f53393_16_c71_pcs_query_cu_0c1279be13split_productEPKmPmS2_m
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 16 registers, used 0 barriers
+ptxas info    : Compile time = 1.937 ms
+ptxas info    : Compiling entry function '_ZN49_GLOBAL__N__19f53393_16_c71_pcs_query_cu_0c1279be12extend_shiftEPKmPmm' for 'sm_90'
+ptxas info    : Function properties for _ZN49_GLOBAL__N__19f53393_16_c71_pcs_query_cu_0c1279be12extend_shiftEPKmPmm
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 12 registers, used 0 barriers
+ptxas info    : Compile time = 1.777 ms
+ptxas info    : Compiling entry function '_ZN49_GLOBAL__N__19f53393_16_c71_pcs_query_cu_0c1279be16subtract_productEPKmS1_Pmmmb' for 'sm_90'
+ptxas info    : Function properties for _ZN49_GLOBAL__N__19f53393_16_c71_pcs_query_cu_0c1279be16subtract_productEPKmS1_Pmmmb
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 18 registers, used 0 barriers
+ptxas info    : Compile time = 7.421 ms
+ptxas info    : Compiling entry function '_ZN49_GLOBAL__N__19f53393_16_c71_pcs_query_cu_0c1279be16reverse_quotientEPKmPmmm' for 'sm_90'
+ptxas info    : Function properties for _ZN49_GLOBAL__N__19f53393_16_c71_pcs_query_cu_0c1279be16reverse_quotientEPKmPmmm
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 16 registers, used 0 barriers
+ptxas info    : Compile time = 5.754 ms
+ptxas info    : Compiling entry function '_ZN49_GLOBAL__N__19f53393_16_c71_pcs_query_cu_0c1279be15multiply_factorEPmPKmm' for 'sm_90'
+ptxas info    : Function properties for _ZN49_GLOBAL__N__19f53393_16_c71_pcs_query_cu_0c1279be15multiply_factorEPmPKmm
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 18 registers, used 0 barriers
+ptxas info    : Compile time = 2.486 ms
+ptxas info    : Compiling entry function '_ZN49_GLOBAL__N__19f53393_16_c71_pcs_query_cu_0c1279be12reverse_highEPKmPmmmb' for 'sm_90'
+ptxas info    : Function properties for _ZN49_GLOBAL__N__19f53393_16_c71_pcs_query_cu_0c1279be12reverse_highEPKmPmmmb
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 16 registers, used 0 barriers
+ptxas info    : Compile time = 6.531 ms
+ptxas info    : Compiling entry function '_ZN49_GLOBAL__N__19f53393_16_c71_pcs_query_cu_0c1279be15tiny_remaindersEPKmS1_S1_Pmmmb' for 'sm_90'
+ptxas info    : Function properties for _ZN49_GLOBAL__N__19f53393_16_c71_pcs_query_cu_0c1279be15tiny_remaindersEPKmS1_S1_Pmmmb
+    192 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 34 registers, used 0 barriers, 192 bytes cumulative stack size
+ptxas info    : Compile time = 101.114 ms
+ptxas info    : Compiling entry function '_ZN49_GLOBAL__N__19f53393_16_c71_pcs_query_cu_0c1279be15load_weight_lowEPKsPKN7c71_pcs10WeightTileEmmPKmPmmNS2_10QueryBlockE' for 'sm_90'
+ptxas info    : Function properties for _ZN49_GLOBAL__N__19f53393_16_c71_pcs_query_cu_0c1279be15load_weight_lowEPKsPKN7c71_pcs10WeightTileEmmPKmPmmNS2_10QueryBlockE
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 26 registers, used 0 barriers
+ptxas info    : Compile time = 9.963 ms
+ptxas info    : Compiling entry function '_ZN49_GLOBAL__N__19f53393_16_c71_pcs_query_cu_0c1279be8load_lowEPKhPKmPmmN7c71_pcs10QueryBlockE' for 'sm_90'
+ptxas info    : Function properties for _ZN49_GLOBAL__N__19f53393_16_c71_pcs_query_cu_0c1279be8load_lowEPKhPKmPmmN7c71_pcs10QueryBlockE
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 12 registers, used 0 barriers
+ptxas info    : Compile time = 2.842 ms
+ptxas info    : Compiling entry function '_ZN7c71_fft21parity_scatter_kernelEPKmPmmm' for 'sm_90'
+ptxas info    : Function properties for _ZN7c71_fft21parity_scatter_kernelEPKmPmmm
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 20 registers, used 0 barriers
+ptxas info    : Compile time = 5.716 ms
+ptxas info    : Compiling entry function '_ZN7c71_fft19radix2_merge_kernelILb0EEEvPmPKmmmm' for 'sm_90'
+ptxas info    : Function properties for _ZN7c71_fft19radix2_merge_kernelILb0EEEvPmPKmmmm
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 22 registers, used 0 barriers
+ptxas info    : Compile time = 7.096 ms
+ptxas info    : Compiling entry function '_ZN7c71_fft19radix2_merge_kernelILb1EEEvPmPKmmmm' for 'sm_90'
+ptxas info    : Function properties for _ZN7c71_fft19radix2_merge_kernelILb1EEEvPmPKmmmm
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 24 registers, used 0 barriers
+ptxas info    : Compile time = 8.953 ms
+ptxas info    : Compiling entry function '_ZN7c71_fft22tiled_transpose_kernelILb0ELb1EEEvPmPKmmmm' for 'sm_90'
+ptxas info    : Function properties for _ZN7c71_fft22tiled_transpose_kernelILb0ELb1EEEvPmPKmmmm
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 40 registers, used 1 barriers, 16896 bytes smem
+ptxas info    : Compile time = 11.455 ms
+ptxas info    : Compiling entry function '_ZN7c71_fft22tiled_transpose_kernelILb1ELb0EEEvPmPKmmmm' for 'sm_90'
+ptxas info    : Function properties for _ZN7c71_fft22tiled_transpose_kernelILb1ELb0EEEvPmPKmmmm
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 40 registers, used 1 barriers, 16896 bytes smem
+ptxas info    : Compile time = 12.417 ms
+ptxas info    : Compiling entry function '_ZN7c71_fft22tiled_transpose_kernelILb0ELb0EEEvPmPKmmmm' for 'sm_90'
+ptxas info    : Function properties for _ZN7c71_fft22tiled_transpose_kernelILb0ELb0EEEvPmPKmmmm
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 40 registers, used 1 barriers, 16896 bytes smem
+ptxas info    : Compile time = 8.582 ms
+ptxas info    : Compiling entry function '_ZN7c71_fft14row_fft_kernelEPmPKmmimm' for 'sm_90'
+ptxas info    : Function properties for _ZN7c71_fft14row_fft_kernelEPmPKmmimm
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 32 registers, used 1 barriers
+ptxas info    : Compile time = 7.699 ms
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_ZN53_GLOBAL__N__e10a6fef_20_c71_linear_native_cu_49af304b13source_kernelEPKvjN7c71_pcs10SourceTileEN10c71_linear5ShapeEPKNS4_5ChunkEPK3Fp3PKNS4_5GroupEPKNS4_8IntervalESB_PNS4_6ResultEPj' for 'sm_90'
+ptxas info    : Function properties for _ZN53_GLOBAL__N__e10a6fef_20_c71_linear_native_cu_49af304b13source_kernelEPKvjN7c71_pcs10SourceTileEN10c71_linear5ShapeEPKNS4_5ChunkEPK3Fp3PKNS4_5GroupEPKNS4_8IntervalESB_PNS4_6ResultEPj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 128 registers, used 1 barriers, 30720 bytes smem
+ptxas info    : Compile time = 164.036 ms
+ptxas info    : Compiling entry function '_ZN53_GLOBAL__N__e10a6fef_20_c71_linear_native_cu_49af304b13weight_kernelEPKsPKN7c71_pcs10WeightTileEmmmN10c71_linear5ShapeEPKNS6_5ChunkEPK3Fp3PKNS6_5GroupEPKNS6_8IntervalESD_PNS6_6ResultEPj' for 'sm_90'
+ptxas info    : Function properties for _ZN53_GLOBAL__N__e10a6fef_20_c71_linear_native_cu_49af304b13weight_kernelEPKsPKN7c71_pcs10WeightTileEmmmN10c71_linear5ShapeEPKNS6_5ChunkEPK3Fp3PKNS6_5GroupEPKNS6_8IntervalESD_PNS6_6ResultEPj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 127 registers, used 1 barriers, 30720 bytes smem
+ptxas info    : Compile time = 153.804 ms
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d017contract_residentEN16c71_pcs_residual11ConstPlanesENS0_5ShapeEPKNS0_5ChunkEPKNS0_1EEjmjS8_S8_PS6_Pjm' for 'sm_90'
+ptxas info    : Function properties for _ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d017contract_residentEN16c71_pcs_residual11ConstPlanesENS0_5ShapeEPKNS0_5ChunkEPKNS0_1EEjmjS8_S8_PS6_Pjm
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 70 registers, used 1 barriers, 12288 bytes smem
+ptxas info    : Compile time = 103.793 ms
+ptxas info    : Compiling entry function '_ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d016contract_weightsEPKsmPKN7c71_pcs10WeightTileEmN16c71_pcs_residual5ShapeEPKNS6_5ChunkEPKNS6_1EEjmjSD_SD_PSB_Pjm' for 'sm_90'
+ptxas info    : Function properties for _ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d016contract_weightsEPKsmPKN7c71_pcs10WeightTileEmN16c71_pcs_residual5ShapeEPKNS6_5ChunkEPKNS6_1EEjmjSD_SD_PSB_Pjm
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 64 registers, used 1 barriers, 12288 bytes smem
+ptxas info    : Compile time = 102.665 ms
+ptxas info    : Compiling entry function '_ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d08residentILN16c71_pcs_residual5PhaseE3EEEvNS1_11ConstPlanesEmNS1_5ShapeEPKNS1_5ChunkEPKNS1_1EENS1_6OutputENS1_10CosetShapeEPKmNS1_10PowerShapeESA_SA_Pj' for 'sm_90'
+ptxas info    : Function properties for _ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d08residentILN16c71_pcs_residual5PhaseE3EEEvNS1_11ConstPlanesEmNS1_5ShapeEPKNS1_5ChunkEPKNS1_1EENS1_6OutputENS1_10CosetShapeEPKmNS1_10PowerShapeESA_SA_Pj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 64 registers, used 1 barriers, 6144 bytes smem
+ptxas info    : Compile time = 63.206 ms
+ptxas info    : Compiling entry function '_ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d08residentILN16c71_pcs_residual5PhaseE2EEEvNS1_11ConstPlanesEmNS1_5ShapeEPKNS1_5ChunkEPKNS1_1EENS1_6OutputENS1_10CosetShapeEPKmNS1_10PowerShapeESA_SA_Pj' for 'sm_90'
+ptxas info    : Function properties for _ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d08residentILN16c71_pcs_residual5PhaseE2EEEvNS1_11ConstPlanesEmNS1_5ShapeEPKNS1_5ChunkEPKNS1_1EENS1_6OutputENS1_10CosetShapeEPKmNS1_10PowerShapeESA_SA_Pj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 48 registers, used 0 barriers
+ptxas info    : Compile time = 43.257 ms
+ptxas info    : Compiling entry function '_ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d08residentILN16c71_pcs_residual5PhaseE1EEEvNS1_11ConstPlanesEmNS1_5ShapeEPKNS1_5ChunkEPKNS1_1EENS1_6OutputENS1_10CosetShapeEPKmNS1_10PowerShapeESA_SA_Pj' for 'sm_90'
+ptxas info    : Function properties for _ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d08residentILN16c71_pcs_residual5PhaseE1EEEvNS1_11ConstPlanesEmNS1_5ShapeEPKNS1_5ChunkEPKNS1_1EENS1_6OutputENS1_10CosetShapeEPKmNS1_10PowerShapeESA_SA_Pj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 48 registers, used 0 barriers
+ptxas info    : Compile time = 26.194 ms
+ptxas info    : Compiling entry function '_ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d08residentILN16c71_pcs_residual5PhaseE0EEEvNS1_11ConstPlanesEmNS1_5ShapeEPKNS1_5ChunkEPKNS1_1EENS1_6OutputENS1_10CosetShapeEPKmNS1_10PowerShapeESA_SA_Pj' for 'sm_90'
+ptxas info    : Function properties for _ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d08residentILN16c71_pcs_residual5PhaseE0EEEvNS1_11ConstPlanesEmNS1_5ShapeEPKNS1_5ChunkEPKNS1_1EENS1_6OutputENS1_10CosetShapeEPKmNS1_10PowerShapeESA_SA_Pj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 56 registers, used 1 barriers, 3072 bytes smem
+ptxas info    : Compile time = 30.271 ms
+ptxas info    : Compiling entry function '_ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d06sourceILN16c71_pcs_residual5PhaseE3EEEvPKvjN7c71_pcs10SourceTileENS1_5ShapeEPKNS1_5ChunkEPKNS1_1EENS1_6OutputENS1_10CosetShapeEPKmNS1_10PowerShapeESD_SD_Pj' for 'sm_90'
+ptxas info    : Function properties for _ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d06sourceILN16c71_pcs_residual5PhaseE3EEEvPKvjN7c71_pcs10SourceTileENS1_5ShapeEPKNS1_5ChunkEPKNS1_1EENS1_6OutputENS1_10CosetShapeEPKmNS1_10PowerShapeESD_SD_Pj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 62 registers, used 1 barriers, 6144 bytes smem
+ptxas info    : Compile time = 74.645 ms
+ptxas info    : Compiling entry function '_ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d06sourceILN16c71_pcs_residual5PhaseE2EEEvPKvjN7c71_pcs10SourceTileENS1_5ShapeEPKNS1_5ChunkEPKNS1_1EENS1_6OutputENS1_10CosetShapeEPKmNS1_10PowerShapeESD_SD_Pj' for 'sm_90'
+ptxas info    : Function properties for _ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d06sourceILN16c71_pcs_residual5PhaseE2EEEvPKvjN7c71_pcs10SourceTileENS1_5ShapeEPKNS1_5ChunkEPKNS1_1EENS1_6OutputENS1_10CosetShapeEPKmNS1_10PowerShapeESD_SD_Pj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 50 registers, used 0 barriers
+ptxas info    : Compile time = 43.444 ms
+ptxas info    : Compiling entry function '_ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d06sourceILN16c71_pcs_residual5PhaseE1EEEvPKvjN7c71_pcs10SourceTileENS1_5ShapeEPKNS1_5ChunkEPKNS1_1EENS1_6OutputENS1_10CosetShapeEPKmNS1_10PowerShapeESD_SD_Pj' for 'sm_90'
+ptxas info    : Function properties for _ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d06sourceILN16c71_pcs_residual5PhaseE1EEEvPKvjN7c71_pcs10SourceTileENS1_5ShapeEPKNS1_5ChunkEPKNS1_1EENS1_6OutputENS1_10CosetShapeEPKmNS1_10PowerShapeESD_SD_Pj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 48 registers, used 0 barriers
+ptxas info    : Compile time = 28.855 ms
+ptxas info    : Compiling entry function '_ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d06sourceILN16c71_pcs_residual5PhaseE0EEEvPKvjN7c71_pcs10SourceTileENS1_5ShapeEPKNS1_5ChunkEPKNS1_1EENS1_6OutputENS1_10CosetShapeEPKmNS1_10PowerShapeESD_SD_Pj' for 'sm_90'
+ptxas info    : Function properties for _ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d06sourceILN16c71_pcs_residual5PhaseE0EEEvPKvjN7c71_pcs10SourceTileENS1_5ShapeEPKNS1_5ChunkEPKNS1_1EENS1_6OutputENS1_10CosetShapeEPKmNS1_10PowerShapeESD_SD_Pj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 50 registers, used 1 barriers, 3072 bytes smem
+ptxas info    : Compile time = 33.022 ms
+ptxas info    : Compiling entry function '_ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d07weightsILN16c71_pcs_residual5PhaseE3EEEvPKsmPKN7c71_pcs10WeightTileEmmmNS1_5ShapeEPKNS1_5ChunkEPKNS1_1EENS1_6OutputENS1_10CosetShapeEPKmNS1_10PowerShapeESF_SF_Pj' for 'sm_90'
+ptxas info    : Function properties for _ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d07weightsILN16c71_pcs_residual5PhaseE3EEEvPKsmPKN7c71_pcs10WeightTileEmmmNS1_5ShapeEPKNS1_5ChunkEPKNS1_1EENS1_6OutputENS1_10CosetShapeEPKmNS1_10PowerShapeESF_SF_Pj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 56 registers, used 1 barriers, 6144 bytes smem
+ptxas info    : Compile time = 62.689 ms
+ptxas info    : Compiling entry function '_ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d07weightsILN16c71_pcs_residual5PhaseE2EEEvPKsmPKN7c71_pcs10WeightTileEmmmNS1_5ShapeEPKNS1_5ChunkEPKNS1_1EENS1_6OutputENS1_10CosetShapeEPKmNS1_10PowerShapeESF_SF_Pj' for 'sm_90'
+ptxas info    : Function properties for _ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d07weightsILN16c71_pcs_residual5PhaseE2EEEvPKsmPKN7c71_pcs10WeightTileEmmmNS1_5ShapeEPKNS1_5ChunkEPKNS1_1EENS1_6OutputENS1_10CosetShapeEPKmNS1_10PowerShapeESF_SF_Pj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 50 registers, used 0 barriers
+ptxas info    : Compile time = 41.143 ms
+ptxas info    : Compiling entry function '_ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d07weightsILN16c71_pcs_residual5PhaseE1EEEvPKsmPKN7c71_pcs10WeightTileEmmmNS1_5ShapeEPKNS1_5ChunkEPKNS1_1EENS1_6OutputENS1_10CosetShapeEPKmNS1_10PowerShapeESF_SF_Pj' for 'sm_90'
+ptxas info    : Function properties for _ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d07weightsILN16c71_pcs_residual5PhaseE1EEEvPKsmPKN7c71_pcs10WeightTileEmmmNS1_5ShapeEPKNS1_5ChunkEPKNS1_1EENS1_6OutputENS1_10CosetShapeEPKmNS1_10PowerShapeESF_SF_Pj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 48 registers, used 0 barriers
+ptxas info    : Compile time = 28.087 ms
+ptxas info    : Compiling entry function '_ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d07weightsILN16c71_pcs_residual5PhaseE0EEEvPKsmPKN7c71_pcs10WeightTileEmmmNS1_5ShapeEPKNS1_5ChunkEPKNS1_1EENS1_6OutputENS1_10CosetShapeEPKmNS1_10PowerShapeESF_SF_Pj' for 'sm_90'
+ptxas info    : Function properties for _ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d07weightsILN16c71_pcs_residual5PhaseE0EEEvPKsmPKN7c71_pcs10WeightTileEmmmNS1_5ShapeEPKNS1_5ChunkEPKNS1_1EENS1_6OutputENS1_10CosetShapeEPKmNS1_10PowerShapeESF_SF_Pj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 48 registers, used 1 barriers, 3072 bytes smem
+ptxas info    : Compile time = 31.658 ms
+ptxas info    : Compiling entry function '_ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d011fold_kernelEN16c71_pcs_residual11ConstPlanesENS0_6PlanesEmjNS0_1EES3_Pj' for 'sm_90'
+ptxas info    : Function properties for _ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d011fold_kernelEN16c71_pcs_residual11ConstPlanesENS0_6PlanesEmjNS0_1EES3_Pj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 56 registers, used 0 barriers
+ptxas info    : Compile time = 55.326 ms
+ptxas info    : Compiling entry function '_ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d03padEPmPKN16c71_pcs_residual1EEPKmS6_NS1_5ShapeENS1_10CosetShapeEPj' for 'sm_90'
+ptxas info    : Function properties for _ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d03padEPmPKN16c71_pcs_residual1EEPKmS6_NS1_5ShapeENS1_10CosetShapeEPj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 38 registers, used 0 barriers
+ptxas info    : Compile time = 22.721 ms
+ptxas info    : Compiling entry function '_ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d010ood_powersEPN16c71_pcs_residual1EES2_NS0_10PowerShapeES1_' for 'sm_90'
+ptxas info    : Function properties for _ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d010ood_powersEPN16c71_pcs_residual1EES2_NS0_10PowerShapeES1_
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 39 registers, used 0 barriers
+ptxas info    : Compile time = 37.416 ms
+ptxas info    : Compiling entry function '_ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d012coset_powersEPmS0_N16c71_pcs_residual5ShapeENS1_10CosetShapeEm' for 'sm_90'
+ptxas info    : Function properties for _ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d012coset_powersEPmS0_N16c71_pcs_residual5ShapeENS1_10CosetShapeEm
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 30 registers, used 0 barriers
+ptxas info    : Compile time = 14.478 ms
+ptxas info    : Compiling entry function '_ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d07ood_padEPN16c71_pcs_residual1EEPKS1_jmS1_Pj' for 'sm_90'
+ptxas info    : Function properties for _ZN52_GLOBAL__N__1212d51c_19_c71_pcs_residual_cu_46aad1d07ood_padEPN16c71_pcs_residual1EEPKS1_jmS1_Pj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 56 registers, used 1 barriers, 6144 bytes smem
+ptxas info    : Compile time = 43.293 ms
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_ZN58_GLOBAL__N__29478ecd_25_c71_pcs_residual_query_cu_5199596a4loadILb1EEEvPKsmPKN7c71_pcs10WeightTileEmN16c71_pcs_residual11ConstPlanesENS7_5ShapeEPKNS7_5ChunkEPKNS7_1EESF_PmmNS3_10QueryBlockEPj' for 'sm_90'
+ptxas info    : Function properties for _ZN58_GLOBAL__N__29478ecd_25_c71_pcs_residual_query_cu_5199596a4loadILb1EEEvPKsmPKN7c71_pcs10WeightTileEmN16c71_pcs_residual11ConstPlanesENS7_5ShapeEPKNS7_5ChunkEPKNS7_1EESF_PmmNS3_10QueryBlockEPj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 56 registers, used 0 barriers
+ptxas info    : Compile time = 31.823 ms
+ptxas info    : Compiling entry function '_ZN58_GLOBAL__N__29478ecd_25_c71_pcs_residual_query_cu_5199596a15weight_partialsEPKsmPKN7c71_pcs10WeightTileEmN16c71_pcs_residual5ShapeEPKNS6_5ChunkEPKNS6_1EEPmmNS2_10QueryBlockEN22c71_pcs_residual_query10WeightWorkEPj' for 'sm_90'
+ptxas info    : Function properties for _ZN58_GLOBAL__N__29478ecd_25_c71_pcs_residual_query_cu_5199596a15weight_partialsEPKsmPKN7c71_pcs10WeightTileEmN16c71_pcs_residual5ShapeEPKNS6_5ChunkEPKNS6_1EEPmmNS2_10QueryBlockEN22c71_pcs_residual_query10WeightWorkEPj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 50 registers, used 1 barriers, 12288 bytes smem
+ptxas info    : Compile time = 52.208 ms
+ptxas info    : Compiling entry function '_ZN58_GLOBAL__N__29478ecd_25_c71_pcs_residual_query_cu_5199596a18initialize_weightsEPKN16c71_pcs_residual1EEPmmN7c71_pcs10QueryBlockEPj' for 'sm_90'
+ptxas info    : Function properties for _ZN58_GLOBAL__N__29478ecd_25_c71_pcs_residual_query_cu_5199596a18initialize_weightsEPKN16c71_pcs_residual1EEPmmN7c71_pcs10QueryBlockEPj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 20 registers, used 0 barriers
+ptxas info    : Compile time = 3.389 ms

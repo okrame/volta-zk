@@ -38,7 +38,11 @@ per i16→BF16, a O=0/150/300, load e warmup separati. Tutti i 357 raw
 head per precisione sono finiti; token floating divergenti, nessuna
 parità intera o selezione nel protocollo. Il primo loader fallito resta
 conservato, corretto con i bit pubblici dei 60 scalari.
-RMS coarser: screen numerico O=0 in corso, candidato non ammesso.
+Lo [screen RMS coarser](../c7.1-history/h100-followup-rms-2026-10-10.md)
+termina senza errore ma concorda con 2/50 token generati O=0, prima
+differenza alla terza decisione: criterio pretrial respinto, linea fermata,
+O=150/300 non avviati. Inferenza 77,210 s; nessuna ammissione o qualità
+generale dedotta dal confronto. Γ originale resta l’unico ammesso.
 Compiler 159→91 e possesso dei programmi ridotto sono componenti;
 qualità, GKR e tempi completi non derivano da questi risultati.
 CPU wrapper AS 64 GiB, solo il figlio CUDA senza cap AS. I nuovi caller

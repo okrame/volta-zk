@@ -38,7 +38,11 @@ per i16→BF16, a O=0/150/300, load e warmup separati. Tutti i 357 raw
 head per precisione sono finiti; token floating divergenti, nessuna
 parità intera o selezione nel protocollo. Il primo loader fallito resta
 conservato, corretto con i bit pubblici dei 60 scalari.
-RMS coarser: screen numerico O=0 in corso, candidato non ammesso.
+Lo [screen RMS coarser](../c7.1-history/h100-followup-rms-2026-10-10.md)
+termina senza errore ma concorda con 2/50 token generati O=0, prima
+differenza alla terza decisione: criterio pretrial respinto, linea fermata,
+O=150/300 non avviati. Inferenza 77,210 s; nessuna ammissione o qualità
+generale dedotta dal confronto. Γ originale resta l’unico ammesso.
 Compiler 159→91 e possesso dei programmi ridotto sono componenti;
 qualità, GKR e tempi completi non derivano da questi risultati.
 CPU wrapper AS 64 GiB, solo il figlio CUDA senza cap AS. I nuovi caller
@@ -81,8 +85,8 @@ Il nuovo massimo nominato sul Γ ammesso è **5.878.735.106 B**, con
 **26.844.926 B** residui: il pool è contato anche inattivo e il setup AES
 include lo stato W già installato. Allowance e picco fisico restano aperti.
 
-La prima candidata Γ per una futura validazione è il bucket RMS al pari
-più grossolano: 159→91 programmi, −13,9216% di prodotti Fp3 del core
+La candidata RMS al pari più grossolano è ora respinta dal criterio
+numerico O=0 sopra; conserva soltanto i benefici analitici di componente: 159→91 programmi, −13,9216% di prodotti Fp3 del core
 RMS/GKR per risposta O=0 e −43,0563% dei byte posseduti dai soli circuiti.
 Il bucket al pari più fine dà −14,4015%, ma la requantizzazione delle
 attivazioni ammesse espone rischi i16 in 16/5/2 fonti O=0/150/300.

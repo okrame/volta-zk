@@ -51,6 +51,7 @@ le nuove domande hardware; non esegue una nuova campagna.
 - [Runbook alla chiusura del 7 ottobre](runpod-tests-2026-10-07.md) e [design dello stesso checkpoint](design-2026-10-07.md): cronache, stime e autorizzazioni storiche; non istruzioni per nuove campagne.
 
 [Confronto SDPA H100 completo](h100-followup-optimized-2026-10-10.md).
+[Screen RMS coarser respinto](h100-followup-rms-2026-10-10.md).
 
 ## Conservazione e mappa dei percorsi
 

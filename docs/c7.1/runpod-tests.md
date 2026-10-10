@@ -21,13 +21,16 @@ interamente scritta, mentre KV contiene un prefisso inizializzato. La
 correzione limita gli span a quel prefisso, senza ammettere la coda.
 La [validazione sm_90](../c7.1-history/h100-prefix-validation-2026-10-10.md)
 passa 15/15 test CUDA reali con fixture aggiornate e il controllo non lineare;
-il commitment A completo resta da misurare.
+il [diagnostico successivo](../c7.1-history/h100-a-prefix-progress-2026-10-10.md)
+completa tre gruppi A sotto cap e si ferma come pianificato. Non misura
+il commitment completo o il picco canonico. `canonical-06` è avviato da W
+alle 00:40:05 UTC del 10 ottobre, con setup AES e journal freschi.
 
 La [candidata sul prefisso KV](../c7.1-history/h100-prefix-candidate-2026-10-10.md)
 passa sei test locali, inclusa regressione prima/dopo, 12 span validi e
 invalidi nei tre consumer, parità A e MAC originali. La successiva
 ricompilazione sm_90 e parità reale 15/15 sono complete; il componente A
-con monete fresche verifica il punto di errore prima del nuovo trial.
+con monete fresche ha superato il punto di errore prima del nuovo trial.
 
 ## Stato e sequenza operativa
 

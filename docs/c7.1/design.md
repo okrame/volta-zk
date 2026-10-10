@@ -21,7 +21,10 @@ interamente scritta, mentre KV contiene un prefisso inizializzato. La
 correzione limita gli span a quel prefisso, senza ammettere la coda.
 La [validazione sm_90](../c7.1-history/h100-prefix-validation-2026-10-10.md)
 passa 15/15 test CUDA reali con fixture aggiornate e il controllo non lineare;
-il commitment A completo resta da misurare.
+il [diagnostico successivo](../c7.1-history/h100-a-prefix-progress-2026-10-10.md)
+completa tre gruppi A sotto cap e si ferma come pianificato. Non misura
+il commitment completo o il picco canonico. `canonical-06` è avviato da W
+alle 00:40:05 UTC del 10 ottobre, con setup AES e journal freschi.
 
 La correzione dei tre consumer usa `initialized` come limite degli span,
 come il gather già esistente; capacità, byte originali e ordine restano

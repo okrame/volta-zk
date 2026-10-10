@@ -1,0 +1,9 @@
+{
+  "reason": "planned diagnostic stop after at least three completed A groups",
+  "observed_epoch": 1791592775.2713337,
+  "elapsed_ns": 207672936823,
+  "completed_groups": 3,
+  "source_visits": 40044279418,
+  "credit": false,
+  "full_commitment": false
+}

@@ -1,0 +1,810 @@
+[
+  {
+    "elapsed_ns": 189637740688,
+    "event": {
+      "geometry": {
+        "columns": 128,
+        "cosets": 2048,
+        "cosets_per_reconstruction": 4,
+        "groups": 512,
+        "height": 2147483648,
+        "live_source": 13154672538,
+        "rows": 1048576
+      },
+      "kind": "start",
+      "phase": "pcs_a_resident"
+    }
+  },
+  {
+    "elapsed_ns": 190638742602,
+    "event": {
+      "geometry": {
+        "columns": 128,
+        "cosets": 2048,
+        "cosets_per_reconstruction": 4,
+        "groups": 512,
+        "height": 2147483648,
+        "live_source": 13154672538,
+        "rows": 1048576
+      },
+      "kind": "progress",
+      "phase": "pcs_a_resident",
+      "wall_ns": 1000495406,
+      "work": {
+        "active_first_coset": 0,
+        "completed_groups": 0,
+        "native": {
+          "allocations": 3646075,
+          "arena_bytes": 5276100096,
+          "cleanup_failed": 0,
+          "d2d_bytes": 236774400,
+          "d2h_bytes": 17354964,
+          "fences": 3673898,
+          "h2d_bytes": 61420218240,
+          "host_owner_bytes": 42088,
+          "launches": 1206148,
+          "live_capacity_bytes": 5276100096,
+          "logical_bytes": 5276098268,
+          "peak_capacity_bytes": 5313976064,
+          "peak_reserved_bytes": 66708666624,
+          "releases": 3645732,
+          "stopped": 0,
+          "weights_bytes": 61394690560,
+          "weights_loaded_bytes": 61394690560,
+          "weights_sealed": 1,
+          "zeroed_bytes": 4375739272
+        },
+        "original_bytes_in_group": 2470603652,
+        "source_visits": 2470603652
+      }
+    }
+  },
+  {
+    "elapsed_ns": 191639715048,
+    "event": {
+      "geometry": {
+        "columns": 128,
+        "cosets": 2048,
+        "cosets_per_reconstruction": 4,
+        "groups": 512,
+        "height": 2147483648,
+        "live_source": 13154672538,
+        "rows": 1048576
+      },
+      "kind": "progress",
+      "phase": "pcs_a_resident",
+      "wall_ns": 2001468253,
+      "work": {
+        "active_first_coset": 0,
+        "completed_groups": 0,
+        "native": {
+          "allocations": 3651300,
+          "arena_bytes": 5270070784,
+          "cleanup_failed": 0,
+          "d2d_bytes": 236774400,
+          "d2h_bytes": 17361696,
+          "fences": 3679113,
+          "h2d_bytes": 61420218344,
+          "host_owner_bytes": 42088,
+          "launches": 1225823,
+          "live_capacity_bytes": 5270070784,
+          "logical_bytes": 5270068748,
+          "peak_capacity_bytes": 5327607552,
+          "peak_reserved_bytes": 66722298112,
+          "releases": 3650934,
+          "stopped": 0,
+          "weights_bytes": 61394690560,
+          "weights_loaded_bytes": 61394690560,
+          "weights_sealed": 1,
+          "zeroed_bytes": 4389377284
+        },
+        "original_bytes_in_group": 5102589076,
+        "source_visits": 5102589076
+      }
+    }
+  },
+  {
+    "elapsed_ns": 192640799052,
+    "event": {
+      "geometry": {
+        "columns": 128,
+        "cosets": 2048,
+        "cosets_per_reconstruction": 4,
+        "groups": 512,
+        "height": 2147483648,
+        "live_source": 13154672538,
+        "rows": 1048576
+      },
+      "kind": "progress",
+      "phase": "pcs_a_resident",
+      "wall_ns": 3002552051,
+      "work": {
+        "active_first_coset": 0,
+        "completed_groups": 0,
+        "native": {
+          "allocations": 3656498,
+          "arena_bytes": 5284790784,
+          "cleanup_failed": 0,
+          "d2d_bytes": 236774400,
+          "d2h_bytes": 17368384,
+          "fences": 3684298,
+          "h2d_bytes": 61420218448,
+          "host_owner_bytes": 42088,
+          "launches": 1245235,
+          "live_capacity_bytes": 5284790784,
+          "logical_bytes": 5284788548,
+          "peak_capacity_bytes": 5340190464,
+          "peak_reserved_bytes": 66734881024,
+          "releases": 3656106,
+          "stopped": 0,
+          "weights_bytes": 61394690560,
+          "weights_loaded_bytes": 61394690560,
+          "weights_sealed": 1,
+          "zeroed_bytes": 4402490972
+        },
+        "original_bytes_in_group": 7637010076,
+        "source_visits": 7637010076
+      }
+    }
+  },
+  {
+    "elapsed_ns": 193641669899,
+    "event": {
+      "geometry": {
+        "columns": 128,
+        "cosets": 2048,
+        "cosets_per_reconstruction": 4,
+        "groups": 512,
+        "height": 2147483648,
+        "live_source": 13154672538,
+        "rows": 1048576
+      },
+      "kind": "progress",
+      "phase": "pcs_a_resident",
+      "wall_ns": 4003422974,
+      "work": {
+        "active_first_coset": 0,
+        "completed_groups": 0,
+        "native": {
+          "allocations": 3661649,
+          "arena_bytes": 5297811200,
+          "cleanup_failed": 0,
+          "d2d_bytes": 236774400,
+          "d2h_bytes": 17375056,
+          "fences": 3689382,
+          "h2d_bytes": 61420218552,
+          "host_owner_bytes": 42088,
+          "launches": 1264627,
+          "live_capacity_bytes": 5297811200,
+          "logical_bytes": 5297805428,
+          "peak_capacity_bytes": 5353821952,
+          "peak_reserved_bytes": 66748512512,
+          "releases": 3661177,
+          "stopped": 0,
+          "weights_bytes": 61394690560,
+          "weights_loaded_bytes": 61394690560,
+          "weights_sealed": 1,
+          "zeroed_bytes": 4416128924
+        },
+        "original_bytes_in_group": 10248997800,
+        "source_visits": 10248997800
+      }
+    }
+  },
+  {
+    "elapsed_ns": 194642632576,
+    "event": {
+      "geometry": {
+        "columns": 128,
+        "cosets": 2048,
+        "cosets_per_reconstruction": 4,
+        "groups": 512,
+        "height": 2147483648,
+        "live_source": 13154672538,
+        "rows": 1048576
+      },
+      "kind": "progress",
+      "phase": "pcs_a_resident",
+      "wall_ns": 5004385690,
+      "work": {
+        "active_first_coset": 0,
+        "completed_groups": 0,
+        "native": {
+          "allocations": 3667486,
+          "arena_bytes": 5242370816,
+          "cleanup_failed": 0,
+          "d2d_bytes": 236774400,
+          "d2h_bytes": 17382576,
+          "fences": 3696345,
+          "h2d_bytes": 61450746624,
+          "host_owner_bytes": 42088,
+          "launches": 1289589,
+          "live_capacity_bytes": 5242370816,
+          "logical_bytes": 5242369148,
+          "peak_capacity_bytes": 5436230400,
+          "peak_reserved_bytes": 66830920960,
+          "releases": 3667170,
+          "stopped": 0,
+          "weights_bytes": 61394690560,
+          "weights_loaded_bytes": 61394690560,
+          "weights_sealed": 1,
+          "zeroed_bytes": 4426621844
+        },
+        "original_bytes_in_group": 12727460510,
+        "source_visits": 12727460510
+      }
+    }
+  },
+  {
+    "elapsed_ns": 195649401921,
+    "event": {
+      "geometry": {
+        "columns": 128,
+        "cosets": 2048,
+        "cosets_per_reconstruction": 4,
+        "groups": 512,
+        "height": 2147483648,
+        "live_source": 13154672538,
+        "rows": 1048576
+      },
+      "kind": "progress",
+      "phase": "pcs_a_resident",
+      "wall_ns": 6011155068,
+      "work": {
+        "active_first_coset": 4,
+        "completed_groups": 1,
+        "native": {
+          "allocations": 3686642,
+          "arena_bytes": 5243854336,
+          "cleanup_failed": 0,
+          "d2d_bytes": 238387200,
+          "d2h_bytes": 17405652,
+          "fences": 3724144,
+          "h2d_bytes": 61664849664,
+          "host_owner_bytes": 42088,
+          "launches": 1339914,
+          "live_capacity_bytes": 5243854336,
+          "logical_bytes": 5243852700,
+          "peak_capacity_bytes": 5436230400,
+          "peak_reserved_bytes": 66830920960,
+          "releases": 3686327,
+          "stopped": 0,
+          "weights_bytes": 61394690560,
+          "weights_loaded_bytes": 61394690560,
+          "weights_sealed": 1,
+          "zeroed_bytes": 8721610160
+        },
+        "original_bytes_in_group": 1048576,
+        "source_visits": 13155721114
+      }
+    }
+  },
+  {
+    "elapsed_ns": 196650540176,
+    "event": {
+      "geometry": {
+        "columns": 128,
+        "cosets": 2048,
+        "cosets_per_reconstruction": 4,
+        "groups": 512,
+        "height": 2147483648,
+        "live_source": 13154672538,
+        "rows": 1048576
+      },
+      "kind": "progress",
+      "phase": "pcs_a_resident",
+      "wall_ns": 7012289404,
+      "work": {
+        "active_first_coset": 4,
+        "completed_groups": 1,
+        "native": {
+          "allocations": 3691887,
+          "arena_bytes": 5277991424,
+          "cleanup_failed": 0,
+          "d2d_bytes": 238387200,
+          "d2h_bytes": 17412420,
+          "fences": 3729373,
+          "h2d_bytes": 61664849768,
+          "host_owner_bytes": 42088,
+          "launches": 1359718,
+          "live_capacity_bytes": 5277991424,
+          "logical_bytes": 5277989580,
+          "peak_capacity_bytes": 5436230400,
+          "peak_reserved_bytes": 66830920960,
+          "releases": 3691543,
+          "stopped": 0,
+          "weights_bytes": 61394690560,
+          "weights_loaded_bytes": 61394690560,
+          "weights_sealed": 1,
+          "zeroed_bytes": 8735248208
+        },
+        "original_bytes_in_group": 2673839252,
+        "source_visits": 15828511790
+      }
+    }
+  },
+  {
+    "elapsed_ns": 197651392887,
+    "event": {
+      "geometry": {
+        "columns": 128,
+        "cosets": 2048,
+        "cosets_per_reconstruction": 4,
+        "groups": 512,
+        "height": 2147483648,
+        "live_source": 13154672538,
+        "rows": 1048576
+      },
+      "kind": "progress",
+      "phase": "pcs_a_resident",
+      "wall_ns": 8013142335,
+      "work": {
+        "active_first_coset": 4,
+        "completed_groups": 1,
+        "native": {
+          "allocations": 3697316,
+          "arena_bytes": 5272058112,
+          "cleanup_failed": 0,
+          "d2d_bytes": 238387200,
+          "d2h_bytes": 17419484,
+          "fences": 3734749,
+          "h2d_bytes": 61664849880,
+          "host_owner_bytes": 42088,
+          "launches": 1380065,
+          "live_capacity_bytes": 5272058112,
+          "logical_bytes": 5272053240,
+          "peak_capacity_bytes": 5436230400,
+          "peak_reserved_bytes": 66830920960,
+          "releases": 3696905,
+          "stopped": 0,
+          "weights_bytes": 61394690560,
+          "weights_loaded_bytes": 61394690560,
+          "weights_sealed": 1,
+          "zeroed_bytes": 8749410832
+        },
+        "original_bytes_in_group": 5354025600,
+        "source_visits": 18508698138
+      }
+    }
+  },
+  {
+    "elapsed_ns": 198652399437,
+    "event": {
+      "geometry": {
+        "columns": 128,
+        "cosets": 2048,
+        "cosets_per_reconstruction": 4,
+        "groups": 512,
+        "height": 2147483648,
+        "live_source": 13154672538,
+        "rows": 1048576
+      },
+      "kind": "progress",
+      "phase": "pcs_a_resident",
+      "wall_ns": 9014148686,
+      "work": {
+        "active_first_coset": 4,
+        "completed_groups": 1,
+        "native": {
+          "allocations": 3702384,
+          "arena_bytes": 5286855168,
+          "cleanup_failed": 0,
+          "d2d_bytes": 238387200,
+          "d2h_bytes": 17425968,
+          "fences": 3739840,
+          "h2d_bytes": 61664849976,
+          "host_owner_bytes": 42088,
+          "launches": 1399265,
+          "live_capacity_bytes": 5286855168,
+          "logical_bytes": 5286851340,
+          "peak_capacity_bytes": 5436230400,
+          "peak_reserved_bytes": 66830920960,
+          "releases": 3701984,
+          "stopped": 0,
+          "weights_bytes": 61394690560,
+          "weights_loaded_bytes": 61394690560,
+          "weights_sealed": 1,
+          "zeroed_bytes": 8762524316
+        },
+        "original_bytes_in_group": 7993589700,
+        "source_visits": 21148262238
+      }
+    }
+  },
+  {
+    "elapsed_ns": 199653707098,
+    "event": {
+      "geometry": {
+        "columns": 128,
+        "cosets": 2048,
+        "cosets_per_reconstruction": 4,
+        "groups": 512,
+        "height": 2147483648,
+        "live_source": 13154672538,
+        "rows": 1048576
+      },
+      "kind": "progress",
+      "phase": "pcs_a_resident",
+      "wall_ns": 10015460322,
+      "work": {
+        "active_first_coset": 4,
+        "completed_groups": 1,
+        "native": {
+          "allocations": 3707926,
+          "arena_bytes": 5309579776,
+          "cleanup_failed": 0,
+          "d2d_bytes": 238387200,
+          "d2h_bytes": 17433076,
+          "fences": 3745375,
+          "h2d_bytes": 61664850088,
+          "host_owner_bytes": 42088,
+          "launches": 1419886,
+          "live_capacity_bytes": 5309579776,
+          "logical_bytes": 5309577300,
+          "peak_capacity_bytes": 5436230400,
+          "peak_reserved_bytes": 66830920960,
+          "releases": 3707505,
+          "stopped": 0,
+          "weights_bytes": 61394690560,
+          "weights_loaded_bytes": 61394690560,
+          "weights_sealed": 1,
+          "zeroed_bytes": 8776686984
+        },
+        "original_bytes_in_group": 10659437252,
+        "source_visits": 23814109790
+      }
+    }
+  },
+  {
+    "elapsed_ns": 200654721460,
+    "event": {
+      "geometry": {
+        "columns": 128,
+        "cosets": 2048,
+        "cosets_per_reconstruction": 4,
+        "groups": 512,
+        "height": 2147483648,
+        "live_source": 13154672538,
+        "rows": 1048576
+      },
+      "kind": "progress",
+      "phase": "pcs_a_resident",
+      "wall_ns": 11016474460,
+      "work": {
+        "active_first_coset": 4,
+        "completed_groups": 1,
+        "native": {
+          "allocations": 3713103,
+          "arena_bytes": 5242368768,
+          "cleanup_failed": 0,
+          "d2d_bytes": 238387200,
+          "d2h_bytes": 17439672,
+          "fences": 3751754,
+          "h2d_bytes": 61699448544,
+          "host_owner_bytes": 42088,
+          "launches": 1442513,
+          "live_capacity_bytes": 5242368768,
+          "logical_bytes": 5242367100,
+          "peak_capacity_bytes": 5436230400,
+          "peak_reserved_bytes": 66830920960,
+          "releases": 3712788,
+          "stopped": 0,
+          "weights_bytes": 61394690560,
+          "weights_loaded_bytes": 61394690560,
+          "weights_sealed": 1,
+          "zeroed_bytes": 8785081860
+        },
+        "original_bytes_in_group": 12735442310,
+        "source_visits": 25890114848
+      }
+    }
+  },
+  {
+    "elapsed_ns": 201655589331,
+    "event": {
+      "geometry": {
+        "columns": 128,
+        "cosets": 2048,
+        "cosets_per_reconstruction": 4,
+        "groups": 512,
+        "height": 2147483648,
+        "live_source": 13154672538,
+        "rows": 1048576
+      },
+      "kind": "progress",
+      "phase": "pcs_a_resident",
+      "wall_ns": 12017342401,
+      "work": {
+        "active_first_coset": 8,
+        "completed_groups": 2,
+        "native": {
+          "allocations": 3732261,
+          "arena_bytes": 5244568064,
+          "cleanup_failed": 0,
+          "d2d_bytes": 240000000,
+          "d2h_bytes": 17460880,
+          "fences": 3779386,
+          "h2d_bytes": 61909481192,
+          "host_owner_bytes": 42088,
+          "launches": 1492707,
+          "live_capacity_bytes": 5244568064,
+          "logical_bytes": 5244564180,
+          "peak_capacity_bytes": 5436230400,
+          "peak_reserved_bytes": 66830920960,
+          "releases": 3731906,
+          "stopped": 0,
+          "weights_bytes": 61394690560,
+          "weights_loaded_bytes": 61394690560,
+          "weights_sealed": 1,
+          "zeroed_bytes": 13080594636
+        },
+        "original_bytes_in_group": 62787900,
+        "source_visits": 26372132976
+      }
+    }
+  },
+  {
+    "elapsed_ns": 202656917239,
+    "event": {
+      "geometry": {
+        "columns": 128,
+        "cosets": 2048,
+        "cosets_per_reconstruction": 4,
+        "groups": 512,
+        "height": 2147483648,
+        "live_source": 13154672538,
+        "rows": 1048576
+      },
+      "kind": "progress",
+      "phase": "pcs_a_resident",
+      "wall_ns": 13018670379,
+      "work": {
+        "active_first_coset": 8,
+        "completed_groups": 2,
+        "native": {
+          "allocations": 3737650,
+          "arena_bytes": 5264461312,
+          "cleanup_failed": 0,
+          "d2d_bytes": 240000000,
+          "d2h_bytes": 17467744,
+          "fences": 3784800,
+          "h2d_bytes": 61909481296,
+          "host_owner_bytes": 42088,
+          "launches": 1512887,
+          "live_capacity_bytes": 5264461312,
+          "logical_bytes": 5264459460,
+          "peak_capacity_bytes": 5436230400,
+          "peak_reserved_bytes": 66830920960,
+          "releases": 3737307,
+          "stopped": 0,
+          "weights_bytes": 61394690560,
+          "weights_loaded_bytes": 61394690560,
+          "weights_sealed": 1,
+          "zeroed_bytes": 13094232780
+        },
+        "original_bytes_in_group": 2736067352,
+        "source_visits": 29045412428
+      }
+    }
+  },
+  {
+    "elapsed_ns": 203661257439,
+    "event": {
+      "geometry": {
+        "columns": 128,
+        "cosets": 2048,
+        "cosets_per_reconstruction": 4,
+        "groups": 512,
+        "height": 2147483648,
+        "live_source": 13154672538,
+        "rows": 1048576
+      },
+      "kind": "progress",
+      "phase": "pcs_a_resident",
+      "wall_ns": 14023010417,
+      "work": {
+        "active_first_coset": 8,
+        "completed_groups": 2,
+        "native": {
+          "allocations": 3742891,
+          "arena_bytes": 5324864000,
+          "cleanup_failed": 0,
+          "d2d_bytes": 240000000,
+          "d2h_bytes": 17474504,
+          "fences": 3790026,
+          "h2d_bytes": 61909481400,
+          "host_owner_bytes": 42088,
+          "launches": 1532689,
+          "live_capacity_bytes": 5324864000,
+          "logical_bytes": 5324861940,
+          "peak_capacity_bytes": 5436230400,
+          "peak_reserved_bytes": 66830920960,
+          "releases": 3742520,
+          "stopped": 0,
+          "weights_bytes": 61394690560,
+          "weights_loaded_bytes": 61394690560,
+          "weights_sealed": 1,
+          "zeroed_bytes": 13107870820
+        },
+        "original_bytes_in_group": 5418708908,
+        "source_visits": 31728053984
+      }
+    }
+  },
+  {
+    "elapsed_ns": 204662948239,
+    "event": {
+      "geometry": {
+        "columns": 128,
+        "cosets": 2048,
+        "cosets_per_reconstruction": 4,
+        "groups": 512,
+        "height": 2147483648,
+        "live_source": 13154672538,
+        "rows": 1048576
+      },
+      "kind": "progress",
+      "phase": "pcs_a_resident",
+      "wall_ns": 15024701837,
+      "work": {
+        "active_first_coset": 8,
+        "completed_groups": 2,
+        "native": {
+          "allocations": 3748120,
+          "arena_bytes": 5312690688,
+          "cleanup_failed": 0,
+          "d2d_bytes": 240000000,
+          "d2h_bytes": 17481244,
+          "fences": 3795243,
+          "h2d_bytes": 61909481504,
+          "host_owner_bytes": 42088,
+          "launches": 1552370,
+          "live_capacity_bytes": 5312690688,
+          "logical_bytes": 5312688420,
+          "peak_capacity_bytes": 5436230400,
+          "peak_reserved_bytes": 66830920960,
+          "releases": 3747724,
+          "stopped": 0,
+          "weights_bytes": 61394690560,
+          "weights_loaded_bytes": 61394690560,
+          "weights_sealed": 1,
+          "zeroed_bytes": 13121508840
+        },
+        "original_bytes_in_group": 8045061308,
+        "source_visits": 34354406384
+      }
+    }
+  },
+  {
+    "elapsed_ns": 205669592162,
+    "event": {
+      "geometry": {
+        "columns": 128,
+        "cosets": 2048,
+        "cosets_per_reconstruction": 4,
+        "groups": 512,
+        "height": 2147483648,
+        "live_source": 13154672538,
+        "rows": 1048576
+      },
+      "kind": "progress",
+      "phase": "pcs_a_resident",
+      "wall_ns": 16031345711,
+      "work": {
+        "active_first_coset": 8,
+        "completed_groups": 2,
+        "native": {
+          "allocations": 3753353,
+          "arena_bytes": 5352126976,
+          "cleanup_failed": 0,
+          "d2d_bytes": 240000000,
+          "d2h_bytes": 17487992,
+          "fences": 3800462,
+          "h2d_bytes": 61909481608,
+          "host_owner_bytes": 42088,
+          "launches": 1572101,
+          "live_capacity_bytes": 5352126976,
+          "logical_bytes": 5352124500,
+          "peak_capacity_bytes": 5436230400,
+          "peak_reserved_bytes": 66830920960,
+          "releases": 3752930,
+          "stopped": 0,
+          "weights_bytes": 61394690560,
+          "weights_loaded_bytes": 61394690560,
+          "weights_sealed": 1,
+          "zeroed_bytes": 13135146868
+        },
+        "original_bytes_in_group": 10710120908,
+        "source_visits": 37019465984
+      }
+    }
+  },
+  {
+    "elapsed_ns": 206670647386,
+    "event": {
+      "geometry": {
+        "columns": 128,
+        "cosets": 2048,
+        "cosets_per_reconstruction": 4,
+        "groups": 512,
+        "height": 2147483648,
+        "live_source": 13154672538,
+        "rows": 1048576
+      },
+      "kind": "progress",
+      "phase": "pcs_a_resident",
+      "wall_ns": 17032399251,
+      "work": {
+        "active_first_coset": 8,
+        "completed_groups": 2,
+        "native": {
+          "allocations": 3761500,
+          "arena_bytes": 5242368768,
+          "cleanup_failed": 0,
+          "d2d_bytes": 240000000,
+          "d2h_bytes": 17497592,
+          "fences": 3811285,
+          "h2d_bytes": 61990889664,
+          "host_owner_bytes": 42088,
+          "launches": 1607275,
+          "live_capacity_bytes": 5242368768,
+          "logical_bytes": 5242367100,
+          "peak_capacity_bytes": 5436230400,
+          "peak_reserved_bytes": 66830920960,
+          "releases": 3761185,
+          "stopped": 0,
+          "weights_bytes": 61394690560,
+          "weights_loaded_bytes": 61394690560,
+          "weights_sealed": 1,
+          "zeroed_bytes": 13143544748
+        },
+        "original_bytes_in_group": 12854660510,
+        "source_visits": 39164005586
+      }
+    }
+  },
+  {
+    "elapsed_ns": 207672936823,
+    "event": {
+      "geometry": {
+        "columns": 128,
+        "cosets": 2048,
+        "cosets_per_reconstruction": 4,
+        "groups": 512,
+        "height": 2147483648,
+        "live_source": 13154672538,
+        "rows": 1048576
+      },
+      "kind": "progress",
+      "phase": "pcs_a_resident",
+      "wall_ns": 18034688086,
+      "work": {
+        "active_first_coset": 12,
+        "completed_groups": 3,
+        "native": {
+          "allocations": 3778653,
+          "arena_bytes": 5279256064,
+          "cleanup_failed": 0,
+          "d2d_bytes": 241612800,
+          "d2h_bytes": 17516960,
+          "fences": 3835474,
+          "h2d_bytes": 62154112728,
+          "host_owner_bytes": 42088,
+          "launches": 1648445,
+          "live_capacity_bytes": 5279256064,
+          "logical_bytes": 5279254380,
+          "peak_capacity_bytes": 5436230400,
+          "peak_reserved_bytes": 66830920960,
+          "releases": 3778330,
+          "stopped": 0,
+          "weights_bytes": 61394690560,
+          "weights_loaded_bytes": 61394690560,
+          "weights_sealed": 1,
+          "zeroed_bytes": 17441677084
+        },
+        "original_bytes_in_group": 580261804,
+        "source_visits": 40044279418
+      }
+    }
+  }
+]

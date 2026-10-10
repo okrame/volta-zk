@@ -506,11 +506,66 @@ impl Tables {
     }
 }
 
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RmsProgram {
+    columns: usize,
+    exponents: [i32; 3],
+    weighted: bool,
+}
+
+fn rms_programs(body: &[u8]) -> Result<serde_json::Value, String> {
+    if body.len() > 1_048_576 {
+        return Err("RMS screen input exceeds 1 MiB".into());
+    }
+    let inputs: Vec<RmsProgram> = serde_json::from_slice(body).map_err(|e| e.to_string())?;
+    if inputs.is_empty() || inputs.len() > 8 {
+        return Err("RMS screen requires one to eight public recipes".into());
+    }
+    let mut programs = Vec::new();
+    for input in inputs {
+        if input.exponents.iter().any(|e| !(-128..=128).contains(e)) {
+            return Err("RMS screen exponent outside Gamma envelope".into());
+        }
+        let [x, w, y] = input.exponents;
+        let circuit = kernel::rms::compile(input.columns, x, w, y, input.weighted)?;
+        let layers = circuit.levels.iter().map(|layer| {
+            let mut counts = [0usize; 3];
+            for gate in layer {
+                counts[match gate.op { kernel::rms::Op::And => 0,
+                    kernel::rms::Op::Xor => 1, kernel::rms::Op::Copy => 2 }] += 1;
+            }
+            serde_json::json!({"width": layer.len(), "and": counts[0],
+                "xor": counts[1], "copy": counts[2]})
+        }).collect::<Vec<_>>();
+        programs.push(serde_json::json!({
+            "columns": input.columns, "exponents": input.exponents, "weighted": input.weighted,
+            "coefficients": circuit.coefficients.map(|v| v.to_string()),
+            "arithmetic_bits": circuit.arithmetic_bits, "ports": circuit.ports,
+            "product_bits": circuit.product_bits, "raw_gates": circuit.raw_gates,
+            "depth": circuit.levels.len(), "layers": layers,
+            "compiled_program_owned_bytes": size_of::<kernel::rms::Circuit>()
+                + circuit.levels.capacity() * size_of::<Vec<kernel::rms::Gate>>()
+                + circuit.levels.iter().map(|l| l.capacity() * size_of::<kernel::rms::Gate>()).sum::<usize>(),
+        }));
+        // Only metadata survives; full circuits never accumulate across recipes.
+    }
+    Ok(serde_json::json!({"schema": "volta-c71-rms-program-screen-v1", "credit": false,
+        "calibrated": false, "gamma_admitted": false, "gpu_execution": false,
+        "complete_work": false, "complete_physical_peak": false, "programs": programs}))
+}
+
 pub fn command(arguments: &[String]) -> Result<serde_json::Value, String> {
-    let usage = "usage: c71_calibration describe | profile-attention | profile-matrix PACKED [CUDA_LIBRARY] | recipes CANDIDATE | oracle-plan CANDIDATE | check-input CANDIDATE TABLES | ledger CANDIDATE TABLES | run CANDIDATE TABLES PACKED PAYLOAD_BYTES | run-trace CANDIDATE TABLES PACKED PAYLOAD_BYTES TRACE | run-cuda CANDIDATE TABLES PACKED PAYLOAD_BYTES CUDA_LIBRARY | run-trace-cuda CANDIDATE TABLES PACKED PAYLOAD_BYTES TRACE CUDA_LIBRARY";
+    let usage = "usage: c71_calibration describe | rms-programs PUBLIC_RECIPES | profile-attention | profile-matrix PACKED [CUDA_LIBRARY] | recipes CANDIDATE | oracle-plan CANDIDATE | check-input CANDIDATE TABLES | ledger CANDIDATE TABLES | run CANDIDATE TABLES PACKED PAYLOAD_BYTES | run-trace CANDIDATE TABLES PACKED PAYLOAD_BYTES TRACE | run-cuda CANDIDATE TABLES PACKED PAYLOAD_BYTES CUDA_LIBRARY | run-trace-cuda CANDIDATE TABLES PACKED PAYLOAD_BYTES TRACE CUDA_LIBRARY";
     let Some(mode) = arguments.first().map(String::as_str) else {
         return Err(usage.into());
     };
+    if mode == "rms-programs" && arguments.len() == 2 {
+        let mut body = Vec::new();
+        File::open(&arguments[1]).map_err(|e| e.to_string())?
+            .take(1_048_577).read_to_end(&mut body).map_err(|e| e.to_string())?;
+        return rms_programs(&body);
+    }
     if (matches!(mode, "describe" | "profile-attention") && arguments.len() == 1)
         || (mode == "profile-matrix" && matches!(arguments.len(), 2 | 3))
     {
@@ -756,4 +811,34 @@ pub fn command(arguments: &[String]) -> Result<serde_json::Value, String> {
         "responses": responses, "trace": trace,
         "independent_comparison_complete": false, "complete_physical_peak": false
     }))
+}
+
+#[cfg(test)]
+mod rms_screen_tests {
+    use super::*;
+
+    #[test]
+    fn c71_calibration_rms_program_screen_uses_original_compiler_and_rejects_bad_recipes() {
+        let report = rms_programs(br#"[{"columns":2,"exponents":[-1,0,-1],"weighted":false}]"#).unwrap();
+        let circuit = kernel::rms::compile(2, -1, 0, -1, false).unwrap();
+        let p = &report["programs"][0];
+        assert_eq!(p["arithmetic_bits"], circuit.arithmetic_bits);
+        assert_eq!(p["depth"], circuit.levels.len());
+        assert_eq!(p["coefficients"], serde_json::json!(circuit.coefficients.map(|v| v.to_string())));
+        for (layer, row) in circuit.levels.iter().zip(p["layers"].as_array().unwrap()) {
+            assert_eq!(row["width"], layer.len());
+            assert_eq!(row["and"].as_u64().unwrap() + row["xor"].as_u64().unwrap()
+                + row["copy"].as_u64().unwrap(), layer.len() as u64);
+        }
+        for body in [b"[]".as_slice(),
+            br#"[{"columns":2,"exponents":[-1,1,-1],"weighted":false}]"#,
+            br#"[{"columns":2,"exponents":[129,0,0],"weighted":true}]"#,
+            br#"[{"columns":2,"exponents":[0,0,0],"weighted":true,"extra":0}]"#] {
+            assert!(rms_programs(body).is_err());
+        }
+        assert!(rms_programs(&vec![b' '; 1_048_577]).is_err());
+        let many = serde_json::json!(vec![serde_json::json!({
+            "columns": 2, "exponents": [0,0,0], "weighted": false}); 9]);
+        assert!(rms_programs(&serde_json::to_vec(&many).unwrap()).is_err());
+    }
 }

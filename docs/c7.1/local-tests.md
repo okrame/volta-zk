@@ -3,7 +3,18 @@
 [Design](design.md) · [Specifiche](specs.md) · [Sicurezza](security.md) ·
 [Test su RunPod](runpod-tests.md) · [Evidenze storiche](../c7.1-history/evidence.md)
 
-La [campagna H100 è conclusa](../c7.1-history/h100-campaign-close-2026-10-10.md),
+È autorizzato il [seguito H100 del 10 ottobre](../c7.1-history/h100-followup-start-2026-10-10.md)
+sul solo pod `z6wx2kkn69eoc0`, sei ore dall'avvio provider, con trenta
+minuti riservati alla chiusura: fine calcolo 21:57:24 UTC, guard
+22:22:24 UTC, stop confermato entro 22:27:24 UTC del 10 ottobre
+(00:27:24 Italia dell'11 ottobre). Guard indipendente attivo sulla VM.
+Priorità: spike A, pool/fill separati sui caller reali, poi motore
+ottimizzato e RMS coarser. Γ ammesso resta il riferimento; NoPeek,
+MAC originali, AES reale, correlazioni monouso e limiti restano invariati.
+Nuovi trial usano journal e capacità nuovi; nessun nuovo certificato,
+bound fisico o risultato prestazionale è ancora acquisito.
+
+La [precedente campagna H100 è conclusa](../c7.1-history/h100-campaign-close-2026-10-10.md),
 con pod spento entro la deadline e zero certificati canonici. A04 termina per cap fisico dopo 86/512 gruppi, wall 780,205 s.
 Prova/verifica complete e O=150/300 restano non verificati.
 
@@ -34,8 +45,9 @@ La [chiusura locale del 10 ottobre](../c7.1-history/local-exploration-close-2026
 report/input effettivamente conservati; packed e tracce complete non
 sono disponibili e non vengono scaricati. Gli 84,382 s della H100 sono
 il nostro esecutore intero esatto: manca il confronto con un motore
-ottimizzato sullo stesso workload. Il [piano hardware mirato](../c7.1-history/local-hardware-plan-2026-10-10.md) resta da eseguire soltanto
-con una nuova autorizzazione hardware.
+ottimizzato sullo stesso workload. Il [piano hardware mirato](../c7.1-history/local-hardware-plan-2026-10-10.md)
+è coperto dalla nuova autorizzazione sopra; i limiti locali restano
+invariati e sul pod valgono quelli del runbook.
 
 I controlli della nuova modifica mantengono esiti, limiti e provenienza:
 `tests/test_c71_range_native.py` verifica riuso del flag, reset, capacità

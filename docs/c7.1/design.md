@@ -3,7 +3,18 @@
 [Specifiche](specs.md) · [Sicurezza](security.md) · [Test locali](local-tests.md) ·
 [Test su RunPod](runpod-tests.md) · [Archivio](../c7.1-history/README.md)
 
-La [campagna H100 del 9–10 ottobre è chiusa](../c7.1-history/h100-campaign-close-2026-10-10.md).
+È autorizzato il [seguito H100 del 10 ottobre](../c7.1-history/h100-followup-start-2026-10-10.md)
+sul solo pod `z6wx2kkn69eoc0`, sei ore dall'avvio provider, con trenta
+minuti riservati alla chiusura: fine calcolo 21:57:24 UTC, guard
+22:22:24 UTC, stop confermato entro 22:27:24 UTC del 10 ottobre
+(00:27:24 Italia dell'11 ottobre). Guard indipendente attivo sulla VM.
+Priorità: spike A, pool/fill separati sui caller reali, poi motore
+ottimizzato e RMS coarser. Γ ammesso resta il riferimento; NoPeek,
+MAC originali, AES reale, correlazioni monouso e limiti restano invariati.
+Nuovi trial usano journal e capacità nuovi; nessun nuovo certificato,
+bound fisico o risultato prestazionale è ancora acquisito.
+
+La [precedente campagna H100 del 9–10 ottobre è chiusa](../c7.1-history/h100-campaign-close-2026-10-10.md).
 Pod spento e confermato `EXITED`, runtime assente, alle **01:49:55 UTC**
 (03:49:55 Italia), entro otto ore dall'avvio provider. **Zero certificati**;
 O=150/300 non iniziati. Il sesto trial completa W/setup/preparazione O=0,
@@ -40,8 +51,9 @@ workload e ricette numeriche, ma cambiano la relazione tramite le scale A:
 non ereditano ammissione o credito prestazionale. Geometria A/PCS e 512
 ricostruzioni iniziali restano invariate. Il [piano hardware mirato](../c7.1-history/local-hardware-plan-2026-10-10.md) distingue costo
 API/kernel, attribuzione dello spike e validazione numerica/qualità.
-Sono autorizzati soltanto lavoro e test locali entro i limiti correnti;
-nessun pod, nuova spesa, run completo pesante o estensione dei timeout.
+La nuova autorizzazione hardware sopra sostituisce il vincolo di solo
+lavoro locale. Trial e correzioni sono coperti entro lo stesso pod,
+ambito e deadline; altro hardware o durata restano esclusi.
 
 Il confronto ridotto prima/dopo misura 32→1 allocazioni del flag, con
 stessi 32 kernel, 96 fence e 2.176 B D2H inclusa l'osservazione dei raw.

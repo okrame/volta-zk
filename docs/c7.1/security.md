@@ -3,7 +3,18 @@
 [Design](design.md) · [Specifiche](specs.md) · [Test locali](local-tests.md) ·
 [Test su RunPod](runpod-tests.md) · [Archivio](../c7.1-history/README.md)
 
-La [campagna H100 del 9–10 ottobre è chiusa](../c7.1-history/h100-campaign-close-2026-10-10.md).
+È autorizzato il [seguito H100 del 10 ottobre](../c7.1-history/h100-followup-start-2026-10-10.md)
+sul solo pod `z6wx2kkn69eoc0`, sei ore dall'avvio provider, con trenta
+minuti riservati alla chiusura: fine calcolo 21:57:24 UTC, guard
+22:22:24 UTC, stop confermato entro 22:27:24 UTC del 10 ottobre
+(00:27:24 Italia dell'11 ottobre). Guard indipendente attivo sulla VM.
+Priorità: spike A, pool/fill separati sui caller reali, poi motore
+ottimizzato e RMS coarser. Γ ammesso resta il riferimento; NoPeek,
+MAC originali, AES reale, correlazioni monouso e limiti restano invariati.
+Nuovi trial usano journal e capacità nuovi; nessun nuovo certificato,
+bound fisico o risultato prestazionale è ancora acquisito.
+
+La [precedente campagna H100 del 9–10 ottobre è chiusa](../c7.1-history/h100-campaign-close-2026-10-10.md).
 Pod spento e confermato `EXITED`, runtime assente, alle **01:49:55 UTC**
 (03:49:55 Italia), entro otto ore dall'avvio provider. **Zero certificati**;
 O=150/300 non iniziati. Il sesto trial completa W/setup/preparazione O=0,
@@ -40,8 +51,9 @@ correlazioni monouso e PCG AES restano invariati, senza prove/PCS per token.
 W, architettura, workload e ricette numeriche sono fissati; variare scale
 cambia la relazione e richiede i controlli numerici/qualità e l'ammissione
 completa, più il ricalcolo delle prenotazioni e dei bound applicabili.
-Il [piano hardware mirato](../c7.1-history/local-hardware-plan-2026-10-10.md) non autorizza esecuzioni hardware; l'istruzione corrente
-permette solo lavoro locale entro i limiti operativi.
+Il [piano hardware mirato](../c7.1-history/local-hardware-plan-2026-10-10.md)
+è ora coperto dalla nuova autorizzazione sopra, nello stesso ambito e
+termine; le candidate Γ restano screening non ammessi.
 
 ## Ambito e ipotesi
 

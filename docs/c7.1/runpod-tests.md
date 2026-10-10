@@ -3,7 +3,18 @@
 [Design](design.md) · [Specifiche](specs.md) · [Sicurezza](security.md) ·
 [Test locali](local-tests.md) · [Archivio](../c7.1-history/README.md)
 
-La [campagna H100 del 9–10 ottobre è chiusa](../c7.1-history/h100-campaign-close-2026-10-10.md).
+È autorizzato il [seguito H100 del 10 ottobre](../c7.1-history/h100-followup-start-2026-10-10.md)
+sul solo pod `z6wx2kkn69eoc0`, sei ore dall'avvio provider, con trenta
+minuti riservati alla chiusura: fine calcolo 21:57:24 UTC, guard
+22:22:24 UTC, stop confermato entro 22:27:24 UTC del 10 ottobre
+(00:27:24 Italia dell'11 ottobre). Guard indipendente attivo sulla VM.
+Priorità: spike A, pool/fill separati sui caller reali, poi motore
+ottimizzato e RMS coarser. Γ ammesso resta il riferimento; NoPeek,
+MAC originali, AES reale, correlazioni monouso e limiti restano invariati.
+Nuovi trial usano journal e capacità nuovi; nessun nuovo certificato,
+bound fisico o risultato prestazionale è ancora acquisito.
+
+La [precedente campagna H100 del 9–10 ottobre è chiusa](../c7.1-history/h100-campaign-close-2026-10-10.md).
 Pod spento e confermato `EXITED`, runtime assente, alle **01:49:55 UTC**
 (03:49:55 Italia), entro otto ore dall'avvio provider. **Zero certificati**;
 O=150/300 non iniziati. Il sesto trial completa W/setup/preparazione O=0,
@@ -17,10 +28,13 @@ ottimizzato. A04 termina per cap fisico dopo 86/512 gruppi, wall 780,205 s.
 I diagnostici A omettono lo stato W/setup e non dimostrano il picco canonico.
 La causa dello spike resta aperta; il target 65 s non è raggiunto.
 
-L'istruzione corrente autorizza le sole esplorazioni locali nella
-[chiusura locale del 10 ottobre](../c7.1-history/local-exploration-close-2026-10-10.md): nessun avvio/riavvio di pod, nuova spesa, esecuzione completa
-pesante o estensione dei timeout. Il [piano hardware mirato](../c7.1-history/local-hardware-plan-2026-10-10.md) prepara una futura verifica
-con domanda, baseline, strumenti discriminanti e stop; non la esegue.
+L'istruzione corrente sostituisce il vincolo di solo lavoro locale della
+[chiusura locale](../c7.1-history/local-exploration-close-2026-10-10.md).
+Autorizza correzioni, microbenchmark e trial sul pod indicato entro
+ambito e deadline, senza altro hardware o estensioni. Il
+[piano hardware mirato](../c7.1-history/local-hardware-plan-2026-10-10.md)
+e le priorità del seguito locale guidano le misure, senza credito prima
+dell'esecuzione e dei controlli pertinenti.
 Le quattro candidate di scale A restano screening non ammessi, con W,
 architettura, workload e ricette fissati, geometria A/PCS e 512 ricostruzioni
 iniziali invariati. Γ ammesso resta il riferimento.
@@ -47,15 +61,16 @@ all'arming sono capacità già vive; il gruppo indica l'ultimo begin
 validato, comprese le allocazioni preparatorie con etichetta precedente.
 Stop anche per dati persi o finestra incompleta, senza aumentare cap.
 Confronti temporali senza profiler e parità CUDA reale precedono ogni
-credito prestazionale. Nessuna fase hardware è eseguita o autorizzata.
+credito prestazionale. Le fasi hardware sono ora autorizzate nella nuova
+campagna sopra; nessun nuovo risultato è ancora acquisito.
 
 Γ è ammesso e riusato dopo verifica dei cinque controlli, degli input e
-dei tre piani pubblici. Campagna sul pod `z6wx2kkn69eoc0` **conclusa**:
+dei tre piani pubblici. La precedente campagna sul pod è **conclusa**:
 conferma provider `EXITED`/runtime assente alle 01:49:55 UTC del 10 ottobre,
 dopo 6 h 41 min, prima della deadline 03:08:42 UTC.
 Fine calcolo prevista 02:38:42, guard indipendente 03:03:42; ritiro del
-guard solo dopo lo stop confermato. La campagna termina qui; non è previsto
-un riavvio del pod. Codice ed evidenze sono sul branch Git HTTPS
+guard solo dopo lo stop confermato. Quella campagna è terminata; la nuova autorizzazione e deadline sono
+quelle riportate sopra. Codice ed evidenze sono sul branch Git HTTPS
 `runpod/z6wx2kkn69eoc0/c71-h100-20261009`.
 
 | Trial canonico | Esito conservato |
@@ -184,9 +199,11 @@ esito locale attribuisce compilazione CUDA o parità sulla H100.
 
 Regole permanenti approvate dal proprietario l'8 ottobre 2026;
 [motivazione e decisioni](../c7.1-history/operating-rules-2026-10-08.md).
-Questo documento non avvia una campagna a pagamento. L'istruzione corrente
-autorizza soltanto lavoro locale; una nuova campagna richiede una decisione
-che fissi hardware, ambito, durata e riserva di chiusura.
+L'istruzione corrente del proprietario autorizza la nuova campagna sul
+solo pod `z6wx2kkn69eoc0`, massimo sei ore dall'avvio provider e
+trenta minuti di chiusura inclusi, con ambito e priorità definiti sopra.
+Altra durata o hardware richiedono una nuova decisione.
+
 L'agent registra deadline e responsabile dello spegnimento dall'avvio
 provider, verifica l'accesso all'arresto API e predispone un guard indipendente.
 Non spostare l'inizio al primo SSH. Non serve un preventivo economico.

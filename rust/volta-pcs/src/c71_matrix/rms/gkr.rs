@@ -8,6 +8,8 @@ component_wire!(Layer { rounds, terminal });
 component_wire!(Proof { layers, products, functions });
 use super::{Circuit, Gate, Op, ReplayLayerScratch};
 mod patterns;
+#[cfg(test)]
+mod gamma_screen_fixture;
 
 #[derive(Clone, Copy)]
 pub(in super::super) enum Assignments<'a> {

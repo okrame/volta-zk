@@ -40,7 +40,8 @@ def run(args):
             record({'action': verb, 'edge': 'after'})
 
         command = [args.nsys, 'launch', '--session-new=' + args.session,
-                   '--trace=cuda', '--cuda-memory-usage=true', '--wait=all', *args.command]
+                   '--trace=cuda', '--cuda-memory-usage=' + str(not args.no_cuda_memory_usage).lower(),
+                   '--wait=all', *args.command]
         record({'action': 'launch', 'command': command, 'credit': False,
                 'start_after_completed_groups': args.start, 'stop_after_completed_groups': args.end})
         with new_file(args.output / 'launch.stdout') as out, new_file(args.output / 'launch.stderr') as err:
@@ -88,6 +89,8 @@ def run(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--no-cuda-memory-usage', action='store_true',
+                        help='API/kernel component capture without the CUDA allocation graph')
     parser.add_argument('output', type=Path)
     parser.add_argument('progress', type=Path)
     parser.add_argument('session')

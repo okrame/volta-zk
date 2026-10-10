@@ -1,0 +1,26 @@
+[
+  {
+    "bytes_from_verifier": 0,
+    "bytes_to_verifier": 24490555,
+    "phase": "public_distribution",
+    "slot": null
+  },
+  {
+    "bytes_from_verifier": 7534041,
+    "bytes_to_verifier": 54307325,
+    "phase": "seed6_setup",
+    "slot": null
+  },
+  {
+    "bytes_from_verifier": 0,
+    "bytes_to_verifier": 136,
+    "phase": "installation",
+    "slot": null
+  },
+  {
+    "bytes_from_verifier": 416,
+    "bytes_to_verifier": 0,
+    "phase": "response",
+    "slot": 0
+  }
+]

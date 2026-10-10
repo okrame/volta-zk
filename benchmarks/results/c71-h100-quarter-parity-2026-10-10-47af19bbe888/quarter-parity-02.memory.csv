@@ -1,0 +1,4 @@
+unix_seconds,sample_duration_seconds,host_tree_rss_bytes,host_tree_swap_bytes,whole_gpu_used_bytes,whole_gpu_free_bytes,resident_host_W_lower_bound_bytes,resident_device_W_bytes,sampled_temporary_bytes,W_transition_incomplete,cgroup_memory_current_bytes,disk_available_bytes,smaps_read_failures
+1791595235.4253366,0.32626730017364025,33476608,0,1048576,85017493504,0,0,,0,99166588928,121115676672,0
+1791595235.4609623,0.035459134727716446,59056128,0,27262976,84991279104,0,0,,0,99175333888,121115672576,0
+1791595235.6790152,0.053403446450829506,56082432,0,4194304,85014347776,0,0,,1,99163418624,121115668480,0

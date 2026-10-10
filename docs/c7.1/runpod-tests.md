@@ -25,8 +25,12 @@ La [validazione sm_90](../c7.1-history/h100-prefix-validation-2026-10-10.md)
 passa 15/15 test CUDA reali con fixture aggiornate e il controllo non lineare;
 il [diagnostico successivo](../c7.1-history/h100-a-prefix-progress-2026-10-10.md)
 completa tre gruppi A sotto cap e si ferma come pianificato. Non misura
-il commitment completo o il picco canonico. `canonical-06` è avviato da W
-alle 00:40:05 UTC del 10 ottobre, con setup AES e journal freschi.
+il commitment completo o il picco canonico. Il
+[sesto trial](../c7.1-history/h100-canonical-06-2026-10-10.md) completa W/setup,
+preparazione 85,021 s e 35 gruppi A, poi termina sul cap fisico:
+6.560.767.488 B contro 6.174.015.488 B. Zero certificati; O=150/300 non
+iniziati. La causa dello spike GPU è aperta. Un diagnostico A separato
+valuta code a `0.25x` dopo parità reale 15/15, senza credito canonico.
 
 La [candidata sul prefisso KV](../c7.1-history/h100-prefix-candidate-2026-10-10.md)
 passa sei test locali, inclusa regressione prima/dopo, 12 span validi e

@@ -81,6 +81,12 @@ con i limiti sotto. La build diagnostica della traccia non è necessaria
 ai test default e aggiunge 32 B owner più stack/cache file/strumenti;
 16 MiB/131.072 record non garantiscono copertura hardware. Journal e CSV
 condividono CLOCK_MONOTONIC senza sincronizzare letture o eventi CUDA.
+Il [preflight H100](../../benchmarks/results/c71-h100-followup-preflight-2026-10-10-7b0885ad316f.json)
+misura l'esaurimento di 16 MiB in 2,47 s del primo gruppo A.
+`C71_OWNER_TRACE_LARGE_ONLY`, aggiunto solo alla build diagnostica, omette
+fence e alloc/free sotto 1 MiB e conserva ogni snapshot. Il test aggiunto
+confronta report numerico, fence native, alloc/free e cleanup delle due
+build su buffer grande/piccolo; tre test Python passano entro 60 s/2 GiB.
 Le due nuove build Rust restano entro 120 s e stop RSS3 GiB. I confronti
 di contatori e upper packed non misurano accelerazione o risparmio H100.
 

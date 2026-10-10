@@ -43,8 +43,15 @@ La modifica locale riusa un flag numerico sincrono privato da 256 B,
 aggiungendo 8 B all'owner host (42.096 B nella fixture corrente, 42.088 B
 nei record H100 storici). La capacità trattenuta resta conteggiata fino
 al cleanup; reset per operazione, letture di errore, fence e garanzie
-restano invariati. La validazione simulata richiede ancora parità CUDA
-reale e misure H100. Il conto del setup AES reale include anche cache W
+restano invariati. Il [preflight H100 del seguito](../../benchmarks/results/c71-h100-followup-preflight-2026-10-10-7b0885ad316f.json)
+passa 15 filtri hardware e il nuovo test numerico su ciascuna delle tre
+librerie; valori, copie e fence sono identici. Il beneficio di wall sui
+caller reali resta da misurare. Il logger completo esaurisce 16 MiB in
+2,47 s del primo gruppo A, senza completarlo. La build diagnostica con
+`-DC71_OWNER_TRACE -DC71_OWNER_TRACE_LARGE_ONLY` conserva snapshot e
+lifecycle da 1 MiB, omettendo fence e alloc/free minori; timeline CUDA
+esterna e contabilità degli strumenti restano necessarie, stesso cap.
+Il conto del setup AES reale include anche cache W
 e owner già installati; NoPeek, MAC originali, correlazioni fresche,
 PCG AES e fail-closed restano quelli del percorso selezionato.
 

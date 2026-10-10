@@ -278,6 +278,14 @@ ledger completo né concede memoria/prestazione/ammissione Γ.
 
 ### Confronto indipendente
 
+Il [preflight H100 del seguito](../../benchmarks/results/c71-h100-followup-preflight-2026-10-10-7b0885ad316f.json)
+conferma l'identità del packed/esponenti W e parità CUDA finita sulle tre
+librerie del confronto pool/fill. Il logger completo non copre un gruppo A:
+16 MiB in 2,47 s. La variante diagnostica `C71_OWNER_TRACE_LARGE_ONLY`
+conserva snapshot e lifecycle da 1 MiB, omettendo fence e alloc/free minori;
+Nsight deve fornire gli eventi omessi. Nessun cambiamento del cap, dei
+32 B owner, del default o delle garanzie richieste per l'ammissione.
+
 L'export dei valori è disponibile. `c71_calibration run-trace` e il modo
 `trace` del [wrapper](../../scripts/c71_calibrate.py) producono `C71TRC01`
 durante lo stesso replay intero: `Trial::emit` scrive le righe prima del

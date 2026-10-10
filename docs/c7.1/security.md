@@ -57,6 +57,14 @@ termine; le candidate Γ restano screening non ammessi.
 
 ## Ambito e ipotesi
 
+Il [preflight del seguito H100](../../benchmarks/results/c71-h100-followup-preflight-2026-10-10-7b0885ad316f.json)
+conserva Γ/W byte-identici e controlli CUDA finiti sulle tre librerie.
+Il cap del logger ferma il primo replay diagnostico; cleanup diagnostico
+e lifecycle W non ricevono credito. La variante esplicita delle sole
+alloc/free da 1 MiB conserva snapshot e cap, e richiede eventi CUDA
+esterni per la copertura omessa. Non abilita prosecuzione del run fallito,
+rilassamento dei limiti, ammissione o raffinamento generale.
+
 I §§1–6 definiscono e dimostrano la composizione matematica
 `C71B12-Gemma-FixedRun-v1` sul bootstrap B11/B12 originario. Il percorso
 efficiente Seed6 conserva la relazione di inferenza, ma richiede il

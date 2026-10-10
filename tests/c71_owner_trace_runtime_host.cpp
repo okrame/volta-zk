@@ -85,10 +85,11 @@ static void assert_no_publication(C71RangeContext* context,uint64_t output) {
 int main(int argc,char** argv) {
     assert(argc==2 && !joint_live);
     const std::string scenario=argv[1];
+    if(scenario=="large") joint_limit=2ULL<<20;
     C71RangeContext* context=nullptr;
     if(scenario=="no_env") assert(!::unsetenv("C71_OWNER_TRACE_PATH"));
     const bool init_failure=scenario=="no_env" || scenario=="existing";
-    const int created=c71_range_create(0,262144,256,joint_account,&context);
+    const int created=c71_range_create(0,scenario=="large"?(2ULL<<20):262144,256,joint_account,&context);
     assert(context && (created!=0)==init_failure);
     const auto initial=stats(context);
     assert(initial.host_owner_bytes==42128 && joint_live==initial.host_owner_bytes);
@@ -106,6 +107,16 @@ int main(int argc,char** argv) {
         assert(stats(context).arena_bytes==17152 && joint_live==initial.host_owner_bytes+17152);
         // Pending outputs remain private; close must drain powers and memsets
         // before freeing every capacity, even if the target group was absent.
+    } else if(scenario=="large") {
+        install(context);
+        const auto big=alloc(context,C71_I64,1<<17), small=alloc(context,C71_I64,3);
+        assert(!c71_dense_pointwise(context,0,0,0,0,{0,0,0},big));
+        assert(!c71_dense_pointwise(context,0,0,0,0,{0,0,0},small));
+        int64_t words[]={-1,-1,-1};
+        assert(!c71_original_read(context,small,C71_I64,0,3,words));
+        for(auto value:words) assert(value==0);
+        assert(!c71_range_release(context,big) && !c71_range_release(context,small));
+        assert(stats(context).arena_bytes==256);
     } else if(scenario=="prealloc" || scenario=="postalloc") {
         if(scenario=="prealloc") fail_before_operation="allocate";
         else armed=Fault::post_alloc;
@@ -169,7 +180,7 @@ int main(int argc,char** argv) {
     const uint64_t debt=original_free_failure?256:0;
     C71RangeStats final{};
     const int closed=c71_range_close(context,&final);
-    const bool cleanup_error=scenario!="normal" && scenario!="windowmatched";
+    const bool cleanup_error=scenario!="normal" && scenario!="windowmatched" && scenario!="large";
     assert((closed!=0)==cleanup_error);
     assert(final.cleanup_failed==cleanup_error);
     assert(final.arena_bytes==debt && !final.weights_bytes && joint_live==debt);

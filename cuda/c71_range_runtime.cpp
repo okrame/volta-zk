@@ -212,6 +212,13 @@ TraceAllocation trace_buffer(C71RangeContext* c,const Buffer* b) {
 }
 int trace_event(C71RangeContext* c,const char* op,const char* edge,
     TraceAllocation a,int status,unsigned line) {
+#ifdef C71_OWNER_TRACE_LARGE_ONLY
+    // A real scan exhausted 16 MiB in 2.47 s. Keep snapshots and large
+    // lifecycles; the external CUDA profiler supplies the omitted API events.
+    if(!c->diagnostic.failed && (!std::strcmp(op,"fence") ||
+        ((!std::strcmp(op,"allocate") || !std::strcmp(op,"c71_range_release")) &&
+            a.capacity<(1ULL<<20)))) return 0;
+#endif
     return c->diagnostic.emit(op,edge,a.slot,a.kind,a.logical,a.capacity,
         c->stats.arena_bytes,c->stats.weights_bytes,status,line)
         ? 0 : fail(c,"bounded owner trace failed");

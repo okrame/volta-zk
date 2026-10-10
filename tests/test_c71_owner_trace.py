@@ -13,10 +13,12 @@ FIELDS = {"schema", "credit", "seq", "a_first", "a_group", "monotonic_ns", "op",
           "status", "line"}
 
 
-def compile_fixture(binary, *, header_only=False):
+def compile_fixture(binary, *, header_only=False, large_only=False):
     command = ["g++", "-std=c++17", "-O2", "-Wall", "-Wextra", "-Werror",
                "-fsanitize=undefined", "-fno-sanitize-recover=all", "-DC71_OWNER_TRACE",
                "-I", str(ROOT / "tests/cuda_stub"), "-I", str(ROOT / "cuda")]
+    if large_only:
+        command.append("-DC71_OWNER_TRACE_LARGE_ONLY")
     if header_only:
         command.append(str(HEADER_SOURCE))
     else:
@@ -59,6 +61,24 @@ def read_records(path):
         for key in ("logical_bytes", "capacity_bytes", "arena_bytes", "weights_bytes"):
             assert record[key] >= 0
     return records
+
+
+def test_owner_trace_large_window_keeps_real_lifecycles_and_native_cleanup(tmp_path):
+    reports = []
+    for large_only in (False, True):
+        binary = tmp_path / f"runtime-{large_only}"
+        compile_fixture(binary, large_only=large_only)
+        path = tmp_path / f"trace-{large_only}.jsonl"
+        reports.append(run_fixture(binary, "large", path))
+        records = read_records(path)
+        if large_only:
+            assert not any(r["op"] == "fence" for r in records)
+            lifecycles = [r for r in records if r["op"] in {"allocate", "c71_range_release"}]
+            assert len(lifecycles) == 4
+            assert all(r["capacity_bytes"] == 1 << 20 for r in lifecycles)
+            assert [r["edge"] for r in lifecycles] == ["before", "after", "before", "after"]
+            assert lifecycles[-1]["arena_bytes"] == 512
+    assert reports[0] == reports[1]
 
 
 def test_owner_trace_header_is_bounded_private_and_fail_closed(tmp_path):

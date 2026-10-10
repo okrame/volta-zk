@@ -83,9 +83,13 @@ Il census predice 3.840 lanci evitati per scan A completa, 1.966.080 nei
 512 replay; non riguarda inferenza né lavoro interno CUDA del memset.
 La traccia owner è una build diagnostica esplicita, bounded 16 MiB,
 owner 42.128 B (32 B aggiuntivi), con clock comune a journal/monitor e
-cleanup fail-closed. Copertura della finestra reale, eventi CUDA e costo
-fisico della strumentazione restano da verificare. Il default e il suo
-ledger rimangono quelli sopra.
+cleanup fail-closed. Il [preflight della nuova H100](../../benchmarks/results/c71-h100-followup-preflight-2026-10-10-7b0885ad316f.json)
+verifica packed/esponenti identici e parità CUDA delle tre librerie. La
+traccia completa esaurisce 16 MiB in 2,47 s del primo gruppo, senza
+completarlo. La build esplicita `C71_OWNER_TRACE_LARGE_ONLY` omette fence
+e alloc/free sotto 1 MiB, conserva gli snapshot e lo stesso cap; richiede
+la timeline CUDA esterna per gli eventi omessi. Copertura dello spike e
+costo fisico restano aperti. Default e ledger restano quelli sopra.
 
 Passano anche predicato RMS originale, replay packed e supporti GKR su
 fixture ridotte pesata/non pesata. Lo screen dai metadati conservati dà

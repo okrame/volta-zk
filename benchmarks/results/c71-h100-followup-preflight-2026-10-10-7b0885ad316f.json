@@ -1,0 +1,244 @@
+{
+  "admitted_gamma_reused": {
+    "all_hashes_match": true,
+    "files": 7,
+    "reference_recalibrated": false
+  },
+  "campaign_deadline": {
+    "authorization": "Owner attachment 2026-10-10: same H100 pod, six hours from provider start including thirty minutes for closure; fresh trials within scope",
+    "campaign_end_epoch": 1791669444.2009835,
+    "campaign_end_utc": "2026-10-10T21:57:24.200984+00:00",
+    "close_reserve_seconds": 1800,
+    "deadline_epoch": 1791671244.2009835,
+    "deadline_utc": "2026-10-10T22:27:24.200984+00:00",
+    "guard_stop_epoch": 1791670944.2009835,
+    "guard_stop_utc": "2026-10-10T22:22:24.200984+00:00",
+    "pod_id": "z6wx2kkn69eoc0",
+    "shutdown_owner": "Root agent and independent local VM guard",
+    "start_definition": "API request start minus runtime uptime minus conservative sixty seconds; SSH does not reset start",
+    "start_epoch": 1791649644.2009835,
+    "start_utc": "2026-10-10T16:27:24.200984+00:00"
+  },
+  "canonical_certificates_verified": 0,
+  "credit": false,
+  "date": "2026-10-10",
+  "git_dirty": false,
+  "gpu": "GPU-e05e977b-758d-f3f4-cbe8-5720b83d1ae1, NVIDIA H100 80GB HBM3, 580.126.09, 81559",
+  "hardware_parity": {
+    "all_passed": true,
+    "existing_filters": 15,
+    "libraries": 3,
+    "numeric_pool_fill": {
+      "072de37": {
+        "cleanup_success": true,
+        "credit": false,
+        "exact_original_words": true,
+        "gpu_execution": true,
+        "lengths": 7,
+        "native_cumulative": {
+          "allocations": 112,
+          "arena_bytes": 0,
+          "cleanup_failed": 0,
+          "d2d_bytes": 0,
+          "d2h_bytes": 638064,
+          "fences": 175,
+          "h2d_bytes": 67172,
+          "host_owner_bytes": 42088,
+          "launches": 49,
+          "live_capacity_bytes": 0,
+          "logical_bytes": 0,
+          "peak_capacity_bytes": 225280,
+          "peak_reserved_bytes": 225280,
+          "releases": 112,
+          "stopped": 0,
+          "weights_bytes": 0,
+          "weights_loaded_bytes": 0,
+          "weights_sealed": 0,
+          "zeroed_bytes": 196
+        },
+        "nonzero_pointwise_cases": 21,
+        "retained_numeric_capacity_bytes": 0,
+        "rne_cases": 21,
+        "zero_application_launches": 7,
+        "zero_cases": 7
+      },
+      "8421fad": {
+        "cleanup_success": true,
+        "credit": false,
+        "exact_original_words": true,
+        "gpu_execution": true,
+        "lengths": 7,
+        "native_cumulative": {
+          "allocations": 64,
+          "arena_bytes": 256,
+          "cleanup_failed": 0,
+          "d2d_bytes": 0,
+          "d2h_bytes": 638064,
+          "fences": 175,
+          "h2d_bytes": 67172,
+          "host_owner_bytes": 42096,
+          "launches": 49,
+          "live_capacity_bytes": 256,
+          "logical_bytes": 4,
+          "peak_capacity_bytes": 225280,
+          "peak_reserved_bytes": 225280,
+          "releases": 63,
+          "stopped": 0,
+          "weights_bytes": 0,
+          "weights_loaded_bytes": 0,
+          "weights_sealed": 0,
+          "zeroed_bytes": 196
+        },
+        "nonzero_pointwise_cases": 21,
+        "retained_numeric_capacity_bytes": 256,
+        "rne_cases": 21,
+        "zero_application_launches": 7,
+        "zero_cases": 7
+      },
+      "current": {
+        "cleanup_success": true,
+        "credit": false,
+        "exact_original_words": true,
+        "gpu_execution": true,
+        "lengths": 7,
+        "native_cumulative": {
+          "allocations": 64,
+          "arena_bytes": 256,
+          "cleanup_failed": 0,
+          "d2d_bytes": 0,
+          "d2h_bytes": 638064,
+          "fences": 175,
+          "h2d_bytes": 67172,
+          "host_owner_bytes": 42096,
+          "launches": 42,
+          "live_capacity_bytes": 256,
+          "logical_bytes": 4,
+          "peak_capacity_bytes": 225280,
+          "peak_reserved_bytes": 225280,
+          "releases": 63,
+          "stopped": 0,
+          "weights_bytes": 0,
+          "weights_loaded_bytes": 0,
+          "weights_sealed": 0,
+          "zeroed_bytes": 134484
+        },
+        "nonzero_pointwise_cases": 21,
+        "retained_numeric_capacity_bytes": 256,
+        "rne_cases": 21,
+        "zero_application_launches": 0,
+        "zero_cases": 7
+      }
+    }
+  },
+  "limitations": [
+    "Finite implementation parity only; no protocol refinement or complete physical peak.",
+    "Pool/fill wall savings on real callers remain unmeasured.",
+    "Selected trace proves its byte ceiling insufficient; no whole scan or spike attribution."
+  ],
+  "native_libraries": {
+    "libc71_072de37.so": {
+      "bytes": 3567416,
+      "sha256": "f97db163a6035d7053065af3143a423744ade9bf49077b4db35fac10221d30b7"
+    },
+    "libc71_8421fad.so": {
+      "bytes": 3567424,
+      "sha256": "3663f4c249e896da19a5f3f8937335fe6732d5d29f7be9044c830d060a969a9e"
+    },
+    "libc71_current.so": {
+      "bytes": 3567488,
+      "sha256": "8a67c85d8306c01267b33f1f704bb2f0ba10511a415a06eccea52a30af7f03e7"
+    },
+    "libc71_trace.so": {
+      "bytes": 3576696,
+      "sha256": "f09d60edb58100559a257d342cb8efb5591ada6c5b61def842ae12fa4910112e"
+    }
+  },
+  "packed_identity": {
+    "checked_epoch": 1791652146.2629578,
+    "compared_fields": [
+      "model",
+      "revision",
+      "packed_bytes",
+      "packed_sha256",
+      "weight_exponents_sha256",
+      "weight_exponents_by_tensor"
+    ],
+    "full_source_bodies_verified": true,
+    "packed_body_rehashed_by_ingest": true,
+    "packed_bytes": 61394690560,
+    "packed_sha256": "1a88da14c15d24133d0df40ff2a3acdbc54e7b91634a8304e787a5701ac8dac8",
+    "passed": true,
+    "reference_recalibrated": false,
+    "source_sha256": {
+      "model-00001-of-00002.safetensors": "186fa361e76abbb5f48ffb3d9965181a5da33522e39c25eb75d7241da1637aac",
+      "model-00002-of-00002.safetensors": "b78ae8294981a6d674c47f2261d34240b7539bbeafb4f7d0525f6167946e6da0"
+    }
+  },
+  "pod": "z6wx2kkn69eoc0",
+  "private_artifacts": {
+    "files": 633,
+    "manifest": "files.json",
+    "manifest_sha256": "4686143ea484c9acfec8e7b94d555cff96d4f2f3d296a7cff8d5d26d377eb1d6",
+    "path": "artifact/c7.1-pod/h100-followup-preflight-20261010T172400Z"
+  },
+  "production_binary_build_sha": "b7c6d0acd12d138d2abbac6ade9918903de2890e",
+  "readiness": false,
+  "reference_recalibrated": false,
+  "schema": "volta-c71-h100-followup-preflight-v1",
+  "source_sha": "7b0885ad316f577b2ec03ec9415ceba8b64beb8c",
+  "trace_rate_trial": {
+    "build_overlap": "CPU compilation/dependency bootstrap overlaps this diagnostic; no performance credit",
+    "bytes": 16777014,
+    "complete_a_groups": 0,
+    "duration_seconds": 2.467114337,
+    "event_counts": {
+      "allocate": 16575,
+      "c71_pcs_source_begin": 2,
+      "c71_range_release": 16372,
+      "fence": 24378,
+      "retained_buffer": 315,
+      "retained_weights": 1
+    },
+    "profiler": false,
+    "records": 57643,
+    "stop": "16 MiB owner trace cap, terminal owner; failed cleanup diagnostic leaves W lifecycle unresolved in monitor; no continuation",
+    "summary": {
+      "authorized_end_epoch": 1791671244.0,
+      "close_reserve_seconds": 1800,
+      "command": [
+        "/workspace/c71-h100-20261010/binaries/c71_canonical_reference-b7c6d0ac",
+        "commitment-a-cuda",
+        "/workspace/c71-h100-20261010/gamma-inputs/candidate.json",
+        "/workspace/c71-h100-20261010/gamma-inputs/tables.bin",
+        "/workspace/c71-h100-20261010/weights/shards/gemma-4-31b-5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89.packed.i16",
+        "/workspace/c71-h100-20261010/a-trace-rate/journals",
+        "2147483648",
+        "/workspace/c71-h100-20261010/libc71_trace.so",
+        "0"
+      ],
+      "compute_end_epoch": 1791669444.0,
+      "exit_code": 1,
+      "gpu_uuid": "GPU-e05e977b-758d-f3f4-cbe8-5720b83d1ae1",
+      "incomplete_samples": 2,
+      "label": "a-trace-rate",
+      "mode": "canonical",
+      "observed_payload_peak_bytes": 5450753951,
+      "payload_limit_bytes": 5905580032,
+      "physical_complete_peak": false,
+      "physical_temporary_limit_bytes": 6174015488,
+      "resource_failure": "ValueError: unresolved W residency transition",
+      "sample_interval_clock": "Linux CLOCK_MONOTONIC, absolute nanoseconds on this host boot",
+      "sample_interval_scope": "Start/end bracket collection of the resource sample; no GPU synchronization or instantaneous peak. External profiler clock alignment requires a matching clock or explicit anchor.",
+      "sampled_host_rss_peak_bytes": 61607411712,
+      "sampled_stable_temporary_peak_bytes": 5977230848,
+      "sampled_whole_gpu_peak_bytes": 67159195648,
+      "samples": 1957,
+      "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+      "sampling_target_seconds": 0.2,
+      "smaps_read_failures": 0,
+      "stable_samples": 1955,
+      "start_unix_seconds": 1791652220.2370248,
+      "wall_seconds": 392.24487183988094
+    }
+  }
+}

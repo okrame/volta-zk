@@ -76,7 +76,8 @@ def candidates(baseline, oracle):
     norms, _ = norms_and_keys(baseline, oracle)
     ins = {str(n["inputs"][0]) for n in norms}
     outs = {str(n["outputs"][-1]) for n in norms}
-    fixed = {"0"} | {str(s["outputs"][-1]) for s in oracle["steps"] if s["kind"] == "softmax"}
+    fixed = {"0"} | {str(s["parameters"]["probability"])
+                     for s in oracle["steps"] if s["kind"] == "softmax"}
     result = {"admitted": copy.deepcopy(baseline)}
     for name, ids, change in (
         ("rms-output-finer-one", outs, lambda e: e - 1),

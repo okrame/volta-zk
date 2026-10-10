@@ -31,12 +31,26 @@ def test_retained_sync_flag_is_charged_until_native_cleanup(tmp_path):
     assert len(after["named_phase_crosschecks"]) == len(before["named_phase_crosschecks"]) == 653
     for old, new in zip(before["named_phase_crosschecks"], after["named_phase_crosschecks"]):
         assert old["phase"] == new["phase"]
+        owner_live = "native_common_owner_host" in old["parts"]
         retired = old["phase"] == "after_crypto_cleanup_report"
-        assert new["named_allocation_subtotal_bytes"]-old["named_allocation_subtotal_bytes"] == (8 if retired else 264)
-        assert ("native_retained_sync_error_flag_upper" in new["parts"]) != retired
+        assert new["named_allocation_subtotal_bytes"]-old["named_allocation_subtotal_bytes"] == (
+            (8 if retired else 264) if owner_live else 0)
+        assert ("native_retained_sync_error_flag_upper" in new["parts"]) == (owner_live and not retired)
     assert after["joint_admitted"] is False
     assert after["allowance_physically_verified"] is False
     assert after["credit"] is False
+
+
+def test_AES_setup_keeps_the_already_installed_W_cache_and_owner():
+    phases = {r["phase"]: r for r in compute(INPUTS)["named_phase_crosschecks"]}
+    parts = phases["real_AES_seed6_setup"]["parts"]
+    installed = phases["native_initial_W_install"]["parts"]
+    for key in ("initial_W_and_A_root_offset_caches", "retained_initial_private_host_pads",
+                "native_common_owner_host"):
+        assert parts[key] == installed[key] > 0
+    assert parts["two_public_table_host_payloads"] == 2*24414870
+    assert "full_calibration_table_serialization_difference_upper" not in parts
+    assert "native_common_owner_host" not in phases["public_profile_construction"]["parts"]
 
 
 @pytest.mark.parametrize("change", [dict(retained_device_capacity_bytes=0), dict(flag_count=2),

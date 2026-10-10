@@ -783,7 +783,7 @@ def complete_prepared_phases(phases, directory, common, persistent, replay, init
                     class4_current_real_AES_PCG_expansion_including_idle=pcg_expand,
                     class4_both_role_retained_setup_Audit_Vec_capacity=1792)
         return base
-    # This preceding lifetime has no installed numerical state/root caches.
+    # Public compilation precedes W installation; AES setup follows it.
     setup = {'class1_9_public_profiles_tables_fixed_metadata': metadata,
              'two_public_table_host_payloads': 2*24414870,
              'class9_crypto_telemetry_capacity_upper': tele['crypto_live_metadata_heap_upper_bytes'],
@@ -799,7 +799,10 @@ def complete_prepared_phases(phases, directory, common, persistent, replay, init
           class6_RMS_prepare_map_keys_profiles_outer_capacity_upper=208400,
           class6_RMS_compact_geometry_keys_and_widths_build_upper=140608+2064),
           'One selected public compiler at a time; pw<=32,width<=128 bounds174482 raw gates. Source-derived HashMap/BTreeSet and moving layer growth are charged; no Compact checkpoint.')
-    extra('real_AES_seed6_setup', dict(setup,
+    setup_installed = dict(common(0, numeric=False), **setup)
+    # setup already counts both full serialized table payloads.
+    setup_installed.pop('full_calibration_table_serialization_difference_upper', None)
+    extra('real_AES_seed6_setup', dict(setup_installed,
           both_role_main_and_inverse_setup_vec_payload_upper=152*(17553+2025)+624,
           MR19_both_role384_native_point_scalar_and_wire_capacity_upper=511872,
           AES_COPE_both_role_correction_rows=6144,

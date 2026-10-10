@@ -19,7 +19,8 @@ def public_fixture():
     oracle = {"weights": [{"id": 0, "name": "tied"}, {"id": 1, "name": "norm"}],
               "steps": [{"kind": "norm", "inputs": [1], "outputs": [4, 5, 2],
                          "parameters": {"columns": 2, "weight": 1}},
-                        {"kind": "softmax", "outputs": [3]}]}
+                        {"kind": "softmax", "outputs": [3, 6, 7, 8, 9, 10],
+                         "parameters": {"probability": 3, "histogram": 10}}]}
     return baseline, oracle
 
 

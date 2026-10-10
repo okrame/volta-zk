@@ -5,8 +5,10 @@
 
 La [coda SHAKE cGGM differita](../c7.1-history/h100-cggm-tail-2026-10-09.md)
 passa 17 test CPU sul pod e conserva output, scarti e correlazioni monouso.
-Il microbenchmark misura 1,475× sul componente; il setup completo con
-questa modifica non è misurato e `canonical-05` usa il binario precedente.
+Il microbenchmark misura 1,475× sul componente. Il
+[setup completo successivo](../c7.1-history/h100-setup06-checkpoint-2026-10-10.md)
+misura 1.493,833 s contro 1.986,453 s: 1,330×, −24,799% osservato fra
+run singoli, senza attribuzione causale isolata. Il traffico resta identico.
 
 Il [quinto trial](../c7.1-history/h100-canonical-05-2026-10-09.md) termina
 con `Stop` durante A, senza accettazione o violazione fisica osservata.

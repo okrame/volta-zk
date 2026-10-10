@@ -19,6 +19,9 @@ valgono soltanto per il checkpoint che descrivono.
 
 ## Campagne recenti e decisioni operative
 
+- [W e setup del sesto trial H100](h100-setup06-checkpoint-2026-10-10.md): tempi completi, confronto cGGM e limiti della misura.
+- [Parità H100 del prefisso originale](h100-prefix-validation-2026-10-10.md): libreria sm_90 e 15 test reali con capacità KV parzialmente inizializzata.
+- [Avanzamento A dopo la correzione](h100-a-prefix-progress-2026-10-10.md): tre gruppi diagnostici, stop pianificato e nuova sessione canonica.
 - [Componenti del 9 ottobre](crypto-components-2026-10-09.md): scan lineare, XOF pinned, confronto Tensor e correzione causale QK/PV, senza campagna.
 - [Consumer PCS A residente dell'8 ottobre](crypto-a-source-2026-10-08.md): codec, quattro coset, FFT/hash, risorse e limiti del componente locale.
 - [Evidenze del consumer A](crypto-a-source-evidence-2026-10-08.md): record pulito e regressioni dell'owner/Tree W, senza integrazione A o campagna.

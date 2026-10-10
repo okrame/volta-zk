@@ -1,0 +1,100 @@
+{
+  "schema": "c71-h100-complete-setup-checkpoint-v1",
+  "date": "2026-10-10",
+  "git_sha": "47af19bbe888fdc03152cf025621c07d7ae8c788",
+  "git_dirty": false,
+  "launch": {
+    "source_git_sha": "47af19bbe888fdc03152cf025621c07d7ae8c788",
+    "git_dirty": false,
+    "binary_source_git_sha": "3ea1e4a82d07c87bf9c41ce2926a9344b8d86072",
+    "rust_production_unchanged": true,
+    "binary_sha256": "f418d235572ae21ad8aae74fb9a0c4eec81b8ff7e299d443ba97a99d91b40b64",
+    "library_sha256": "ac65f259b2fd3befefbe132039167a1b6159961dbc5018138981d5b300bed91f",
+    "library_source_git_sha": "47af19bbe888fdc03152cf025621c07d7ae8c788",
+    "argv": [
+      "/workspace/c71-h100-20261009/binaries/c71_canonical_reference-3ea1e4a",
+      "experiment-cuda",
+      "/workspace/c71-h100-20261009/gamma-inputs/candidate.json",
+      "/workspace/c71-h100-20261009/gamma-inputs/tables.bin",
+      "/workspace/c71-h100-20261009/weights/gemma-4-31b-5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89.packed.i16",
+      "/workspace/c71-h100-20261009/canonical-06/journals",
+      "2147483648",
+      "/workspace/c71-h100-20261009/libc71_device_runner_prefix.so",
+      "0"
+    ],
+    "monitor_label": "canonical",
+    "diagnostic_timeout_seconds": 7056,
+    "response_target_seconds": 65,
+    "correlations": "fresh one-time real AES with exact lazy cGGM tail; no state or correlation reuse",
+    "gamma_reused": true,
+    "initial_accepted_kv": "empty",
+    "new_journals": true,
+    "environment": {
+      "CUDA_DEVICE_MAX_CONNECTIONS": "1",
+      "CUDA_DEVICE_MAX_COPY_CONNECTIONS": "1",
+      "CUDA_SCALE_LAUNCH_QUEUES": null
+    },
+    "validation": "prefix15realCUDA + finite local before/after guards and originalMAC + at least three completed Acomponentgroups within canonicalcaps. No full A or complete peak credit from component.",
+    "prior_component_groups": 3,
+    "prior_component_peak": 6009748992,
+    "prepared_epoch": 1791592805.901526
+  },
+  "credit": false,
+  "complete_setup": true,
+  "canonical_run_complete": false,
+  "canonical_certificates_verified": 0,
+  "phase_seconds": {
+    "setup_verifier": 1493.833127875,
+    "setup_prover": 1493.832315922,
+    "W_PCS": 190.424912345,
+    "W_installation": 212.418391328,
+    "load_packed_w": 61.542959862,
+    "native_global_residency": 22.722725608
+  },
+  "comparison": {
+    "before_record": "benchmarks/results/c71-h100-canonical-05-2026-10-09-749b5983c700.json",
+    "before_setup_seconds": 1986.453457597,
+    "after_setup_seconds": 1493.833127875,
+    "saved_seconds": 492.62032972199995,
+    "speedup": 1.3297693166188915,
+    "reduction_fraction": 0.2479898674887252,
+    "scope": "Single complete setup intervals on the same H100/CPU configuration, fresh one-time AES correlations. Canonical05 overlapped an independent CPU component build/test for its final roughly64seconds. This is an observed before/after result, not isolated causal attribution."
+  },
+  "setup_application_bytes_both_directions": 61841366,
+  "setup_traffic_unchanged": true,
+  "physical_complete_peak": false,
+  "phase_scope": "P/V setup intervals overlap and must not be summed. W installation includes PCS; loading/residency are separate. No completed A, proof or verification is claimed at this checkpoint.",
+  "W_sampled_temporary_peak_bytes": 4301045248,
+  "operational_helper_failure": {
+    "error": "StopIteration",
+    "cause": "First snapshot helper searched for request_receive as a direct phase/end event; it is nested in phase_record.",
+    "effect": "No snapshot written, no run state changed. Corrected read selects the preparation start carrying the completed request channels."
+  },
+  "private_bundles": [
+    {
+      "path": "artifact/c7.1-pod/h100-final-W06-checkpoint-20261010T005900Z",
+      "manifest_sha256": "f2891b4d9a819be5680fa19ae96f9d629670c3ab50312cec2857addf5fc683f2"
+    },
+    {
+      "path": "artifact/c7.1-pod/h100-final-setup06-checkpoint-20261010T011200Z",
+      "manifest_sha256": "f4d5cbb7916e84397ec975e9413b4b29715b1518462cc77bcf602ad06651b693"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "benchmarks/results/c71-h100-setup06-checkpoint-2026-10-10-47af19bbe888/canonical-06-completed-W.json",
+      "bytes": 23269,
+      "sha256": "8a765fbd91233dd57cff4b69beeabaf818add707bb9693c581b0b10ba5a861da"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-setup06-checkpoint-2026-10-10-47af19bbe888/canonical-06-completed-setup.json",
+      "bytes": 12375,
+      "sha256": "494612bed9c6eb379c23b0526aa1ee2f47263eb2da1cfafc9321739319e855e2"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-setup06-checkpoint-2026-10-10-47af19bbe888/canonical-06-through-W.memory.csv",
+      "bytes": 213468,
+      "sha256": "64a7a59c976d39609bcf775190c2ea954097bcda7958f08a0142fede3b4eb49d"
+    }
+  ]
+}

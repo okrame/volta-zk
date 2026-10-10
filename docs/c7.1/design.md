@@ -5,8 +5,10 @@
 
 La [coda SHAKE cGGM differita](../c7.1-history/h100-cggm-tail-2026-10-09.md)
 passa 17 test CPU sul pod e conserva output, scarti e correlazioni monouso.
-Il microbenchmark misura 1,475× sul componente; il setup completo con
-questa modifica non è misurato e `canonical-05` usa il binario precedente.
+Il microbenchmark misura 1,475× sul componente. Il
+[setup completo successivo](../c7.1-history/h100-setup06-checkpoint-2026-10-10.md)
+misura 1.493,833 s contro 1.986,453 s: 1,330×, −24,799% osservato fra
+run singoli, senza attribuzione causale isolata. Il traffico resta identico.
 
 `canonical-05` termina con `Stop` nel primo gruppo A dopo preparazione
 84,831 s; massimo fisico campionato 6.140.513.792 B, sotto il cap.
@@ -107,8 +109,8 @@ causale, replay A, PCS/range/GKR, verifica e promozione per O=0/150/300.
 È un percorso misto GPU/CPU. La tabella descrive l'integrazione corrente.
 La [campagna H100 del 9 ottobre](../c7.1-history/h100-components-2026-10-09.md)
 ha compilato sm_90 e passato i 15 test CUDA reali. I benchmark sono
-componenti ridotti. Il [commitment W completo più recente](../c7.1-history/h100-w05-checkpoint-2026-10-09.md)
-termina in 190,200 s; risposta canonica e picco fisico completo restano aperti. Gli ingressi di test e il lancio
+componenti ridotti. Il [commitment W completo più recente](../c7.1-history/h100-setup06-checkpoint-2026-10-10.md)
+termina in 190,425 s; risposta canonica e picco fisico completo restano aperti. Gli ingressi di test e il lancio
 sorvegliato sono nel
 [runbook](runpod-tests.md#preparazione-operativa-della-campagna).
 
@@ -124,7 +126,7 @@ sorvegliato sono nel
 | Closure lineare | Owner e caller nativi integrati con parità ridotta: una scan originale per round, D·live visite, cinque elementi MAC e flag restituiti; mapping W riusato, nessun getter A sostitutivo |
 | PCS S1 e successori | Route canonica collegata a `model.native_original`: singleton, coset/FFT/hash/sali, OOD, retention A dopo apertura del predecessore, fold e contrazioni sul common owner; W continua a leggere il packed originale |
 | Query extension A/W | Tre componenti PCS caricate nello stesso passaggio e resti residenti in tutti gli stadi; A legge le plane trattenute, senza ricostruzioni originali aggiunte; sole valutazioni finali D2H |
-| Accumulo W Tensor Core | Limb16 esatto selezionato dopo parità CUDA: 5,663× sul componente W da 256 MiB; stesso owner e capacità globali; PCS W completa più recente in 190,200 s |
+| Accumulo W Tensor Core | Limb16 esatto selezionato dopo parità CUDA: 5,663× sul componente W da 256 MiB; stesso owner e capacità globali; PCS W completa più recente in 190,425 s |
 | QK/PV | Default scalare esatto; candidata MMA con prefisso causale comune e bordo scalare non selezionata |
 | RMS misto | Replay Booleano CPU a 64 lane con DAG per depth; primo round esatto e cache compatta delle geometrie pubbliche. Selezione solo senza pattern prefix e con più programmi; coefficienti Fp3 ed endpoint restano CPU |
 | Resto della prova | Fattori pubblici, rigenerazione Merkle delle aperture, GKR/MAC, Seed6 reale AES, codec, verifica e journal CPU; tempi completi da misurare |
@@ -221,8 +223,8 @@ se il primo candidato del terzo slot è scartato. Frame e tre slot da
 64 byte restano identici; cambiano soltanto byte effettivamente estratti
 e relativo contatore. Golden, parità col campionatore completo, rifiuti
 fino a esaurimento e setup/journal ridotti passano localmente. Non è
-usata da `canonical-05`; il microbenchmark H100 misura 1,475×, mentre
-il setup completo con questa modifica resta da misurare.
+usata da `canonical-05`; il microbenchmark H100 misura 1,475× e il
+setup completo del sesto trial misura 1,330× osservato, con traffico identico.
 Il raffinamento generale Seed6/CUDA resta aperto come in [security](security.md).
 
 Il goal corrente esegue la campagna H100 autorizzata, entro otto ore

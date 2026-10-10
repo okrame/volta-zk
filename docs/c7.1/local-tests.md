@@ -146,6 +146,12 @@ Le fonti congelate conservano i riferimenti originali secondo la
 
 ## Compilazione mirata
 
+`tests/test_c71_optimized_inference.py` controlla gli ID/storie pinned e
+lo schedule con consumo del cinquantesimo token generato, senza importare
+PyTorch o dare credito d'inferenza. Il confronto floating è un diagnostico
+hardware distinto dal runner intero e segue il
+[metodo fissato prima dei risultati](../c7.1-history/h100-comparison-plan-2026-10-10.md).
+
 Il checkpoint durevole `c71_progress_durable_prefix_no_overwrite_and_failure`
 verifica anche due milestone consecutive senza attendere il throttle di un
 secondo. Il commitment A registra così inizio/fine di ogni gruppo completo,

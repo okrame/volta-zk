@@ -314,6 +314,14 @@ limiti e pulizia prevalgono le regole correnti sopra.
 
 ## Gestione del pod e del repository
 
+Il [metodo dei nuovi confronti](../c7.1-history/h100-comparison-plan-2026-10-10.md)
+fissa precisioni/backend, teacher forcing, generazione libera e criteri
+dello screen RMS prima dei risultati. Il diagnostico SDPA usa un ambiente
+Python isolato e il medesimo checkpoint/workload, con monitor calibration
+e limiti globali; non viene eseguito insieme al runner canonico GPU.
+W load, warmup, prefill, decode, wall totale e capacità retained rimangono
+separati, senza credito di protocollo o di ammissione Γ.
+
 Usare [runpod_harness.sh](../../scripts/runpod_harness.sh) per la gestione
 di un eventuale pod autorizzato. Il harness permette ispezione e chiusura;
 non ha un comando di riattivazione. L'agent può usare le API RunPod

@@ -401,6 +401,7 @@ C71_HARDWARE_FILTERS=(
   c71_b12_native_hardware_residual_weight_whir_chain
   c71_b12_native_hardware_linear_coefficients_endpoints
   c71_b12_native_hardware_linear_full_wire_fs_point_and_original_mac
+  c71_b12_native_hardware_numeric_flag_and_public_zero
 )
 for C71_HARDWARE_FILTER in "${C71_HARDWARE_FILTERS[@]}"; do
   test $(( $(date +%s) + 60 )) -le \

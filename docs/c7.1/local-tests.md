@@ -223,6 +223,15 @@ anche rinominata. Fault injection e simboli mancanti rimangono host.
 La preparazione locale verifica helper e guardie; l'esecuzione di quei
 kernel richiede la campagna autorizzata.
 
+Il nuovo ingresso ignorato
+`c71_b12_native_hardware_numeric_flag_and_public_zero` richiede la stessa
+libreria CUDA reale e ne rifiuta la fixture host. Verifica originali
+nonzero signed, affine/gate, RNE, zero su sette lunghezze incluse le
+ragged, fence/D2H obbligatori, capacità trattenuta e cleanup, più errore
+aritmetico terminale. Il report conserva i contatori separati delle
+baseline unpooled/pool/fill; sono componenti, senza tempo canonico o
+credito di ammissione. Eseguirlo sul pod prima dei nuovi confronti.
+
 | Filtro | Significato |
 |---|---|
 | `c71_canonical_device_` | Schedule dei 150 token nei tre contesti, tutti i producer, prefissi/checkpoint; scanner numerico su catena ridotta, senza W reale |

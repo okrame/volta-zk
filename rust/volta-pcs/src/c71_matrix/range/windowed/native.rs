@@ -2254,6 +2254,76 @@ pub(in crate::c71_matrix) mod tests {
     }
 
     #[test]
+    #[ignore = "requires the owner-authorized real CUDA library; no host fallback"]
+    fn c71_b12_native_hardware_numeric_flag_and_public_zero() {
+        let config = hardware_config(512, 16 << 20);
+        let mut runtime = Runtime::new(&config).unwrap();
+        let mut zero_launches = 0;
+        for count in [1, 3, 8, 255, 256, 257, 16006] {
+            let xs: Vec<_> = (0..=count).map(|i| (i % 17) as i16 - 8).collect();
+            let ys: Vec<_> = (0..=count).map(|i| (i % 13) as i16 - 6).collect();
+            let x = runtime.upload_signed(&xs).unwrap();
+            let y = runtime.upload_signed(&ys).unwrap();
+            for op in [Pointwise { a: 3, b: -2, multiply: 0 },
+                Pointwise { a: 1, b: 1, multiply: 1 },
+                Pointwise { a: 1 << 30, b: -(1 << 30), multiply: 0 }] {
+                let expected: Vec<_> = xs[1..].iter().zip(&ys[1..]).map(|(&x, &y)| {
+                    if op.multiply != 0 { i64::from(x) * i64::from(y) }
+                    else { op.a * i64::from(x) + op.b * i64::from(y) }
+                }).collect();
+                let raw = runtime.pointwise([Some((&x, 1)), Some((&y, 1))], count, op).unwrap();
+                let mut actual = vec![0; count];
+                runtime.download_words(&raw, 0, &mut actual).unwrap();
+                assert_eq!(actual, expected);
+                let rounded = runtime.quantize(&raw, 48).unwrap();
+                runtime.download_words(&rounded, 0, &mut actual).unwrap();
+                assert!(actual.iter().all(|&word| word == 0));
+                runtime.release_buffer(rounded).unwrap();
+                runtime.release_buffer(raw).unwrap();
+            }
+            let before = runtime.stats().unwrap();
+            let raw = runtime.pointwise([None, None], count,
+                Pointwise { a: 0, b: 0, multiply: 0 }).unwrap();
+            let after = runtime.stats().unwrap();
+            assert_eq!(after.h2d_bytes, before.h2d_bytes);
+            assert_eq!(after.d2h_bytes - before.d2h_bytes, 4);
+            assert_eq!(after.fences - before.fences, 1);
+            assert!(after.launches - before.launches <= 1);
+            zero_launches += after.launches - before.launches;
+            let mut actual = vec![73; count];
+            runtime.download_words(&raw, 0, &mut actual).unwrap();
+            assert!(actual.iter().all(|&word| word == 0));
+            runtime.release_buffer(raw).unwrap();
+            runtime.release_buffer(x).unwrap();
+            runtime.release_buffer(y).unwrap();
+        }
+        let before_close = runtime.stats().unwrap();
+        assert!([0, 256].contains(&before_close.live_capacity_bytes));
+        assert_eq!(before_close.stopped, 0);
+        let closed = runtime.close().unwrap();
+        assert_eq!(closed.arena_bytes, 0);
+        assert_eq!(closed.cleanup_failed, 0);
+        eprintln!("C71_HARDWARE_NUMERIC {}", serde_json::json!({
+            "gpu_execution": true, "credit": false, "lengths": 7,
+            "nonzero_pointwise_cases": 21, "rne_cases": 21, "zero_cases": 7,
+            "zero_application_launches": zero_launches,
+            "retained_numeric_capacity_bytes": before_close.live_capacity_bytes,
+            "native_cumulative": before_close,
+            "exact_original_words": true, "cleanup_success": true
+        }));
+        // A device arithmetic rejection stops this owner, including the pooled flag.
+        let mut runtime = Runtime::new(&config).unwrap();
+        let x = runtime.upload_signed(&[1]).unwrap();
+        let raw = runtime.pointwise([Some((&x, 0)), None], 1,
+            Pointwise { a: 1, b: 0, multiply: 0 }).unwrap();
+        assert!(runtime.quantize(&raw, -15).is_err());
+        assert_eq!(runtime.stats().unwrap().stopped, 1);
+        assert!(runtime.pointwise([None, None], 1,
+            Pointwise { a: 0, b: 0, multiply: 0 }).is_err());
+        assert_eq!(runtime.close().unwrap().arena_bytes, 0);
+    }
+
+    #[test]
     fn c71_b12_native_hardware_parity_rejects_missing_and_host_library() {
         assert!(hardware_config_from_library(None, 512, 16 << 20).is_err());
         assert!(hardware_config_from_library(Some(PathBuf::from("relative.so")), 512, 16 << 20).is_err());

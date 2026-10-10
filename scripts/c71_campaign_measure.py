@@ -1,6 +1,7 @@
 """Bounded campaign process runner. Samples are diagnostics, never full peak proof."""
 import argparse
 import csv
+import ctypes
 import json
 import math
 import os
@@ -78,7 +79,7 @@ def descendant_of(rows, pid, root_pid):
 
 
 def remember_descendants(rows, session_id, remembered):
-    roots = {session_id}
+    roots = {session_id, os.getpid()}
     for pid, ticks in list(remembered.items()):
         try:
             if pid in rows and start_ticks(pid) == ticks:
@@ -86,6 +87,8 @@ def remember_descendants(rows, session_id, remembered):
         except (FileNotFoundError, ProcessLookupError):
             pass
     for pid in rows:
+        if pid == os.getpid():
+            continue
         try:
             if os.getsid(pid) == session_id or any(descendant_of(rows, pid, root) for root in roots):
                 ticks = start_ticks(pid)
@@ -98,7 +101,7 @@ def remember_descendants(rows, session_id, remembered):
 
 def stop_session(session_id, remembered=None):
     remembered = dict(remembered or {})
-    remember_descendants(host_tree(session_id, session_id, remembered), session_id, remembered)
+    remember_descendants(host_tree(os.getpid(), session_id, remembered), session_id, remembered)
     # Profilers can put their application in a new session. Retain its
     # identity while parented, and use pidfds even if it is later orphaned.
     for pid, ticks in remembered.items():
@@ -133,6 +136,16 @@ def stop_session(session_id, remembered=None):
 def start_ticks(pid):
     # comm may contain spaces or parentheses; starttime is field 22.
     return int(Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()[19])
+
+
+def child_subreaper(enabled):
+    libc = ctypes.CDLL(None, use_errno=True)
+    previous = ctypes.c_int()
+    # Linux PR_GET/SET_CHILD_SUBREAPER: daemonized descendants stay owned.
+    for option, value in ((37, ctypes.byref(previous)), (36, int(enabled))):
+        if libc.prctl(option, value, 0, 0, 0) != 0:
+            raise OSError(ctypes.get_errno(), 'cannot configure child subreaper')
+    return bool(previous.value)
 
 
 class SmapsCoverageError(ValueError):
@@ -290,7 +303,8 @@ class Progress:
             return 0, 0
         pid, ticks = self.process
         if pid not in rows or start_ticks(pid) != ticks or (
-                os.getsid(pid) != session_id and not descendant_of(rows, pid, session_id)):
+                os.getsid(pid) != session_id and not descendant_of(rows, pid, session_id)
+                and not (pid != os.getpid() and descendant_of(rows, pid, os.getpid()))):
             raise ValueError('resident W owner is not the monitored process session')
         host = device = 0
         if self.states.get('host', {}).get('state') == 'live':
@@ -391,6 +405,7 @@ def run(args):
     names = ('start', 'stdout', 'stderr', 'memory.csv', 'time.txt', 'exit', 'end', 'summary.json')
     files = {}
     old_signals = {}
+    old_subreaper = None
     try:
         for name in names:
             files[name] = new_file(logs / f'{args.label}.{name}')
@@ -409,6 +424,7 @@ def run(args):
         else:
             environment.pop('C71_CANONICAL_MONITOR', None)
         oom_before = cgroup_oom_events()
+        old_subreaper = child_subreaper(True)
         process = subprocess.Popen([TIME_BINARY, '-v', '-o', str(logs / f'{args.label}.time.txt'), *args.command],
                                    stdout=files['stdout'], stderr=files['stderr'], env=environment, start_new_session=True)
         started = time.monotonic()
@@ -506,6 +522,12 @@ def run(args):
         except subprocess.TimeoutExpired:
             code = 1
             failure = (failure + '; ' if failure else '') + 'process did not exit after session kill'
+        for pid, ticks in remembered.items():
+            try:
+                if start_ticks(pid) == ticks:
+                    os.waitpid(pid, os.WNOHANG)
+            except (ChildProcessError, FileNotFoundError, ProcessLookupError):
+                pass
         if failure:
             code = code or 1
         summary = {
@@ -533,6 +555,8 @@ def run(args):
         print(json.dumps(summary), flush=True)
         return code
     finally:
+        if old_subreaper is not None:
+            child_subreaper(old_subreaper)
         for signum, handler in old_signals.items():
             signal.signal(signum, handler)
         for handle in files.values():

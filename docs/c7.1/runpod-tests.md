@@ -16,13 +16,15 @@ bound e tempi completi restano aperti. Il [prefisso diagnostico canonico](../c7.
 completa 35/512 gruppi A con W/setup presenti, poi esaurisce il logger
 da 16 MiB. Il picco stabile campionato è 6.141.582.848 B: non è
 un picco completo né una soluzione dello spike. Il trial default senza
-logger/profiler è in corso, con timeout 90 minuti entro la deadline.
+logger/profiler termina dopo 116/512 gruppi per cap fisico:
+6.545.690.112 B contro 6.174.015.488 B; lo spike resta aperto.
 Il [monitor per il profiler](../c7.1-history/h100-profiler-monitor-2026-10-10.md)
-conta identità PID/start-ticks dei figli anche in nuove sessioni e usa
-pidfd per il loro stop. W richiede ancora discendenza dal launcher,
-identità e smaps completi; limiti invariati. Passano 41 test ridotti
-del monitor e nove documentali; il trial già in corso usa il modulo
-precedente caricato, senza nuovo credito fisico.
+conta PID/start-ticks anche in nuove sessioni. La [correzione degli orfani](../c7.1-history/h100-profiler-orphans-2026-10-10.md)
+attiva e ripristina il subreaper Linux, contandone e fermandone tramite
+pidfd tutti i discendenti adottati. W richiede discendenza dal launcher
+o dal monitor subreaper, identità e smaps completi; limiti invariati.
+Passano 43 test ridotti del monitor. Il primo probe aveva verificato solo
+il target, lasciando un agente: ricevuta originale e correzione conservate.
 
 La [precedente campagna H100 del 9–10 ottobre è chiusa](../c7.1-history/h100-campaign-close-2026-10-10.md).
 Pod spento e confermato `EXITED`, runtime assente, alle **01:49:55 UTC**

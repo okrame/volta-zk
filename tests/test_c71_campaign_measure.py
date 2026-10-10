@@ -355,6 +355,26 @@ def test_failed_GPU_sample_stops_command_and_cannot_be_success(campaign):
     assert 'CalledProcessError' in report['resource_failure']
 
 
+@pytest.mark.parametrize('parent_exits', [False, True])
+def test_daemonized_profiler_child_is_adopted_accounted_and_stopped(campaign, parent_exits):
+    pid_path = campaign.root / 'daemon'
+    campaign.seconds = 1
+    campaign.command = [sys.executable, '-c',
+        'import os,pathlib,subprocess,sys,time; '
+        'p=subprocess.Popen([sys.executable,"-c","import time; time.sleep(60)"],start_new_session=True); '
+        'pathlib.Path(sys.argv[1]).write_text(str(p.pid)); '
+        'sys.exit(0) if sys.argv[2]=="exit" else time.sleep(60)',
+        str(pid_path), 'exit' if parent_exits else 'wait']
+    code = monitor.run(campaign)
+    assert (code == 0) if parent_exits else (code != 0)
+    pid = int(pid_path.read_text())
+    status = Path(f'/proc/{pid}/status')
+    stop_wait = time.monotonic() + 1
+    while status.exists() and 'State:\tZ' not in status.read_text() and time.monotonic() < stop_wait:
+        time.sleep(0.01)
+    assert not status.exists() or 'State:\tZ' in status.read_text()
+
+
 def test_recovered_smaps_read_does_not_skip_physical_cap(campaign, monkeypatch):
     campaign.mode = 'canonical'
     campaign.progress = campaign.root / 'canonical.progress.jsonl'

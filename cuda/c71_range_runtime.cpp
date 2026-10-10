@@ -271,7 +271,7 @@ extern "C" int c71_range_close(C71RangeContext* c,C71RangeStats* out) {
             // A failed cudaFree has uncertain ownership. Never submit the same
             // pointer again; keep its entire capacity in the failure ledger.
             if(b.release_failed || checked(c,cudaFree(b.allocation))) error=true;
-            else { if(c->account) c->account(-int64_t(b.capacity)); b={}; }
+            else { if(c->account) c->account(-int64_t(b.capacity)); b={}; ++c->stats.releases; }
         }
         recount(c);
         if(c->stream && checked(c,cudaStreamDestroy(c->stream))) error=true;

@@ -48,6 +48,7 @@ def test_native_range_owner_with_deferred_fake_driver(tmp_path):
         "sync_flag_reuse": True, "numeric_operations": 32,
         "numeric_flag_allocations": 1, "numeric_flag_allocations_before": 32,
         "numeric_completion_fences": 32, "numeric_flag_download_bytes": 128,
+        "numeric_reset_terminal_rejections": 1, "pool_free_terminal_rejections": 1,
         "gpu_execution": False, "credit": False,
     }
 

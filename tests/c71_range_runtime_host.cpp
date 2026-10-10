@@ -15,6 +15,7 @@ using namespace c71_range;
 struct FakeStream { std::vector<std::function<void()>> pending; };
 static bool fail_launch=false, fail_fence=false, fail_free=false, corrupt=false;
 static bool fail_dense=false;
+static bool fail_memset=false;
 static unsigned stack_fault=0;
 static bool corrupt_query_data=false;
 static int copy_fail_after=-1;
@@ -70,6 +71,7 @@ cudaError_t cudaMemcpyAsync(void* d,const void* s,size_t n,cudaMemcpyKind kind,c
     return 0;
 }
 cudaError_t cudaMemsetAsync(void* p,int x,size_t n,cudaStream_t s) {
+    if(fail_memset) return 1;
     s->pending.push_back([=] { std::memset(p,x,n); }); return 0;
 }
 const char* cudaGetErrorString(cudaError_t) { return "injected CUDA failure"; }
@@ -1077,7 +1079,7 @@ static uint64_t alloc(C71RangeContext* c,unsigned kind,uint64_t n) {
     uint64_t id=0; assert(!c71_range_alloc(c,kind,n,&id)); return id;
 }
 static C71RangeStats stats(C71RangeContext* c) { C71RangeStats s{}; assert(!c71_range_stats(c,&s)); return s; }
-static void close(C71RangeContext* c) { C71RangeStats s{}; assert(!c71_range_close(c,&s)); assert(!s.arena_bytes && !s.weights_bytes && !s.cleanup_failed); }
+static void close(C71RangeContext* c) { C71RangeStats s{}; assert(!c71_range_close(c,&s)); assert(!s.arena_bytes && !s.weights_bytes && !s.cleanup_failed); assert(s.allocations==s.releases); }
 static uint64_t roots(C71RangeContext* c,unsigned kind=0,unsigned n=2048) {
     const auto in=alloc(c,kind,2*n), out=alloc(c,C71_PAIR,n);
     std::vector<int16_t> data(2*n,3);
@@ -1454,8 +1456,6 @@ static void dense_completion_fence_checks() {
     assert(stats(c).arena_bytes==256 && joint_live==stats(c).host_owner_bytes+256);
     const auto retained=stats(c);
     close(c); assert(!joint_live);
-    std::printf("C71_SYNC_ERROR_FLAG_REUSE {\"host_owner_bytes\":%llu,\"retained_device_capacity_bytes\":256,\"flag_count\":1,\"sync_flag_reuse\":true,\"numeric_operations\":32,\"numeric_flag_allocations\":1,\"numeric_flag_allocations_before\":32,\"numeric_completion_fences\":32,\"numeric_flag_download_bytes\":128,\"gpu_execution\":false,\"credit\":false}\n",
-        (unsigned long long)retained.host_owner_bytes);
 
     // Lazy pool allocation must respect the same simultaneous joint budget.
     assert(!c71_range_create(0,262144,256,joint_account,&c));
@@ -1466,6 +1466,39 @@ static void dense_completion_fence_checks() {
     assert(stats(c).stopped && stats(c).allocations==bounded.allocations && stats(c).launches==bounded.launches);
     joint_limit=uint64_t{1}<<20;
     close(c); assert(!joint_live);
+
+    // Failure resetting a warm flag is terminal before any new launch/copy.
+    assert(!c71_range_create(0,262144,256,joint_account,&c));
+    const auto original=dense_input(c), first_raw=alloc(c,C71_I64,8);
+    assert(!c71_dense_pointwise(c,original,0,0,0,{2,0,0},first_raw));
+    assert(!c71_range_release(c,first_raw));
+    const auto next_raw=alloc(c,C71_I64,8);
+    const auto warm=stats(c);
+    fail_memset=true;
+    assert(c71_dense_pointwise(c,original,0,0,0,{2,0,0},next_raw));
+    fail_memset=false;
+    const auto stopped=stats(c);
+    assert(stopped.stopped && stopped.allocations==warm.allocations && stopped.releases==warm.releases);
+    assert(stopped.launches==warm.launches && stopped.fences==warm.fences);
+    assert(stopped.d2h_bytes==warm.d2h_bytes && stopped.zeroed_bytes==warm.zeroed_bytes);
+    int64_t unpublished=123;
+    assert(c71_original_read(c,next_raw,C71_I64,0,1,&unpublished) && unpublished==123);
+    close(c); assert(!joint_live);
+
+    // Keep the pooled capacity charged when its only cleanup free fails.
+    assert(!c71_range_create(0,262144,256,joint_account,&c));
+    const auto pooled_input=dense_input(c), pooled_raw=alloc(c,C71_I64,8);
+    assert(!c71_dense_pointwise(c,pooled_input,0,0,0,{2,0,0},pooled_raw));
+    assert(!c71_range_release(c,pooled_input) && !c71_range_release(c,pooled_raw));
+    assert(stats(c).arena_bytes==256 && joint_live==stats(c).host_owner_bytes+256);
+    const auto pool_free_before=frees;
+    fail_free=true;
+    C71RangeStats failed_pool{};
+    assert(c71_range_close(c,&failed_pool) && failed_pool.cleanup_failed && failed_pool.stopped);
+    fail_free=false;
+    assert(frees==pool_free_before+1 && failed_pool.arena_bytes==256 && joint_live==256);
+    assert(failed_pool.allocations==failed_pool.releases+1);
+    joint_live=0; // The failed allocation remains in this isolated receipt.
 
     // A sticky byte flag survives a successful producer between begin/seal.
     c=create();
@@ -1508,6 +1541,8 @@ static void dense_completion_fence_checks() {
         assert(stats(c).d2h_bytes==guarded.d2h_bytes && stats(c).h2d_bytes==guarded.h2d_bytes);
         close(c);
     }
+    std::printf("C71_SYNC_ERROR_FLAG_REUSE {\"host_owner_bytes\":%llu,\"retained_device_capacity_bytes\":256,\"flag_count\":1,\"sync_flag_reuse\":true,\"numeric_operations\":32,\"numeric_flag_allocations\":1,\"numeric_flag_allocations_before\":32,\"numeric_completion_fences\":32,\"numeric_flag_download_bytes\":128,\"numeric_reset_terminal_rejections\":1,\"pool_free_terminal_rejections\":1,\"gpu_execution\":false,\"credit\":false}\n",
+        (unsigned long long)retained.host_owner_bytes);
 }
 
 namespace residual_test {

@@ -24,8 +24,12 @@ Le [due catture Nsight](../c7.1-history/h100-profiler-limit-2026-10-10.md)
 terminano prima del primo gruppo completo: canonico 6.715.858.432 B,
 componente senza grafico allocazioni e senza W/setup canonici
 6.574.624.256 B. Nessuna finestra raggiunta o attribuzione dello spike.
-Linea Nsight chiusa nella campagna; seguono controlli pool/fill senza
-profiler. CPU wrapper AS 64 GiB, solo il figlio CUDA senza cap AS.
+Linea Nsight chiusa nella campagna. Le [tre inferenze reali](../c7.1-history/h100-followup-inference-2026-10-10.md)
+passano i 150 token ammessi: 85,144/76,760/77,050 s senza pool/solo
+pool/pool+fill. Pool −9,847% osservato in una coppia, stesse copie/fence
+e lanci; 1.185.769 allocazioni in meno. Sei confronti A alternati sono
+in corso, nessun credito al fill inferenza. CPU wrapper AS 64 GiB,
+solo il figlio CUDA senza cap AS.
 Zero certificati; nessun cap o deadline aumentati.
 Il [monitor per il profiler](../c7.1-history/h100-profiler-monitor-2026-10-10.md)
 conta PID/start-ticks anche in nuove sessioni. La [correzione degli orfani](../c7.1-history/h100-profiler-orphans-2026-10-10.md)
@@ -64,7 +68,8 @@ verifica degli artefatti conservati, riuso di un solo flag numerico sincrono
 di scale A alternative. Il flag viene azzerato prima di ogni operazione;
 kernel, letture di stato, fence necessari e controlli restano invariati.
 La parità CUDA ridotta delle tre librerie passa nel nuovo preflight;
-guadagno sui caller reali e sufficienza dell'allowance restano da misurare. Il conto del setup AES
+il pool misura −9,847% in una coppia d’inferenza reale; confronto A
+e sufficienza dell’allowance rimangono aperti. Il conto del setup AES
 reale include anche cache W e owner già installati.
 
 Γ ammesso resta il riferimento. Gli screening mantengono W, architettura,

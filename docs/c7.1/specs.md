@@ -24,8 +24,12 @@ Le [due catture Nsight](../c7.1-history/h100-profiler-limit-2026-10-10.md)
 terminano prima del primo gruppo completo: canonico 6.715.858.432 B,
 componente senza grafico allocazioni e senza W/setup canonici
 6.574.624.256 B. Nessuna finestra raggiunta o attribuzione dello spike.
-Linea Nsight chiusa nella campagna; seguono controlli pool/fill senza
-profiler. CPU wrapper AS 64 GiB, solo il figlio CUDA senza cap AS.
+Linea Nsight chiusa nella campagna. Le [tre inferenze reali](../c7.1-history/h100-followup-inference-2026-10-10.md)
+passano i 150 token ammessi: 85,144/76,760/77,050 s senza pool/solo
+pool/pool+fill. Pool −9,847% osservato in una coppia, stesse copie/fence
+e lanci; 1.185.769 allocazioni in meno. Sei confronti A alternati sono
+in corso, nessun credito al fill inferenza. CPU wrapper AS 64 GiB,
+solo il figlio CUDA senza cap AS.
 Zero certificati; nessun cap o deadline aumentati.
 Il [monitor per il profiler](../c7.1-history/h100-profiler-monitor-2026-10-10.md)
 conta PID/start-ticks anche in nuove sessioni. La [correzione degli orfani](../c7.1-history/h100-profiler-orphans-2026-10-10.md)
@@ -61,8 +65,8 @@ Valori, ordine, copertura originale, NoPeek e MAC restano invariati.
 La [chiusura locale del 10 ottobre](../c7.1-history/local-exploration-close-2026-10-10.md) conserva i risultati delle nuove esplorazioni locali:
 flag numerico sincrono riusato, conto delle capacità trattenute e quattro
 screening di scale A, con Γ ammesso come riferimento immutato. Il
-[piano hardware mirato](../c7.1-history/local-hardware-plan-2026-10-10.md) specifica le misure discriminanti ancora necessarie. Non sono
-nuove misure CUDA/H100 o ammissioni delle candidate.
+[piano hardware mirato](../c7.1-history/local-hardware-plan-2026-10-10.md) specifica le misure discriminanti: il nuovo
+seguito hardware sopra misura componenti, senza ammettere candidate Γ.
 
 ## Input e identità
 

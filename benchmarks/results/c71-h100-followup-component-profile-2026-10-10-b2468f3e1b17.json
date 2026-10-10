@@ -1,0 +1,107 @@
+{
+  "a_complete_groups": 0,
+  "canonical_certificates_verified": 0,
+  "canonical_complete": false,
+  "complete_phases": [
+    {
+      "complete": true,
+      "phase": "preparation_including_inference",
+      "wall_ns": 76876042227
+    }
+  ],
+  "conclusion": "Even the early component without the CUDA allocation graph exceeds the unchanged physical cap at its first A group. No external A timeline, joint spike attribution, complete peak or full commitment credit. GPU owner and all session agents were absent at the subsequent check. This diagnostic line stops; uninstrumented caller controls follow.",
+  "credit": false,
+  "cuda_memory_usage": false,
+  "date": "2026-10-10",
+  "git_dirty": false,
+  "git_sha": "b2468f3e1b170e6640d8034e0435887b9d45489d",
+  "last_A_boundary_native_census": {
+    "allocations": 2455459,
+    "arena_bytes": 913715456,
+    "cleanup_failed": 0,
+    "d2d_bytes": 235161600,
+    "d2h_bytes": 17348764,
+    "fences": 3669073,
+    "h2d_bytes": 61420218144,
+    "host_owner_bytes": 42128,
+    "launches": 1187873,
+    "live_capacity_bytes": 913715456,
+    "logical_bytes": 913714044,
+    "peak_capacity_bytes": 913715456,
+    "peak_reserved_bytes": 62308406016,
+    "releases": 2455149,
+    "stopped": 0,
+    "weights_bytes": 61394690560,
+    "weights_loaded_bytes": 61394690560,
+    "weights_sealed": 1,
+    "zeroed_bytes": 68180960
+  },
+  "monitor": {
+    "authorized_end_epoch": 1791671244.0,
+    "close_reserve_seconds": 1800,
+    "compute_end_epoch": 1791669444.0,
+    "exit_code": -9,
+    "gpu_uuid": "GPU-e05e977b-758d-f3f4-cbe8-5720b83d1ae1",
+    "incomplete_samples": 0,
+    "label": "a-component-profile01",
+    "mode": "canonical",
+    "observed_payload_peak_bytes": 1026168738,
+    "payload_limit_bytes": 5905580032,
+    "physical_complete_peak": false,
+    "physical_temporary_limit_bytes": 6174015488,
+    "resource_failure": "RuntimeError: resource stop: canonical simultaneous physical temporaries exceed allowance",
+    "sample_interval_clock": "Linux CLOCK_MONOTONIC, absolute nanoseconds on this host boot",
+    "sample_interval_scope": "Start/end bracket collection of the resource sample; no GPU synchronization or instantaneous peak. External profiler clock alignment requires a matching clock or explicit anchor.",
+    "sampled_host_rss_peak_bytes": 62244651008,
+    "sampled_stable_temporary_peak_bytes": 6574624256,
+    "sampled_whole_gpu_peak_bytes": 67119349760,
+    "samples": 843,
+    "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+    "sampling_target_seconds": 0.2,
+    "smaps_read_failures": 0,
+    "stable_samples": 843,
+    "start_unix_seconds": 1791662302.9034119,
+    "tracked_descendant_identities": 8,
+    "wall_seconds": 169.79483834467828
+  },
+  "owner_trace_armed": false,
+  "private_evidence": {
+    "bytes": 196247,
+    "files": 16,
+    "manifest_sha256": "add5c952538ef4ab000e75d6cdb104ef64765c2d4bfe3ffa43350b966b131027",
+    "path": "artifact/c7.1-pod/h100-followup-component-20261010T200300Z"
+  },
+  "provenance": {
+    "binary": {
+      "bytes": 9853000,
+      "path": "c71_canonical_reference-cfc04b6f",
+      "sha256": "fbb773cc231995f8336f09f57be2d4efc5fb99a5ace2a7eb23ac2d91a8948f06"
+    },
+    "binary_build_sha": "cfc04b6f38226c4315e7bf96eeb4f5cd2fb0db2a",
+    "cpu_wrapper_as_bytes": 68719476736,
+    "credit": false,
+    "cuda_child_as_limit": null,
+    "cuda_memory_usage": false,
+    "fresh_journal": true,
+    "git_dirty": false,
+    "git_sha": "b2468f3e1b170e6640d8034e0435887b9d45489d",
+    "library": {
+      "bytes": 3576696,
+      "path": "libc71_large_trace.so",
+      "sha256": "a82727e73df18f2f8d768a9fa4bfccf9e53615f503d6b4896a9caefda8d848c6"
+    },
+    "library_source_sha": "b9043c5d5f514c171ae5a6fc2623d00a3283b398",
+    "nsight_end_after_completed_groups": 3,
+    "nsight_start_after_completed_groups": 1,
+    "scope": "Early real A API/slot component window after the joint attempt. Original 512-group geometry; no W commitment/AES setup, full A, proof or verification. No joint spike/resource credit.",
+    "trace_first_group": 2
+  },
+  "raw_owner_trace_bytes": 0,
+  "requested_nsight_window": [
+    1,
+    3
+  ],
+  "schema": "volta-c71-h100-component-profile-v1",
+  "scope": "A component with the original 512-group geometry; omits canonical W commitment and AES setup.",
+  "window_started": false
+}

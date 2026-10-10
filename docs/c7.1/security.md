@@ -20,12 +20,13 @@ logger/profiler [termina dopo 116/512 gruppi](../c7.1-history/h100-followup-defa
 per cap fisico: 6.545.690.112 B contro 6.174.015.488 B. Ultimo step GPU
 511 MiB con RSS costante e massimo native invariato: almeno 814.813.952 B
 fuori dal massimo nominato, senza attribuzione a una specifica causa.
-La cattura canonica `canonical-profile05` termina prima del primo gruppo
-completo: 6.715.858.432 B fisici, finestra 113–117 non raggiunta. Il
-[seguito di componente](../c7.1-history/h100-component-window-plan-2026-10-10.md)
-disattiva il grafico allocazioni Nsight e omette W/setup canonici,
-senza credito al picco congiunto. CPU wrapper AS 64 GiB, solo il figlio
-CUDA senza cap AS. Zero certificati.
+Le [due catture Nsight](../c7.1-history/h100-profiler-limit-2026-10-10.md)
+terminano prima del primo gruppo completo: canonico 6.715.858.432 B,
+componente senza grafico allocazioni e senza W/setup canonici
+6.574.624.256 B. Nessuna finestra raggiunta o attribuzione dello spike.
+Linea Nsight chiusa nella campagna; seguono controlli pool/fill senza
+profiler. CPU wrapper AS 64 GiB, solo il figlio CUDA senza cap AS.
+Zero certificati; nessun cap o deadline aumentati.
 Il [monitor per il profiler](../c7.1-history/h100-profiler-monitor-2026-10-10.md)
 conta PID/start-ticks anche in nuove sessioni. La [correzione degli orfani](../c7.1-history/h100-profiler-orphans-2026-10-10.md)
 attiva e ripristina il subreaper Linux, contandone e fermandone tramite

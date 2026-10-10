@@ -1,0 +1,165 @@
+{
+  "a_complete_groups": 0,
+  "admitted_gamma_reused": true,
+  "canonical_certificates_verified": 0,
+  "canonical_complete": false,
+  "complete_phases": [
+    {
+      "complete": true,
+      "phase": "installation_w_commitment",
+      "role": "prover",
+      "wall_ns": 212664617744
+    },
+    {
+      "complete": true,
+      "phase": "seed6_setup",
+      "role": "verifier",
+      "wall_ns": 1503129512452
+    },
+    {
+      "complete": true,
+      "phase": "seed6_setup",
+      "role": "prover",
+      "wall_ns": 1503128127511
+    },
+    {
+      "complete": true,
+      "phase": "preparation_including_inference",
+      "role": "prover",
+      "wall_ns": 80329820088
+    }
+  ],
+  "conclusion": "The profiler-owned canonical attempt exceeded the same physical cap at the first A group before recording. This rules out a valid joint spike timeline under this instrumentation; it neither identifies the default spike cause nor grants complete-peak credit. Eight owned descendant identities were counted; GPU and session agents were absent after shutdown.",
+  "contexts_started": [
+    0
+  ],
+  "credit": false,
+  "date": "2026-10-10",
+  "git_dirty": false,
+  "git_sha": "76a9201d8704480603ef62d8d46423673ad8c4f0",
+  "last_A_boundary_native_census": {
+    "allocations": 2460864,
+    "arena_bytes": 913715456,
+    "cleanup_failed": 0,
+    "d2d_bytes": 235161600,
+    "d2h_bytes": 109686440,
+    "fences": 3675524,
+    "h2d_bytes": 61421917416,
+    "host_owner_bytes": 42128,
+    "launches": 1350586,
+    "live_capacity_bytes": 913715456,
+    "logical_bytes": 913714044,
+    "peak_capacity_bytes": 3745182208,
+    "peak_reserved_bytes": 65139872768,
+    "releases": 2460554,
+    "stopped": 0,
+    "weights_bytes": 61394690560,
+    "weights_loaded_bytes": 61394690560,
+    "weights_sealed": 1,
+    "zeroed_bytes": 274946104800
+  },
+  "last_two_physical_samples": [
+    {
+      "W_transition_incomplete": "0",
+      "cgroup_memory_current_bytes": "188971278336",
+      "disk_available_bytes": "120649125888",
+      "host_tree_rss_bytes": "62356078592",
+      "host_tree_swap_bytes": "0",
+      "monotonic_sample_end_ns": "14687620664656085",
+      "monotonic_sample_start_ns": "14687620581161715",
+      "resident_device_W_bytes": "61394690560",
+      "resident_host_W_lower_bound_bytes": "61394685952",
+      "sample_duration_seconds": "0.08349857851862907",
+      "sampled_temporary_bytes": "2019888640",
+      "smaps_read_failures": "0",
+      "unix_seconds": "1791662127.0858326",
+      "whole_gpu_free_bytes": "22565355520",
+      "whole_gpu_used_bytes": "62453186560"
+    },
+    {
+      "W_transition_incomplete": "0",
+      "cgroup_memory_current_bytes": "188990517248",
+      "disk_available_bytes": "120649109504",
+      "host_tree_rss_bytes": "62375399424",
+      "host_tree_swap_bytes": "0",
+      "monotonic_sample_end_ns": "14687620864552438",
+      "monotonic_sample_start_ns": "14687620781255435",
+      "resident_device_W_bytes": "61394690560",
+      "resident_host_W_lower_bound_bytes": "61394685952",
+      "sample_duration_seconds": "0.08330142684280872",
+      "sampled_temporary_bytes": "6715858432",
+      "smaps_read_failures": "0",
+      "unix_seconds": "1791662127.2857287",
+      "whole_gpu_free_bytes": "17888706560",
+      "whole_gpu_used_bytes": "67129835520"
+    }
+  ],
+  "monitor": {
+    "authorized_end_epoch": 1791671244.0,
+    "close_reserve_seconds": 1800,
+    "compute_end_epoch": 1791669444.0,
+    "exit_code": -9,
+    "gpu_uuid": "GPU-e05e977b-758d-f3f4-cbe8-5720b83d1ae1",
+    "incomplete_samples": 0,
+    "label": "canonical-profile05",
+    "mode": "canonical",
+    "observed_payload_peak_bytes": 3862115010,
+    "payload_limit_bytes": 5905580032,
+    "physical_complete_peak": false,
+    "physical_temporary_limit_bytes": 6174015488,
+    "resource_failure": "RuntimeError: resource stop: canonical simultaneous physical temporaries exceed allowance",
+    "sample_interval_clock": "Linux CLOCK_MONOTONIC, absolute nanoseconds on this host boot",
+    "sample_interval_scope": "Start/end bracket collection of the resource sample; no GPU synchronization or instantaneous peak. External profiler clock alignment requires a matching clock or explicit anchor.",
+    "sampled_host_rss_peak_bytes": 62375399424,
+    "sampled_stable_temporary_peak_bytes": 6715858432,
+    "sampled_whole_gpu_peak_bytes": 67129835520,
+    "samples": 10168,
+    "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+    "sampling_target_seconds": 0.2,
+    "smaps_read_failures": 0,
+    "stable_samples": 10168,
+    "start_unix_seconds": 1791660090.3458562,
+    "tracked_descendant_identities": 8,
+    "wall_seconds": 2036.9459802601486
+  },
+  "next_hypothesis": "An early A component without canonical W/setup, disabling the CUDA allocation graph. API/kernel timeline only, no joint resource attribution or cap relaxation.",
+  "owner_trace_armed": false,
+  "phase_timing_scope": "Role intervals overlap; duplicate AES spans are not summed. Preparation contains inference and checkpointing.",
+  "private_evidence": {
+    "bytes": 9990655,
+    "files": 27,
+    "manifest_sha256": "31868a5e6c0af0d4b4e7be05764c3f68de5dd83ef0d985778c2b9d9bbe194ca7",
+    "path": "artifact/c7.1-pod/h100-followup-profile-20261010T195900Z"
+  },
+  "provenance": {
+    "binary": {
+      "bytes": 9853000,
+      "path": "c71_canonical_reference-cfc04b6f",
+      "sha256": "fbb773cc231995f8336f09f57be2d4efc5fb99a5ace2a7eb23ac2d91a8948f06"
+    },
+    "binary_build_sha": "cfc04b6f38226c4315e7bf96eeb4f5cd2fb0db2a",
+    "cpu_wrapper_as_bytes": 68719476736,
+    "credit": false,
+    "cuda_child_as_limit": null,
+    "fresh_real_aes_session": true,
+    "git_dirty": false,
+    "git_sha": "76a9201d8704480603ef62d8d46423673ad8c4f0",
+    "library": {
+      "bytes": 3576696,
+      "path": "libc71_large_trace.so",
+      "sha256": "a82727e73df18f2f8d768a9fa4bfccf9e53615f503d6b4896a9caefda8d848c6"
+    },
+    "library_source_sha": "b9043c5d5f514c171ae5a6fc2623d00a3283b398",
+    "nsight_end_after_completed_groups": 117,
+    "nsight_start_after_completed_groups": 113,
+    "reason": "Fresh measured group-116 spike window with verified subreaper, application and agent shutdown; all profiler descendants remain counted. A prior attempt was stopped during loading because the first agent-stop probe was incomplete.",
+    "trace_first_group": 114
+  },
+  "raw_owner_trace_bytes": 0,
+  "requested_nsight_window": [
+    113,
+    117
+  ],
+  "schema": "volta-c71-h100-followup-profile-v1",
+  "window_started": false
+}

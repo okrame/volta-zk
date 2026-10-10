@@ -29,6 +29,8 @@ le nuove domande hardware; non esegue una nuova campagna.
 
 ## Campagne recenti e decisioni operative
 
+- [Limite della cattura Nsight](h100-profiler-limit-2026-10-10.md): due stop fisici prima di A, timeline dello spike ancora aperta.
+- [Default canonico del seguito](h100-followup-default-2026-10-10.md): 116 gruppi A completi, step GPU 511 MiB e stop fisico.
 - [Avvio del seguito H100](h100-followup-start-2026-10-10.md): nuova autorizzazione e deadline del pod già attivo.
 - [Prefisso canonico del seguito](h100-followup-spike-prefix-2026-10-10.md): W/setup e 35 gruppi A; saturazione del logger, clock ridotto verificato.
 - [Metodo del confronto d'inferenza](h100-comparison-plan-2026-10-10.md): workload, due precisioni e criteri fissati prima delle misure.

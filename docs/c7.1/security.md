@@ -11,8 +11,9 @@ poi supera il cap fisico: 6.560.767.488 B contro 6.174.015.488 B.
 Tempi completi di prova/verifica e picco completo restano non misurati.
 
 PCS W misura 190,425 s, installazione 212,418 s e setup 1.493,833 s
-(−24,799% osservato rispetto al precedente). L'inferenza separata esatta
-misura 84,382 s. A04 termina per cap fisico dopo 86/512 gruppi, wall 780,205 s.
+(−24,799% osservato rispetto al precedente). L'inferenza separata misura 84,382 s nel nostro esecutore intero esatto;
+manca un confronto sullo stesso workload con un motore di inferenza
+ottimizzato. A04 termina per cap fisico dopo 86/512 gruppi, wall 780,205 s.
 I diagnostici A omettono lo stato W/setup e non dimostrano il picco canonico.
 La causa dello spike resta aperta; il target 65 s non è raggiunto.
 
@@ -24,6 +25,23 @@ prima della lettura. Nessun lemma Lean raffina questo contatore C++:
 [regressione prima/dopo](../c7.1-history/h100-prefix-candidate-2026-10-10.md)
 e dalla [parità H100](../c7.1-history/h100-prefix-validation-2026-10-10.md).
 Valori, ordine, copertura originale, NoPeek e MAC restano invariati.
+
+La [chiusura locale del 10 ottobre](../c7.1-history/local-exploration-close-2026-10-10.md) riguarda implementazione e screening numerico locali.
+Il flag numerico sincrono riusato viene azzerato prima di ogni producer;
+restano tutte le letture di errore, fence e guardie necessarie prima della
+pubblicazione. È privato e conserva capacità addebitata fino al cleanup;
+i flag sticky PCS/byte sono distinti. Errori aritmetici, launch, copie,
+fence e cleanup falliti restano terminali. La verifica col driver simulato
+non fornisce parità CUDA reale o un lemma Lean di raffinamento.
+
+Gli screening di quattro scale A alternative non ereditano l'ammissione
+Γ e non cambiano il protocollo selezionato: NoPeek, MAC originali,
+correlazioni monouso e PCG AES restano invariati, senza prove/PCS per token.
+W, architettura, workload e ricette numeriche sono fissati; variare scale
+cambia la relazione e richiede i controlli numerici/qualità e l'ammissione
+completa, più il ricalcolo delle prenotazioni e dei bound applicabili.
+Il [piano hardware mirato](../c7.1-history/local-hardware-plan-2026-10-10.md) non autorizza esecuzioni hardware; l'istruzione corrente
+permette solo lavoro locale entro i limiti operativi.
 
 ## Ambito e ipotesi
 
@@ -691,9 +709,10 @@ pubblicazione. Il merge strided ricompone la stessa root naturale e il
 Tree mantiene Arc/layout W, pad, sali e getter originali. La somma signed
 <2^87 e la riduzione Goldilocks sono identità controllate con modulo i128
 indipendente; non cambiano basi Fp3 e non hanno un lemma Lean di
-raffinamento del kernel o dello scheduling. La candidata Tensor limb16
-è non selezionata; il confronto bitwise sul common owner non autentica
-nuovi valori e non espone campi al verificatore.
+raffinamento del kernel o dello scheduling. Tensor limb16 è selezionato
+per W dopo la [parità e il confronto H100](../c7.1-history/h100-components-2026-10-09.md);
+il confronto bitwise sul common owner non autentica nuovi valori e non
+espone campi al verificatore. Le candidate QK/PV MMA restano non selezionate.
 
 **Producer A e copertura.** Il sink residente consuma gli stessi byte
 biased degli originali numerici; l'ordine fisico delle emissioni e le

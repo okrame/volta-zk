@@ -11,10 +11,28 @@ poi supera il cap fisico: 6.560.767.488 B contro 6.174.015.488 B.
 Tempi completi di prova/verifica e picco completo restano non misurati.
 
 PCS W misura 190,425 s, installazione 212,418 s e setup 1.493,833 s
-(−24,799% osservato rispetto al precedente). L'inferenza separata esatta
-misura 84,382 s. A04 termina per cap fisico dopo 86/512 gruppi, wall 780,205 s.
+(−24,799% osservato rispetto al precedente). L'inferenza separata misura 84,382 s nel nostro esecutore intero esatto;
+manca un confronto sullo stesso workload con un motore di inferenza
+ottimizzato. A04 termina per cap fisico dopo 86/512 gruppi, wall 780,205 s.
 I diagnostici A omettono lo stato W/setup e non dimostrano il picco canonico.
 La causa dello spike resta aperta; il target 65 s non è raggiunto.
+
+L'istruzione corrente autorizza le sole esplorazioni locali nella
+[chiusura locale del 10 ottobre](../c7.1-history/local-exploration-close-2026-10-10.md): nessun avvio/riavvio di pod, nuova spesa, esecuzione completa
+pesante o estensione dei timeout. Il [piano hardware mirato](../c7.1-history/local-hardware-plan-2026-10-10.md) prepara una futura verifica
+con domanda, baseline, strumenti discriminanti e stop; non la esegue.
+Le quattro candidate di scale A restano screening non ammessi, con W,
+architettura, workload e ricette fissati, geometria A/PCS e 512 ricostruzioni
+iniziali invariati. Γ ammesso resta il riferimento.
+
+La modifica locale riusa un flag numerico sincrono privato da 256 B,
+aggiungendo 8 B all'owner host (42.096 B nella fixture corrente, 42.088 B
+nei record H100 storici). La capacità trattenuta resta conteggiata fino
+al cleanup; reset per operazione, letture di errore, fence e garanzie
+restano invariati. La validazione simulata richiede ancora parità CUDA
+reale e misure H100. Il conto del setup AES reale include anche cache W
+e owner già installati; NoPeek, MAC originali, correlazioni fresche,
+PCG AES e fail-closed restano quelli del percorso selezionato.
 
 ## Stato e sequenza operativa
 
@@ -75,9 +93,12 @@ esatto e cache compatta; i coefficienti Fp3 residui restano CPU.
 Il conto per fasi è nominato, `joint_admitted:false`; la
 [revisione locale dei lifetime](../c7.1-history/crypto-retirement-short-merkle-2026-10-09.md)
 conserva anche il timeout della prova composta.
-Il [conto locale aggiornato](../../benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421.json) include cache/workspace
-RMS e il campo di lifecycle W: massimo 5.878.734.842 B e 26.845.190 B residui
-nel payload. Il manifest del
+Il [conto locale del 9 ottobre](../../benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421.json) includeva cache/workspace
+RMS e il campo di lifecycle W: massimo storico 5.878.734.842 B e 26.845.190 B
+residui nel payload. La [chiusura locale del 10 ottobre](../c7.1-history/local-exploration-close-2026-10-10.md)
+aggiorna flag trattenuto, owner e stato W già vivo durante il setup AES
+reale: massimo nominato corrente 5.878.735.106 B, con 26.844.926 B residui,
+senza credito di picco fisico. Prima del trial usare questo conto. Il manifest del
 trial deve vincolare capacità dei path/argv ≤4.096 B e identità
 Γ/layout/toolchain applicabili; non trasformare questa premessa in
 un'allocazione gratuita. Ricontare nuove modifiche prima del trial;
@@ -151,7 +172,8 @@ esito locale attribuisce compilazione CUDA o parità sulla H100.
 Regole permanenti approvate dal proprietario l'8 ottobre 2026;
 [motivazione e decisioni](../c7.1-history/operating-rules-2026-10-08.md).
 Questo documento non avvia una campagna a pagamento. L'istruzione corrente
-fissa hardware, ambito, durata propria della campagna e riserva di chiusura.
+autorizza soltanto lavoro locale; una nuova campagna richiede una decisione
+che fissi hardware, ambito, durata e riserva di chiusura.
 L'agent registra deadline e responsabile dello spegnimento dall'avvio
 provider, verifica l'accesso all'arresto API e predispone un guard indipendente.
 Non spostare l'inizio al primo SSH. Non serve un preventivo economico.
@@ -364,8 +386,10 @@ parità hardware. Eseguire un filtro per processo e conservare l'esito:
 zero test eseguiti o timeout non sono pass. Le catene WHIR D10 hanno
 commitment iniziale CPU dichiarato e query/S1/extension native;
 commitment iniziali GPU e aperture W/A sono coperti separatamente D15.
-Questi test non selezionano la candidata Tensor. Le fixture locali
-equivalenti rimangono host anche con la variabile d'ambiente impostata.
+Questi test devono essere ripetuti sul codice corrente; Tensor W è già
+selezionato dopo la parità e il confronto H100. Le candidate attention
+restano non selezionate. Le fixture locali equivalenti rimangono host
+anche con la variabile d'ambiente impostata.
 Misurare sali, scansioni, accumuli, FFT, Merkle, aperture, GKR e Seed6
 separatamente, poi con gli stati simultaneamente vivi. La telemetria
 privata è fuori dal transcript; conservare contatori e log anche su timeout.
@@ -405,8 +429,11 @@ dei MAC originali, contando 124 B e due fence del consumer per round
 separatamente dai producer. Verificare mapping W unico, scanner A
 senza lock esterno, ritiro prima della pubblicazione e assenza di
 consumo correlazioni sui round falliti. Il checkpoint locale non
-compila CUDA; portare i confronti positivi dei filtri lineari negli
-ingressi hardware espliciti ancora da predisporre sopra. Non rilanciare
+compila CUDA. Gli ingressi hardware espliciti
+`c71_b12_native_hardware_linear_coefficients_endpoints` e
+`c71_b12_native_hardware_linear_full_wire_fs_point_and_original_mac`
+esistono e sono passati nella campagna H100 chiusa; ripeterli sul codice
+corrente in una nuova campagna autorizzata. Non rilanciare
 i filtri simulati attribuendo loro credito CUDA. Per S1 ripetere
 singleton/OOD, codec, contrazioni e fold contro
 l'oracolo PCS indipendente; verificare retention dopo apertura del

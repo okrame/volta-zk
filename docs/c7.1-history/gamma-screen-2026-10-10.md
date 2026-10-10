@@ -1,0 +1,55 @@
+# C7.1 — screening locale Γ/RMS, 10 ottobre 2026
+
+Studio locale successivo alla campagna H100 chiusa, senza modificare Γ ammesso o record precedenti. La nuova evidenza è `credit:false`, `gamma_admitted:false`, `complete_work:false`, `complete_physical_peak:false`, `gpu_execution:false`.
+
+## Provenance e input realmente riusati
+
+Source pulita `102ecf02ab98f0e6b0aa5d45483ebb874bddcaca`; CLI reale dev `rust/target/debug/examples/c71_calibration` SHA256 `4f49dba46b8fd9d8b0e8d9573cac8bd8a3cde41ec067160a7cc888ff1142d1d0`. I sette file del bundle `artifact/c7.1-pod/h100-components-20261009T194100Z/gamma-inputs` sono verificati per lunghezza e SHA256 contro il manifest originale e, quando referenziati, contro admission: candidate, tables, ingest, recipes, ledger, oracle, admission. Candidate ammessa SHA256 `8965d0c3dc170e41b304982b90409b0362e93de4d029b08bba3716ab64dbf95e` (75.661B) viene copiata byte per byte, non riserializzata. Tables 24.414.870B SHA256 `052de68a51b02da1b442ed31ce49031630976747cf6605c191672c1e8417d31d` sono soltanto verificate, non rigenerate. Pesi/esponenti W confrontati con ingest; packed e tracce complete sono assenti e non letti/scaricati.
+
+Il manifest nuovo `/tmp/c71-gamma-screen-20261010-02/manifest.json` ha SHA256 `3dedc3e4fa48cbd6e2fc98151311c38cfd5eabbba896d6d91f6173e0113b349a`. Summary `/tmp/c71-gamma-screen-20261010-102ecf02.json` SHA256 `808d789e8955f66a90bf20cc9ea1ae6c2f652518ce64c28302c0d77fec31c363`. L’[evidenza archiviata](../../benchmarks/results/c71-local-exploration-2026-10-10-f71a12519ad9.json) conserva il report, input, ricevute e output; ogni misura mantiene la propria SHA sorgente.
+
+Il censimento dei margini riusa `integer-complete-20261007T144500Z/integer-2-attention-budgeted.json`, SHA256 `f4148f30beca4bb3afb0446f07853d271c88a1bb307016c53c336bdb68bfcaf0`, verificata contro la receipt originale d'ammissione. Contiene estremi della baseline reale, non valori candidati né una nuova calibrazione.
+
+## Implementazione ridotta e compatibilità
+
+La nuova CLI pubblica `rms-programs` legge ≤1MiB e 1–8 ricette, invoca esattamente il compiler RMS originale, restituisce coefficienti, larghezze, profondità, gate counts e memoria dei descrittori/Vec posseduti e libera il circuito prima del successivo. Non genera tables o prove. `scripts/c71_gamma_screen.py` prepara quattro candidate oltre al riferimento e aggrega i profili usando gli stessi supporti MSB del ledger. Il riferimento ricompilato combacia per tutti i supporti, conteggi per layer e coefficient core con il ledger trattenuto.
+
+Le quattro candidate mantengono architettura, workload, W, byte codec, Pi=-14, scale embedding/tied W e ricette numeriche. Cambiano soltanto scale attivazione RMS di al massimo un bit, usando ID canonici e rispettando gli alias. Le scale di GELU/EXP30/softcap/Pi non cambiano. Nessuna candidata estrema o costante/zero. Le due candidate pari compilano anche tutte le ricette dell'intero modello nei tre contesti entro60s; la CLI `recipes` percorre `profiles()` del compiler completo, compresi alias, affine e altri vincoli. Non esegue il modello. La corrispondenza delle ricette tables GELU/EXP30/softcap/RoPE e `table_bytes` è esatta per entrambe; i corpi certificati possono essere riusati per identità di ricetta. La nuova admission e le verifiche numeriche restano necessarie.
+
+## Risultati del costo, per una singola risposta O=0
+
+Il denominatore `844.006.203.160.300` Fp3 mul è il coefficient core CPU selezionato dopo support pruning e primo round Booleano per una risposta, come nel record `crypto-rms-close-2026-10-09.md` righe26–29 e `h100-campaign-close-2026-10-10.md` righe63–64. Il nuovo screen usa oracle e ledger `contexts[0]`, non somma tre risposte né misura il servizio completo. Il ledger originale ha lo stesso RMS core in O=0/150/300. Il compiler recipes a tre contesti è un controllo diverso e non estende il credito del core screen.
+
+| Candidata | Scale cambiate | Programmi | Arithmetic bits | Fp3 mul core | Riduzione analitica core | Byte programmi posseduti | GKR core rows |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Γ ammesso | 0 | 159 |95–101|844.006.203.160.300|0|457.634.736|17.254|
+| pari coarser: odd→successivo even |380|91|95–103|726.506.808.569.837|13,9216%|260.594.224|17.248|
+| pari finer: odd→precedente even |380|92|95–101|722.456.626.804.641|14,4015%|263.716.160|17.254|
+| output coarser controllo: y+1 |421|159|95–103|843.748.781.625.796|0,0305%|457.331.376|17.254|
+| output finer: y−1 |421|159|95–101|844.491.117.794.189|−0,05745%|458.192.112|17.260|
+
+L'ordine per solo costo è finer pari, coarser pari, output coarser, output finer. L'ordine operativo è coarser pari prima, finer pari soltanto condizionata a nuovi margini numerici; i due cambi soltanto output sono scartati come ottimizzazione perché il costo migliora in misura trascurabile o peggiora. Coarsening non riduce automaticamente le larghezze: il massimo passa101→103, per normalizzazione dei coefficienti e potenze di due nel denominatore. Le candidate pari riducono programmi distinti e lavoro delle edge coefficient tables; tutte lasciano invariati depth99, 347.937.024 live cells, padding2^29 e 998.927.195.904 callback/frame per risposta.
+
+I byte posseduti sono il totale dei Circuit/Vec originali dei programmi distinti, senza Builder, allocator, packed replay, workspace né simultaneità delle due parti. Coarser pari riduce questa specifica quantità di197.040.512B (43,0563%); finer pari di193.918.576B (42,3741%). Non è un picco fisico. Il massimo layer edge logical è24.121.920B baseline,13.896.096B coarser e13.892.592B finer (Gate+Fp3=48B per edge logica), senza allocator. I 17k rows sono soltanto il GKR core (byte endpoint escluso), non la correlazione completa RMS/PCG né una reservation aggiornata. Le variazioni±6 rows non implicano speedup.
+
+PCS e ricostruzioni: A domain34, W domain35, 512 ricostruzioni iniziali A, lunghezze A13.154.672.538/14.334.320.538/15.513.968.538B per i tre contesti e checkpoint originale PYS2.023.511.878B sono invariati. Una scala differente cambia la relazione e i valori, non le cardinalità, gli slot source/port, il byte codec o il piano PCS. Nessuna prova o PCS per token. Questo lavoro non risolve lo spike inizialeA che precede RMS.
+
+## Numerica ridotta, margini e qualità ancora aperta
+
+La fixture Python RMS usa stessi input fisici dyadici esatti e W sintetici fissi257+i%17 per tutte le scale. Verifica1263 output, tutti nonzero sia baseline sia candidata, zero overflow nella fixture, e bound RNE ≤mezzo della somma dei quantum output. Output dequantizzati cambiati:277 coarser pari,251 finer pari,667 output coarser,542 output finer; massime differenze0,125/0,0625/0,25/0,125 nelle unità delle rispettive ricette. È un controllo di componente sintetico, non parità GPU, realW, calibrazione, qualità o token.
+
+Il report originale degli interi reali ha RMS output con |y|>16383 in8/4/2 delle421 Norm per O=0/150/300. Applicando soltanto la requantizzazione del valore fisico baseline, finer pari perderebbe il margine i16 in16/5/2 fonti (input11/2/1 e output5/3/1); output finer in8/4/2 output. Queste sono condizioni necessarie di attenzione, non un'esecuzione candidata: il candidato può cambiare i valori upstream. Vietata la promozione delle candidate finer sulla sola assenza di overflow nella fixture; nessuna assenza di overflow dimostra qualità. Coarser pari non ha questo rischio di raddoppio baseline, ma perde risoluzione e deve superare tutti i controlli qualità.
+
+Per una nuova candidatura: (1) stessi pesi reali e stessi input teacher-forced O=0/150/300, layer RMS/max error dequantizzato rispetto a Γ ammesso e binary64, frazioni zero/saturazione, drift attenzione/logit e margini argmax; predefinire soglie qualità prima dell'admission; (2) ricalibrazione/scala completa e due replay interi esatti, confronto indipendente tracce e finalKV, tutti cinque admission checks; (3) qualità di generazione pinning input/token/autoregression, senza ereditare gli oldtokens; (4) ricomputare reservation, bound pubblici di sicurezza e risorse composte se cambia l'envelope. I token possono cambiare. Γ ammesso resta invariato.
+
+## Runs locali, fallimenti e timeout conservati
+
+50 batch/398 ricette original compiler, seriali, max8 per child: tutti PASS. Somma wall child57,256056698s; max child1,289405234s; maxwait4RSS20.938.752B. Ogni processo ≤60s / AS2GiB / workers1. Non sono tempi inferenza o previsioni H100. Batch receipt SHA256 `81eb2d6dbf388d8f57640af0dc5076e44abc574218ff207aefadbe38922eaea9`.
+
+Full recipes tre contesti: coarser pari PASS40,846406762s, RSS55.328.768B, digest `9f2f24499d4f11a0a6bed74c6ebc81550c62d51e949c92b8026749aa965b6913`; finer pari PASS42,300778268s, RSS55.402.496B, digest `1ab9a5e62dae51a1fb07c1330513f248fa28a97ebd37152aeb793a5b84514834`. Reference, output finer e output coarser raggiungono rispettivamente60,004613687/60,009582594/60,008222639s ed exit124. Stdout vuoto conservato con stderr e receipt; nessuna estensione o retry. Il timeout reference non invalida admission esistente: la nuova compilazione ridondante è incompleta. Compilazione completa delle due candidate output resta non verificata da questa run. Recipe receipt SHA256 `2f740186cfc4d096af3063a5c0ab01e09d4e74fa506c8a3969623aa6fe877829`.
+
+Summary PASS3,135522678s, maxRSS106.319.872B; reference core/support checks PASS. Un primo batchdriver fallisce prima di ogni child compiler perché `/usr/bin/time` non esiste; driver/empty output/log e receipt `/tmp/c71-gamma-batches-driver-01-failure.json` sono conservati, nuovo driver usa os.wait4 in directory distinta02. Il primo Python test KeyError3275 legato al softmax hist output, già conservato dal root, è corretto scegliendo il vero Pi `parameters.probability`; fixture softmax completa6 output copre l'ordine originale. Nessun run precedente viene sovrascritto.
+
+## Un esperimento hardware Γ prioritario
+
+Domanda: la candidata coarser pari conserva qualità e margini reali e realizza la riduzione delle edge coefficient tables senza spostare il costo su altre fasi? Prima va ricalibrata numericamente con i pesi reali sugli stessi teacher-forced O=0/150/300 e criteri predeclared sopra. Solo dopo la candidatura supera i controlli completi, confronto stesso input/seed/NoPeek/protocollo fra Γ ammesso e candidato: compiler program count/bytes, RMS/GKR perstage wall GPU+CPU e gate core perresponse, PCG reservation effettiva, buffer live+retained simultanei host/device, A layout/reconstruction counters e PCI/CUDA transfers. Esito discriminante:13,9216% diminuzione del core contato e43,0563% del possesso-programmi previsto, callback/A/PYS identici; una differenza nei callback/layout segnala un cambio di computazione inatteso. Stop per overflow, fallimento qualità/parità richieste, security/resource bounds irrisolti, limite fisico/arena o deadline autorizzata. Non eseguire questa fase ora. Finer pari resta soltanto alternativa di screening con rischi di margine espliciti; i due output-only non meritano una campagna.

@@ -11,8 +11,9 @@ poi supera il cap fisico: 6.560.767.488 B contro 6.174.015.488 B.
 Tempi completi di prova/verifica e picco completo restano non misurati.
 
 PCS W misura 190,425 s, installazione 212,418 s e setup 1.493,833 s
-(−24,799% osservato rispetto al precedente). L'inferenza separata esatta
-misura 84,382 s. A04 termina per cap fisico dopo 86/512 gruppi, wall 780,205 s.
+(−24,799% osservato rispetto al precedente). L'inferenza separata misura 84,382 s nel nostro esecutore intero esatto;
+manca un confronto sullo stesso workload con un motore di inferenza
+ottimizzato. A04 termina per cap fisico dopo 86/512 gruppi, wall 780,205 s.
 I diagnostici A omettono lo stato W/setup e non dimostrano il picco canonico.
 La causa dello spike resta aperta; il target 65 s non è raggiunto.
 
@@ -24,6 +25,44 @@ prima della lettura. Nessun lemma Lean raffina questo contatore C++:
 [regressione prima/dopo](../c7.1-history/h100-prefix-candidate-2026-10-10.md)
 e dalla [parità H100](../c7.1-history/h100-prefix-validation-2026-10-10.md).
 Valori, ordine, copertura originale, NoPeek e MAC restano invariati.
+
+La [chiusura locale del 10 ottobre](../c7.1-history/local-exploration-close-2026-10-10.md) registra le esplorazioni successive alla campagna:
+verifica degli artefatti conservati, riuso di un solo flag numerico sincrono
+(256 B device trattenuti e 8 B aggiunti all'owner host) e quattro screening
+di scale A alternative. Il flag viene azzerato prima di ogni operazione;
+kernel, letture di stato, fence necessari e controlli restano invariati.
+La parità locale usa il driver simulato: parità CUDA reale, guadagno H100
+e sufficienza dell'allowance restano da misurare. Il conto del setup AES
+reale include anche cache W e owner già installati.
+
+Γ ammesso resta il riferimento. Gli screening mantengono W, architettura,
+workload e ricette numeriche, ma cambiano la relazione tramite le scale A:
+non ereditano ammissione o credito prestazionale. Geometria A/PCS e 512
+ricostruzioni iniziali restano invariate. Il [piano hardware mirato](../c7.1-history/local-hardware-plan-2026-10-10.md) distingue costo
+API/kernel, attribuzione dello spike e validazione numerica/qualità.
+Sono autorizzati soltanto lavoro e test locali entro i limiti correnti;
+nessun pod, nuova spesa, run completo pesante o estensione dei timeout.
+
+Il confronto ridotto prima/dopo misura 32→1 allocazioni del flag, con
+stessi 32 kernel, 96 fence e 2.176 B D2H inclusa l'osservazione dei raw.
+Il census del caller predice 1.185.769 coppie alloc/free in meno per
+inferenza e 6.997.504 nei 512 replay A, senza attribuire guadagni di tempo.
+Il nuovo massimo nominato sul Γ ammesso è **5.878.735.106 B**, con
+**26.844.926 B** residui: il pool è contato anche inattivo e il setup AES
+include lo stato W già installato. Allowance e picco fisico restano aperti.
+
+La prima candidata Γ per una futura validazione è il bucket RMS al pari
+più grossolano: 159→91 programmi, −13,9216% di prodotti Fp3 del core
+RMS/GKR per risposta O=0 e −43,0563% dei byte posseduti dai soli circuiti.
+Il bucket al pari più fine dà −14,4015%, ma la requantizzazione delle
+attivazioni ammesse espone rischi i16 in 16/5/2 fonti O=0/150/300.
+Entrambe compilano nei tre contesti; profondità 99, celle vive, callback,
+checkpoint PYS e geometria PCS restano invariati. Le due variazioni dei
+soli output hanno beneficio trascurabile o costo maggiore e sono scartate
+come ottimizzazioni. Il possesso dei circuiti non è il picco composto:
+Builder, packed replay, allocator e workspace richiedono nuovi bound.
+Tutte le candidate restano screening non ammessi; margini, errore numerico,
+qualità/token, due replay interi e confronto indipendente restano da validare.
 
 ## Obiettivo e relazione dimostrata
 
@@ -207,11 +246,12 @@ Fattori, FFT dispari, range e producer restano costi
 separati; almeno 581 scan complete dell'A corrente precedono le richieste
 parziali e gli altri consumer.
 
-Il [conto tipato aggiornato](../../benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421.json) enumera 653 fasi e le 11
+Il [conto tipato del 9 ottobre](../../benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421.json) enumerava 653 fasi e le 11
 classi di allocazione, compresi cache/workspace RMS e gli 8 B aggiunti
-per seguire il lifecycle W.
-Il massimo modellato è 5.878.734.842 B,
-con 26.845.190 B residui nel payload di 5.905.580.032 B.
+per seguire il lifecycle W: massimo 5.878.734.842 B e 26.845.190 B residui
+nel payload di 5.905.580.032 B. La [chiusura locale del 10 ottobre](../c7.1-history/local-exploration-close-2026-10-10.md)
+aggiorna il conto con flag trattenuto, nuovo owner e cache W già vive
+nel setup AES reale; il massimo storico non è il bound del codice attuale.
 Rimane condizionato alle capacità dei path/argv
 ≤4.096 B ed alle identità Γ/layout registrate; `joint_admitted:false`
 conserva il confine rispetto al picco fisico non misurato.

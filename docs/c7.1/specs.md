@@ -11,8 +11,9 @@ poi supera il cap fisico: 6.560.767.488 B contro 6.174.015.488 B.
 Tempi completi di prova/verifica e picco completo restano non misurati.
 
 PCS W misura 190,425 s, installazione 212,418 s e setup 1.493,833 s
-(−24,799% osservato rispetto al precedente). L'inferenza separata esatta
-misura 84,382 s. A04 termina per cap fisico dopo 86/512 gruppi, wall 780,205 s.
+(−24,799% osservato rispetto al precedente). L'inferenza separata misura 84,382 s nel nostro esecutore intero esatto;
+manca un confronto sullo stesso workload con un motore di inferenza
+ottimizzato. A04 termina per cap fisico dopo 86/512 gruppi, wall 780,205 s.
 I diagnostici A omettono lo stato W/setup e non dimostrano il picco canonico.
 La causa dello spike resta aperta; il target 65 s non è raggiunto.
 
@@ -24,6 +25,12 @@ prima della lettura. Nessun lemma Lean raffina questo contatore C++:
 [regressione prima/dopo](../c7.1-history/h100-prefix-candidate-2026-10-10.md)
 e dalla [parità H100](../c7.1-history/h100-prefix-validation-2026-10-10.md).
 Valori, ordine, copertura originale, NoPeek e MAC restano invariati.
+
+La [chiusura locale del 10 ottobre](../c7.1-history/local-exploration-close-2026-10-10.md) conserva i risultati delle nuove esplorazioni locali:
+flag numerico sincrono riusato, conto delle capacità trattenute e quattro
+screening di scale A, con Γ ammesso come riferimento immutato. Il
+[piano hardware mirato](../c7.1-history/local-hardware-plan-2026-10-10.md) specifica le misure discriminanti ancora necessarie. Non sono
+nuove misure CUDA/H100 o ammissioni delle candidate.
 
 ## Input e identità
 
@@ -235,6 +242,19 @@ d'ingest. La sola CLI Rust non certifica queste due proprietà.
 Lo storage offline non è l'arena della prova; workspace dei produttori
 e allocator restano distinti dai payload nominati. Confronto indipendente
 e congelamento seguono [runpod-tests](runpod-tests.md#validazione-e-congelamento-del-profilo).
+
+Lo studio locale di Γ alternativi usa quattro modifiche motivate di
+un solo bit delle scale A, con W, esponenti W, architettura, workload e
+famiglie delle ricette numeriche fissati. La CLI `rms-programs` compila
+al massimo otto ricette pubbliche per invocazione con il compilatore
+originale e conserva solo metadati fra ricette. Le fixture e i profili
+sono screening `credit:false`, senza ammissione. L'assenza di overflow
+non certifica qualità; restano da validare errori numerici, output utili,
+attenzione/logits, token e tutti i controlli completi sui pesi reali.
+Scale nuove cambiano la relazione. Il layout byte A, i domini PCS e le
+512 ricostruzioni iniziali restano invariati: minore width/depth RMS non
+riduce automaticamente questi costi. Risultati e obblighi sono nella
+[chiusura locale del 10 ottobre](../c7.1-history/local-exploration-close-2026-10-10.md); nessuna candidata sostituisce Γ ammesso.
 
 ### Confronto indipendente
 
@@ -1052,8 +1072,11 @@ in costruzione, cache DFT, righe/sali/path dei batch precedenti ed altri
 owner sono ulteriori. Query scratch si ritira prima della rigenerazione
 del batch corrente. A S1 usa 3.221.225.472 B di plane; la promozione a
 due fold può far coesistere 4.026.531.840 B old+new. Il layout host
-del nuovo owner è verificato a 42.088 B; dimensione e capacità sono nel
-[record del checkpoint](../../benchmarks/results/c71-crypto-residual-query-local-2026-10-09-9a5da712a258.json), senza credito di picco fisico.
+dell'owner storico era verificato a 42.088 B nel
+[record del checkpoint](../../benchmarks/results/c71-crypto-residual-query-local-2026-10-09-9a5da712a258.json).
+L'owner corrente misura 42.096 B nella fixture locale: il campo del flag
+riusato aggiunge 8 B. Il flag trattiene altri 256 B device fino al cleanup,
+anche quando inattivo; nessuna delle due misure è credito al picco fisico.
 
 Le parità ridotte, i benchmark host, il confronto WHIR A/W ed i failure
 sono raccolti nella [storia](../c7.1-history/crypto-residual-query-2026-10-09.md).
@@ -1154,9 +1177,14 @@ di query, S1 e cache iniziali A1..A3; il
 [record del checkpoint](../../benchmarks/results/c71-crypto-residual-query-local-2026-10-09-9a5da712a258.json) lega il backend `s1-prepared`
 alle shape correnti di tutti gli stadi extension nativi. È uno screen
 nominato con `joint_admitted:false`, non un
-conto completo. Il [conto tipato aggiornato](../../benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421.json) comprende
-le capacità/lifetime RMS e gli 8 B del nuovo campo di lifecycle W. Il massimo è
-5.878.734.842 B, lasciando 26.845.190 B al payload.
+conto completo. Il [conto tipato del 9 ottobre](../../benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421.json) comprendeva
+le capacità/lifetime RMS e gli 8 B del campo di lifecycle W: massimo
+5.878.734.842 B, lasciando 26.845.190 B al payload. Il conto corrente nella
+[chiusura locale del 10 ottobre](../c7.1-history/local-exploration-close-2026-10-10.md) aggiunge gli 8 B dell'owner e
+l'upper del flag device trattenuto. Il setup AES reale include cache/root,
+indici dei sali e owner W già installati; i sali/correlazioni di sessione
+rimangono monouso. Il massimo nominato corrente è 5.878.735.106 B, con 26.844.926 B residui;
+non è ammissione fisica. I nuovi termini non si deducono dai massimi storici.
 Tutte le 11 classi
 hanno termini espliciti: profili/layout/Arc/tabelle, fattori query CPU,
 aperture già trattenute, AES/VOLE/journal, prove/codec/framing,
@@ -1257,8 +1285,13 @@ finestre ≤256 MiB e poi sigillata senza sostituzioni o puntatori esportati.
 Il cap è 61.394.690.560 B; l'ammissione controlla ≥1 GiB libero prima/dopo
 l'allocazione, non promette assenza di allocazioni concorrenti esterne.
 Il ledger ABI 4 (152 B) separa W e arena, somma le prenotazioni nel picco
-e conserva i byte non liberati su errore di cleanup. Conta anche i 4 B
-di flag per operazione; raw e RNE rimangono entrambi addebitati fino al rilascio.
+e conserva i byte non liberati su errore di cleanup. Ogni operazione
+numerica azzera e legge gli stessi 4 B di flag e conserva le fence
+necessarie; un solo buffer privato allineato a 256 B viene riusato dal
+primo producer fino al cleanup dell'owner. La capacità resta addebitata
+anche inattiva e occupa uno dei 512 descrittori. I flag sticky delle
+transazioni PCS/byte restano separati. Raw e RNE rimangono entrambi
+addebitati fino al rilascio; nessun controllo viene eliminato.
 Non scarica gli intermedi sullo host né rialloca W fra i batch.
 Il consumer range Rust controlla questa ABI; una catena ridotta Rust/C
 confronta RNE con `rne::integer`, poi la root range con gli stessi interi.

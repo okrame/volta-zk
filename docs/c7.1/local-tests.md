@@ -30,6 +30,26 @@ non test locali né prova completa. Il setup H100 con
 [coda cGGM differita](../c7.1-history/h100-setup06-checkpoint-2026-10-10.md)
 è completo; il raffinamento generale e l'accettazione canonica restano aperti.
 
+La [chiusura locale del 10 ottobre](../c7.1-history/local-exploration-close-2026-10-10.md) registra le nuove verifiche locali e l'inventario dei
+report/input effettivamente conservati; packed e tracce complete non
+sono disponibili e non vengono scaricati. Gli 84,382 s della H100 sono
+il nostro esecutore intero esatto: manca il confronto con un motore
+ottimizzato sullo stesso workload. Il [piano hardware mirato](../c7.1-history/local-hardware-plan-2026-10-10.md) resta da eseguire soltanto
+con una nuova autorizzazione hardware.
+
+I controlli della nuova modifica mantengono esiti, limiti e provenienza:
+`tests/test_c71_range_native.py` verifica riuso del flag, reset, capacità
+trattenuta, transazioni sticky separate e fail-closed con driver simulato;
+`tests/test_c71_temporary_ledger.py` verifica l'addebito fino al cleanup
+e il setup AES reale con cache W/owner già installati;
+`tests/test_c71_gamma_screen.py` verifica identità degli input e quattro
+screening di scale A. Eseguire questi file separatamente, con 60 s /
+AS 2 GiB, un worker e nessuna estensione automatica del timeout. Il filtro
+Rust `c71_calibration_rms_program_screen_uses_original_compiler_and_rejects_bad_recipes`
+confronta la CLI ridotta con il compilatore RMS originale e i suoi rifiuti.
+Fixture, profili pubblici e tempi CPU non sono parità CUDA, qualità sui
+pesi reali, ammissione Γ o previsione di accelerazione H100.
+
 ## Limiti e ambiente
 
 I controlli locali usano input piccoli, un solo processo di test per volta,
@@ -345,8 +365,9 @@ limiti: `tests/test_c71_dense_i16.py`, `tests/test_c71_range_native.py`,
 oracoli signed i128 indipendenti, modulo campo, padding e normalizzazione.
 Attention verifica future KV/Pi già inizializzate con guard per lettura
 ed i bound del bordo; conserva il finding precedente e la correzione in
-record distinti. Tensor e attention restano non selezionati. Questi test
-non compilano CUDA né provano scheduling/registri/spill hardware.
+record distinti. Le candidate attention restano non selezionate; Tensor W
+è selezionato dopo la parità e il confronto H100, documentati nel design.
+Questi test locali non compilano CUDA né provano scheduling/registri/spill hardware.
 
 Il [diagnostico W](../../cuda/c71_pcs_weight_compare.cpp) può essere
 compilato con g++ `-c` senza toolkit; non è linkato/eseguito localmente.
@@ -621,8 +642,11 @@ di cleanup. Aggiunge due batch prodotto/RNE/range sullo stesso W di 20 B,
 Il gather aggiunge 19 rifiuti, estremi dei tre codec, ordine dei byte,
 incluso −32768 nel codec byte (lo slack argmax), e il pointwise aggiunge
 14 rifiuti di shape/handle/coefficiente/driver. Verifica inoltre
-finestra pending non consumabile e rilascio del flag; conta capacità simultanee
-e copie, senza scaricare matrici intermedie. Il driver simulato non esegue
+finestra pending non consumabile e rilascio del flag sticky; il flag
+numerico sincrono riusa invece un buffer privato di 256 B, mantenendo
+reset, copie/fence necessari e capacità addebitata fino al cleanup.
+L'owner corrente misura 42.096 B (+8 B rispetto allo storico 42.088 B).
+Conta capacità simultanee e copie, senza scaricare matrici intermedie. Il driver simulato non esegue
 o convalida i kernel CUDA. L'embedding aggiunge copie D2D per batch di
 1, 4 e 150 token, osservazione dell'ordine esatto e 17 rifiuti, inclusi
 token invalidi prima della prima copia ed errori dopo copie parziali.

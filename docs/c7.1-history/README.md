@@ -5,6 +5,13 @@ Per il lavoro corrente leggere [design](../c7.1/design.md), [specifiche](../c7.1
 [test su RunPod](../c7.1/runpod-tests.md). Le istruzioni di questo archivio
 valgono soltanto per il checkpoint che descrivono.
 
+Le esplorazioni successive alla chiusura H100 sono nella
+[chiusura locale del 10 ottobre](local-exploration-close-2026-10-10.md),
+con [baseline/inventario](local-baseline-exploration-2026-10-10.md),
+[esecutore](local-executor-2026-10-10.md),
+[screening Γ/RMS](gamma-screen-2026-10-10.md) e
+[piano hardware](local-hardware-plan-2026-10-10.md).
+
 ## Percorsi di lettura
 
 - [Decisioni](decisions.md): successione delle scelte, esclusioni e motivazioni.

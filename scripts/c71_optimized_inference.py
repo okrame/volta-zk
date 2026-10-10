@@ -137,8 +137,12 @@ def run(campaign, history_path, output, precision):
             key = f"model.layers.{i}.layer_scalar"
             source, original_name = sources[key]
             scalar = source.get_tensor(original_name)
-            if not torch.equal(scalar, torch.ones_like(scalar)):
-                raise ValueError("pinned public unit layer scalar differs")
+            public = metadata['public_layer_scalars'][i]
+            if (public['layer'] != i or public['name'] != original_name
+                    or scalar.dtype != torch.bfloat16 or list(scalar.shape) != public['shape']
+                    or scalar.numel() != 1
+                    or (int(scalar.view(torch.int16).item()) & 0xffff) != public['bf16_bits']):
+                raise ValueError("pinned public layer scalar bits differ")
             layer.layer_scalar.copy_(scalar)
         model.model.embed_tokens.embed_scale.fill_(model.model.embed_tokens.scalar_embed_scale)
     model.model.rotary_emb = Gemma4TextRotaryEmbedding(cfg, device="cuda")

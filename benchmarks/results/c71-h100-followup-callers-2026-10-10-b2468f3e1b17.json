@@ -1,0 +1,3380 @@
+{
+  "A_run_group_medians_ns": {
+    "current": [
+      5864700564.0,
+      5795531070.5
+    ],
+    "pooled": [
+      5867064702.5,
+      5830908766.0
+    ],
+    "unpooled": [
+      5881584048.5,
+      5833743584.5
+    ]
+  },
+  "A_runs": [
+    {
+      "complete_groups": 5,
+      "complete_root_parity": false,
+      "full_A_complete": false,
+      "groups": [
+        {
+          "index": 0,
+          "native_delta": {
+            "allocations": 31741,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 56932,
+            "fences": 55071,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31741,
+            "zeroed_bytes": 4604314060
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 6001806075
+        },
+        {
+          "index": 1,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31740,
+            "zeroed_bytes": 4604312012
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5886676874
+        },
+        {
+          "index": 2,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31740,
+            "zeroed_bytes": 4604312012
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 6095405867
+        },
+        {
+          "index": 3,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31740,
+            "zeroed_bytes": 4604312012
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5842724254
+        },
+        {
+          "index": 4,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31740,
+            "zeroed_bytes": 4604312012
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5796771452
+        }
+      ],
+      "label": "caller-commitment-a-current-01",
+      "last_two_physical_samples": [
+        {
+          "W_transition_incomplete": "0",
+          "cgroup_memory_current_bytes": "188290809856",
+          "disk_available_bytes": "120645390336",
+          "host_tree_rss_bytes": "61609426944",
+          "host_tree_swap_bytes": "0",
+          "monotonic_sample_end_ns": "14690232270818072",
+          "monotonic_sample_start_ns": "14690232218217028",
+          "resident_device_W_bytes": "61394690560",
+          "resident_host_W_lower_bound_bytes": "61394685952",
+          "sample_duration_seconds": "0.05260489508509636",
+          "sampled_temporary_bytes": "5935205888",
+          "smaps_read_failures": "0",
+          "unix_seconds": "1791664738.6919947",
+          "whole_gpu_free_bytes": "17903386624",
+          "whole_gpu_used_bytes": "67115155456"
+        },
+        {
+          "W_transition_incomplete": "0",
+          "cgroup_memory_current_bytes": "188290904064",
+          "disk_available_bytes": "120645390336",
+          "host_tree_rss_bytes": "61609426944",
+          "host_tree_swap_bytes": "0",
+          "monotonic_sample_end_ns": "14690232473348531",
+          "monotonic_sample_start_ns": "14690232418305014",
+          "resident_device_W_bytes": "61394690560",
+          "resident_host_W_lower_bound_bytes": "61394685952",
+          "sample_duration_seconds": "0.05504803918302059",
+          "sampled_temporary_bytes": "5979246080",
+          "smaps_read_failures": "0",
+          "unix_seconds": "1791664738.8945253",
+          "whole_gpu_free_bytes": "17859346432",
+          "whole_gpu_used_bytes": "67159195648"
+        }
+      ],
+      "matched_group_indices": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "matched_group_median_ns": 5864700564.0,
+      "monitor": {
+        "authorized_end_epoch": 1791671244.0,
+        "close_reserve_seconds": 1800,
+        "compute_end_epoch": 1791669444.0,
+        "exit_code": -9,
+        "gpu_uuid": "GPU-e05e977b-758d-f3f4-cbe8-5720b83d1ae1",
+        "incomplete_samples": 1,
+        "label": "caller-commitment-a-current-01",
+        "mode": "canonical",
+        "observed_payload_peak_bytes": 5554384779,
+        "payload_limit_bytes": 5905580032,
+        "physical_complete_peak": false,
+        "physical_temporary_limit_bytes": 6174015488,
+        "resource_failure": "TimeoutExpired: Command '['nvidia-smi', '--id=GPU-e05e977b-758d-f3f4-cbe8-5720b83d1ae1', '--query-gpu=memory.used,memory.total,memory.free', '--format=csv,noheader,nounits']' timed out after 0.01738768070936203 seconds",
+        "sample_interval_clock": "Linux CLOCK_MONOTONIC, absolute nanoseconds on this host boot",
+        "sample_interval_scope": "Start/end bracket collection of the resource sample; no GPU synchronization or instantaneous peak. External profiler clock alignment requires a matching clock or explicit anchor.",
+        "sampled_host_rss_peak_bytes": 61609426944,
+        "sampled_stable_temporary_peak_bytes": 6058913280,
+        "sampled_whole_gpu_peak_bytes": 67238887424,
+        "samples": 1999,
+        "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+        "sampling_target_seconds": 0.2,
+        "smaps_read_failures": 0,
+        "stable_samples": 1998,
+        "start_unix_seconds": 1791664339.0550175,
+        "tracked_descendant_identities": 2,
+        "wall_seconds": 400.03626366332173
+      },
+      "preparation_wall_ns": [
+        76966604411
+      ],
+      "provenance": {
+        "binary": {
+          "bytes": 9853000,
+          "path": "c71_canonical_reference-cfc04b6f",
+          "sha256": "fbb773cc231995f8336f09f57be2d4efc5fb99a5ace2a7eb23ac2d91a8948f06"
+        },
+        "binary_build_sha": "cfc04b6f38226c4315e7bf96eeb4f5cd2fb0db2a",
+        "cpu_wrapper_as_bytes": 68719476736,
+        "credit": false,
+        "cuda_child_as_limit": null,
+        "git_dirty": false,
+        "git_sha": "b2468f3e1b170e6640d8034e0435887b9d45489d",
+        "library": {
+          "bytes": 3567488,
+          "path": "libc71_current.so",
+          "sha256": "8a67c85d8306c01267b33f1f704bb2f0ba10511a415a06eccea52a30af7f03e7"
+        },
+        "library_source_prefix": "b7c6d0ac",
+        "mode": "commitment-a",
+        "profiler": false,
+        "scope": "Real O=0 caller. A phase is an intentionally bounded incomplete 512-group commitment, with no W commitment/setup/proof/verification/acceptance."
+      },
+      "total_groups": 512,
+      "variant": "current"
+    },
+    {
+      "complete_groups": 33,
+      "complete_root_parity": false,
+      "full_A_complete": false,
+      "groups": [
+        {
+          "index": 0,
+          "native_delta": {
+            "allocations": 31741,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 56932,
+            "fences": 55071,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31741,
+            "zeroed_bytes": 4604314060
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5905172383
+        },
+        {
+          "index": 1,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31740,
+            "zeroed_bytes": 4604312012
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5832113056
+        },
+        {
+          "index": 2,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31740,
+            "zeroed_bytes": 4604312012
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 6062320941
+        },
+        {
+          "index": 3,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31740,
+            "zeroed_bytes": 4604312012
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5758949085
+        },
+        {
+          "index": 4,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31740,
+            "zeroed_bytes": 4604312012
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5731386713
+        },
+        {
+          "index": 5,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31740,
+            "zeroed_bytes": 4604312012
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5772610324
+        },
+        {
+          "index": 6,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31740,
+            "zeroed_bytes": 4604312012
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5728524116
+        },
+        {
+          "index": 7,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31740,
+            "zeroed_bytes": 4604312012
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5716045722
+        },
+        {
+          "index": 8,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31740,
+            "zeroed_bytes": 4604312012
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5790614494
+        },
+        {
+          "index": 9,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31740,
+            "zeroed_bytes": 4604312012
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5890435897
+        },
+        {
+          "index": 10,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31740,
+            "zeroed_bytes": 4604312012
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5841353860
+        },
+        {
+          "index": 11,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31740,
+            "zeroed_bytes": 4604312012
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5804853059
+        },
+        {
+          "index": 12,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31740,
+            "zeroed_bytes": 4604312012
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5717830833
+        },
+        {
+          "index": 13,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31740,
+            "zeroed_bytes": 4604312012
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5793392188
+        },
+        {
+          "index": 14,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31740,
+            "zeroed_bytes": 4604312012
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5713873352
+        },
+        {
+          "index": 15,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31740,
+            "zeroed_bytes": 4604312012
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5771709429
+        },
+        {
+          "index": 16,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31740,
+            "zeroed_bytes": 4604312012
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5780045313
+        },
+        {
+          "index": 17,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31740,
+            "zeroed_bytes": 4604312012
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5712038179
+        },
+        {
+          "index": 18,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31740,
+            "zeroed_bytes": 4604312012
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 6006747824
+        },
+        {
+          "index": 19,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31740,
+            "zeroed_bytes": 4604312012
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5742491667
+        },
+        {
+          "index": 20,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31740,
+            "zeroed_bytes": 4604312012
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5738506574
+        },
+        {
+          "index": 21,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31740,
+            "zeroed_bytes": 4604312012
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5713605925
+        },
+        {
+          "index": 22,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31740,
+            "zeroed_bytes": 4604312012
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5748109130
+        },
+        {
+          "index": 23,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31740,
+            "zeroed_bytes": 4604312012
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5793894055
+        },
+        {
+          "index": 24,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31740,
+            "zeroed_bytes": 4604312012
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5714148751
+        },
+        {
+          "index": 25,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31740,
+            "zeroed_bytes": 4604312012
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5695687665
+        },
+        {
+          "index": 26,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31740,
+            "zeroed_bytes": 4604312012
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5756546720
+        },
+        {
+          "index": 27,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31740,
+            "zeroed_bytes": 4604312012
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5756078634
+        },
+        {
+          "index": 28,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31740,
+            "zeroed_bytes": 4604312012
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5748381371
+        },
+        {
+          "index": 29,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31740,
+            "zeroed_bytes": 4604312012
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 6009949527
+        },
+        {
+          "index": 30,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31740,
+            "zeroed_bytes": 4604312012
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5782285723
+        },
+        {
+          "index": 31,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31740,
+            "zeroed_bytes": 4604312012
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5740475683
+        },
+        {
+          "index": 32,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 148203,
+            "releases": 31740,
+            "zeroed_bytes": 4604312012
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5724251596
+        }
+      ],
+      "label": "caller-commitment-a-current-02",
+      "last_two_physical_samples": [
+        {
+          "W_transition_incomplete": "0",
+          "cgroup_memory_current_bytes": "188291440640",
+          "disk_available_bytes": "120644608000",
+          "host_tree_rss_bytes": "61609132032",
+          "host_tree_swap_bytes": "0",
+          "monotonic_sample_end_ns": "14690599934317371",
+          "monotonic_sample_start_ns": "14690599827773268",
+          "resident_device_W_bytes": "61394690560",
+          "resident_host_W_lower_bound_bytes": "61394685952",
+          "sample_duration_seconds": "0.10654889419674873",
+          "sampled_temporary_bytes": "5974756864",
+          "smaps_read_failures": "0",
+          "unix_seconds": "1791665106.3554943",
+          "whole_gpu_free_bytes": "17863540736",
+          "whole_gpu_used_bytes": "67155001344"
+        },
+        {
+          "W_transition_incomplete": "0",
+          "cgroup_memory_current_bytes": "188291543040",
+          "disk_available_bytes": "120644608000",
+          "host_tree_rss_bytes": "61609132032",
+          "host_tree_swap_bytes": "0",
+          "monotonic_sample_end_ns": "14690600095966059",
+          "monotonic_sample_start_ns": "14690600027869628",
+          "resident_device_W_bytes": "61394690560",
+          "resident_host_W_lower_bound_bytes": "61394685952",
+          "sample_duration_seconds": "0.06810159794986248",
+          "sampled_temporary_bytes": "6494850560",
+          "smaps_read_failures": "0",
+          "unix_seconds": "1791665106.517143",
+          "whole_gpu_free_bytes": "17343447040",
+          "whole_gpu_used_bytes": "67675095040"
+        }
+      ],
+      "matched_group_indices": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "matched_group_median_ns": 5795531070.5,
+      "monitor": {
+        "authorized_end_epoch": 1791671244.0,
+        "close_reserve_seconds": 1800,
+        "compute_end_epoch": 1791669444.0,
+        "exit_code": -9,
+        "gpu_uuid": "GPU-e05e977b-758d-f3f4-cbe8-5720b83d1ae1",
+        "incomplete_samples": 2,
+        "label": "caller-commitment-a-current-02",
+        "mode": "canonical",
+        "observed_payload_peak_bytes": 5554384779,
+        "payload_limit_bytes": 5905580032,
+        "physical_complete_peak": false,
+        "physical_temporary_limit_bytes": 6174015488,
+        "resource_failure": "RuntimeError: resource stop: canonical simultaneous physical temporaries exceed allowance",
+        "sample_interval_clock": "Linux CLOCK_MONOTONIC, absolute nanoseconds on this host boot",
+        "sample_interval_scope": "Start/end bracket collection of the resource sample; no GPU synchronization or instantaneous peak. External profiler clock alignment requires a matching clock or explicit anchor.",
+        "sampled_host_rss_peak_bytes": 61609164800,
+        "sampled_stable_temporary_peak_bytes": 6494850560,
+        "sampled_whole_gpu_peak_bytes": 67675095040,
+        "samples": 1825,
+        "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+        "sampling_target_seconds": 0.2,
+        "smaps_read_failures": 0,
+        "stable_samples": 1823,
+        "start_unix_seconds": 1791664740.3757138,
+        "tracked_descendant_identities": 2,
+        "wall_seconds": 366.1443534940481
+      },
+      "physical_step_bytes": 520093696,
+      "preparation_wall_ns": [
+        76085113812
+      ],
+      "provenance": {
+        "binary": {
+          "bytes": 9853000,
+          "path": "c71_canonical_reference-cfc04b6f",
+          "sha256": "fbb773cc231995f8336f09f57be2d4efc5fb99a5ace2a7eb23ac2d91a8948f06"
+        },
+        "binary_build_sha": "cfc04b6f38226c4315e7bf96eeb4f5cd2fb0db2a",
+        "cpu_wrapper_as_bytes": 68719476736,
+        "credit": false,
+        "cuda_child_as_limit": null,
+        "git_dirty": false,
+        "git_sha": "b2468f3e1b170e6640d8034e0435887b9d45489d",
+        "library": {
+          "bytes": 3567488,
+          "path": "libc71_current.so",
+          "sha256": "8a67c85d8306c01267b33f1f704bb2f0ba10511a415a06eccea52a30af7f03e7"
+        },
+        "library_source_prefix": "b7c6d0ac",
+        "mode": "commitment-a",
+        "profiler": false,
+        "scope": "Real O=0 caller. A phase is an intentionally bounded incomplete 512-group commitment, with no W commitment/setup/proof/verification/acceptance."
+      },
+      "total_groups": 512,
+      "variant": "current"
+    },
+    {
+      "complete_groups": 16,
+      "complete_root_parity": false,
+      "full_A_complete": false,
+      "groups": [
+        {
+          "index": 0,
+          "native_delta": {
+            "allocations": 31741,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 56932,
+            "fences": 55071,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31741,
+            "zeroed_bytes": 4358461900
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 6014982558
+        },
+        {
+          "index": 1,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31740,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5844318745
+        },
+        {
+          "index": 2,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31740,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5842973474
+        },
+        {
+          "index": 3,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31740,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5889810660
+        },
+        {
+          "index": 4,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31740,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5904476806
+        },
+        {
+          "index": 5,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31740,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 6114182552
+        },
+        {
+          "index": 6,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31740,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5866634046
+        },
+        {
+          "index": 7,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31740,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5857392504
+        },
+        {
+          "index": 8,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31740,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5895932865
+        },
+        {
+          "index": 9,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31740,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5912196321
+        },
+        {
+          "index": 10,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31740,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5865175745
+        },
+        {
+          "index": 11,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31740,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 6118792083
+        },
+        {
+          "index": 12,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31740,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5865064436
+        },
+        {
+          "index": 13,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31740,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5844938586
+        },
+        {
+          "index": 14,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31740,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5901401071
+        },
+        {
+          "index": 15,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31740,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5844245980
+        }
+      ],
+      "label": "caller-commitment-a-pooled-03",
+      "last_two_physical_samples": [
+        {
+          "W_transition_incomplete": "0",
+          "cgroup_memory_current_bytes": "188290179072",
+          "disk_available_bytes": "120645877760",
+          "host_tree_rss_bytes": "61609197568",
+          "host_tree_swap_bytes": "0",
+          "monotonic_sample_end_ns": "14689831104634735",
+          "monotonic_sample_start_ns": "14689831056931907",
+          "resident_device_W_bytes": "61394690560",
+          "resident_host_W_lower_bound_bytes": "61394685952",
+          "sample_duration_seconds": "0.04770646058022976",
+          "sampled_temporary_bytes": "5920296448",
+          "smaps_read_failures": "0",
+          "unix_seconds": "1791664337.525811",
+          "whole_gpu_free_bytes": "17918066688",
+          "whole_gpu_used_bytes": "67100475392"
+        },
+        {
+          "W_transition_incomplete": "0",
+          "cgroup_memory_current_bytes": "188290154496",
+          "disk_available_bytes": "120645873664",
+          "host_tree_rss_bytes": "61609197568",
+          "host_tree_swap_bytes": "0",
+          "monotonic_sample_end_ns": "14689831304952577",
+          "monotonic_sample_start_ns": "14689831257059245",
+          "resident_device_W_bytes": "61394690560",
+          "resident_host_W_lower_bound_bytes": "61394685952",
+          "sample_duration_seconds": "0.04789815656840801",
+          "sampled_temporary_bytes": "5903519232",
+          "smaps_read_failures": "0",
+          "unix_seconds": "1791664337.7261293",
+          "whole_gpu_free_bytes": "17934843904",
+          "whole_gpu_used_bytes": "67083698176"
+        }
+      ],
+      "matched_group_indices": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "matched_group_median_ns": 5867064702.5,
+      "monitor": {
+        "authorized_end_epoch": 1791671244.0,
+        "close_reserve_seconds": 1800,
+        "compute_end_epoch": 1791669444.0,
+        "exit_code": -9,
+        "gpu_uuid": "GPU-e05e977b-758d-f3f4-cbe8-5720b83d1ae1",
+        "incomplete_samples": 0,
+        "label": "caller-commitment-a-pooled-03",
+        "mode": "canonical",
+        "observed_payload_peak_bytes": 5554384778,
+        "payload_limit_bytes": 5905580032,
+        "physical_complete_peak": false,
+        "physical_temporary_limit_bytes": 6174015488,
+        "resource_failure": "TimeoutError: phase or authorized compute deadline reached",
+        "sample_interval_clock": "Linux CLOCK_MONOTONIC, absolute nanoseconds on this host boot",
+        "sample_interval_scope": "Start/end bracket collection of the resource sample; no GPU synchronization or instantaneous peak. External profiler clock alignment requires a matching clock or explicit anchor.",
+        "sampled_host_rss_peak_bytes": 61609197568,
+        "sampled_stable_temporary_peak_bytes": 6012550656,
+        "sampled_whole_gpu_peak_bytes": 67192750080,
+        "samples": 1994,
+        "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+        "sampling_target_seconds": 0.2,
+        "smaps_read_failures": 0,
+        "stable_samples": 1994,
+        "start_unix_seconds": 1791663937.7344398,
+        "tracked_descendant_identities": 2,
+        "wall_seconds": 400.00495119579136
+      },
+      "preparation_wall_ns": [
+        77210907315
+      ],
+      "provenance": {
+        "binary": {
+          "bytes": 9853000,
+          "path": "c71_canonical_reference-cfc04b6f",
+          "sha256": "fbb773cc231995f8336f09f57be2d4efc5fb99a5ace2a7eb23ac2d91a8948f06"
+        },
+        "binary_build_sha": "cfc04b6f38226c4315e7bf96eeb4f5cd2fb0db2a",
+        "cpu_wrapper_as_bytes": 68719476736,
+        "credit": false,
+        "cuda_child_as_limit": null,
+        "git_dirty": false,
+        "git_sha": "b2468f3e1b170e6640d8034e0435887b9d45489d",
+        "library": {
+          "bytes": 3567424,
+          "path": "libc71_8421fad.so",
+          "sha256": "3663f4c249e896da19a5f3f8937335fe6732d5d29f7be9044c830d060a969a9e"
+        },
+        "library_source_prefix": "8421fada",
+        "mode": "commitment-a",
+        "profiler": false,
+        "scope": "Real O=0 caller. A phase is an intentionally bounded incomplete 512-group commitment, with no W commitment/setup/proof/verification/acceptance."
+      },
+      "total_groups": 512,
+      "variant": "pooled"
+    },
+    {
+      "complete_groups": 22,
+      "complete_root_parity": false,
+      "full_A_complete": false,
+      "groups": [
+        {
+          "index": 0,
+          "native_delta": {
+            "allocations": 31741,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 56932,
+            "fences": 55071,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31741,
+            "zeroed_bytes": 4358461900
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5908933495
+        },
+        {
+          "index": 1,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31740,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5753290779
+        },
+        {
+          "index": 2,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31740,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 6310593462
+        },
+        {
+          "index": 3,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31740,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5749609495
+        },
+        {
+          "index": 4,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31740,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5908526753
+        },
+        {
+          "index": 5,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31740,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5788750915
+        },
+        {
+          "index": 6,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31740,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5792945712
+        },
+        {
+          "index": 7,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31740,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5802216438
+        },
+        {
+          "index": 8,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31740,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5830072229
+        },
+        {
+          "index": 9,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31740,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 6021031827
+        },
+        {
+          "index": 10,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31740,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5801798568
+        },
+        {
+          "index": 11,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31740,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5781585494
+        },
+        {
+          "index": 12,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31740,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5807106575
+        },
+        {
+          "index": 13,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31740,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5792420523
+        },
+        {
+          "index": 14,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31740,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5743608055
+        },
+        {
+          "index": 15,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31740,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5859614129
+        },
+        {
+          "index": 16,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31740,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5780736536
+        },
+        {
+          "index": 17,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31740,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5764667313
+        },
+        {
+          "index": 18,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31740,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5768867128
+        },
+        {
+          "index": 19,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31740,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5785349048
+        },
+        {
+          "index": 20,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31740,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 6082576405
+        },
+        {
+          "index": 21,
+          "native_delta": {
+            "allocations": 31740,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 31740,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5728485825
+        }
+      ],
+      "label": "caller-commitment-a-pooled-04",
+      "last_two_physical_samples": [
+        {
+          "W_transition_incomplete": "0",
+          "cgroup_memory_current_bytes": "188292825088",
+          "disk_available_bytes": "120643760128",
+          "host_tree_rss_bytes": "61609439232",
+          "host_tree_swap_bytes": "0",
+          "monotonic_sample_end_ns": "14691002321057251",
+          "monotonic_sample_start_ns": "14691002270161318",
+          "resident_device_W_bytes": "61394690560",
+          "resident_host_W_lower_bound_bytes": "61394685952",
+          "sample_duration_seconds": "0.05090000294148922",
+          "sampled_temporary_bytes": "5972966912",
+          "smaps_read_failures": "0",
+          "unix_seconds": "1791665508.7422335",
+          "whole_gpu_free_bytes": "17865637888",
+          "whole_gpu_used_bytes": "67152904192"
+        },
+        {
+          "W_transition_incomplete": "0",
+          "cgroup_memory_current_bytes": "188292911104",
+          "disk_available_bytes": "120643760128",
+          "host_tree_rss_bytes": "61609439232",
+          "host_tree_swap_bytes": "0",
+          "monotonic_sample_end_ns": "14691002518569760",
+          "monotonic_sample_start_ns": "14691002470246646",
+          "resident_device_W_bytes": "61394690560",
+          "resident_host_W_lower_bound_bytes": "61394685952",
+          "sample_duration_seconds": "0.04832690395414829",
+          "sampled_temporary_bytes": "5956189696",
+          "smaps_read_failures": "0",
+          "unix_seconds": "1791665508.9397461",
+          "whole_gpu_free_bytes": "17882415104",
+          "whole_gpu_used_bytes": "67136126976"
+        }
+      ],
+      "matched_group_indices": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "matched_group_median_ns": 5830908766.0,
+      "monitor": {
+        "authorized_end_epoch": 1791671244.0,
+        "close_reserve_seconds": 1800,
+        "compute_end_epoch": 1791669444.0,
+        "exit_code": -9,
+        "gpu_uuid": "GPU-e05e977b-758d-f3f4-cbe8-5720b83d1ae1",
+        "incomplete_samples": 0,
+        "label": "caller-commitment-a-pooled-04",
+        "mode": "canonical",
+        "observed_payload_peak_bytes": 5554384778,
+        "payload_limit_bytes": 5905580032,
+        "physical_complete_peak": false,
+        "physical_temporary_limit_bytes": 6174015488,
+        "resource_failure": "TimeoutError: phase or authorized compute deadline reached",
+        "sample_interval_clock": "Linux CLOCK_MONOTONIC, absolute nanoseconds on this host boot",
+        "sample_interval_scope": "Start/end bracket collection of the resource sample; no GPU synchronization or instantaneous peak. External profiler clock alignment requires a matching clock or explicit anchor.",
+        "sampled_host_rss_peak_bytes": 61609439232,
+        "sampled_stable_temporary_peak_bytes": 6058950144,
+        "sampled_whole_gpu_peak_bytes": 67238887424,
+        "samples": 1998,
+        "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+        "sampling_target_seconds": 0.2,
+        "smaps_read_failures": 0,
+        "stable_samples": 1998,
+        "start_unix_seconds": 1791665108.9680264,
+        "tracked_descendant_identities": 2,
+        "wall_seconds": 400.0051048435271
+      },
+      "preparation_wall_ns": [
+        75839933793
+      ],
+      "provenance": {
+        "binary": {
+          "bytes": 9853000,
+          "path": "c71_canonical_reference-cfc04b6f",
+          "sha256": "fbb773cc231995f8336f09f57be2d4efc5fb99a5ace2a7eb23ac2d91a8948f06"
+        },
+        "binary_build_sha": "cfc04b6f38226c4315e7bf96eeb4f5cd2fb0db2a",
+        "cpu_wrapper_as_bytes": 68719476736,
+        "credit": false,
+        "cuda_child_as_limit": null,
+        "git_dirty": false,
+        "git_sha": "b2468f3e1b170e6640d8034e0435887b9d45489d",
+        "library": {
+          "bytes": 3567424,
+          "path": "libc71_8421fad.so",
+          "sha256": "3663f4c249e896da19a5f3f8937335fe6732d5d29f7be9044c830d060a969a9e"
+        },
+        "library_source_prefix": "8421fada",
+        "mode": "commitment-a",
+        "profiler": false,
+        "scope": "Real O=0 caller. A phase is an intentionally bounded incomplete 512-group commitment, with no W commitment/setup/proof/verification/acceptance."
+      },
+      "total_groups": 512,
+      "variant": "pooled"
+    },
+    {
+      "complete_groups": 36,
+      "complete_root_parity": false,
+      "full_A_complete": false,
+      "groups": [
+        {
+          "index": 0,
+          "native_delta": {
+            "allocations": 45408,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 56932,
+            "fences": 55071,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45408,
+            "zeroed_bytes": 4358461900
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 6035396556
+        },
+        {
+          "index": 1,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5880728941
+        },
+        {
+          "index": 2,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5879603287
+        },
+        {
+          "index": 3,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5917741901
+        },
+        {
+          "index": 4,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5882439156
+        },
+        {
+          "index": 5,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5870211870
+        },
+        {
+          "index": 6,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5995289096
+        },
+        {
+          "index": 7,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5877524281
+        },
+        {
+          "index": 8,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 6127970507
+        },
+        {
+          "index": 9,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5863394222
+        },
+        {
+          "index": 10,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5904211865
+        },
+        {
+          "index": 11,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5895430749
+        },
+        {
+          "index": 12,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5876805924
+        },
+        {
+          "index": 13,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5925871310
+        },
+        {
+          "index": 14,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 6145013980
+        },
+        {
+          "index": 15,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5876380395
+        },
+        {
+          "index": 16,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5841752926
+        },
+        {
+          "index": 17,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5865881813
+        },
+        {
+          "index": 18,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5933446483
+        },
+        {
+          "index": 19,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5891686475
+        },
+        {
+          "index": 20,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5912234242
+        },
+        {
+          "index": 21,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5898348859
+        },
+        {
+          "index": 22,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5886696632
+        },
+        {
+          "index": 23,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5921978817
+        },
+        {
+          "index": 24,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 6096016636
+        },
+        {
+          "index": 25,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5889557545
+        },
+        {
+          "index": 26,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5897860105
+        },
+        {
+          "index": 27,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5923975444
+        },
+        {
+          "index": 28,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5906244824
+        },
+        {
+          "index": 29,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5939992074
+        },
+        {
+          "index": 30,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5857067481
+        },
+        {
+          "index": 31,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5950365887
+        },
+        {
+          "index": 32,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5869269698
+        },
+        {
+          "index": 33,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5874152807
+        },
+        {
+          "index": 34,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5960427400
+        },
+        {
+          "index": 35,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5919512643
+        }
+      ],
+      "label": "caller-commitment-a-unpooled-01",
+      "last_two_physical_samples": [
+        {
+          "W_transition_incomplete": "0",
+          "cgroup_memory_current_bytes": "188291076096",
+          "disk_available_bytes": "120646524928",
+          "host_tree_rss_bytes": "61610840064",
+          "host_tree_swap_bytes": "0",
+          "monotonic_sample_end_ns": "14689387025143203",
+          "monotonic_sample_start_ns": "14689386969530315",
+          "resident_device_W_bytes": "61394690560",
+          "resident_host_W_lower_bound_bytes": "61394685952",
+          "sample_duration_seconds": "0.0556170828640461",
+          "sampled_temporary_bytes": "5892578816",
+          "smaps_read_failures": "0",
+          "unix_seconds": "1791663893.4463196",
+          "whole_gpu_free_bytes": "17947426816",
+          "whole_gpu_used_bytes": "67071115264"
+        },
+        {
+          "W_transition_incomplete": "0",
+          "cgroup_memory_current_bytes": "188291256320",
+          "disk_available_bytes": "120646524928",
+          "host_tree_rss_bytes": "61610844160",
+          "host_tree_swap_bytes": "0",
+          "monotonic_sample_end_ns": "14689387227563746",
+          "monotonic_sample_start_ns": "14689387169626479",
+          "resident_device_W_bytes": "61394690560",
+          "resident_host_W_lower_bound_bytes": "61394685952",
+          "sample_duration_seconds": "0.05794160254299641",
+          "sampled_temporary_bytes": "5892582912",
+          "smaps_read_failures": "0",
+          "unix_seconds": "1791663893.64874",
+          "whole_gpu_free_bytes": "17947426816",
+          "whole_gpu_used_bytes": "67071115264"
+        }
+      ],
+      "matched_group_indices": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "matched_group_median_ns": 5881584048.5,
+      "monitor": {
+        "authorized_end_epoch": 1791671244.0,
+        "close_reserve_seconds": 1800,
+        "compute_end_epoch": 1791669444.0,
+        "exit_code": -9,
+        "gpu_uuid": "GPU-e05e977b-758d-f3f4-cbe8-5720b83d1ae1",
+        "incomplete_samples": 1,
+        "label": "caller-commitment-a-unpooled-01",
+        "mode": "canonical",
+        "observed_payload_peak_bytes": 5554384644,
+        "payload_limit_bytes": 5905580032,
+        "physical_complete_peak": false,
+        "physical_temporary_limit_bytes": 6174015488,
+        "resource_failure": "TimeoutError: phase or authorized compute deadline reached",
+        "sample_interval_clock": "Linux CLOCK_MONOTONIC, absolute nanoseconds on this host boot",
+        "sample_interval_scope": "Start/end bracket collection of the resource sample; no GPU synchronization or instantaneous peak. External profiler clock alignment requires a matching clock or explicit anchor.",
+        "sampled_host_rss_peak_bytes": 61611237376,
+        "sampled_stable_temporary_peak_bytes": 6060641792,
+        "sampled_whole_gpu_peak_bytes": 67238887424,
+        "samples": 1999,
+        "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+        "sampling_target_seconds": 0.2,
+        "smaps_read_failures": 0,
+        "stable_samples": 1998,
+        "start_unix_seconds": 1791663493.713706,
+        "tracked_descendant_identities": 2,
+        "wall_seconds": 400.0053394269198
+      },
+      "preparation_wall_ns": [
+        84666816909
+      ],
+      "provenance": {
+        "binary": {
+          "bytes": 9853000,
+          "path": "c71_canonical_reference-cfc04b6f",
+          "sha256": "fbb773cc231995f8336f09f57be2d4efc5fb99a5ace2a7eb23ac2d91a8948f06"
+        },
+        "binary_build_sha": "cfc04b6f38226c4315e7bf96eeb4f5cd2fb0db2a",
+        "cpu_wrapper_as_bytes": 68719476736,
+        "credit": false,
+        "cuda_child_as_limit": null,
+        "git_dirty": false,
+        "git_sha": "b2468f3e1b170e6640d8034e0435887b9d45489d",
+        "library": {
+          "bytes": 3567416,
+          "path": "libc71_072de37.so",
+          "sha256": "f97db163a6035d7053065af3143a423744ade9bf49077b4db35fac10221d30b7"
+        },
+        "library_source_prefix": "072de372",
+        "mode": "commitment-a",
+        "profiler": false,
+        "scope": "Real O=0 caller. A phase is an intentionally bounded incomplete 512-group commitment, with no W commitment/setup/proof/verification/acceptance."
+      },
+      "total_groups": 512,
+      "variant": "unpooled"
+    },
+    {
+      "complete_groups": 15,
+      "complete_root_parity": false,
+      "full_A_complete": false,
+      "groups": [
+        {
+          "index": 0,
+          "native_delta": {
+            "allocations": 45408,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 56932,
+            "fences": 55071,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45408,
+            "zeroed_bytes": 4358461900
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 6199109199
+        },
+        {
+          "index": 1,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5827411769
+        },
+        {
+          "index": 2,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5811143676
+        },
+        {
+          "index": 3,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5840075400
+        },
+        {
+          "index": 4,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5845455986
+        },
+        {
+          "index": 5,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5816012265
+        },
+        {
+          "index": 6,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5894102145
+        },
+        {
+          "index": 7,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5792181608
+        },
+        {
+          "index": 8,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5830920884
+        },
+        {
+          "index": 9,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5836854172
+        },
+        {
+          "index": 10,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5849664215
+        },
+        {
+          "index": 11,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 6140441672
+        },
+        {
+          "index": 12,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5819123007
+        },
+        {
+          "index": 13,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5868738666
+        },
+        {
+          "index": 14,
+          "native_delta": {
+            "allocations": 45407,
+            "d2d_bytes": 1612800,
+            "d2h_bytes": 54884,
+            "fences": 55069,
+            "h2d_bytes": 244631520,
+            "launches": 152043,
+            "releases": 45407,
+            "zeroed_bytes": 4358459852
+          },
+          "source_visits": 13154672538,
+          "wall_ns": 5853005609
+        }
+      ],
+      "label": "caller-commitment-a-unpooled-02",
+      "last_two_physical_samples": [
+        {
+          "W_transition_incomplete": "0",
+          "cgroup_memory_current_bytes": "188293259264",
+          "disk_available_bytes": "120643170304",
+          "host_tree_rss_bytes": "61609295872",
+          "host_tree_swap_bytes": "0",
+          "monotonic_sample_end_ns": "14691403532246819",
+          "monotonic_sample_start_ns": "14691403482946104",
+          "resident_device_W_bytes": "61394690560",
+          "resident_host_W_lower_bound_bytes": "61394685952",
+          "sample_duration_seconds": "0.04930385202169418",
+          "sampled_temporary_bytes": "5909908992",
+          "smaps_read_failures": "0",
+          "unix_seconds": "1791665909.9534228",
+          "whole_gpu_free_bytes": "17928552448",
+          "whole_gpu_used_bytes": "67089989632"
+        },
+        {
+          "W_transition_incomplete": "0",
+          "cgroup_memory_current_bytes": "188292890624",
+          "disk_available_bytes": "120643170304",
+          "host_tree_rss_bytes": "61609295872",
+          "host_tree_swap_bytes": "0",
+          "monotonic_sample_end_ns": "14691403730518638",
+          "monotonic_sample_start_ns": "14691403683028333",
+          "resident_device_W_bytes": "61394690560",
+          "resident_host_W_lower_bound_bytes": "61394685952",
+          "sample_duration_seconds": "0.04749378003180027",
+          "sampled_temporary_bytes": "5935074816",
+          "smaps_read_failures": "0",
+          "unix_seconds": "1791665910.1516945",
+          "whole_gpu_free_bytes": "17903386624",
+          "whole_gpu_used_bytes": "67115155456"
+        }
+      ],
+      "matched_group_indices": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "matched_group_median_ns": 5833743584.5,
+      "monitor": {
+        "authorized_end_epoch": 1791671244.0,
+        "close_reserve_seconds": 1800,
+        "compute_end_epoch": 1791669444.0,
+        "exit_code": -9,
+        "gpu_uuid": "GPU-e05e977b-758d-f3f4-cbe8-5720b83d1ae1",
+        "incomplete_samples": 1,
+        "label": "caller-commitment-a-unpooled-02",
+        "mode": "canonical",
+        "observed_payload_peak_bytes": 5554384644,
+        "payload_limit_bytes": 5905580032,
+        "physical_complete_peak": false,
+        "physical_temporary_limit_bytes": 6174015488,
+        "resource_failure": "TimeoutError: phase or authorized compute deadline reached",
+        "sample_interval_clock": "Linux CLOCK_MONOTONIC, absolute nanoseconds on this host boot",
+        "sample_interval_scope": "Start/end bracket collection of the resource sample; no GPU synchronization or instantaneous peak. External profiler clock alignment requires a matching clock or explicit anchor.",
+        "sampled_host_rss_peak_bytes": 61609295872,
+        "sampled_stable_temporary_peak_bytes": 6057815552,
+        "sampled_whole_gpu_peak_bytes": 67238887424,
+        "samples": 1999,
+        "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+        "sampling_target_seconds": 0.2,
+        "smaps_read_failures": 0,
+        "stable_samples": 1998,
+        "start_unix_seconds": 1791665510.267376,
+        "tracked_descendant_identities": 2,
+        "wall_seconds": 400.00492026284337
+      },
+      "preparation_wall_ns": [
+        84923831219
+      ],
+      "provenance": {
+        "binary": {
+          "bytes": 9853000,
+          "path": "c71_canonical_reference-cfc04b6f",
+          "sha256": "fbb773cc231995f8336f09f57be2d4efc5fb99a5ace2a7eb23ac2d91a8948f06"
+        },
+        "binary_build_sha": "cfc04b6f38226c4315e7bf96eeb4f5cd2fb0db2a",
+        "cpu_wrapper_as_bytes": 68719476736,
+        "credit": false,
+        "cuda_child_as_limit": null,
+        "git_dirty": false,
+        "git_sha": "b2468f3e1b170e6640d8034e0435887b9d45489d",
+        "library": {
+          "bytes": 3567416,
+          "path": "libc71_072de37.so",
+          "sha256": "f97db163a6035d7053065af3143a423744ade9bf49077b4db35fac10221d30b7"
+        },
+        "library_source_prefix": "072de372",
+        "mode": "commitment-a",
+        "profiler": false,
+        "scope": "Real O=0 caller. A phase is an intentionally bounded incomplete 512-group commitment, with no W commitment/setup/proof/verification/acceptance."
+      },
+      "total_groups": 512,
+      "variant": "unpooled"
+    }
+  ],
+  "A_timing_repetitions_per_variant": 2,
+  "A_variant_median_ns": {
+    "current": 5830115817.25,
+    "pooled": 5848986734.25,
+    "unpooled": 5857663816.5
+  },
+  "conclusions": {
+    "canonical": "No full A/root or proof/verification; all six A runs are incomplete. The physical stop after 33 groups without W commitment/AES setup shows this retained canonical state is not necessary for a component physical failure.",
+    "numeric_pool": "Selected for the exact inference caller: all tokens/copy traffic/fences unchanged and one-pair observed inference reduction 9.847%. A group timing reduction 0.148% is smaller than variation between repetitions; no stable A speedup demonstrated.",
+    "physical_component_failure": "Sampled 6,494,850,560 bytes over 6,174,015,488. Last GPU samples increase 496 MiB with constant host RSS and unchanged observed native maximum. No specific allocation/kernel/cache/leak attribution.",
+    "public_zero_fill": "Exact 3,840 application launches saved per matched A group, without changed allocations/copies/fences. The 0.323% observed A median reduction is smaller than between-run variation; retain the exact simplification, without selecting a stable wall-speedup claim."
+  },
+  "counter_checks": [
+    {
+      "fill_application_launches_saved": 3840,
+      "index": 1,
+      "pool_allocations_and_releases_saved": 13667,
+      "traffic_and_required_fences_identical": true
+    },
+    {
+      "fill_application_launches_saved": 3840,
+      "index": 2,
+      "pool_allocations_and_releases_saved": 13667,
+      "traffic_and_required_fences_identical": true
+    },
+    {
+      "fill_application_launches_saved": 3840,
+      "index": 3,
+      "pool_allocations_and_releases_saved": 13667,
+      "traffic_and_required_fences_identical": true
+    },
+    {
+      "fill_application_launches_saved": 3840,
+      "index": 4,
+      "pool_allocations_and_releases_saved": 13667,
+      "traffic_and_required_fences_identical": true
+    }
+  ],
+  "credit": false,
+  "date": "2026-10-10",
+  "fill_A_observed_wall_reduction_fraction": 0.0032263566079739903,
+  "git_dirty": false,
+  "git_sha": "b2468f3e1b170e6640d8034e0435887b9d45489d",
+  "inference_runs": [
+    {
+      "inference_wall_ns": 77049992000,
+      "label": "caller-inference-current-01",
+      "monitor": {
+        "authorized_end_epoch": 1791671244.0,
+        "close_reserve_seconds": 1800,
+        "compute_end_epoch": 1791669444.0,
+        "exit_code": 0,
+        "gpu_uuid": "GPU-e05e977b-758d-f3f4-cbe8-5720b83d1ae1",
+        "incomplete_samples": 2,
+        "label": "caller-inference-current-01",
+        "mode": "canonical",
+        "observed_payload_peak_bytes": 692828091,
+        "payload_limit_bytes": 5905580032,
+        "physical_complete_peak": false,
+        "physical_temporary_limit_bytes": 6174015488,
+        "resource_failure": null,
+        "sample_interval_clock": "Linux CLOCK_MONOTONIC, absolute nanoseconds on this host boot",
+        "sample_interval_scope": "Start/end bracket collection of the resource sample; no GPU synchronization or instantaneous peak. External profiler clock alignment requires a matching clock or explicit anchor.",
+        "sampled_host_rss_peak_bytes": 61589946368,
+        "sampled_stable_temporary_peak_bytes": 1217424896,
+        "sampled_whole_gpu_peak_bytes": 62419632128,
+        "samples": 1522,
+        "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+        "sampling_target_seconds": 0.2,
+        "smaps_read_failures": 0,
+        "stable_samples": 1520,
+        "start_unix_seconds": 1791663187.6359363,
+        "tracked_descendant_identities": 2,
+        "wall_seconds": 305.9173880517483
+      },
+      "native": {
+        "allocations": 2455451,
+        "arena_bytes": 591278080,
+        "cleanup_failed": 0,
+        "d2d_bytes": 235161600,
+        "d2h_bytes": 4743280,
+        "fences": 3668557,
+        "h2d_bytes": 61418645112,
+        "host_owner_bytes": 42096,
+        "launches": 1185820,
+        "live_capacity_bytes": 591278080,
+        "logical_bytes": 591276756,
+        "peak_capacity_bytes": 593899520,
+        "peak_reserved_bytes": 61988590080,
+        "releases": 2455147,
+        "stopped": 0,
+        "weights_bytes": 61394690560,
+        "weights_loaded_bytes": 61394690560,
+        "weights_sealed": 1,
+        "zeroed_bytes": 68180960
+      },
+      "preparation_wall_ns": [
+        77104159725
+      ],
+      "provenance": {
+        "binary": {
+          "bytes": 9853000,
+          "path": "c71_canonical_reference-cfc04b6f",
+          "sha256": "fbb773cc231995f8336f09f57be2d4efc5fb99a5ace2a7eb23ac2d91a8948f06"
+        },
+        "binary_build_sha": "cfc04b6f38226c4315e7bf96eeb4f5cd2fb0db2a",
+        "cpu_wrapper_as_bytes": 68719476736,
+        "credit": false,
+        "cuda_child_as_limit": null,
+        "git_dirty": false,
+        "git_sha": "b2468f3e1b170e6640d8034e0435887b9d45489d",
+        "library": {
+          "bytes": 3567488,
+          "path": "libc71_current.so",
+          "sha256": "8a67c85d8306c01267b33f1f704bb2f0ba10511a415a06eccea52a30af7f03e7"
+        },
+        "library_source_prefix": "b7c6d0ac",
+        "mode": "inference",
+        "profiler": false,
+        "scope": "Real O=0 caller. A phase is an intentionally bounded incomplete 512-group commitment, with no W commitment/setup/proof/verification/acceptance."
+      },
+      "tokens": [
+        2,
+        1509,
+        691,
+        506,
+        1791,
+        529,
+        2782,
+        236764,
+        625,
+        691,
+        506,
+        14588,
+        529,
+        2782,
+        236764,
+        625,
+        691,
+        506,
+        3911,
+        529,
+        23069,
+        236764,
+        625,
+        691,
+        506,
+        3911,
+        529,
+        59940,
+        1788,
+        236764,
+        625,
+        691,
+        506,
+        29280,
+        529,
+        12750,
+        236764,
+        625,
+        691,
+        506,
+        29280,
+        529,
+        10187,
+        575,
+        665,
+        236764,
+        625,
+        691,
+        506,
+        3409,
+        529,
+        10847,
+        236764,
+        625,
+        691,
+        506,
+        3409,
+        529,
+        106819,
+        236764,
+        625,
+        691,
+        506,
+        6247,
+        529,
+        4614,
+        236764,
+        625,
+        691,
+        506,
+        7208,
+        529,
+        53560,
+        236764,
+        692,
+        1053,
+        4326,
+        1680,
+        775,
+        236764,
+        692,
+        1053,
+        5017,
+        1680,
+        775,
+        236764,
+        692,
+        964,
+        784,
+        1771,
+        1982,
+        531,
+        35318,
+        236764,
+        692,
+        964,
+        784,
+        1771,
+        1982,
+        506,
+        1032,
+        1595,
+        236761,
+        108,
+        45558,
+        100087,
+        236764,
+        562,
+        60623,
+        529,
+        8512,
+        46273,
+        108,
+        818,
+        2787,
+        14993,
+        563,
+        496,
+        4011,
+        6492,
+        529,
+        506,
+        1873,
+        1883,
+        529,
+        506,
+        1902,
+        236761,
+        669,
+        1902,
+        563,
+        528,
+        496,
+        1883,
+        529,
+        13130,
+        236761,
+        669,
+        1902,
+        563,
+        528,
+        496,
+        1883,
+        529,
+        13130,
+        236761,
+        669,
+        1902,
+        563,
+        528
+      ],
+      "variant": "current"
+    },
+    {
+      "inference_wall_ns": 76759851062,
+      "label": "caller-inference-pooled-01",
+      "monitor": {
+        "authorized_end_epoch": 1791671244.0,
+        "close_reserve_seconds": 1800,
+        "compute_end_epoch": 1791669444.0,
+        "exit_code": 0,
+        "gpu_uuid": "GPU-e05e977b-758d-f3f4-cbe8-5720b83d1ae1",
+        "incomplete_samples": 2,
+        "label": "caller-inference-pooled-01",
+        "mode": "canonical",
+        "observed_payload_peak_bytes": 692828090,
+        "payload_limit_bytes": 5905580032,
+        "physical_complete_peak": false,
+        "physical_temporary_limit_bytes": 6174015488,
+        "resource_failure": null,
+        "sample_interval_clock": "Linux CLOCK_MONOTONIC, absolute nanoseconds on this host boot",
+        "sample_interval_scope": "Start/end bracket collection of the resource sample; no GPU synchronization or instantaneous peak. External profiler clock alignment requires a matching clock or explicit anchor.",
+        "sampled_host_rss_peak_bytes": 61587079168,
+        "sampled_stable_temporary_peak_bytes": 1217334784,
+        "sampled_whole_gpu_peak_bytes": 62419632128,
+        "samples": 1628,
+        "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+        "sampling_target_seconds": 0.2,
+        "smaps_read_failures": 0,
+        "stable_samples": 1626,
+        "start_unix_seconds": 1791662861.7113035,
+        "tracked_descendant_identities": 2,
+        "wall_seconds": 325.7664551641792
+      },
+      "native": {
+        "allocations": 2455451,
+        "arena_bytes": 591278080,
+        "cleanup_failed": 0,
+        "d2d_bytes": 235161600,
+        "d2h_bytes": 4743280,
+        "fences": 3668557,
+        "h2d_bytes": 61418645112,
+        "host_owner_bytes": 42096,
+        "launches": 1185820,
+        "live_capacity_bytes": 591278080,
+        "logical_bytes": 591276756,
+        "peak_capacity_bytes": 593899520,
+        "peak_reserved_bytes": 61988590080,
+        "releases": 2455147,
+        "stopped": 0,
+        "weights_bytes": 61394690560,
+        "weights_loaded_bytes": 61394690560,
+        "weights_sealed": 1,
+        "zeroed_bytes": 68180960
+      },
+      "preparation_wall_ns": [
+        76813280125
+      ],
+      "provenance": {
+        "binary": {
+          "bytes": 9853000,
+          "path": "c71_canonical_reference-cfc04b6f",
+          "sha256": "fbb773cc231995f8336f09f57be2d4efc5fb99a5ace2a7eb23ac2d91a8948f06"
+        },
+        "binary_build_sha": "cfc04b6f38226c4315e7bf96eeb4f5cd2fb0db2a",
+        "cpu_wrapper_as_bytes": 68719476736,
+        "credit": false,
+        "cuda_child_as_limit": null,
+        "git_dirty": false,
+        "git_sha": "b2468f3e1b170e6640d8034e0435887b9d45489d",
+        "library": {
+          "bytes": 3567424,
+          "path": "libc71_8421fad.so",
+          "sha256": "3663f4c249e896da19a5f3f8937335fe6732d5d29f7be9044c830d060a969a9e"
+        },
+        "library_source_prefix": "8421fada",
+        "mode": "inference",
+        "profiler": false,
+        "scope": "Real O=0 caller. A phase is an intentionally bounded incomplete 512-group commitment, with no W commitment/setup/proof/verification/acceptance."
+      },
+      "tokens": [
+        2,
+        1509,
+        691,
+        506,
+        1791,
+        529,
+        2782,
+        236764,
+        625,
+        691,
+        506,
+        14588,
+        529,
+        2782,
+        236764,
+        625,
+        691,
+        506,
+        3911,
+        529,
+        23069,
+        236764,
+        625,
+        691,
+        506,
+        3911,
+        529,
+        59940,
+        1788,
+        236764,
+        625,
+        691,
+        506,
+        29280,
+        529,
+        12750,
+        236764,
+        625,
+        691,
+        506,
+        29280,
+        529,
+        10187,
+        575,
+        665,
+        236764,
+        625,
+        691,
+        506,
+        3409,
+        529,
+        10847,
+        236764,
+        625,
+        691,
+        506,
+        3409,
+        529,
+        106819,
+        236764,
+        625,
+        691,
+        506,
+        6247,
+        529,
+        4614,
+        236764,
+        625,
+        691,
+        506,
+        7208,
+        529,
+        53560,
+        236764,
+        692,
+        1053,
+        4326,
+        1680,
+        775,
+        236764,
+        692,
+        1053,
+        5017,
+        1680,
+        775,
+        236764,
+        692,
+        964,
+        784,
+        1771,
+        1982,
+        531,
+        35318,
+        236764,
+        692,
+        964,
+        784,
+        1771,
+        1982,
+        506,
+        1032,
+        1595,
+        236761,
+        108,
+        45558,
+        100087,
+        236764,
+        562,
+        60623,
+        529,
+        8512,
+        46273,
+        108,
+        818,
+        2787,
+        14993,
+        563,
+        496,
+        4011,
+        6492,
+        529,
+        506,
+        1873,
+        1883,
+        529,
+        506,
+        1902,
+        236761,
+        669,
+        1902,
+        563,
+        528,
+        496,
+        1883,
+        529,
+        13130,
+        236761,
+        669,
+        1902,
+        563,
+        528,
+        496,
+        1883,
+        529,
+        13130,
+        236761,
+        669,
+        1902,
+        563,
+        528
+      ],
+      "variant": "pooled"
+    },
+    {
+      "inference_wall_ns": 85143982375,
+      "label": "caller-inference-unpooled-01",
+      "monitor": {
+        "authorized_end_epoch": 1791671244.0,
+        "close_reserve_seconds": 1800,
+        "compute_end_epoch": 1791669444.0,
+        "exit_code": 0,
+        "gpu_uuid": "GPU-e05e977b-758d-f3f4-cbe8-5720b83d1ae1",
+        "incomplete_samples": 3,
+        "label": "caller-inference-unpooled-01",
+        "mode": "canonical",
+        "observed_payload_peak_bytes": 692827956,
+        "payload_limit_bytes": 5905580032,
+        "physical_complete_peak": false,
+        "physical_temporary_limit_bytes": 6174015488,
+        "resource_failure": null,
+        "sample_interval_clock": "Linux CLOCK_MONOTONIC, absolute nanoseconds on this host boot",
+        "sample_interval_scope": "Start/end bracket collection of the resource sample; no GPU synchronization or instantaneous peak. External profiler clock alignment requires a matching clock or explicit anchor.",
+        "sampled_host_rss_peak_bytes": 61587136512,
+        "sampled_stable_temporary_peak_bytes": 1219456512,
+        "sampled_whole_gpu_peak_bytes": 62421729280,
+        "samples": 1569,
+        "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+        "sampling_target_seconds": 0.2,
+        "smaps_read_failures": 0,
+        "stable_samples": 1566,
+        "start_unix_seconds": 1791662547.5992293,
+        "tracked_descendant_identities": 2,
+        "wall_seconds": 313.94786964543164
+      },
+      "native": {
+        "allocations": 3641220,
+        "arena_bytes": 591277824,
+        "cleanup_failed": 0,
+        "d2d_bytes": 235161600,
+        "d2h_bytes": 4743280,
+        "fences": 3668557,
+        "h2d_bytes": 61418645112,
+        "host_owner_bytes": 42088,
+        "launches": 1185820,
+        "live_capacity_bytes": 591277824,
+        "logical_bytes": 591276752,
+        "peak_capacity_bytes": 593899520,
+        "peak_reserved_bytes": 61988590080,
+        "releases": 3640917,
+        "stopped": 0,
+        "weights_bytes": 61394690560,
+        "weights_loaded_bytes": 61394690560,
+        "weights_sealed": 1,
+        "zeroed_bytes": 68180960
+      },
+      "preparation_wall_ns": [
+        85201108330
+      ],
+      "provenance": {
+        "binary": {
+          "bytes": 9853000,
+          "path": "c71_canonical_reference-cfc04b6f",
+          "sha256": "fbb773cc231995f8336f09f57be2d4efc5fb99a5ace2a7eb23ac2d91a8948f06"
+        },
+        "binary_build_sha": "cfc04b6f38226c4315e7bf96eeb4f5cd2fb0db2a",
+        "cpu_wrapper_as_bytes": 68719476736,
+        "credit": false,
+        "cuda_child_as_limit": null,
+        "git_dirty": false,
+        "git_sha": "b2468f3e1b170e6640d8034e0435887b9d45489d",
+        "library": {
+          "bytes": 3567416,
+          "path": "libc71_072de37.so",
+          "sha256": "f97db163a6035d7053065af3143a423744ade9bf49077b4db35fac10221d30b7"
+        },
+        "library_source_prefix": "072de372",
+        "mode": "inference",
+        "profiler": false,
+        "scope": "Real O=0 caller. A phase is an intentionally bounded incomplete 512-group commitment, with no W commitment/setup/proof/verification/acceptance."
+      },
+      "tokens": [
+        2,
+        1509,
+        691,
+        506,
+        1791,
+        529,
+        2782,
+        236764,
+        625,
+        691,
+        506,
+        14588,
+        529,
+        2782,
+        236764,
+        625,
+        691,
+        506,
+        3911,
+        529,
+        23069,
+        236764,
+        625,
+        691,
+        506,
+        3911,
+        529,
+        59940,
+        1788,
+        236764,
+        625,
+        691,
+        506,
+        29280,
+        529,
+        12750,
+        236764,
+        625,
+        691,
+        506,
+        29280,
+        529,
+        10187,
+        575,
+        665,
+        236764,
+        625,
+        691,
+        506,
+        3409,
+        529,
+        10847,
+        236764,
+        625,
+        691,
+        506,
+        3409,
+        529,
+        106819,
+        236764,
+        625,
+        691,
+        506,
+        6247,
+        529,
+        4614,
+        236764,
+        625,
+        691,
+        506,
+        7208,
+        529,
+        53560,
+        236764,
+        692,
+        1053,
+        4326,
+        1680,
+        775,
+        236764,
+        692,
+        1053,
+        5017,
+        1680,
+        775,
+        236764,
+        692,
+        964,
+        784,
+        1771,
+        1982,
+        531,
+        35318,
+        236764,
+        692,
+        964,
+        784,
+        1771,
+        1982,
+        506,
+        1032,
+        1595,
+        236761,
+        108,
+        45558,
+        100087,
+        236764,
+        562,
+        60623,
+        529,
+        8512,
+        46273,
+        108,
+        818,
+        2787,
+        14993,
+        563,
+        496,
+        4011,
+        6492,
+        529,
+        506,
+        1873,
+        1883,
+        529,
+        506,
+        1902,
+        236761,
+        669,
+        1902,
+        563,
+        528,
+        496,
+        1883,
+        529,
+        13130,
+        236761,
+        669,
+        1902,
+        563,
+        528,
+        496,
+        1883,
+        529,
+        13130,
+        236761,
+        669,
+        1902,
+        563,
+        528
+      ],
+      "variant": "unpooled"
+    }
+  ],
+  "inference_timing_repetitions_per_variant": 1,
+  "inference_tokens_identical": true,
+  "matched_group_indices": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "pool_A_observed_wall_reduction_fraction": 0.0014813213120149493,
+  "pool_inference_observed_wall_reduction_fraction": 0.09847003956279299,
+  "private_evidence": [
+    {
+      "manifest_sha256": "f128fdfd5999871f9dea68ba6deff8e30b01dd0ccf004a4a12a342d6db5cb032",
+      "path": "artifact/c7.1-pod/h100-followup-inference-20261010T201900Z"
+    },
+    {
+      "manifest_sha256": "6dcbea297382880d146621470788764a4107adf688e4d075b6cf3e6ef3643f8f",
+      "path": "artifact/c7.1-pod/h100-followup-callers-20261010T210000Z"
+    }
+  ],
+  "rejected_starts": [
+    {
+      "complete_groups": 0,
+      "label": "caller-commitment-a-pooled-01",
+      "monitor": {
+        "authorized_end_epoch": 1791671244.0,
+        "close_reserve_seconds": 1800,
+        "compute_end_epoch": 1791669444.0,
+        "exit_code": -9,
+        "gpu_uuid": "GPU-e05e977b-758d-f3f4-cbe8-5720b83d1ae1",
+        "incomplete_samples": 0,
+        "label": "caller-commitment-a-pooled-01",
+        "mode": "canonical",
+        "observed_payload_peak_bytes": 0,
+        "payload_limit_bytes": 5905580032,
+        "physical_complete_peak": false,
+        "physical_temporary_limit_bytes": 6174015488,
+        "resource_failure": "RuntimeError: resource stop: canonical simultaneous physical temporaries exceed allowance",
+        "sample_interval_clock": "Linux CLOCK_MONOTONIC, absolute nanoseconds on this host boot",
+        "sample_interval_scope": "Start/end bracket collection of the resource sample; no GPU synchronization or instantaneous peak. External profiler clock alignment requires a matching clock or explicit anchor.",
+        "sampled_host_rss_peak_bytes": 76242944,
+        "sampled_stable_temporary_peak_bytes": 67147358208,
+        "sampled_whole_gpu_peak_bytes": 67071115264,
+        "samples": 1,
+        "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+        "sampling_target_seconds": 0.2,
+        "smaps_read_failures": 0,
+        "stable_samples": 1,
+        "start_unix_seconds": 1791663893.8892865,
+        "tracked_descendant_identities": 2,
+        "wall_seconds": 0.1057882271707058
+      },
+      "preparation_wall_ns": [],
+      "provenance": {
+        "binary": {
+          "bytes": 9853000,
+          "path": "c71_canonical_reference-cfc04b6f",
+          "sha256": "fbb773cc231995f8336f09f57be2d4efc5fb99a5ace2a7eb23ac2d91a8948f06"
+        },
+        "binary_build_sha": "cfc04b6f38226c4315e7bf96eeb4f5cd2fb0db2a",
+        "cpu_wrapper_as_bytes": 68719476736,
+        "credit": false,
+        "cuda_child_as_limit": null,
+        "git_dirty": false,
+        "git_sha": "b2468f3e1b170e6640d8034e0435887b9d45489d",
+        "library": {
+          "bytes": 3567424,
+          "path": "libc71_8421fad.so",
+          "sha256": "3663f4c249e896da19a5f3f8937335fe6732d5d29f7be9044c830d060a969a9e"
+        },
+        "library_source_prefix": "8421fada",
+        "mode": "commitment-a",
+        "profiler": false,
+        "scope": "Real O=0 caller. A phase is an intentionally bounded incomplete 512-group commitment, with no W commitment/setup/proof/verification/acceptance."
+      },
+      "reason": "Start stopped before numeric work while prior GPU teardown was still visible; raw failure preserved. Fresh trials require verified idle GPU.",
+      "variant": "pooled"
+    }
+  ],
+  "schema": "volta-c71-h100-real-caller-comparison-v1",
+  "scope": "Full O=0 inference and alternating incomplete real A callers. No W commitment/AES state or complete proof, A root, verification or joint-peak credit.",
+  "statistical_limit": "One complete inference per variant; two reversed-order A runs per variant. Group medians describe these samples, without confidence intervals or full-workload extrapolation."
+}

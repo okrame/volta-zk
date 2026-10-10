@@ -3,55 +3,44 @@
 [Specifiche](specs.md) · [Sicurezza](security.md) · [Test locali](local-tests.md) ·
 [Test su RunPod](runpod-tests.md) · [Archivio](../c7.1-history/README.md)
 
-È autorizzato il [seguito H100 del 10 ottobre](../c7.1-history/h100-followup-start-2026-10-10.md)
-sul solo pod `z6wx2kkn69eoc0`, sei ore dall'avvio provider, con trenta
-minuti riservati alla chiusura: fine calcolo 21:57:24 UTC, guard
+La [campagna H100 autorizzata del 10 ottobre](../c7.1-history/h100-followup-start-2026-10-10.md)
+usa solo `z6wx2kkn69eoc0`: sei ore dall’avvio provider conservativo,
+con trenta minuti di chiusura. Fine calcolo 21:57:24 UTC, guard
 22:22:24 UTC, stop confermato entro 22:27:24 UTC del 10 ottobre
-(00:27:24 Italia dell'11 ottobre). Guard indipendente attivo sulla VM.
-Priorità: spike A, pool/fill separati sui caller reali, poi motore
-ottimizzato e RMS coarser. Γ ammesso resta il riferimento; NoPeek,
-MAC originali, AES reale, correlazioni monouso e limiti restano invariati.
-Nuovi trial usano journal e capacità nuovi. Zero nuovi certificati;
-bound e tempi completi restano aperti. Il [prefisso diagnostico canonico](../c7.1-history/h100-followup-spike-prefix-2026-10-10.md)
-completa 35/512 gruppi A con W/setup presenti, poi esaurisce il logger
-da 16 MiB. Il picco stabile campionato è 6.141.582.848 B: non è
-un picco completo né una soluzione dello spike. Il trial default senza
-logger/profiler [termina dopo 116/512 gruppi](../c7.1-history/h100-followup-default-2026-10-10.md)
-per cap fisico: 6.545.690.112 B contro 6.174.015.488 B. Ultimo step GPU
-511 MiB con RSS costante e massimo native invariato: almeno 814.813.952 B
-fuori dal massimo nominato, senza attribuzione a una specifica causa.
-Le [due catture Nsight](../c7.1-history/h100-profiler-limit-2026-10-10.md)
-terminano prima del primo gruppo completo: canonico 6.715.858.432 B,
-componente senza grafico allocazioni e senza W/setup canonici
-6.574.624.256 B. Nessuna finestra raggiunta o attribuzione dello spike.
-Linea Nsight chiusa nella campagna. Le [tre inferenze reali](../c7.1-history/h100-followup-inference-2026-10-10.md)
+(00:27:24 Italia dell’11 ottobre). Guard indipendente ancora attivo.
+La nuova autorizzazione copre correzioni e trial nello stesso ambito;
+altro hardware o durata restano esclusi. Γ ammesso, W verificata, NoPeek,
+MAC originali, AES reale e correlazioni monouso restano il riferimento.
+
+**Zero certificati canonici.** Il [default](../c7.1-history/h100-followup-default-2026-10-10.md)
+completa W/setup e 116/512 gruppi A, poi supera il cap fisico:
+6.545.690.112 B contro 6.174.015.488 B. Step GPU 511 MiB con RSS
+costante e massimo native osservato invariato. Le [catture Nsight](../c7.1-history/h100-profiler-limit-2026-10-10.md)
+si fermano prima del primo gruppo; nessuna timeline dello spike.
+Il [componente A](../c7.1-history/h100-followup-callers-2026-10-10.md) senza
+PCS W/setup AES supera anch’esso il cap dopo 33 gruppi: 6.494.850.560 B,
+step GPU 496 MiB. Questo stato canonico non è necessario al negativo di
+componente; allocazione/kernel responsabile e allowance restano aperti.
+
+Le [tre inferenze reali](../c7.1-history/h100-followup-inference-2026-10-10.md)
 passano i 150 token ammessi: 85,144/76,760/77,050 s senza pool/solo
-pool/pool+fill. Pool −9,847% osservato in una coppia, stesse copie/fence
-e lanci; 1.185.769 allocazioni in meno. Sei confronti A alternati sono
-in corso, nessun credito al fill inferenza. CPU wrapper AS 64 GiB,
-solo il figlio CUDA senza cap AS.
-Zero certificati; nessun cap o deadline aumentati.
-Il [monitor per il profiler](../c7.1-history/h100-profiler-monitor-2026-10-10.md)
-conta PID/start-ticks anche in nuove sessioni. La [correzione degli orfani](../c7.1-history/h100-profiler-orphans-2026-10-10.md)
-attiva e ripristina il subreaper Linux, contandone e fermandone tramite
-pidfd tutti i discendenti adottati. W richiede discendenza dal launcher
-o dal monitor subreaper, identità e smaps completi; limiti invariati.
-Passano 43 test ridotti del monitor. Il primo probe aveva verificato solo
-il target, lasciando un agente: ricevuta originale e correzione conservate.
+pool/pool+fill. Pool −9,847% osservato in una coppia, stesso traffico,
+lanci e fence; 1.185.769 allocazioni in meno. I sei confronti A alternati
+sono conclusi: gruppi 1–4 comuni, pool −0,148% e fill −0,323% osservati,
+più piccoli della variazione fra ripetizioni. Nessun guadagno A stabile;
+13.667 alloc/free e 3.840 lanci applicativi evitati per gruppo sono esatti.
+Il pool è selezionato per l’inferenza; il fill resta semplificazione esatta
+senza credito di wall stabile. Nessun A/root completo o picco congiunto.
 
-La [precedente campagna H100 del 9–10 ottobre è chiusa](../c7.1-history/h100-campaign-close-2026-10-10.md).
-Pod spento e confermato `EXITED`, runtime assente, alle **01:49:55 UTC**
-(03:49:55 Italia), entro otto ore dall'avvio provider. **Zero certificati**;
-O=150/300 non iniziati. Il sesto trial completa W/setup/preparazione O=0,
-poi supera il cap fisico: 6.560.767.488 B contro 6.174.015.488 B.
-Tempi completi di prova/verifica e picco completo restano non misurati.
-
-PCS W misura 190,425 s, installazione 212,418 s e setup 1.493,833 s
-(−24,799% osservato rispetto al precedente). L'inferenza separata misura 84,382 s nel nostro esecutore intero esatto;
-manca un confronto sullo stesso workload con un motore di inferenza
-ottimizzato. A04 termina per cap fisico dopo 86/512 gruppi, wall 780,205 s.
-I diagnostici A omettono lo stato W/setup e non dimostrano il picco canonico.
-La causa dello spike resta aperta; il target 65 s non è raggiunto.
+Il [primo SDPA](../c7.1-history/h100-sdpa-scalar-correction-2026-10-10.md)
+si ferma per un’assunzione errata di scalari unitari nel diagnostico;
+60 valori BF16 verificati contro il manifest, loader corretto, nuovi trial
+nelle due precisioni. RMS coarser ancora non ammesso.
+Compiler 159→91 e possesso dei programmi ridotto sono componenti;
+qualità, GKR e tempi completi non derivano da questi risultati.
+CPU wrapper AS 64 GiB, solo il figlio CUDA senza cap AS. I nuovi caller
+attendono GPU idle dopo teardown, senza nuova esenzione W o cap aumentati.
+Journal e correlazioni non sono riusati; cause, bound e target 65 s aperti.
 
 I consumer PCS iniziale, residual e closure lineare limitano gli span
 al prefisso `initialized`, rifiutando coda non scritta, overflow e contatori

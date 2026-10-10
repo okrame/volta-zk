@@ -29,6 +29,7 @@ le nuove domande hardware; non esegue una nuova campagna.
 
 ## Campagne recenti e decisioni operative
 
+- [Caller A reali del seguito](h100-followup-callers-2026-10-10.md): due ripetizioni per variante, risparmio esatto di chiamate e nuovi negativi fisici.
 - [Inferenze reali del seguito](h100-followup-inference-2026-10-10.md): parità dei token e pool isolato, senza credito di prova.
 - [Limite della cattura Nsight](h100-profiler-limit-2026-10-10.md): due stop fisici prima di A, timeline dello spike ancora aperta.
 - [Default canonico del seguito](h100-followup-default-2026-10-10.md): 116 gruppi A completi, step GPU 511 MiB e stop fisico.

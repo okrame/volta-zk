@@ -1,0 +1,76 @@
+{
+  "checks_passed": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "coverage": [
+    {
+      "old_tokens": 0,
+      "source_words": 3646354972,
+      "sources": 3471,
+      "tokens": 150
+    },
+    {
+      "old_tokens": 150,
+      "source_words": 4014994972,
+      "sources": 3471,
+      "tokens": 150
+    },
+    {
+      "old_tokens": 300,
+      "source_words": 4383634972,
+      "sources": 3471,
+      "tokens": 150
+    }
+  ],
+  "credit": false,
+  "evidence": [
+    {
+      "path": "artifact/c7.1-pod/pilot-complete-20261007T133500Z/pilot-fp64-full/report.json",
+      "sha256": "f9143122b56d9e1cff5e550681f440523b52e8314d505bcdb0663bb442f9bdfc"
+    },
+    {
+      "path": "artifact/c7.1-pod/pilot-complete-20261007T133500Z/pilot-fp64-full/candidate.json",
+      "sha256": "8965d0c3dc170e41b304982b90409b0362e93de4d029b08bba3716ab64dbf95e"
+    },
+    {
+      "path": "artifact/c7.1-pod/integer-complete-20261007T144500Z/integer-2-attention-budgeted.json",
+      "sha256": "f4148f30beca4bb3afb0446f07853d271c88a1bb307016c53c336bdb68bfcaf0"
+    },
+    {
+      "path": "artifact/c7.1-pod/integer-trace-20261007T155021Z/integer-1-attention-trace.json",
+      "sha256": "ae03586b53ae891a4ec4e91195b435c254913d24fe592b04d2ac56eed0394afe"
+    },
+    {
+      "path": "artifact/c7.1-pod/integer-complete-20261007T144500Z/native-descriptor-compatibility.json",
+      "sha256": "525f58a8e72ad50f905c667b9514af0b51d9ae4c02f21d38b8225dbdda7f755a"
+    },
+    {
+      "path": "artifact/c7.1-pod/ledger-20261007T150200Z/ledger-attention.json",
+      "sha256": "478ef250fdb61db673b4d4efa86b3d3ce274081ca1e00653703bc6d8b0d74d7d"
+    },
+    {
+      "path": "artifact/c7.1-pod/ledger-20261007T150200Z/oracle-plan-attention.json",
+      "sha256": "a26a68972307e17b85086791a1c4870ae66b90a905922472a391267574a8fdf5"
+    },
+    {
+      "path": "artifact/c7.1-pod/preparation-20261007T114200Z/logs/ingest-canonical.stdout",
+      "sha256": "564205d987de34873e4d1c48d6552da24ab2ca4667e385901ffa6bfb5bcd9314"
+    },
+    {
+      "path": "manifests/c7-d126-gemma31b-workload-v1.json",
+      "sha256": "70875c659be2b2bc0079a954233da639fe1584136c17f8fb353b589454a5d62b"
+    }
+  ],
+  "final_kv_sources": 120,
+  "gamma_admitted": true,
+  "remaining_assumptions": [
+    "Finite execution checks do not establish a general Lean refinement theorem.",
+    "Sampled physical resources do not establish a complete peak or the proof arena bound."
+  ],
+  "schema": "volta-c71-gamma-admission-receipt-v1",
+  "scope": "Pinned real weights, candidate, recipes and O=0/150/300 workload only; no protocol performance credit."
+}

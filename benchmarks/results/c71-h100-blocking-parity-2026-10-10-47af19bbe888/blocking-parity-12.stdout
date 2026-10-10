@@ -1,0 +1,8 @@
+
+running 1 test
+test c71_matrix::b12::replay::tests::c71_b12_native_hardware_residual_source_whir_chain ... C71_NATIVE_RESIDUAL_QUERY_FULL_WIRE {"backend":"explicit_native_owner","canonical_bytes":2285464,"credit":false,"dimension":10,"native":{"allocations":2131,"arena_bytes":3072,"cleanup_failed":0,"d2d_bytes":45341696,"d2h_bytes":1673208,"fences":2663,"h2d_bytes":15795552,"host_owner_bytes":42088,"launches":46668,"live_capacity_bytes":3072,"logical_bytes":3072,"peak_capacity_bytes":582656,"peak_reserved_bytes":582656,"releases":2130,"stopped":0,"weights_bytes":0,"weights_loaded_bytes":0,"weights_sealed":0,"zeroed_bytes":1606320},"native_extension_queries":true,"wire_fs_rng_original_mac_equal":true}
+C71_NATIVE_RESIDUAL_QUERY_A_CHAIN {"credit":false,"dimension":10,"gpu_execution":true,"initial_commitment":"CPU reference","initial_cpu_getter_calls":65536,"initial_queries":"resident original bytes","initial_query_windows":[[0,1024],[0,1024],[0,1024],[0,1024],[0,1024],[0,1024],[0,1024],[0,1024],[0,1024],[0,1024],[0,1024],[0,1024],[0,1024],[0,1024],[0,1024],[0,1024]],"native":{"allocations":2131,"arena_bytes":3072,"cleanup_failed":0,"d2d_bytes":45341696,"d2h_bytes":1673208,"fences":2663,"h2d_bytes":15795552,"host_owner_bytes":42088,"launches":46668,"live_capacity_bytes":3072,"logical_bytes":3072,"peak_capacity_bytes":582656,"peak_reserved_bytes":582656,"releases":2130,"stopped":0,"weights_bytes":0,"weights_loaded_bytes":0,"weights_sealed":0,"zeroed_bytes":1606320},"original_reconstructions":19,"residual_state_and_extension_queries":"native owner","seconds":2.314848098}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 601 filtered out; finished in 2.67s
+

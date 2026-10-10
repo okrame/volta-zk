@@ -3,39 +3,33 @@
 [Design](design.md) · [Sicurezza](security.md) · [Test locali](local-tests.md) ·
 [Test su RunPod](runpod-tests.md) · [Archivio](../c7.1-history/README.md)
 
-La [coda SHAKE cGGM differita](../c7.1-history/h100-cggm-tail-2026-10-09.md)
-passa 17 test CPU sul pod e conserva output, scarti e correlazioni monouso.
-Il microbenchmark misura 1,475× sul componente. Il
-[setup completo successivo](../c7.1-history/h100-setup06-checkpoint-2026-10-10.md)
-misura 1.493,833 s contro 1.986,453 s: 1,330×, −24,799% osservato fra
-run singoli, senza attribuzione causale isolata. Il traffico resta identico.
+La campagna H100 del 9–10 ottobre è in corso sul pod autorizzato;
+limiti e deadline sono nel [runbook](runpod-tests.md#stato-e-sequenza-operativa).
+Il [sesto trial](../c7.1-history/h100-canonical-06-2026-10-10.md) completa W,
+setup e preparazione O=0, poi termina sul cap fisico dopo 35 gruppi A:
+6.560.767.488 B contro 6.174.015.488 B. **Zero certificati**; O=150/300
+non iniziati. Tempi completi di prova/verifica e picco completo rimangono
+non misurati.
 
-Il [quinto trial](../c7.1-history/h100-canonical-05-2026-10-09.md) termina
-con `Stop` durante A, senza accettazione o violazione fisica osservata.
-I journal rimangono bruciati; la diagnosi di componente usa monete nuove.
+Il [checkpoint completo W/setup](../c7.1-history/h100-setup06-checkpoint-2026-10-10.md)
+misura PCS W 190,425 s e setup 1.493,833 s, −24,799% osservato rispetto
+al precedente. L'[inferenza O=0 separata](../c7.1-history/h100-queue1-2026-10-09.md)
+misura 84,382 s con token esatti; non è il tempo di una risposta certificata.
+Il [diagnostico A03 con code ridotte](../c7.1-history/h100-a-quarter-2026-10-10.md)
+termina anch'esso sul cap: 6.441.455.104 B dopo 22/512 gruppi.
+Il diagnostico finale A04 aggiunge lanci sincroni, dopo
+[15/15 parità reali](../../benchmarks/results/c71-h100-blocking-parity-2026-10-10-47af19bbe888.json).
+La causa dello spike GPU resta aperta. I diagnostici omettono lo stato
+W/setup: anche un esito positivo non dimostra il picco canonico.
 
-Il [diagnostico A](../c7.1-history/h100-a-diagnostic-2026-10-10.md) riproduce
-un rifiuto del tile originale: i consumer PCS/lineari richiedono capacità
-interamente scritta, mentre KV contiene un prefisso inizializzato. La
-correzione limita gli span a quel prefisso, senza ammettere la coda.
-La [validazione sm_90](../c7.1-history/h100-prefix-validation-2026-10-10.md)
-passa 15/15 test CUDA reali con fixture aggiornate e il controllo non lineare;
-il [diagnostico successivo](../c7.1-history/h100-a-prefix-progress-2026-10-10.md)
-completa tre gruppi A sotto cap e si ferma come pianificato. Non misura
-il commitment completo o il picco canonico. Il
-[sesto trial](../c7.1-history/h100-canonical-06-2026-10-10.md) completa W/setup,
-preparazione 85,021 s e 35 gruppi A, poi termina sul cap fisico:
-6.560.767.488 B contro 6.174.015.488 B. Zero certificati; O=150/300 non
-iniziati. La causa dello spike GPU è aperta. Un diagnostico A separato
-valuta code a `0.25x` dopo parità reale 15/15, senza credito canonico.
-
-La correzione dei tre consumer usa `initialized` come limite degli span,
-come il gather già esistente; capacità, byte originali e ordine restano
-immutati. Richiede l'invariante del driver che `initialized` descriva un
-prefisso contiguo scritto prima della lettura. Nessun lemma Lean raffina
-questo contatore C++; la corrispondenza resta una premessa implementativa
-esplicita, con regressione prima/dopo e parità finita, non nuovo credito
-al protocollo. Nessuna lettura della coda o modifica dei MAC è ammessa.
+I consumer PCS iniziale, residual e closure lineare limitano gli span
+al prefisso `initialized`, rifiutando coda non scritta, overflow e contatori
+oltre capacità. Il driver deve descrivere un prefisso contiguo scritto
+prima della lettura. Nessun lemma Lean raffina questo contatore C++:
+è una premessa implementativa esplicita, sostenuta dalla
+[regressione prima/dopo](../c7.1-history/h100-prefix-candidate-2026-10-10.md)
+e dalla [parità H100](../c7.1-history/h100-prefix-validation-2026-10-10.md).
+Valori, ordine, copertura originale, NoPeek e MAC restano invariati.
 
 ## Input e identità
 

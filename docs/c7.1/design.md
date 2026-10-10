@@ -3,42 +3,33 @@
 [Specifiche](specs.md) · [Sicurezza](security.md) · [Test locali](local-tests.md) ·
 [Test su RunPod](runpod-tests.md) · [Archivio](../c7.1-history/README.md)
 
-La [coda SHAKE cGGM differita](../c7.1-history/h100-cggm-tail-2026-10-09.md)
-passa 17 test CPU sul pod e conserva output, scarti e correlazioni monouso.
-Il microbenchmark misura 1,475× sul componente. Il
-[setup completo successivo](../c7.1-history/h100-setup06-checkpoint-2026-10-10.md)
-misura 1.493,833 s contro 1.986,453 s: 1,330×, −24,799% osservato fra
-run singoli, senza attribuzione causale isolata. Il traffico resta identico.
+La campagna H100 del 9–10 ottobre è in corso sul pod autorizzato;
+limiti e deadline sono nel [runbook](runpod-tests.md#stato-e-sequenza-operativa).
+Il [sesto trial](../c7.1-history/h100-canonical-06-2026-10-10.md) completa W,
+setup e preparazione O=0, poi termina sul cap fisico dopo 35 gruppi A:
+6.560.767.488 B contro 6.174.015.488 B. **Zero certificati**; O=150/300
+non iniziati. Tempi completi di prova/verifica e picco completo rimangono
+non misurati.
 
-`canonical-05` termina con `Stop` nel primo gruppo A dopo preparazione
-84,831 s; massimo fisico campionato 6.140.513.792 B, sotto il cap.
-La causa privata era persa dal messaggio uniforme. `commitment-a-cuda`
-isola preparazione e commitment iniziale A con geometria/limiti originali
-e monete fresche, senza setup, W commitment o certificati. Il suo risultato
-non sostituisce il percorso canonico; serve a diagnosticare questo stop.
+Il [checkpoint completo W/setup](../c7.1-history/h100-setup06-checkpoint-2026-10-10.md)
+misura PCS W 190,425 s e setup 1.493,833 s, −24,799% osservato rispetto
+al precedente. L'[inferenza O=0 separata](../c7.1-history/h100-queue1-2026-10-09.md)
+misura 84,382 s con token esatti; non è il tempo di una risposta certificata.
+Il [diagnostico A03 con code ridotte](../c7.1-history/h100-a-quarter-2026-10-10.md)
+termina anch'esso sul cap: 6.441.455.104 B dopo 22/512 gruppi.
+Il diagnostico finale A04 aggiunge lanci sincroni, dopo
+[15/15 parità reali](../../benchmarks/results/c71-h100-blocking-parity-2026-10-10-47af19bbe888.json).
+La causa dello spike GPU resta aperta. I diagnostici omettono lo stato
+W/setup: anche un esito positivo non dimostra il picco canonico.
 
-Il [diagnostico A](../c7.1-history/h100-a-diagnostic-2026-10-10.md) riproduce
-un rifiuto del tile originale: i consumer PCS/lineari richiedono capacità
-interamente scritta, mentre KV contiene un prefisso inizializzato. La
-correzione limita gli span a quel prefisso, senza ammettere la coda.
-La [validazione sm_90](../c7.1-history/h100-prefix-validation-2026-10-10.md)
-passa 15/15 test CUDA reali con fixture aggiornate e il controllo non lineare;
-il [diagnostico successivo](../c7.1-history/h100-a-prefix-progress-2026-10-10.md)
-completa tre gruppi A sotto cap e si ferma come pianificato. Non misura
-il commitment completo o il picco canonico. Il
-[sesto trial](../c7.1-history/h100-canonical-06-2026-10-10.md) completa W/setup,
-preparazione 85,021 s e 35 gruppi A, poi termina sul cap fisico:
-6.560.767.488 B contro 6.174.015.488 B. Zero certificati; O=150/300 non
-iniziati. La causa dello spike GPU è aperta. Un diagnostico A separato
-valuta code a `0.25x` dopo parità reale 15/15, senza credito canonico.
-
-La correzione dei tre consumer usa `initialized` come limite degli span,
-come il gather già esistente; capacità, byte originali e ordine restano
-immutati. Richiede l'invariante del driver che `initialized` descriva un
-prefisso contiguo scritto prima della lettura. Nessun lemma Lean raffina
-questo contatore C++; la corrispondenza resta una premessa implementativa
-esplicita, con regressione prima/dopo e parità finita, non nuovo credito
-al protocollo. Nessuna lettura della coda o modifica dei MAC è ammessa.
+I consumer PCS iniziale, residual e closure lineare limitano gli span
+al prefisso `initialized`, rifiutando coda non scritta, overflow e contatori
+oltre capacità. Il driver deve descrivere un prefisso contiguo scritto
+prima della lettura. Nessun lemma Lean raffina questo contatore C++:
+è una premessa implementativa esplicita, sostenuta dalla
+[regressione prima/dopo](../c7.1-history/h100-prefix-candidate-2026-10-10.md)
+e dalla [parità H100](../c7.1-history/h100-prefix-validation-2026-10-10.md).
+Valori, ordine, copertura originale, NoPeek e MAC restano invariati.
 
 ## Obiettivo e relazione dimostrata
 
@@ -170,83 +161,42 @@ modifiche; si ripete la calibrazione solo quando l'ammissione pertinente
 è invalidata. È l'unico Γ ammesso finora, non un optimum prestazionale
 dimostrato. Cambiare scale può semplificare i circuiti ma cambia la
 relazione numerica; la ricerca di un altro Γ è distinta dal goal corrente.
-Il [primo W della campagna H100](../c7.1-history/h100-w-setup-2026-10-09.md)
-ha completato PCS W in 360,301 s e l'installazione W in 404,340 s,
-con 128 scansioni/7,859 TB logici. Il setup Seed6/AES termina in
-2.018,838 s; il [primo trial](../c7.1-history/h100-canonical-01-2026-10-09.md)
-fallisce durante la preparazione O=0, senza violazioni dei limiti. Il loader
-CUDA rifiutava marker di overflow in voci pubbliche non selezionate.
-La [correzione validata](../c7.1-history/h100-inference-01-2026-10-09.md)
-passa otto regressioni e la parità CUDA 15/15. Il diagnostico O=0
-completa l'inferenza in 90,615 s, con tutti i token uguali al replay
-intero ammesso, senza prova o promozione KV. Il
-[batching del prompt](../c7.1-history/h100-prefill-2026-10-09.md) è esatto
-ma rallenta a 132,036 s (+45,71%), nonostante −65,98% lanci: è ritirato.
-Il [terzo trial](../c7.1-history/h100-monitor-stack-2026-10-09.md), su binario
-scalare `2a31625`, termina dopo 572,209 s per copertura W incompleta in
-una lettura smaps, dopo PCS W 436,687 s e prima del completamento del setup.
-Il monitor ora conserva e limita le riletture senza allentare il cap fisico.
-La [riserva iniziale CUDA di 256 B](../c7.1-history/h100-stack256-2026-10-09.md)
-è selezionata dopo 15/15 CUDA e inferenza esatta a 90,594 s. Il massimo
-temporaneo campionato scende di 207,229 MB a 1,267 GB, senza credito al
-picco completo o a un guadagno di tempo. Il
-[quarto trial](../c7.1-history/h100-canonical-04-2026-10-09.md) termina
-nel primo gruppo A: temporanee fisiche 6.190.775.808 B, 16.760.320 B
-oltre il limite. W e setup sono completi, preparazione O=0 87,349 s;
-nessun commitment A o certificato completo. Il payload sotto cap non
-basta a dimostrare l'allowance fisica.
-Il [probe procfs](../c7.1-history/h100-thp-candidate-2026-10-09.md) misura
-0,928 s per una lettura smaps di W su pagine da 4 KiB. La candidata
-`920e684` consiglia pagine grandi prima del caricamento. La
-[validazione H100](../c7.1-history/h100-thp-validation-2026-10-09.md)
-passa 15/15 CUDA e token esatti: inferenza 85,393 s (−5,741% osservato),
-caricamento più lento a 153,661 s, temporanee circa invariate. Smaps scende
-a 0,025 s nel probe, mediana 0,059 s durante la preparazione. Nessun
-credito al picco completo. Le
-[code CUDA a una connessione](../c7.1-history/h100-queue1-2026-10-09.md)
-passano 15/15 e inferenza esatta a 84,382 s: massimo temporaneo campionato
-1.216.531.968 B, −50.434.048 B rispetto alla stessa build con code di default.
-Sono selezionate per `canonical-05`, da W alle 23:13:42 UTC con AES/journal
-freschi; il picco canonico rimane da verificare.
-Il [checkpoint W successivo](../c7.1-history/h100-w05-checkpoint-2026-10-09.md)
-misura PCS 190,200 s e installazione 207,973 s (PCS −53,060% rispetto
-al trial precedente). Il caricamento sale a 322,159 s: W pronto a
-571,376 s, contro 552,786 s. Il [trial concluso](../c7.1-history/h100-canonical-05-2026-10-09.md)
-completa setup 1.986,453 s e preparazione 84,831 s, poi termina con `Stop`
-nel primo gruppo A. Nessun certificato acquisito.
-Il profilo pubblico del replay attribuisce il transiente da 131.072.000 B
-al RNE finale; è un'indicazione analitica, senza nuova schedule selezionata.
-Γ, causalità, replay e garanzie restano invariati. O=0/150/300 non sono verificati.
-Il precedente timeout CPU dopo
-circa 41 minuti rimane il fallimento di quella schedule da 1.024 scansioni,
-non lo stato del commitment H100 corrente. La CLI ricostruisce W a ogni
-avvio e non riprende installazioni o sessioni interrotte.
+La baseline della campagna è `c7e05cf`, che include `24b54d4`.
+I [sei trial](runpod-tests.md#stato-e-sequenza-operativa) mantengono Γ,
+semantica, MAC originali, correlazioni monouso e PCG AES. Ogni nuovo trial
+riparte da W e KV vuoto, senza importare una sessione terminale.
+Il [setup completo aggiornato](../c7.1-history/h100-setup06-checkpoint-2026-10-10.md)
+risparmia 492,620 s (1,330× osservato) rispetto al precedente; i due ruoli
+lavorano simultaneamente e i loro tempi non si sommano. Il traffico setup
+è invariato a 61.841.366 B. Il microbenchmark cGGM misura 1,475×, senza
+attribuirlo automaticamente al setup o alla risposta.
 
-La candidata cGGM legge 136 byte SHAKE e materializza gli ultimi 56 solo
-se il primo candidato del terzo slot è scartato. Frame e tre slot da
-64 byte restano identici; cambiano soltanto byte effettivamente estratti
-e relativo contatore. Golden, parità col campionatore completo, rifiuti
-fino a esaurimento e setup/journal ridotti passano localmente. Non è
-usata da `canonical-05`; il microbenchmark H100 misura 1,475× e il
-setup completo del sesto trial misura 1,330× osservato, con traffico identico.
-Il raffinamento generale Seed6/CUDA resta aperto come in [security](security.md).
+Le configurazioni stack 256 B, pagine grandi consigliate su W e code
+compute/copy 1/1 sono validate con parità reale. Nel diagnostico di sola
+inferenza il massimo temporaneo scende da 1.474.276.864 a 1.216.531.968 B;
+sono scope identici di componente, non picchi canonici completi.
+Il batching del prompt esatto rallenta a 132,036 s (+45,71%) ed è
+[ritirato](../c7.1-history/h100-prefill-2026-10-09.md). L'inferenza scalare
+selezionata misura 84,382 s; il caricamento W varia fra i trial e viene
+registrato separatamente, senza attribuirne la variabilità ai kernel.
 
-Il goal corrente esegue la campagna H100 autorizzata, entro otto ore
-provider e con guard indipendente, secondo il [runbook](runpod-tests.md).
-La baseline `c7e05cf` include le correzioni operative `24b54d4`.
-Il
-[checkpoint locale](../../benchmarks/results/c71-crypto-rms-local-2026-10-09-abd2de09efb4.json)
-conserva parità, benchmark e ledger. La successiva revisione del passaggio
-alla H100 ha aggiunto ingressi di test espliciti sulla libreria reale,
-timeout diagnostico separato dal target di 65 s e lancio sorvegliato.
-Il [runbook](runpod-tests.md#preparazione-operativa-della-campagna)
-definisce la procedura aggiornata e i suoi limiti: i campioni nelle
-transizioni di W non attribuiscono credito congiunto di memoria;
-picco completo, allowance e target hardware restano aperti.
-La [chiusura operativa locale](../c7.1-history/crypto-preh100-operations-2026-10-09.md)
-registra 65 test passati e il ledger aggiornato: codice e procedure sono
-pronti alla richiesta di hardware. Nuova H100 e durata richiedono nuova
-autorizzazione.
+Lo [stop del sesto trial](../c7.1-history/h100-canonical-06-2026-10-10.md)
+lascia aperta l'allowance fisica: il payload è sotto cap ma la memoria
+GPU salta di 504 MiB fra gli ultimi due campioni. La causa non è dimostrata.
+Il diagnostico con code `0.25x` conserva geometria, cap e monete fresche;
+non include la ritenzione W/setup e non fornisce credito canonico.
+Il profilo pubblico attribuisce 131.072.000 B transienti al RNE finale;
+è un'indicazione analitica, senza nuova schedule selezionata. Il timeout
+CPU storico dopo circa 41 minuti resta il fallimento della sua schedule
+da 1.024 scansioni, non una misura dell'attuale commitment H100.
+
+Il [passaggio operativo](../c7.1-history/crypto-preh100-operations-2026-10-09.md)
+conserva 65 test locali, ingresso CUDA esplicito, timeout diagnostico distinto
+dal target 65 s e monitor con cap fisici. Il [runbook](runpod-tests.md)
+regola la campagna corrente; nuovo hardware o tempo oltre la deadline
+richiedono nuova autorizzazione. I campioni durante transizioni W non
+attribuiscono credito congiunto. Raffinamento Seed6/CUDA, allowance,
+picco completo e target della risposta rimangono aperti.
 
 Il [checkpoint S1 e Query E](../c7.1-history/crypto-residual-query-2026-10-09.md)
 collega owner e caller fino alle query extension di tutti gli stadi.

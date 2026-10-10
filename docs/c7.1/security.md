@@ -3,39 +3,33 @@
 [Design](design.md) · [Specifiche](specs.md) · [Test locali](local-tests.md) ·
 [Test su RunPod](runpod-tests.md) · [Archivio](../c7.1-history/README.md)
 
-La [coda SHAKE cGGM differita](../c7.1-history/h100-cggm-tail-2026-10-09.md)
-passa 17 test CPU sul pod e conserva output, scarti e correlazioni monouso.
-Il microbenchmark misura 1,475× sul componente. Il
-[setup completo successivo](../c7.1-history/h100-setup06-checkpoint-2026-10-10.md)
-misura 1.493,833 s contro 1.986,453 s: 1,330×, −24,799% osservato fra
-run singoli, senza attribuzione causale isolata. Il traffico resta identico.
+La campagna H100 del 9–10 ottobre è in corso sul pod autorizzato;
+limiti e deadline sono nel [runbook](runpod-tests.md#stato-e-sequenza-operativa).
+Il [sesto trial](../c7.1-history/h100-canonical-06-2026-10-10.md) completa W,
+setup e preparazione O=0, poi termina sul cap fisico dopo 35 gruppi A:
+6.560.767.488 B contro 6.174.015.488 B. **Zero certificati**; O=150/300
+non iniziati. Tempi completi di prova/verifica e picco completo rimangono
+non misurati.
 
-Il [quinto trial](../c7.1-history/h100-canonical-05-2026-10-09.md) termina
-con `Stop` durante A, senza accettazione o violazione fisica osservata.
-I journal rimangono bruciati; la diagnosi di componente usa monete nuove.
+Il [checkpoint completo W/setup](../c7.1-history/h100-setup06-checkpoint-2026-10-10.md)
+misura PCS W 190,425 s e setup 1.493,833 s, −24,799% osservato rispetto
+al precedente. L'[inferenza O=0 separata](../c7.1-history/h100-queue1-2026-10-09.md)
+misura 84,382 s con token esatti; non è il tempo di una risposta certificata.
+Il [diagnostico A03 con code ridotte](../c7.1-history/h100-a-quarter-2026-10-10.md)
+termina anch'esso sul cap: 6.441.455.104 B dopo 22/512 gruppi.
+Il diagnostico finale A04 aggiunge lanci sincroni, dopo
+[15/15 parità reali](../../benchmarks/results/c71-h100-blocking-parity-2026-10-10-47af19bbe888.json).
+La causa dello spike GPU resta aperta. I diagnostici omettono lo stato
+W/setup: anche un esito positivo non dimostra il picco canonico.
 
-Il [diagnostico A](../c7.1-history/h100-a-diagnostic-2026-10-10.md) riproduce
-un rifiuto del tile originale: i consumer PCS/lineari richiedono capacità
-interamente scritta, mentre KV contiene un prefisso inizializzato. La
-correzione limita gli span a quel prefisso, senza ammettere la coda.
-La [validazione sm_90](../c7.1-history/h100-prefix-validation-2026-10-10.md)
-passa 15/15 test CUDA reali con fixture aggiornate e il controllo non lineare;
-il [diagnostico successivo](../c7.1-history/h100-a-prefix-progress-2026-10-10.md)
-completa tre gruppi A sotto cap e si ferma come pianificato. Non misura
-il commitment completo o il picco canonico. Il
-[sesto trial](../c7.1-history/h100-canonical-06-2026-10-10.md) completa W/setup,
-preparazione 85,021 s e 35 gruppi A, poi termina sul cap fisico:
-6.560.767.488 B contro 6.174.015.488 B. Zero certificati; O=150/300 non
-iniziati. La causa dello spike GPU è aperta. Un diagnostico A separato
-valuta code a `0.25x` dopo parità reale 15/15, senza credito canonico.
-
-La correzione dei tre consumer usa `initialized` come limite degli span,
-come il gather già esistente; capacità, byte originali e ordine restano
-immutati. Richiede l'invariante del driver che `initialized` descriva un
-prefisso contiguo scritto prima della lettura. Nessun lemma Lean raffina
-questo contatore C++; la corrispondenza resta una premessa implementativa
-esplicita, con regressione prima/dopo e parità finita, non nuovo credito
-al protocollo. Nessuna lettura della coda o modifica dei MAC è ammessa.
+I consumer PCS iniziale, residual e closure lineare limitano gli span
+al prefisso `initialized`, rifiutando coda non scritta, overflow e contatori
+oltre capacità. Il driver deve descrivere un prefisso contiguo scritto
+prima della lettura. Nessun lemma Lean raffina questo contatore C++:
+è una premessa implementativa esplicita, sostenuta dalla
+[regressione prima/dopo](../c7.1-history/h100-prefix-candidate-2026-10-10.md)
+e dalla [parità H100](../c7.1-history/h100-prefix-validation-2026-10-10.md).
+Valori, ordine, copertura originale, NoPeek e MAC restano invariati.
 
 ## Ambito e ipotesi
 
@@ -45,50 +39,23 @@ efficiente Seed6 conserva la relazione di inferenza, ma richiede il
 trasferimento di sicurezza descritto nell'ultima sezione. La correttezza
 di test finiti e la corrispondenza generale del programma al protocollo
 sono risultati distinti.
-La [campagna H100](../c7.1-history/h100-components-2026-10-09.md) verifica
-parità finita della libreria CUDA e seleziona l'accumulo W limb16 esatto;
-non chiude il raffinamento CUDA né la composizione Seed6. Mantiene NoPeek,
-MAC originali, AES reale e correlazioni monouso, inclusi i nuovi trial.
-Il [commitment W H100 completo](../c7.1-history/h100-w-setup-2026-10-09.md)
-e la parità del codec SHAKE cGGM sono evidenze di implementazione distinte
-dall'accettazione del run e dal trasferimento dei bound a Seed6; quest'ultimo
-rimane aperto. L'assorbimento incrementale conserva il frame byte per byte.
-Il [primo trial](../c7.1-history/h100-canonical-01-2026-10-09.md) completa
-il setup ma fallisce prima della prova O=0. Consentire marker pubblici
-non selezionati ripristina la semantica del lookup; selezionare MIN resta
-un errore terminale. Il diagnostico `inference-cuda` non promuove KV,
-non usa correlazioni e non produce accettazione o credito di protocollo.
-Il [confronto O=0](../c7.1-history/h100-inference-01-2026-10-09.md)
-ha uguaglianza dei 150 token pubblici e parità finita CUDA. Il
-[batching esatto ma più lento](../c7.1-history/h100-prefill-2026-10-09.md)
-è ritirato per prestazioni; il preparatore selezionato torna scalare.
-Le sue parità non sostituiscono il raffinamento generale o la verifica
-del certificato. Il trial interrotto non ha creato setup/journal;
-il successivo riparte con capacità fresche e non importa stato.
-Il [terzo trial](../c7.1-history/h100-monitor-stack-2026-10-09.md) brucia
-la capacità prima dell'interruzione del monitor durante setup. Le riletture
-limitate del solo procfs non ritentano operazioni del protocollo né recuperano
-sessioni. La configurazione iniziale dello stack CUDA mantiene errori terminali
-e [passa parità reale e inferenza esatta](../c7.1-history/h100-stack256-2026-10-09.md);
-non modifica MAC, NoPeek, correlazioni o l'allowance fisica da dimostrare.
-Il [trial `canonical-04`](../c7.1-history/h100-canonical-04-2026-10-09.md)
-termina sul cap fisico durante A, senza accettazione. I suoi journal e
-70.778.880 correlazioni prenotate per ruolo sono bruciati; nessuno stato
-viene importato nel prossimo trial.
-Il [consiglio Linux per le pagine W](../c7.1-history/h100-thp-candidate-2026-10-09.md)
-riguarda solo l'allocazione globale prima del caricamento: non legge
-monete o correlazioni, non cambia input o transcript e non concede una
-nuova esenzione di memoria. La
-[validazione H100](../c7.1-history/h100-thp-validation-2026-10-09.md)
-passa parità finita e inferenza esatta; le code CUDA a una connessione
-passano 15/15. Sono configurazioni operative, senza nuova assunzione o
-credito di sicurezza; nessun limite fisico è rilassato.
-Dopo [inferenza esatta e riduzione fisica di componente](../c7.1-history/h100-queue1-2026-10-09.md),
-`canonical-05` riparte con nuovi journal e correlazioni AES monouso.
-Il riuso di Γ/W non riusa setup, monete, MAC o stato di sessione.
-Il [nuovo W completo e il profilo locale](../c7.1-history/h100-w05-checkpoint-2026-10-09.md)
-non concedono accettazione o credito formale. Il profilo modifica soltanto
-output diagnostici del test pubblico, senza leggere witness o monete.
+La campagna verifica parità finita CUDA e conserva la composizione
+prevista: NoPeek, endpoint nei MAC originali, AES reale e correlazioni
+monouso. I [trial terminali](../c7.1-history/h100-canonical-06-2026-10-10.md)
+non promuovono KV o ricevute; journal, monete e capacità prenotate non
+vengono importati in nuovi trial. Γ e pesi immutabili hanno un ciclo di
+vita distinto dal setup di sessione e possono essere riusati dopo verifica.
+
+I diagnostici `inference-cuda` e `commitment-a-cuda` non producono
+accettazione, prova MAC o continuazione. Le correzioni di marker pubblici
+non selezionati e prefisso KV ripristinano la semantica originale; marker
+selezionato, accesso non inizializzato e overflow restano terminali.
+Le [parità reali](../c7.1-history/h100-prefix-validation-2026-10-10.md)
+sono evidenze di implementazione, non un raffinamento generale o credito
+al teorema. THP, stack e code sono configurazioni operative: nessuna nuova
+esenzione di memoria o ipotesi crittografica, e nessun rilassamento dei cap.
+Il [guadagno del setup](../c7.1-history/h100-setup06-checkpoint-2026-10-10.md)
+non modifica il traffico o il trasferimento dei bound a Seed6, ancora aperto.
 
 La candidata cGGM con coda XOF differita conserva il frame, gli offset
 0/64/128 dei tre slot e gli otto tentativi per slot. Dopo un candidato

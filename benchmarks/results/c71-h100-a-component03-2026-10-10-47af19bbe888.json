@@ -1,0 +1,256 @@
+{
+  "artifacts": [
+    {
+      "bytes": 19,
+      "path": "benchmarks/results/c71-h100-a-component03-2026-10-10-47af19bbe888/commitment-a.end",
+      "sha256": "2084f38aa511dd72a6b2b26b41fcf33ed205d4477db590e101f87a90653360ec"
+    },
+    {
+      "bytes": 3,
+      "path": "benchmarks/results/c71-h100-a-component03-2026-10-10-47af19bbe888/commitment-a.exit",
+      "sha256": "cfeb3721a817579ed0f8bf7235b8b586be2d1f6426e5f7e4c3d3d62a3015f8d7"
+    },
+    {
+      "bytes": 346926,
+      "path": "benchmarks/results/c71-h100-a-component03-2026-10-10-47af19bbe888/commitment-a.memory.csv",
+      "sha256": "2b2287a32aef1efb7da18609528b83da8eb0f57226f6a1170d7c44ff77884fc0"
+    },
+    {
+      "bytes": 19,
+      "path": "benchmarks/results/c71-h100-a-component03-2026-10-10-47af19bbe888/commitment-a.start",
+      "sha256": "a504b068cadf20ecd4b3d0d31e27bad190075e0cc9f0e6091b50d875c08c81d5"
+    },
+    {
+      "bytes": 0,
+      "path": "benchmarks/results/c71-h100-a-component03-2026-10-10-47af19bbe888/commitment-a.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 0,
+      "path": "benchmarks/results/c71-h100-a-component03-2026-10-10-47af19bbe888/commitment-a.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 2069,
+      "path": "benchmarks/results/c71-h100-a-component03-2026-10-10-47af19bbe888/commitment-a.summary.json",
+      "sha256": "45883b66a43107010409806e06e834e8ac6cb32bdc44ada91428551bc70016d4"
+    },
+    {
+      "bytes": 0,
+      "path": "benchmarks/results/c71-h100-a-component03-2026-10-10-47af19bbe888/commitment-a.time.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 75195,
+      "path": "benchmarks/results/c71-h100-a-component03-2026-10-10-47af19bbe888/cpu-gpu-observations.jsonl",
+      "sha256": "85b4fbeefcb1636fbfa8a3765ec8b81868477c1d376026be67d7a821212f7789"
+    },
+    {
+      "bytes": 174393,
+      "path": "benchmarks/results/c71-h100-a-component03-2026-10-10-47af19bbe888/pcs-progress.json",
+      "sha256": "89b42694b9850e4c7c26f5a3d84ade1968504de95053c5c7a515f0b54cce49a1"
+    },
+    {
+      "bytes": 16688,
+      "path": "benchmarks/results/c71-h100-a-component03-2026-10-10-47af19bbe888/phases.json",
+      "sha256": "dd0048d8ac70f3359d66864c69c3ec617094c2eb2193d64a16528e10f3defcf9"
+    }
+  ],
+  "canonical_certificates_verified": 0,
+  "completed_groups": 22,
+  "component_complete": false,
+  "credit": false,
+  "date": "2026-10-10",
+  "git_dirty": false,
+  "git_sha": "47af19bbe888fdc03152cf025621c07d7ae8c788",
+  "inference_seconds": null,
+  "initial_A_seconds": null,
+  "launch": {
+    "argv": [
+      "/workspace/c71-h100-20261009/binaries/c71_canonical_reference-3ea1e4a",
+      "commitment-a-cuda",
+      "/workspace/c71-h100-20261009/gamma-inputs/candidate.json",
+      "/workspace/c71-h100-20261009/gamma-inputs/tables.bin",
+      "/workspace/c71-h100-20261009/weights/gemma-4-31b-5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89.packed.i16",
+      "/workspace/c71-h100-20261009/a-component-03/journals",
+      "2147483648",
+      "/workspace/c71-h100-20261009/libc71_device_runner_prefix.so",
+      "0"
+    ],
+    "binary_sha256": "f418d235572ae21ad8aae74fb9a0c4eec81b8ff7e299d443ba97a99d91b40b64",
+    "canonical_caps_enforced": true,
+    "coins": "fresh PCS randomness after NoPeek preparation; no PCG or correlations used",
+    "component": "O=0 initial A commitment after exact inference; no W commitment, setup, proof, verification or continuation",
+    "credit": false,
+    "diagnostic_timeout_seconds": 3900,
+    "environment": {
+      "CUDA_DEVICE_MAX_CONNECTIONS": "1",
+      "CUDA_DEVICE_MAX_COPY_CONNECTIONS": "1",
+      "CUDA_LAUNCH_BLOCKING": null,
+      "CUDA_SCALE_LAUNCH_QUEUES": "0.25x"
+    },
+    "geometry": "canonical D34; four cosets/all128columns;512reconstructions",
+    "git_dirty": false,
+    "library_sha256": "ac65f259b2fd3befefbe132039167a1b6159961dbc5018138981d5b300bed91f",
+    "library_source_git_sha": "47af19bbe888fdc03152cf025621c07d7ae8c788",
+    "monitor_label": "commitment-a",
+    "packed_reuse": "same sealed0400 body, priorSHA256 and per-loadBLAKE3 measured",
+    "planned_stop": null,
+    "prepared_epoch": 1791595275.394121,
+    "purpose": "Try the complete initial A component with quarter command queues after canonical06 physical stop; fresh PCS coins, no W/setup state. Hypothesis test, not a demonstrated cause or canonical resource fix.",
+    "response_target_seconds": 65,
+    "source_git_sha": "47af19bbe888fdc03152cf025621c07d7ae8c788"
+  },
+  "monitor": {
+    "authorized_end_epoch": 1791601722.0,
+    "close_reserve_seconds": 1800,
+    "command": [
+      "bash",
+      "-c",
+      "ulimit -S -v unlimited; exec \"$@\"",
+      "c71-a-component",
+      "/workspace/c71-h100-20261009/binaries/c71_canonical_reference-3ea1e4a",
+      "commitment-a-cuda",
+      "/workspace/c71-h100-20261009/gamma-inputs/candidate.json",
+      "/workspace/c71-h100-20261009/gamma-inputs/tables.bin",
+      "/workspace/c71-h100-20261009/weights/gemma-4-31b-5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89.packed.i16",
+      "/workspace/c71-h100-20261009/a-component-03/journals",
+      "2147483648",
+      "/workspace/c71-h100-20261009/libc71_device_runner_prefix.so",
+      "0"
+    ],
+    "compute_end_epoch": 1791599922.0,
+    "exit_code": -9,
+    "gpu_uuid": "GPU-9f6b4728-e7d8-ff40-d9f1-e1cec5dd2b3a",
+    "incomplete_samples": 1,
+    "label": "commitment-a",
+    "mode": "canonical",
+    "observed_payload_peak_bytes": 5554384672,
+    "payload_limit_bytes": 5905580032,
+    "physical_complete_peak": false,
+    "physical_temporary_limit_bytes": 6174015488,
+    "resource_failure": "RuntimeError: resource stop: canonical simultaneous physical temporaries exceed allowance",
+    "sampled_host_rss_peak_bytes": 61606068224,
+    "sampled_stable_temporary_peak_bytes": 6441455104,
+    "sampled_whole_gpu_peak_bytes": 67624763392,
+    "samples": 2644,
+    "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+    "sampling_target_seconds": 0.2,
+    "smaps_read_failures": 0,
+    "stable_samples": 2643,
+    "start_unix_seconds": 1791595275.4313047,
+    "wall_seconds": 529.4241797160357
+  },
+  "native_cleanup": null,
+  "phase_seconds": [
+    {
+      "complete": true,
+      "phase": "read_and_compile_public",
+      "role": "prover",
+      "seconds": 7.593083686,
+      "slot": null
+    },
+    {
+      "complete": true,
+      "phase": "public_distribution",
+      "role": "coordinator",
+      "seconds": 0.015546914,
+      "slot": null
+    },
+    {
+      "complete": true,
+      "phase": "compile_received_public",
+      "role": "verifier",
+      "seconds": 7.484888715,
+      "slot": null
+    },
+    {
+      "complete": true,
+      "phase": "load_packed_w",
+      "role": "prover",
+      "seconds": 266.173991294,
+      "slot": null
+    },
+    {
+      "complete": true,
+      "phase": "global_initialization",
+      "role": "coordinator",
+      "seconds": 282.182210319,
+      "slot": null
+    },
+    {
+      "complete": true,
+      "phase": "native_global_residency",
+      "role": "prover",
+      "seconds": 25.790280011,
+      "slot": null
+    },
+    {
+      "complete": true,
+      "phase": "preparation_including_inference",
+      "role": "prover",
+      "seconds": 85.986844958,
+      "slot": 0
+    }
+  ],
+  "physical_complete_peak": false,
+  "private_bundle": {
+    "manifest_sha256": "b37ae63119133595d60ec0b88c0c9acffb936101e2c1636b5baa8d37a67eaecb",
+    "path": "artifact/c7.1-pod/h100-final-a-component03-20261010T013100Z"
+  },
+  "run": "a-component-03",
+  "schema": "c71-h100-initial-A-terminal-v1",
+  "scope": "Initial A component, same D34 geometry and original sources, fresh PCS coins after NoPeek preparation. No W commitment, AES setup, MAC proof, verification, acceptance or continuation. Not a canonical peak or a demonstrated correction of canonical06 physical stop. Missing completed phase timings are not zero.",
+  "terminal": {
+    "exit_code": -9,
+    "last_A_progress": {
+      "elapsed_ns": 529324665769,
+      "event": {
+        "geometry": {
+          "columns": 128,
+          "cosets": 2048,
+          "cosets_per_reconstruction": 4,
+          "groups": 512,
+          "height": 2147483648,
+          "live_source": 13154672538,
+          "rows": 1048576
+        },
+        "kind": "progress",
+        "phase": "pcs_a_resident",
+        "wall_ns": 135272829641,
+        "work": {
+          "active_first_coset": 88,
+          "completed_groups": 22,
+          "native": {
+            "allocations": 4682231,
+            "arena_bytes": 5242241792,
+            "cleanup_failed": 0,
+            "d2d_bytes": 272256000,
+            "d2h_bytes": 18609288,
+            "fences": 4930862,
+            "h2d_bytes": 67016114404,
+            "host_owner_bytes": 42088,
+            "launches": 4678244,
+            "live_capacity_bytes": 5242241792,
+            "logical_bytes": 5242240112,
+            "peak_capacity_bytes": 5436230400,
+            "peak_reserved_bytes": 66830920960,
+            "releases": 4681916,
+            "stopped": 0,
+            "weights_bytes": 61394690560,
+            "weights_loaded_bytes": 61394690560,
+            "weights_sealed": 1,
+            "zeroed_bytes": 100312755760
+          },
+          "original_bytes_in_group": 13104542458,
+          "source_visits": 302507338294
+        }
+      }
+    },
+    "physical_resource_stop": true,
+    "reason": "RuntimeError: resource stop: canonical simultaneous physical temporaries exceed allowance",
+    "timeout": false,
+    "wall_seconds": 529.4241797160357
+  },
+  "total_groups": 512
+}

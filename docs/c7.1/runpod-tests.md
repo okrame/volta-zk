@@ -3,121 +3,69 @@
 [Design](design.md) · [Specifiche](specs.md) · [Sicurezza](security.md) ·
 [Test locali](local-tests.md) · [Archivio](../c7.1-history/README.md)
 
-La [coda SHAKE cGGM differita](../c7.1-history/h100-cggm-tail-2026-10-09.md)
-passa 17 test CPU sul pod e conserva output, scarti e correlazioni monouso.
-Il microbenchmark misura 1,475× sul componente. Il
-[setup completo successivo](../c7.1-history/h100-setup06-checkpoint-2026-10-10.md)
-misura 1.493,833 s contro 1.986,453 s: 1,330×, −24,799% osservato fra
-run singoli, senza attribuzione causale isolata. Il traffico resta identico.
+La campagna H100 del 9–10 ottobre è in corso sul pod autorizzato;
+limiti e deadline sono nel [runbook](runpod-tests.md#stato-e-sequenza-operativa).
+Il [sesto trial](../c7.1-history/h100-canonical-06-2026-10-10.md) completa W,
+setup e preparazione O=0, poi termina sul cap fisico dopo 35 gruppi A:
+6.560.767.488 B contro 6.174.015.488 B. **Zero certificati**; O=150/300
+non iniziati. Tempi completi di prova/verifica e picco completo rimangono
+non misurati.
 
-`canonical-05` termina con `Stop` nel primo gruppo A dopo preparazione
-84,831 s; massimo fisico campionato 6.140.513.792 B, sotto il cap.
-La causa privata era persa dal messaggio uniforme. `commitment-a-cuda`
-isola preparazione e commitment iniziale A con geometria/limiti originali
-e monete fresche, senza setup, W commitment o certificati. Il suo risultato
-non sostituisce il percorso canonico; serve a diagnosticare questo stop.
-
-Il [diagnostico A](../c7.1-history/h100-a-diagnostic-2026-10-10.md) riproduce
-un rifiuto del tile originale: i consumer PCS/lineari richiedono capacità
-interamente scritta, mentre KV contiene un prefisso inizializzato. La
-correzione limita gli span a quel prefisso, senza ammettere la coda.
-La [validazione sm_90](../c7.1-history/h100-prefix-validation-2026-10-10.md)
-passa 15/15 test CUDA reali con fixture aggiornate e il controllo non lineare;
-il [diagnostico successivo](../c7.1-history/h100-a-prefix-progress-2026-10-10.md)
-completa tre gruppi A sotto cap e si ferma come pianificato. Non misura
-il commitment completo o il picco canonico. Il
-[sesto trial](../c7.1-history/h100-canonical-06-2026-10-10.md) completa W/setup,
-preparazione 85,021 s e 35 gruppi A, poi termina sul cap fisico:
-6.560.767.488 B contro 6.174.015.488 B. Zero certificati; O=150/300 non
-iniziati. La causa dello spike GPU è aperta. Un diagnostico A separato
-valuta code a `0.25x` dopo parità reale 15/15, senza credito canonico.
-
-La [candidata sul prefisso KV](../c7.1-history/h100-prefix-candidate-2026-10-10.md)
-passa sei test locali, inclusa regressione prima/dopo, 12 span validi e
-invalidi nei tre consumer, parità A e MAC originali. La successiva
-ricompilazione sm_90 e parità reale 15/15 sono complete; il componente A
-con monete fresche ha superato il punto di errore prima del nuovo trial.
+Il [checkpoint completo W/setup](../c7.1-history/h100-setup06-checkpoint-2026-10-10.md)
+misura PCS W 190,425 s e setup 1.493,833 s, −24,799% osservato rispetto
+al precedente. L'[inferenza O=0 separata](../c7.1-history/h100-queue1-2026-10-09.md)
+misura 84,382 s con token esatti; non è il tempo di una risposta certificata.
+Il [diagnostico A03 con code ridotte](../c7.1-history/h100-a-quarter-2026-10-10.md)
+termina anch'esso sul cap: 6.441.455.104 B dopo 22/512 gruppi.
+Il diagnostico finale A04 aggiunge lanci sincroni, dopo
+[15/15 parità reali](../../benchmarks/results/c71-h100-blocking-parity-2026-10-10-47af19bbe888.json).
+La causa dello spike GPU resta aperta. I diagnostici omettono lo stato
+W/setup: anche un esito positivo non dimostra il picco canonico.
 
 ## Stato e sequenza operativa
 
-Γ è ammesso e riusato dopo verifica degli input, dell'ammissione e dei tre
-piani pubblici. La **campagna H100 del 9 ottobre è in corso**, autorizzata
-sul pod `z6wx2kkn69eoc0` per massimo otto ore dall'avvio provider, con Git
-HTTPS sul branch dedicato. La deadline conservativa è **10 ottobre
-03:08:42 UTC** (05:08:42 Italia), fine calcolo 02:38:42 UTC e guard provider
-indipendente a 03:03:42 UTC. La conferma finale dello spegnimento resta
-obbligatoria. Nessun altro hardware o tempo è autorizzato.
+Γ è ammesso e riusato dopo verifica dei cinque controlli, degli input e
+dei tre piani pubblici. La campagna H100 sul pod `z6wx2kkn69eoc0` è
+in corso, autorizzata per otto ore dall'avvio provider. Deadline
+**10 ottobre 03:08:42 UTC** (05:08:42 Italia), fine calcolo 02:38:42 UTC,
+guard indipendente 03:03:42 UTC. La conferma finale `EXITED` con runtime
+assente è obbligatoria. Nessun altro hardware o tempo è autorizzato.
+Git HTTPS usa il branch `runpod/z6wx2kkn69eoc0/c71-h100-20261009`.
 
-Il [checkpoint componenti](../c7.1-history/h100-components-2026-10-09.md)
-registra compilazione sm_90, 15 test CUDA reali passati, benchmark W/FFT/RMS,
-correzioni operative e fallimenti conservati. W Tensor è selezionato dopo
-parità e rapporto 5,663× su W sintetica da 256 MiB. Ricompilazione e seconda
-parità 15/15 passano. Il [trial canonico](../c7.1-history/h100-w-setup-2026-10-09.md)
-su `26c4c89` completa PCS W in 360,301 s e installazione in 404,340 s,
-con massimo temporaneo campionato 4.559.179.264 B. Il
-[primo trial terminale](../c7.1-history/h100-canonical-01-2026-10-09.md)
-completa setup in 2.018,838 s, poi fallisce nella preparazione O=0:
-nessuna prova, timeout o violazione di risorse. O=150/300 non iniziati.
-Timeout diagnostico 7.200 s, target 65 s.
-Il successivo codec cGGM `efebea6` è validato separatamente e non è il
-binario del primo trial.
-La correzione del loader conserva i marker pubblici non selezionati e
-lascia terminale la loro selezione. Prima di un nuovo setup usare il
-diagnostico `inference-cuda` con gli stessi argomenti di `experiment-cuda`,
-output nuovo e monitor canonico: esegue solo O=0 con lo stesso owner,
-limiti e preparatore, senza commitment, PCG, prova, accettazione o promozione KV.
-È una misura di componente. Il successivo trial canonico richiede journal
-e correlazioni nuovi e parte nuovamente da W.
-Il [diagnostico su `2a31625`](../c7.1-history/h100-inference-01-2026-10-09.md)
-passa in 202,679 s: inferenza 90,615 s, preparazione 92,433 s, tutti i
-150 token uguali al riferimento intero O=0. Otto regressioni, 15/15
-CUDA e lookup con marker passano. Massimo temporaneo stabile campionato
-1.474.276.864 B, senza credito al picco completo. La
-[variante `3e6c63a`](../c7.1-history/h100-prefill-2026-10-09.md) passa
-parità e confronto esatto, ma impiega 132,036 s: è ritirata. Il trial
-automatico `canonical-02` è stato interrotto tramite monitor dopo
-68,277 s durante il caricamento, prima di commitment/setup/journal.
-Il [trial `canonical-03`](../c7.1-history/h100-monitor-stack-2026-10-09.md)
-termina alle 21:33:44 UTC dopo 572,209 s per lettura smaps senza copertura W,
-con W completato e setup incompleto; la causa della lettura non è provata.
-Il monitor corretto conserva letture fallite, richiede copertura completa,
-ammette al massimo due riletture per campione/64 fallimenti per run e
-continua a imporre il cap fisico, senza credito al picco dei campioni recuperati.
-La [riserva iniziale CUDA di 256 B](../c7.1-history/h100-stack256-2026-10-09.md)
-è selezionata dopo nuova compilazione sm_90, 15/15 parità reali e diagnostico
-O=0 esatto: 90,594 s e massimo temporaneo campionato 1.267.047.936 B,
-207.228.928 B meno della baseline, senza credito al picco completo.
-Si riusa il binario scalare solo dopo verifica dei sorgenti Rust identici;
-libreria, monitor e binario riportano ciascuno la propria SHA di build.
-Il [trial `canonical-04`](../c7.1-history/h100-canonical-04-2026-10-09.md)
-termina alle 22:50:30 UTC dopo 2.720,764 s per superamento fisico nel primo
-gruppo A: 6.190.775.808 B contro 6.174.015.488 B. W PCS 405,195 s,
-installazione 441,657 s, setup 1.974,199 s e preparazione O=0 87,349 s
-sono completi; A e certificati no. Nessun timeout. Journal freschi bruciati.
-`2ff8106` conserva anche il campione terminale nel riepilogo; 36 test passano.
-Il [probe procfs e la candidata `920e684`](../c7.1-history/h100-thp-candidate-2026-10-09.md)
-sono separati dal trial fallito. La
-[validazione H100 THP](../c7.1-history/h100-thp-validation-2026-10-09.md)
-passa sei regressioni, 15/15 CUDA e inferenza esatta a 85,393 s. Il
-caricamento sale a 153,661 s; temporanee circa invariate, monitor più rapido.
-Le [due connessioni CUDA a 1](../c7.1-history/h100-queue1-2026-10-09.md)
-passano 15/15 reali e inferenza esatta a 84,382 s; massimo temporaneo
-campionato 1.216.531.968 B, riduzione misurata 50.434.048 B.
-`canonical-05` è stato avviato alle 23:13:42 UTC su checkout `749b598`,
-binario `920e684`, libreria `a32a6c3`: nuovo W/setup AES/journal, stesso Γ,
-cap e timeout 7.200 s. Il picco canonico completo rimane da dimostrare.
-Il [checkpoint W concluso](../c7.1-history/h100-w05-checkpoint-2026-10-09.md)
-riporta PCS 190,200 s, installazione 207,973 s e massimo campionato
-4.301.200.896 B. Caricamento 322,159 s; W pronto a 571,376 s dall'avvio.
-Il [trial terminale](../c7.1-history/h100-canonical-05-2026-10-09.md)
-completa il setup in 1.986,453 s, poi fallisce nel primo gruppo A:
-nessun certificato, nessuna violazione fisica osservata. La diagnostica
-locale del massimo replay non cambia il binario del trial né autorizza
-credito al picco completo.
-Deadline e guard della campagna restano invariati.
+| Trial canonico | Esito conservato |
+|---|---|
+| [01](../c7.1-history/h100-canonical-01-2026-10-09.md) | W/setup completi; marker pubblico inutilizzato rifiutato nella preparazione |
+| [02](../c7.1-history/h100-prefill-2026-10-09.md) | Stop pianificato nel caricamento: ritirato il batching più lento, prima di setup/journal |
+| [03](../c7.1-history/h100-monitor-stack-2026-10-09.md) | W completo; monitor fermato da lettura smaps senza copertura W durante setup |
+| [04](../c7.1-history/h100-canonical-04-2026-10-09.md) | W/setup/preparazione completi; 6.190.775.808 B oltre cap nel primo gruppo A |
+| [05](../c7.1-history/h100-canonical-05-2026-10-09.md) | W/setup/preparazione completi; rifiuto del prefisso KV nel consumer A, poi corretto |
+| [06](../c7.1-history/h100-canonical-06-2026-10-10.md) | W/setup/preparazione e 35 gruppi A; stop fisico a 6.560.767.488 B |
 
-La precedente campagna chiusa conserva il proprio fallimento nel commitment
-W; il suo pod spento e le sue autorizzazioni non descrivono questa campagna.
+Zero certificati accettati; O=150/300 non iniziati. Nessun trial riprende
+stato terminale. Il [checkpoint W/setup più recente](../c7.1-history/h100-setup06-checkpoint-2026-10-10.md)
+misura PCS 190,425 s, installazione 212,418 s e setup 1.493,833 s.
+Il setup migliora del 24,799% osservato rispetto al quinto trial; il record
+dichiara limiti del confronto e sovrapposizioni CPU precedenti.
+
+Selezione operativa: W Tensor esatto dopo confronto 256 MiB (5,663×),
+stack iniziale 256 B verificato, W con consiglio THP, code compute/copy 1/1,
+correzione degli span al prefisso originale e coda cGGM differita.
+Il monitor richiede copertura smaps completa, conserva snapshot falliti,
+limita le riletture (due per campione/64 fallimenti) e include il campione
+terminale nel massimo. I campioni recuperati mantengono il cap ma non
+ricevono credito al picco stabile. Trentasei test del monitor passano.
+
+Il [diagnostico A03](../c7.1-history/h100-a-quarter-2026-10-10.md) con code
+`0.25x` fallisce sul cap dopo 529,424 s, prima del timeout di 3.900 s.
+A04 mantiene code ridotte e aggiunge `CUDA_LAUNCH_BLOCKING=1`, dopo
+[15/15 test reali più non lineare](../../benchmarks/results/c71-h100-blocking-parity-2026-10-10-47af19bbe888.json).
+È l'ultimo diagnostico, con deadline prima della fine calcolo: geometria
+D34 originale, 512 ricostruzioni, monete nuove e stessi cap fisici.
+Omette commitment W, setup, prova e promozione. La configurazione è
+esclusivamente diagnostica, senza selezione o guadagno di produzione
+asserito. La causa dello spike GPU del sesto trial rimane aperta.
+I [diagnostici precedenti](../c7.1-history/h100-a-prefix-progress-2026-10-10.md)
+conservano anche l'errore iniziale e lo stop pianificato dopo tre gruppi.
 
 Il runner `experiment-cuda` è misto: inferenza/replay/range A e commitment
 iniziali W/A con sali residenti e

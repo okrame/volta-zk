@@ -3,92 +3,24 @@
 [Design](design.md) · [Specifiche](specs.md) · [Sicurezza](security.md) ·
 [Test su RunPod](runpod-tests.md) · [Evidenze storiche](../c7.1-history/evidence.md)
 
-La [campagna H100](../c7.1-history/h100-components-2026-10-09.md) ha richiesto
-due correzioni di compilazione CUDA e una correzione della race `/proc`
-nel monitor: sette test FFT e 29 test del monitor passano localmente.
-I 15 test sulla libreria reale sono risultati RunPod, separati da questi
-controlli locali e senza credito di prova canonica completa.
-Il [codec cGGM](../c7.1-history/h100-w-setup-2026-10-09.md) ha inoltre test
-ridotti di frame/golden/coin/albero e setup/lifetime, eseguiti sul pod CPU
-con 64 GiB AS e 60 s per filtro. Non sono esecuzioni locali né una prova
-canonica completa; il benchmark non dimostra un guadagno temporale.
-La successiva correzione dei marker GELU estende il test
-`c71_canonical_resident_nonlinear_original_routes` con una voce MIN
-non selezionata e aggiunge `c71_canonical_runner_preserves_both_role_failures`.
-La [validazione sul pod](../c7.1-history/h100-inference-01-2026-10-09.md)
-passa otto regressioni, ripete 15/15 sulla libreria reale e copre sia
-marker non usato sia marker selezionato nel test CUDA nonlineare.
-Il [trial del batching](../c7.1-history/h100-prefill-2026-10-09.md)
-passa dieci regressioni, 15/15 CUDA e i casi aggiuntivi a 100 righe,
-ma rallenta l'inferenza completa. La variante e i suoi test sono
-conservati in `3e6c63a` e nel record; il codice selezionato torna
-identico a `2a31625`, con la precedente validazione applicabile.
-La [correzione successiva del monitor](../c7.1-history/h100-monitor-stack-2026-10-09.md)
-passa 35 test: copertura smaps contigua, massimo due riletture/64 fallimenti,
-snapshot privati e cap fisico conservato. Due test Python del runtime nativo
-passano con la riserva iniziale CUDA a 256 B e tre errori terminali simulati.
-La [validazione successiva sulla H100](../c7.1-history/h100-stack256-2026-10-09.md)
-passa i 15 test reali e il diagnostico nonlineare dopo ricompilazione sm_90;
-la nuova inferenza ha token e contatori nativi identici alla baseline.
-Questi sono risultati del pod, distinti dai test locali e dalla prova completa.
-La [candidata sulle pagine W](../c7.1-history/h100-thp-candidate-2026-10-09.md)
-estende il test del reader con 2 MiB di input e controllo di tutti i valori
-e del digest. La prima build locale termina al timeout 120 s; il nuovo
-tentativo con dipendenze riusate passa in 55,833 s entro lo stesso limite.
-Il test passa anche sulla checkout pulita; nessun credito H100 ne deriva.
-Dopo lo [stop fisico canonico](../c7.1-history/h100-canonical-04-2026-10-09.md),
-`2ff8106` include nel riepilogo del monitor il campione che causa lo stop.
-Passano 36 test, incluso il primo campione già oltre cap; nessuna modifica
-al limite o al trattamento dei campioni smaps recuperati.
-La [successiva validazione H100 THP/code](../c7.1-history/h100-thp-validation-2026-10-09.md)
-passa sei regressioni del runner e due serie 15/15 CUDA reali con i
-rispettivi ambienti. Sono test provider, non controlli locali.
-Il [diagnostico successivo](../c7.1-history/h100-queue1-2026-10-09.md)
-confronta esattamente 150 token, digest W, contatori e cleanup con la
-baseline THP; la misura fisica resta distinta dalla verifica canonica.
-Il [profilo pubblico `788463b`](../c7.1-history/h100-w05-checkpoint-2026-10-09.md)
-aggiunge step e capacità al test di geometria. Build 55,743 s, picco
-aggregato campionato 2.593.206.272 B; test e ripetizione pulita passano,
-quest'ultima in 6,610 s / AS 2 GiB. Nessun buffer canonico o hardware GPU.
-Produzione e upper replay restano invariati.
+Le correzioni della campagna conservano [fallimenti e controlli](../c7.1-history/h100-canonical-06-2026-10-10.md)
+nei record datati. Localmente passano 36 test del monitor, due test Python
+dell'owner CUDA e i nove controlli documentali. Le regressioni Rust ridotte
+coprono marker non selezionati/selezionati, entrambi gli errori di ruolo,
+reader W con pagine grandi, codec cGGM e span del prefisso originale.
+I timeout locali rimangono esiti negativi; i limiti sotto non cambiano.
 
-La [coda SHAKE cGGM differita](../c7.1-history/h100-cggm-tail-2026-10-09.md)
-passa 17 test CPU sul pod e conserva output, scarti e correlazioni monouso.
-Il microbenchmark misura 1,475× sul componente. Il
-[setup completo successivo](../c7.1-history/h100-setup06-checkpoint-2026-10-10.md)
-misura 1.493,833 s contro 1.986,453 s: 1,330×, −24,799% osservato fra
-run singoli, senza attribuzione causale isolata. Il traffico resta identico.
-
-Il [quinto trial](../c7.1-history/h100-canonical-05-2026-10-09.md) termina
-con `Stop` durante A, senza accettazione o violazione fisica osservata.
-I journal rimangono bruciati; la diagnosi di componente usa monete nuove.
-
-Il [diagnostico A isolato](../../benchmarks/results/c71-a-diagnostic-local-2026-10-10-d17a7f9e71e4.json)
-compila dopo un timeout 120,015 s e una nuova build 56,156 s, sempre
-con un job e stop RSS 3 GiB. Passano otto test ridotti: sei del runner,
-un controllo fail-closed e parità dell'albero sorgente. La CLI con
-input canonici si esegue soltanto sul pod autorizzato.
-
-Il [diagnostico A](../c7.1-history/h100-a-diagnostic-2026-10-10.md) riproduce
-un rifiuto del tile originale: i consumer PCS/lineari richiedono capacità
-interamente scritta, mentre KV contiene un prefisso inizializzato. La
-correzione limita gli span a quel prefisso, senza ammettere la coda.
-La [validazione sm_90](../c7.1-history/h100-prefix-validation-2026-10-10.md)
-passa 15/15 test CUDA reali con fixture aggiornate e il controllo non lineare;
-il [diagnostico successivo](../c7.1-history/h100-a-prefix-progress-2026-10-10.md)
-completa tre gruppi A sotto cap e si ferma come pianificato. Non misura
-il commitment completo o il picco canonico. Il
-[sesto trial](../c7.1-history/h100-canonical-06-2026-10-10.md) completa W/setup,
-preparazione 85,021 s e 35 gruppi A, poi termina sul cap fisico:
-6.560.767.488 B contro 6.174.015.488 B. Zero certificati; O=150/300 non
-iniziati. La causa dello spike GPU è aperta. Un diagnostico A separato
-valuta code a `0.25x` dopo parità reale 15/15, senza credito canonico.
-
-La [candidata sul prefisso KV](../c7.1-history/h100-prefix-candidate-2026-10-10.md)
-passa sei test locali, inclusa regressione prima/dopo, 12 span validi e
-invalidi nei tre consumer, parità A e MAC originali. La successiva
-ricompilazione sm_90 e parità reale 15/15 sono complete; il componente A
-con monete fresche ha superato il punto di errore prima del nuovo trial.
+La [regressione del prefisso](../c7.1-history/h100-prefix-candidate-2026-10-10.md)
+fallisce prima della correzione e passa dopo sullo stesso binario della
+fixture C++: sei test, 12 casi di span, rifiuti precedenti dell'owner,
+radici/aperture/istogramma A e full wire/FS/MAC originali. La
+[parità sm_90](../c7.1-history/h100-prefix-validation-2026-10-10.md) e quella
+[con code ridotte](../../benchmarks/results/c71-h100-quarter-parity-2026-10-10-47af19bbe888.json),
+anche [con lanci sincroni](../../benchmarks/results/c71-h100-blocking-parity-2026-10-10-47af19bbe888.json),
+passano 15/15 test reali più controllo non lineare. Sono risultati del pod,
+non test locali né prova completa. Il setup H100 con
+[coda cGGM differita](../c7.1-history/h100-setup06-checkpoint-2026-10-10.md)
+è completo; il raffinamento generale e l'accettazione canonica restano aperti.
 
 ## Limiti e ambiente
 

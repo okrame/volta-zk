@@ -67,6 +67,12 @@ PCG AES e fail-closed restano quelli del percorso selezionato.
 
 ## Stato e sequenza operativa
 
+La [finestra CUDA esterna](../c7.1-history/h100-window-method-2026-10-10.md)
+usa `scripts/c71_profile_window.py` come comando figlio del monitor
+canonico: launcher, start/stop e native sono tutti contati. Trigger solo
+su gruppi A completati, geometria 512 invariata, interruzione diagnostica
+con pidfd dopo la finestra; nessun credito di prova o picco completo.
+
 Il [seguito locale e piano aggiornato](../c7.1-history/local-followup-2026-10-10.md#verifiche-hardware-prioritarie-dopo-il-seguito-locale)
 prepara la traccia owner bounded e distingue pool, padding A zero e
 candidate RMS. Per attribuire lo spike servono eventi CUDA e correlation

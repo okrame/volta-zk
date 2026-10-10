@@ -148,6 +148,17 @@ def run(campaign, history_path, output, precision):
     load_ns = time.perf_counter_ns() - load_start
     del handles, sources, mapped
     torch.cuda.empty_cache()
+    raw_head_checks = 0
+    raw_head_dtypes = set()
+
+    def check_raw_head(_module, _inputs, value):
+        nonlocal raw_head_checks
+        if not torch.isfinite(value).all().item():
+            raise ValueError('nonfinite raw logits before softcap')
+        raw_head_checks += 1
+        raw_head_dtypes.add(str(value.dtype))
+
+    model.lm_head.register_forward_hook(check_raw_head)
     record({"stage": "load_end", "wall_ns": load_ns,
             "allocated_bytes": torch.cuda.memory_allocated(), "reserved_bytes": torch.cuda.memory_reserved()})
     passes = []
@@ -199,6 +210,8 @@ def run(campaign, history_path, output, precision):
                         "final_kv_tokens": row["final_kv_tokens"]})
             passes.append({"mode": mode, "responses": rows})
             del cache
+    if raw_head_checks != 357:
+        raise ValueError('raw head finite-check coverage differs from the 357 forwards')
     report = {"credit": False, "readiness": False, "complete_comparison": True,
               "scope": "SDPA floating inference only; no integer parity, proof or Gamma admission",
               "precision": precision, "torch": torch.__version__, "transformers": transformers.__version__,
@@ -210,6 +223,7 @@ def run(campaign, history_path, output, precision):
               "packed_sha256": receipt["packed_sha256"], "load_wall_ns": load_ns,
               "maximum_gpu_allocated_bytes": torch.cuda.max_memory_allocated(),
               "maximum_gpu_reserved_bytes": torch.cuda.max_memory_reserved(), "passes": passes,
+              "raw_head_finite_checks": raw_head_checks, "raw_head_dtypes": sorted(raw_head_dtypes),
               "timing_scope": "Forward intervals synchronize CUDA and include finite checks/greedy decisions. Response total also includes input/mask preparation. All 50 generated tokens consumed into KV; W load and warmup separate."}
     with (output / "report.json").open("x") as sink:
         json.dump(report, sink, indent=2)

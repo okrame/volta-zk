@@ -74,6 +74,12 @@ pesi reali, ammissione Γ o previsione di accelerazione H100.
 
 ## Limiti e ambiente
 
+Il controller della [finestra CUDA](../c7.1-history/h100-window-method-2026-10-10.md)
+ha due controlli in `tests/test_c71_profile_window.py`, sotto i limiti
+Python usuali. Sono trigger/guardie su metadati: niente cattura hardware
+o credito della finestra. Il confronto SDPA controlla anche 357 raw head
+prima del softcap; il relativo caricamento CUDA resta da eseguire.
+
 Il [seguito locale](../c7.1-history/local-followup-2026-10-10.md) conserva
 nove test Rust distinti e 40 Python passati, più il failure iniziale della
 fixture RMS non pesata e la correzione degli indici sintetici. I due filtri

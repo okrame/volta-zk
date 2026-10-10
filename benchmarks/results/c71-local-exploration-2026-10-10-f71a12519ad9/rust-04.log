@@ -1,0 +1,11 @@
+
+running 2 tests
+test c71_matrix::gemma::native::canonical::resident::tests::c71_canonical_resident_pointwise_all_dispatch_routes ... C71_RESIDENT_POINTWISE slot=0 affine=181 gate=60 selected_rows=1 exact_raw=true gpu=false
+C71_RESIDENT_POINTWISE slot=1 affine=181 gate=60 selected_rows=1 exact_raw=true gpu=false
+C71_RESIDENT_POINTWISE slot=2 affine=181 gate=60 selected_rows=1 exact_raw=true gpu=false
+ok
+test c71_matrix::gemma::native::canonical::resident::tests::c71_canonical_resident_pointwise_zero_terms_bounds_and_rejections ... C71_RESIDENT_POINTWISE_REJECTIONS count=12 terminal=true gpu=false
+ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 601 filtered out; finished in 25.11s
+

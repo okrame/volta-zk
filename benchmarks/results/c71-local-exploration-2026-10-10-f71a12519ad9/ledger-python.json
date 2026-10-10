@@ -1,0 +1,23 @@
+{
+  "command": [
+    ".venv/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "tests/test_c71_temporary_ledger.py"
+  ],
+  "source_git_sha": "ac6017e431c6846c690803295925c6dfe273d6f6",
+  "git_dirty": false,
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 1,
+  "wall_s": 0.22273979475721717,
+  "max_rss_bytes": 31772672,
+  "deadline_s": 60,
+  "as_limit_bytes": 2147483648,
+  "workers": 1,
+  "recorded_at_utc": "2026-10-10T07:18:06.721645+00:00",
+  "log": "/tmp/c71-local-20261010/ledger-python.log",
+  "sha256": "e4c880c19fa65b04ff49db3a1d028fa06a9f0a3e26c132b3fd6f0b8cfe23bef7"
+}

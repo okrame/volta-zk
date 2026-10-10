@@ -1,0 +1,19 @@
+{
+  "command": [
+    "python3",
+    "scripts/c71_executor_profile.py",
+    "artifact/c7.1-pod/h100-components-20261009T194100Z/gamma-inputs/oracle-plan-original.json"
+  ],
+  "source_git_sha": "102ecf02ab98f0e6b0aa5d45483ebb874bddcaca",
+  "git_dirty": false,
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 0.08301348611712456,
+  "max_rss_bytes": 34148352,
+  "deadline_s": 60,
+  "as_limit_bytes": 2147483648,
+  "workers": 1,
+  "recorded_at_utc": "2026-10-10T07:41:24.643366+00:00",
+  "log": "/tmp/c71-local-20261010/executor-census.log",
+  "sha256": "8b5925ecc45a62f12cb8f5765398909b8017bcf814410335f259a8dbb964f890"
+}

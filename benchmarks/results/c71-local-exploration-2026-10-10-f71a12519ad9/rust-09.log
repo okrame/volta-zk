@@ -1,0 +1,17 @@
+
+running 1 test
+test c71_matrix::gemma::native::canonical::resident::device::tests::c71_canonical_device_replay_original_rows_windows_and_failure ... 
+thread 'c71_matrix::gemma::native::canonical::resident::device::tests::c71_canonical_device_replay_original_rows_windows_and_failure' (204) panicked at volta-pcs/src/c71_matrix/gemma/native/canonical_device.rs:1450:9:
+assertion `left == right` failed
+  left: 25567232
+ right: 25566976
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    c71_matrix::gemma::native::canonical::resident::device::tests::c71_canonical_device_replay_original_rows_windows_and_failure
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 602 filtered out; finished in 12.02s
+

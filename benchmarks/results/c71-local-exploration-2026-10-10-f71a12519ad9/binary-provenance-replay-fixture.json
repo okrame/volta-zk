@@ -1,0 +1,11 @@
+{
+  "source_git_sha": "f71a12519ad933f0f5e877e2362b490dcdea449a",
+  "git_dirty": false,
+  "unit_binary": "rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+  "unit_binary_sha256": "7ea1597afe0916cf8d1f88d1a11ce2e8dcc2850f858733f50cc5558e353f1f2c",
+  "build_record": "build-lib-replay-fixture.json",
+  "previous_measurement_source": "102ecf02ab98f0e6b0aa5d45483ebb874bddcaca",
+  "production_unchanged": true,
+  "changed_file": "rust/volta-pcs/src/c71_matrix/gemma/native/canonical_device.rs",
+  "change_scope": "#[cfg(test)] cold replay fixture expectations/marker and warm scan lifetime assertion only"
+}

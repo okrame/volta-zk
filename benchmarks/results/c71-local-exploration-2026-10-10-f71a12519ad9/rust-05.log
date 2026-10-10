@@ -1,0 +1,9 @@
+
+running 2 tests
+test c71_matrix::gemma::native::canonical::resident::tests::c71_canonical_resident_embedding_original_w_chain ... C71_RESIDENT_EMBEDDING batches=3 copied_bytes=20 h2d_after_W=0 kernels_for_embedding=0 exact_order=true gpu=false
+ok
+test c71_matrix::gemma::native::canonical::resident::tests::c71_canonical_resident_embedding_rejections_and_canonical_metadata ... C71_RESIDENT_EMBEDDING_REJECTIONS count=8 canonical_invalid_token_cases=3 canonical_geometry_only=true gpu=false
+ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 601 filtered out; finished in 23.98s
+

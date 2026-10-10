@@ -1,0 +1,28 @@
+{
+  "candidate": "rms-even-finer",
+  "input_sha256": "02092ebe0d96d5852135c5822f23415a71012e3445b2fa10d5e50f9ab240b7e5",
+  "output": "recipes/rms-even-finer.json",
+  "output_sha256": "5933a9557de3cb0f5668b9916c2291d7b97e64c27e505f7e2afd6c052a167d17",
+  "command": [
+    "timeout",
+    "-k",
+    "5s",
+    "60s",
+    "/home/okrame/projects/volta-zk/rust/target/debug/examples/c71_calibration",
+    "recipes",
+    "/tmp/c71-gamma-screen-20261010-02/candidates/rms-even-finer.json"
+  ],
+  "source_git_sha": "102ecf02ab98f0e6b0aa5d45483ebb874bddcaca",
+  "git_dirty": false,
+  "binary_sha256": "4f49dba46b8fd9d8b0e8d9573cac8bd8a3cde41ec067160a7cc888ff1142d1d0",
+  "exit_code": 0,
+  "wall_s": 42.300778267905116,
+  "max_rss_bytes": 55402496,
+  "as_limit_bytes": 2147483648,
+  "deadline_s": 60,
+  "workers": 1,
+  "recorded_at_utc": "2026-10-10T07:30:38.042978+00:00",
+  "full_compiler_all_three_contexts": true,
+  "certified_table_recipes_unchanged": true,
+  "recipe_digest": "1ab9a5e62dae51a1fb07c1330513f248fa28a97ebd37152aeb793a5b84514834"
+}

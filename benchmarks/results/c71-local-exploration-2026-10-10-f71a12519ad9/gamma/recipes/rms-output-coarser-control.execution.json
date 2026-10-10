@@ -1,0 +1,26 @@
+{
+  "candidate": "rms-output-coarser-control",
+  "input_sha256": "7c02a08b354b283f4a8ff2b0f5076e4e9a32ffd08b69730badc4569048307bbd",
+  "output": "recipes/rms-output-coarser-control.json",
+  "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "command": [
+    "timeout",
+    "-k",
+    "5s",
+    "60s",
+    "/home/okrame/projects/volta-zk/rust/target/debug/examples/c71_calibration",
+    "recipes",
+    "/tmp/c71-gamma-screen-20261010-02/candidates/rms-output-coarser-control.json"
+  ],
+  "source_git_sha": "102ecf02ab98f0e6b0aa5d45483ebb874bddcaca",
+  "git_dirty": false,
+  "binary_sha256": "4f49dba46b8fd9d8b0e8d9573cac8bd8a3cde41ec067160a7cc888ff1142d1d0",
+  "exit_code": 124,
+  "wall_s": 60.00822263909504,
+  "max_rss_bytes": 55111680,
+  "as_limit_bytes": 2147483648,
+  "deadline_s": 60,
+  "workers": 1,
+  "recorded_at_utc": "2026-10-10T07:33:18.943467+00:00",
+  "full_compiler_all_three_contexts": false
+}

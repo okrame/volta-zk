@@ -1,0 +1,85 @@
+{
+  "command": [
+    "cargo",
+    "rustc",
+    "--offline",
+    "--locked",
+    "-j",
+    "1",
+    "-p",
+    "volta-pcs",
+    "--features",
+    "c71-seed6-reference",
+    "--example",
+    "c71_calibration",
+    "--profile",
+    "dev",
+    "--config",
+    "profile.dev.package.volta-pcs.opt-level=0",
+    "--config",
+    "profile.dev.package.volta-pcs.codegen-units=64",
+    "--",
+    "-Clink-arg=-fuse-ld=lld",
+    "-Clink-arg=-B/home/okrame/.rustup/toolchains/stable-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/bin/gcc-ld",
+    "-Clink-arg=-Wl,--threads=1"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk/rust",
+  "exit_code": 0,
+  "wall_s": 0.7113708811812103,
+  "max_rss_bytes": 255815680,
+  "sampled_aggregate_live_rss_peak_bytes": 448626688,
+  "sampled_processes": {
+    "21": {
+      "name": "timeout",
+      "max_rss_bytes": 1556480,
+      "cpu_ticks": 0,
+      "first_seen_s": 0.0007528760470449924,
+      "last_seen_s": 0.7113418811932206
+    },
+    "22": {
+      "name": "cargo",
+      "max_rss_bytes": 53186560,
+      "cpu_ticks": 10,
+      "first_seen_s": 0.10225587105378509,
+      "last_seen_s": 0.6098058861680329
+    },
+    "29": {
+      "name": "rustc",
+      "max_rss_bytes": 194895872,
+      "cpu_ticks": 15,
+      "first_seen_s": 0.20298474002629519,
+      "last_seen_s": 0.6098663862794638
+    },
+    "56": {
+      "name": "cc",
+      "max_rss_bytes": 2117632,
+      "cpu_ticks": 0,
+      "first_seen_s": 0.305306819267571,
+      "last_seen_s": 0.6099094282835722
+    },
+    "57": {
+      "name": "collect2",
+      "max_rss_bytes": 1564672,
+      "cpu_ticks": 0,
+      "first_seen_s": 0.3054073192179203,
+      "last_seen_s": 0.6099644280038774
+    },
+    "58": {
+      "name": "rust-lld",
+      "max_rss_bytes": 239570944,
+      "cpu_ticks": 32,
+      "first_seen_s": 0.3055143188685179,
+      "last_seen_s": 0.6100093871355057
+    }
+  },
+  "sample_interval_s": 0.1,
+  "clock_ticks_per_s": 100,
+  "deadline_s": 120,
+  "workers": 1,
+  "as_limit_mib": null,
+  "sampled_aggregate_rss_stop_bytes": 3221225472,
+  "memory_stop": false,
+  "user_s": 0.485608,
+  "system_s": 0.19102999999999998,
+  "log": "/tmp/c71-local-20261010/build-calibration-cli.log"
+}

@@ -1,0 +1,1 @@
+C71_FLAG_COUNTER_COMPARISON {"numeric_operations":32,"flag_allocations":32,"flag_releases_before_close":32,"retained_device_bytes_before_close":0,"host_owner_bytes":42088,"launches":32,"fences_including_observation_and_output_release":96,"d2h_bytes_including_observation":2176,"flag_zeroed_bytes":128,"gpu_execution":false,"credit":false}

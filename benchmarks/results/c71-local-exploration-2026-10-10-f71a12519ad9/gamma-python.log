@@ -1,0 +1,32 @@
+..F                                                                      [100%]
+=================================== FAILURES ===================================
+________ test_prepare_verifies_all_retained_hashes_and_never_overwrites ________
+
+tmp_path = PosixPath('/tmp/pytest-of-okrame/pytest-615/test_prepare_verifies_all_reta0')
+
+    def test_prepare_verifies_all_retained_hashes_and_never_overwrites(tmp_path):
+        docs, provenance = screen.inputs(screen.BUNDLE)
+        assert len(provenance) == 7 and docs["admission.json"]["gamma_admitted"]
+        output = tmp_path / "prepared"
+>       screen.prepare(screen.BUNDLE, output)
+
+tests/test_c71_gamma_screen.py:57: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+scripts/c71_gamma_screen.py:112: in prepare
+    variants = candidates(baseline, oracle)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+scripts/c71_gamma_screen.py:92: in candidates
+    assert all(trial["activation_exponents_by_source"][s] == baseline["activation_exponents_by_source"][s]
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+.0 = <set_iterator object at 0xffffaadcee40>
+
+>   assert all(trial["activation_exponents_by_source"][s] == baseline["activation_exponents_by_source"][s]
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+               for s in fixed)
+E   KeyError: '3275'
+
+scripts/c71_gamma_screen.py:92: KeyError
+=========================== short test summary info ============================
+FAILED tests/test_c71_gamma_screen.py::test_prepare_verifies_all_retained_hashes_and_never_overwrites
+1 failed, 2 passed in 0.45s

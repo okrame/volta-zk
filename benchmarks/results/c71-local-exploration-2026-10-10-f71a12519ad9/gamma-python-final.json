@@ -1,0 +1,21 @@
+{
+  "command": [
+    ".venv/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "tests/test_c71_gamma_screen.py"
+  ],
+  "source_git_sha": "102ecf02ab98f0e6b0aa5d45483ebb874bddcaca",
+  "git_dirty": false,
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 0.7265259400010109,
+  "max_rss_bytes": 120786944,
+  "deadline_s": 60,
+  "as_limit_bytes": 2147483648,
+  "workers": 1,
+  "recorded_at_utc": "2026-10-10T07:26:26.956627+00:00",
+  "log": "/tmp/c71-local-20261010/gamma-python-final.log",
+  "sha256": "56677c83c96dcc42858f25d21eaa2775f5aee4c3ac2fb052b52d5ae8c36e3c50"
+}

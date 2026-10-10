@@ -1,0 +1,25 @@
+{
+  "input": "programs/batch-005.input.json",
+  "input_sha256": "736fe25863d17e272e6982a573dd05b2e1d920501b65c642074d0c3c65a8033e",
+  "output": "programs/batch-005.output.json",
+  "command": [
+    "timeout",
+    "-k",
+    "5s",
+    "60s",
+    "/home/okrame/projects/volta-zk/rust/target/debug/examples/c71_calibration",
+    "rms-programs",
+    "/tmp/c71-gamma-screen-20261010-02/programs/batch-005.input.json"
+  ],
+  "source_git_sha": "102ecf02ab98f0e6b0aa5d45483ebb874bddcaca",
+  "git_dirty": false,
+  "binary_sha256": "4f49dba46b8fd9d8b0e8d9573cac8bd8a3cde41ec067160a7cc888ff1142d1d0",
+  "exit_code": 0,
+  "wall_s": 1.0858242423273623,
+  "max_rss_bytes": 20795392,
+  "as_limit_bytes": 2147483648,
+  "deadline_s": 60,
+  "worker_threads": 1,
+  "output_sha256": "7f28d1c91b591ca9d5f51e784893555087eecfa4493578be349b0f3ea0e439a9",
+  "recorded_at_utc": "2026-10-10T07:27:53.075074+00:00"
+}

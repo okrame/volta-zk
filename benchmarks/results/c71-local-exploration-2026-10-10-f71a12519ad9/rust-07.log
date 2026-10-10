@@ -1,0 +1,7 @@
+
+running 1 test
+test c71_matrix::gemma::native::canonical::resident::tests::c71_canonical_resident_attention_o150 ... C71_RESIDENT_ATTENTION slot=1 families=2 causal_query=1 head=31 PV_heads=32 gpu=false
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 602 filtered out; finished in 13.96s
+

@@ -1,0 +1,25 @@
+F....                                                                    [100%]
+=================================== FAILURES ===================================
+___________ test_retained_sync_flag_is_charged_until_native_cleanup ____________
+
+tmp_path = PosixPath('/tmp/pytest-of-okrame/pytest-616/test_retained_sync_flag_is_cha0')
+
+    def test_retained_sync_flag_is_charged_until_native_cleanup(tmp_path):
+        for path in INPUTS.glob("*.log"):
+            (tmp_path / path.name).symlink_to(path)
+        before = compute(tmp_path)
+        marker = dict(sync_flag_reuse=True, flag_count=1, retained_device_capacity_bytes=256,
+                      host_owner_bytes=max(x["bytes"] for x in before["current_owner_host_byte_observations"])+8)
+        (tmp_path / "sync.log").write_text("C71_SYNC_ERROR_FLAG_REUSE " + json.dumps(marker) + "\n")
+        after = compute(tmp_path)
+        assert len(after["named_phase_crosschecks"]) == len(before["named_phase_crosschecks"]) == 653
+        for old, new in zip(before["named_phase_crosschecks"], after["named_phase_crosschecks"]):
+            assert old["phase"] == new["phase"]
+            retired = old["phase"] == "after_crypto_cleanup_report"
+>           assert new["named_allocation_subtotal_bytes"]-old["named_allocation_subtotal_bytes"] == (8 if retired else 264)
+E           assert (132956555 - 132956555) == 264
+
+tests/test_c71_temporary_ledger.py:35: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_c71_temporary_ledger.py::test_retained_sync_flag_is_charged_until_native_cleanup
+1 failed, 4 passed in 0.09s

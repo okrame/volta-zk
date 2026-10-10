@@ -1,0 +1,84 @@
+{
+  "command": [
+    "cargo",
+    "rustc",
+    "--offline",
+    "--locked",
+    "-j",
+    "1",
+    "-p",
+    "volta-pcs",
+    "--features",
+    "c71-seed6-reference",
+    "--lib",
+    "--profile",
+    "test",
+    "--config",
+    "profile.dev.package.volta-pcs.opt-level=0",
+    "--config",
+    "profile.dev.package.volta-pcs.codegen-units=64",
+    "--",
+    "-Clink-arg=-fuse-ld=lld",
+    "-Clink-arg=-B/home/okrame/.rustup/toolchains/stable-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/bin/gcc-ld",
+    "-Clink-arg=-Wl,--threads=1"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk/rust",
+  "exit_code": 0,
+  "wall_s": 56.67125723185018,
+  "max_rss_bytes": 2547179520,
+  "sampled_aggregate_live_rss_peak_bytes": 2589532160,
+  "sampled_processes": {
+    "21": {
+      "name": "timeout",
+      "max_rss_bytes": 1572864,
+      "cpu_ticks": 0,
+      "first_seen_s": 0.003284711856395006,
+      "last_seen_s": 56.67114893998951
+    },
+    "22": {
+      "name": "cargo",
+      "max_rss_bytes": 53080064,
+      "cpu_ticks": 14,
+      "first_seen_s": 0.10475701279938221,
+      "last_seen_s": 56.570447098929435
+    },
+    "29": {
+      "name": "rustc",
+      "max_rss_bytes": 2534879232,
+      "cpu_ticks": 5559,
+      "first_seen_s": 0.20541418809443712,
+      "last_seen_s": 56.57053268281743
+    },
+    "99": {
+      "name": "rustc",
+      "max_rss_bytes": 2117632,
+      "cpu_ticks": 1,
+      "first_seen_s": 55.6578218578361,
+      "last_seen_s": 56.469510757829994
+    },
+    "100": {
+      "name": "collect2",
+      "max_rss_bytes": 1568768,
+      "cpu_ticks": 0,
+      "first_seen_s": 55.758802032098174,
+      "last_seen_s": 56.46955121681094
+    },
+    "101": {
+      "name": "rust-lld",
+      "max_rss_bytes": 596041728,
+      "cpu_ticks": 80,
+      "first_seen_s": 55.758846156764776,
+      "last_seen_s": 56.469591091852635
+    }
+  },
+  "sample_interval_s": 0.1,
+  "clock_ticks_per_s": 100,
+  "deadline_s": 120,
+  "workers": 1,
+  "as_limit_mib": null,
+  "sampled_aggregate_rss_stop_bytes": 3221225472,
+  "memory_stop": false,
+  "user_s": 50.514464,
+  "system_s": 6.148939,
+  "log": "/tmp/c71-local-20261010/build-lib-replay-fixture.log"
+}

@@ -1,0 +1,74 @@
+[
+  {
+    "columns": 512,
+    "exponents": [
+      -6,
+      -15,
+      -9
+    ],
+    "weighted": true
+  },
+  {
+    "columns": 512,
+    "exponents": [
+      -6,
+      -15,
+      -8
+    ],
+    "weighted": true
+  },
+  {
+    "columns": 512,
+    "exponents": [
+      -6,
+      -14,
+      -11
+    ],
+    "weighted": true
+  },
+  {
+    "columns": 512,
+    "exponents": [
+      -6,
+      -14,
+      -10
+    ],
+    "weighted": true
+  },
+  {
+    "columns": 512,
+    "exponents": [
+      -6,
+      -14,
+      -9
+    ],
+    "weighted": true
+  },
+  {
+    "columns": 512,
+    "exponents": [
+      -6,
+      -14,
+      -8
+    ],
+    "weighted": true
+  },
+  {
+    "columns": 512,
+    "exponents": [
+      -6,
+      0,
+      -11
+    ],
+    "weighted": false
+  },
+  {
+    "columns": 512,
+    "exponents": [
+      -6,
+      0,
+      -10
+    ],
+    "weighted": false
+  }
+]

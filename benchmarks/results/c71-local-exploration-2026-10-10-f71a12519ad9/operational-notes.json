@@ -1,0 +1,30 @@
+{
+  "credit": false,
+  "notes": [
+    {
+      "action": "initial calibration example build with --profile test",
+      "result": "produced libtest harness, identified with --help; not used for RMS/recipes; proper --profile dev CLI build recorded separately",
+      "retained_records": [
+        "build-calibration.json",
+        "build-calibration.log",
+        "build-calibration-cli.json",
+        "build-calibration-cli.log"
+      ]
+    },
+    {
+      "action": "development diagnostic via system python runpy on tests/test_c71_temporary_ledger.py",
+      "result": "ModuleNotFoundError: pytest; used repository .venv thereafter",
+      "runtime_or_protocol_execution": false,
+      "timing_measured": false
+    },
+    {
+      "action": "first Gamma batch driver",
+      "result": "/usr/bin/time absent; no RMS execution in first batch, separate corrected driver uses os.wait4 under unchanged limits",
+      "retained_external_paths": [
+        "/tmp/c71-gamma-batches-driver-01-failure.json",
+        "/tmp/c71-gamma-screen-20261010",
+        "/tmp/c71-gamma-batches-20261010.py"
+      ]
+    }
+  ]
+}

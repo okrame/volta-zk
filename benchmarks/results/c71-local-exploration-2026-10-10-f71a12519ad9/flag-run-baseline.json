@@ -1,0 +1,17 @@
+{
+  "command": [
+    "/tmp/c71-local-20261010/flag-comparison-baseline"
+  ],
+  "source_git_sha": "102ecf02ab98f0e6b0aa5d45483ebb874bddcaca",
+  "git_dirty": false,
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 0.002857878804206848,
+  "max_rss_bytes": 9719808,
+  "deadline_s": 60,
+  "as_limit_bytes": 2147483648,
+  "workers": 1,
+  "recorded_at_utc": "2026-10-10T07:41:34.620718+00:00",
+  "log": "/tmp/c71-local-20261010/flag-run-baseline.log",
+  "sha256": "e7c0eb5f54718fb8165e2aaa8fde7e6fd6c73d0c90e4db373f6a4a0edad42dcd"
+}

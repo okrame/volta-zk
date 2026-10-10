@@ -1,0 +1,84 @@
+{
+  "command": [
+    "cargo",
+    "rustc",
+    "--offline",
+    "--locked",
+    "-j",
+    "1",
+    "-p",
+    "volta-pcs",
+    "--features",
+    "c71-seed6-reference",
+    "--lib",
+    "--profile",
+    "test",
+    "--config",
+    "profile.dev.package.volta-pcs.opt-level=0",
+    "--config",
+    "profile.dev.package.volta-pcs.codegen-units=64",
+    "--",
+    "-Clink-arg=-fuse-ld=lld",
+    "-Clink-arg=-B/home/okrame/.rustup/toolchains/stable-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/bin/gcc-ld",
+    "-Clink-arg=-Wl,--threads=1"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk/rust",
+  "exit_code": 0,
+  "wall_s": 58.07261196710169,
+  "max_rss_bytes": 2548621312,
+  "sampled_aggregate_live_rss_peak_bytes": 2599170048,
+  "sampled_processes": {
+    "21": {
+      "name": "timeout",
+      "max_rss_bytes": 1576960,
+      "cpu_ticks": 0,
+      "first_seen_s": 0.0007524173706769943,
+      "last_seen_s": 58.072439425159246
+    },
+    "22": {
+      "name": "cargo",
+      "max_rss_bytes": 53010432,
+      "cpu_ticks": 15,
+      "first_seen_s": 0.10191807523369789,
+      "last_seen_s": 57.97024584794417
+    },
+    "37": {
+      "name": "rustc",
+      "max_rss_bytes": 2544582656,
+      "cpu_ticks": 5669,
+      "first_seen_s": 0.20259348303079605,
+      "last_seen_s": 57.86919393995777
+    },
+    "107": {
+      "name": "cc",
+      "max_rss_bytes": 2117632,
+      "cpu_ticks": 0,
+      "first_seen_s": 56.84957838617265,
+      "last_seen_s": 57.767623531166464
+    },
+    "108": {
+      "name": "collect2",
+      "max_rss_bytes": 1507328,
+      "cpu_ticks": 0,
+      "first_seen_s": 56.84963630326092,
+      "last_seen_s": 57.76766169723123
+    },
+    "109": {
+      "name": "rust-lld",
+      "max_rss_bytes": 599068672,
+      "cpu_ticks": 96,
+      "first_seen_s": 56.84974442794919,
+      "last_seen_s": 57.76770153129473
+    }
+  },
+  "sample_interval_s": 0.1,
+  "clock_ticks_per_s": 100,
+  "deadline_s": 120,
+  "workers": 1,
+  "as_limit_mib": null,
+  "sampled_aggregate_rss_stop_bytes": 3221225472,
+  "memory_stop": false,
+  "user_s": 51.727804,
+  "system_s": 6.280838,
+  "log": "/tmp/c71-local-20261010/build-lib.log"
+}

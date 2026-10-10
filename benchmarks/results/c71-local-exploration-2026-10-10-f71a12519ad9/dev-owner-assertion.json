@@ -1,0 +1,17 @@
+{
+  "command": [
+    "/tmp/pytest-of-okrame/pytest-613/test_native_range_owner_with_d0/native-range-owner"
+  ],
+  "source_git_sha": "072de372a3d1038b037856950bfffb84657920af",
+  "git_dirty": true,
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": -6,
+  "wall_s": 0.013049596920609474,
+  "max_rss_bytes": 9768960,
+  "deadline_s": 60,
+  "as_limit_bytes": 2147483648,
+  "workers": 1,
+  "recorded_at_utc": "2026-10-10T07:12:38.550001+00:00",
+  "log": "/tmp/c71-local-20261010/dev-owner-assertion.log",
+  "sha256": "6257b44b4fe9e431d3c9d5eee5c603fdd8bda6a24b9d696f7ff7764a636baa73"
+}

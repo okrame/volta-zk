@@ -1,0 +1,26 @@
+{
+  "candidate": "admitted",
+  "input_sha256": "8965d0c3dc170e41b304982b90409b0362e93de4d029b08bba3716ab64dbf95e",
+  "output": "recipes/admitted.json",
+  "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "command": [
+    "timeout",
+    "-k",
+    "5s",
+    "60s",
+    "/home/okrame/projects/volta-zk/rust/target/debug/examples/c71_calibration",
+    "recipes",
+    "/tmp/c71-gamma-screen-20261010-02/candidates/admitted.json"
+  ],
+  "source_git_sha": "102ecf02ab98f0e6b0aa5d45483ebb874bddcaca",
+  "git_dirty": false,
+  "binary_sha256": "4f49dba46b8fd9d8b0e8d9573cac8bd8a3cde41ec067160a7cc888ff1142d1d0",
+  "exit_code": 124,
+  "wall_s": 60.00461368681863,
+  "max_rss_bytes": 55140352,
+  "as_limit_bytes": 2147483648,
+  "deadline_s": 60,
+  "workers": 1,
+  "recorded_at_utc": "2026-10-10T07:29:55.731185+00:00",
+  "full_compiler_all_three_contexts": false
+}

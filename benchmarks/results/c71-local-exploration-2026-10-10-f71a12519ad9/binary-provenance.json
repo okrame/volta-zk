@@ -1,0 +1,30 @@
+{
+  "recorded_source_git_sha": "102ecf02ab98f0e6b0aa5d45483ebb874bddcaca",
+  "git_dirty": false,
+  "unit_Rust_source_build_sha": "f5be24ce555a20d0ec1e9bd66a93cd899861183a",
+  "Rust_source_unchanged_since_unit_build": true,
+  "CLI_build_record": "build-calibration-cli.json",
+  "CLI_library_reused_from": "build-calibration.json",
+  "unit_build_record": "build-lib.json",
+  "test_driver": "deferred fake driver compiled per native fixture; real CUDA untested",
+  "binaries": [
+    {
+      "path": "rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+      "bytes": 95865368,
+      "sha256": "41bd35559fe18653c2c3b1736cbecce07490cd2fe0c4c706b435e5c8a1f7c0a4",
+      "architecture": "aarch64"
+    },
+    {
+      "path": "rust/target/debug/examples/c71_calibration",
+      "bytes": 10206864,
+      "sha256": "4f49dba46b8fd9d8b0e8d9573cac8bd8a3cde41ec067160a7cc888ff1142d1d0",
+      "architecture": "aarch64"
+    }
+  ],
+  "baseline_runtime": {
+    "path": "range-runtime-072de372.cpp",
+    "bytes": 142735,
+    "sha256": "d78c208a21f15613373866807dd77b9a0fc5b44777c0d72728a7de82f29b1433",
+    "git_sha": "072de372a3d1038b037856950bfffb84657920af"
+  }
+}

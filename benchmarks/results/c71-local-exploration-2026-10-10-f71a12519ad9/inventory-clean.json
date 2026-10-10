@@ -1,0 +1,20 @@
+{
+  "command": [
+    "python3",
+    "benchmarks/results/c71-local-baseline-inventory-2026-10-10-072de372a3d1/verify-retained.py",
+    "/home/okrame/projects/volta-zk",
+    "/tmp/c71-local-20261010/inventory-rechecked.json"
+  ],
+  "source_git_sha": "102ecf02ab98f0e6b0aa5d45483ebb874bddcaca",
+  "git_dirty": false,
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 1.1158617730252445,
+  "max_rss_bytes": 42631168,
+  "deadline_s": 60,
+  "as_limit_bytes": 2147483648,
+  "workers": 1,
+  "recorded_at_utc": "2026-10-10T07:41:24.520852+00:00",
+  "log": "/tmp/c71-local-20261010/inventory-clean.log",
+  "sha256": "c5bd2ab49301de61e7363d50a9aeb69fcb67dfe9a134791767f4fbb6606d9b9f"
+}

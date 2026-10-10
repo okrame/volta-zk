@@ -1,0 +1,83 @@
+[
+  {
+    "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-c71-s1-query-final-09-20261009.log",
+    "bytes": 13339,
+    "sha256": "b49841ddb3ef32bf85acb99f255fe171c8f07cf0227aff59ee64db0a43e3ad93"
+  },
+  {
+    "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-c71-s1-query-final-07-20261009.log",
+    "bytes": 1050,
+    "sha256": "bb291474e97db7733f67e19c6f39fab33b38c509cbc6fb4b9c8b0ea86c58b6e9"
+  },
+  {
+    "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-c71-closure-retire-claim-pre01-20261009.log",
+    "bytes": 427,
+    "sha256": "d2b16638dedb02425a1ae4f7966c0a676a20d78c93e87431f04576822a0d353c"
+  },
+  {
+    "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-c71-closure-retire-clean-claim-20261009.log",
+    "bytes": 427,
+    "sha256": "d2b16638dedb02425a1ae4f7966c0a676a20d78c93e87431f04576822a0d353c"
+  },
+  {
+    "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-c71-initial-w-query-w-full-clean-20261009.log",
+    "bytes": 3545,
+    "sha256": "b816423d561041a974fcb3ad4857b2f6b8c98d67e953f34b038172a439c31740"
+  },
+  {
+    "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-telemetry.log",
+    "bytes": 1018,
+    "sha256": "0b022718f72d88740e34d4d7cfe3662ead70993715e42ffbb6ea0282c68b71f1"
+  },
+  {
+    "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-c71-s1-query-final-08-20261009.log",
+    "bytes": 1037,
+    "sha256": "89e37ce363bd71d29c049e943c0a99a0ee46751d37527e272830b43223146105"
+  },
+  {
+    "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-c71-initial-w-query-a-full-clean-20261009.log",
+    "bytes": 3760,
+    "sha256": "ca8ec77a6eb2a38a3202b67fb91321abd521f3dbd7052484b15daaf3a90aed3a"
+  },
+  {
+    "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-c71-s1-query-final-10-20261009.log",
+    "bytes": 2942,
+    "sha256": "a9967b56157b5f141c82a391aa2185f448ca5539c120ccaf0087a73e07dfc308"
+  },
+  {
+    "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-seed6-local-socket-authorized.log",
+    "bytes": 9354,
+    "sha256": "c7478f7bea7cfe6f2a8edb6b3b6aaeda308e2ebf7cd9559f09c1918932e98d5f"
+  },
+  {
+    "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-metadata.log",
+    "bytes": 4304,
+    "sha256": "4feb0d1d2b93083e902f21eca21990922d8e5e9a4b86c7118b13b99fd1b766e0"
+  },
+  {
+    "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-c71_b12_canonical_initial_geometry.log",
+    "bytes": 1196,
+    "sha256": "842fb27cfc11c7e1172104fbbb275d25de597713d93fbfbcef7813af6e2b0694"
+  },
+  {
+    "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-c71_b12_windowed_native_.log",
+    "bytes": 2274,
+    "sha256": "0b5bc3410a687b52d11eae613b77320bc0fde98fa83d5776adf5aa95e0e05aac"
+  },
+  {
+    "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-canonical-wire.log",
+    "bytes": 4916,
+    "sha256": "cd4b394e7dd9af34e5c65fa67a620bd705cd6493c8fcaf0a30b796419b8a19e0"
+  },
+  {
+    "path": "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs/ledger-input-forms.log",
+    "bytes": 10907,
+    "sha256": "fd66e4f8dba1e1adf38ac5956dea20f9a9bfc29f5b5f1bebf5fdf072a7ec359f"
+  },
+  {
+    "path": "/tmp/c71-local-20261010/owner-clean.log",
+    "bytes": 2909,
+    "sha256": "4def17adfd01cc27985cb9d27fe17c22ad5deeea70a6d65c88b804eccc56d741",
+    "source_git_sha": "102ecf02ab98f0e6b0aa5d45483ebb874bddcaca"
+  }
+]

@@ -1,0 +1,17 @@
+{
+  "schema": "c71-local-driver-failure-v1",
+  "source_git_sha": "102ecf02",
+  "git_dirty": false,
+  "status": "failed_before_test_child_launch",
+  "error": "FileNotFoundError: /usr/bin/time",
+  "wrapper": "/tmp/c71-gamma-batches-20261010.py",
+  "directory": "/tmp/c71-gamma-screen-20261010",
+  "kernel_or_compiler_executed": false,
+  "preserved_empty_outputs": [
+    "programs/batch-000.output.json",
+    "programs/batch-000.stderr"
+  ],
+  "deadline_s": 60,
+  "as_limit_bytes": 2147483648,
+  "recorded_at_utc": "2026-10-10T07:27:19.627739+00:00"
+}

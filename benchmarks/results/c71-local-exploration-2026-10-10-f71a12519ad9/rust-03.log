@@ -1,0 +1,7 @@
+
+running 1 test
+test c71_matrix::gemma::native::canonical::resident::tests::c71_canonical_resident_rms_exact_u128_coefficients ... C71_RESIDENT_RMS accepted=30 rejected=5 max_columns=5376 gpu=false
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 602 filtered out; finished in 9.65s
+

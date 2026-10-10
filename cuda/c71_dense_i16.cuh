@@ -39,6 +39,20 @@ inline bool span(const void* p,uint64_t bytes,uintptr_t& end) {
 inline bool overlaps(const void* a,uintptr_t ae,const void* b,uintptr_t be) {
     return reinterpret_cast<uintptr_t>(a)<be && reinterpret_cast<uintptr_t>(b)<ae;
 }
+inline bool valid_pointwise_buffers(const int16_t* x,const int16_t* y,
+    int64_t* output,uint64_t count,Pointwise op,uint32_t* failed) {
+    uintptr_t oe,fe;
+    if(!valid_pointwise(op) || !count || count>uint64_t(max_m)*max_n ||
+       reinterpret_cast<uintptr_t>(output)%8 || reinterpret_cast<uintptr_t>(failed)%4 ||
+       !span(output,count*8,oe) || !span(failed,4,fe) || overlaps(output,oe,failed,fe)) return false;
+    const int16_t* inputs[]={x,y}; const bool used[]={op.multiply || op.a,op.multiply || op.b};
+    for(unsigned j=0;j<2;++j) {
+        uintptr_t end;
+        if(used[j] ? (reinterpret_cast<uintptr_t>(inputs[j])%2 || !span(inputs[j],count*2,end) ||
+           overlaps(inputs[j],end,output,oe) || overlaps(inputs[j],end,failed,fe)) : inputs[j]!=nullptr) return false;
+    }
+    return true;
+}
 inline bool valid_buffers(const int16_t* x,uint64_t x_words,const int16_t* w,uint64_t w_words,
     int64_t* out,uint64_t out_values,uint32_t* failed,Shape s) {
     if(!valid(s,x_words,w_words,out_values) ||

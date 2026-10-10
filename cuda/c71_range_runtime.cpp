@@ -576,8 +576,17 @@ extern "C" int c71_dense_pointwise(C71RangeContext* c,uint64_t x,uint64_t x_firs
         inputs[j]=ptr<int16_t>(c,a)+first[j];
     }
     uint64_t flag=0; if(dense_flag(c,&flag,true)) return -1;
-    if(launched(c,c71_dense_pointwise_launch(c->stream,inputs[0],inputs[1],ptr<int64_t>(c,b),b->count,op,
-                                           ptr<uint32_t>(c,buffer(c,flag))))) return -1;
+    auto* failed=ptr<uint32_t>(c,buffer(c,flag));
+    if(!op.multiply && !op.a && !op.b) {
+        // Public zero padding has no arithmetic inputs. Keep the launcher's
+        // buffer guards, flag check and completion fence; only its zero write
+        // becomes a stream-ordered memset, with no retained output capacity.
+        if(!c->stream || !c71_dense::valid_pointwise_buffers(inputs[0],inputs[1],
+            ptr<int64_t>(c,b),b->count,op,failed)) return fail(c,"pointwise zero launch buffers");
+        if(checked(c,cudaMemsetAsync(ptr<int64_t>(c,b),0,b->count*8,c->stream))) return -1;
+        c->stats.zeroed_bytes+=b->count*8;
+    } else if(launched(c,c71_dense_pointwise_launch(c->stream,inputs[0],inputs[1],ptr<int64_t>(c,b),b->count,op,
+                                                  failed))) return -1;
     return dense_complete(c,flag,b);
 }
 namespace {

@@ -50,10 +50,16 @@ def context_census(context):
                           if step["kind"] == "softmax" for key in ("exponential", "denominator")}
     padding_flags = sum((sources[source]["rows"] + 255) // 256
                         for source in padded_i64 if source not in frozen)
+    # padding_word writes raw scores and Z as zero; EXP30 E remains 2^30.
+    zero_padding_i64 = scores | {step["parameters"]["denominator"] for step in steps
+                                if step["kind"] == "softmax"}
+    zero_padding_calls = sum((sources[source]["rows"] + 255) // 256
+                             for source in zero_padding_i64 if source not in frozen)
     inference_flags = sum(inference.values()) + len(histograms)
     replay_flags = sum(replay.values()) + len(replay_histograms) + padding_flags
     assert (len(cuts), len(histograms), len(frozen)) == (61, 121, 302)
     assert (inference_flags, replay_flags, padding_flags) == (1185770, 13667, 5760)
+    assert zero_padding_calls == 3840
     return {
         "old_tokens": context["old_tokens"],
         "inference_numeric_calls_by_kind": dict(sorted(inference.items())),
@@ -64,10 +70,13 @@ def context_census(context):
         "all_targets_replay_numeric_calls_by_kind": dict(sorted(replay.items())),
         "all_targets_replay_histogram_seals": len(replay_histograms),
         "all_targets_replay_public_padding_numeric_calls": padding_flags,
+        "all_targets_replay_public_zero_i64_memset_calls": zero_padding_calls,
+        "all_targets_replay_explicit_pointwise_kernel_launches_removed": zero_padding_calls,
         "all_targets_replay_numeric_flag_uses": replay_flags,
         "all_targets_replay_removed_flag_allocations_after_warmup": replay_flags,
         "initial_a_reconstructions": 512,
         "initial_a_all_targets_replay_flag_uses": 512 * replay_flags,
+        "initial_a_all_targets_replay_explicit_pointwise_kernel_launches_removed": 512 * zero_padding_calls,
         "frozen_sources": len(frozen),
     }
 
@@ -90,6 +99,8 @@ def main():
         "added_host_owner_bytes": 8,
         "numeric_flag_registry_slots": 1,
         "required_numeric_completion_fences_and_flag_downloads_unchanged": True,
+        "zero_padding_output_write_bytes_and_lifetimes_unchanged": True,
+        "zero_padding_scope": "Only raw score/Z public i64 zero padding uses stream-ordered memset. EXP30 E remains 2^30; CUDA internal memset work is not counted as an eliminated GPU kernel or a time gain.",
         "inference_removed_flag_allocations_from_fresh_owner": 1185769,
         "scope": "Admitted-Gamma scalar generation and a scan requesting all A sources; partial consumers have their own pruned DAG. Counts are not CUDA timings or a complete proof measure.",
     }

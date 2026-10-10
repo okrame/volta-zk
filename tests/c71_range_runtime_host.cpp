@@ -16,6 +16,7 @@ struct FakeStream { std::vector<std::function<void()>> pending; };
 static bool fail_launch=false, fail_fence=false, fail_free=false, corrupt=false;
 static bool fail_dense=false;
 static bool fail_memset=false;
+static int memset_fail_after=-1;
 static unsigned stack_fault=0;
 static bool corrupt_query_data=false;
 static int copy_fail_after=-1;
@@ -72,6 +73,8 @@ cudaError_t cudaMemcpyAsync(void* d,const void* s,size_t n,cudaMemcpyKind kind,c
 }
 cudaError_t cudaMemsetAsync(void* p,int x,size_t n,cudaStream_t s) {
     if(fail_memset) return 1;
+    if(memset_fail_after==0) return 1;
+    if(memset_fail_after>0) --memset_fail_after;
     s->pending.push_back([=] { std::memset(p,x,n); }); return 0;
 }
 const char* cudaGetErrorString(cudaError_t) { return "injected CUDA failure"; }
@@ -891,7 +894,7 @@ extern "C" int c71_byte_scatter_launch(cudaStream_t s,const void* input,unsigned
 }
 extern "C" int c71_dense_pointwise_launch(cudaStream_t s,const int16_t* x,const int16_t* y,
     int64_t* output,uint64_t count,c71_dense::Pointwise op,uint32_t* failed) {
-    assert(c71_dense::valid_pointwise(op));
+    assert(s && c71_dense::valid_pointwise_buffers(x,y,output,count,op,failed));
     return launch(s,[=] {
         for(uint64_t i=0;i<count;++i) {
             const int16_t a=(op.multiply || op.a)?x[i]:0, b=(op.multiply || op.b)?y[i]:0;
@@ -1235,6 +1238,9 @@ static void pointwise_checks() {
         const auto raw=alloc(c,C71_I64,4), y=alloc(c,C71_I16,4), root=alloc(c,C71_PAIR,1);
         const auto before=stats(c);
         assert(!c71_dense_pointwise(c,op.a?x:0,op.a?4:0,op.b?x:0,0,op,raw));
+        const bool zero=!op.multiply && !op.a && !op.b;
+        assert(stats(c).launches-before.launches==(zero?0u:1u));
+        assert(stats(c).zeroed_bytes-before.zeroed_bytes==4u+(zero?32u:0u));
         assert(!c71_dense_quantize(c,raw,0,y));
         int16_t expected[4];
         for(int i=0;i<4;++i) expected[i]=op.multiply?-(i+1)*(i+1):int16_t(-op.a*(i+1)+op.b*(i+1));
@@ -1269,6 +1275,102 @@ static void pointwise_checks() {
         assert(c71_dense_pointwise(c,x,0,x,0,{1,1,0},raw) && launches==attempts);
         close(c);
     }
+}
+static void pointwise_zero_checks() {
+    // Address-only launch validation: no allocation or access at the cap.
+    const uint64_t cap=uint64_t(c71_dense::max_m)*c71_dense::max_n;
+    auto* address=reinterpret_cast<int64_t*>(uintptr_t{4096});
+    auto* flag=reinterpret_cast<uint32_t*>(uintptr_t{1}<<40);
+    const c71_dense::Pointwise zero{0,0,0};
+    assert(c71_dense::valid_pointwise_buffers(nullptr,nullptr,address,cap,zero,flag));
+    assert(!c71_dense::valid_pointwise_buffers(nullptr,nullptr,address,0,zero,flag));
+    assert(!c71_dense::valid_pointwise_buffers(nullptr,nullptr,address,cap+1,zero,flag));
+    assert(!c71_dense::valid_pointwise_buffers(nullptr,nullptr,address,1,zero,reinterpret_cast<uint32_t*>(address)));
+    assert(!c71_dense::valid_pointwise_buffers(nullptr,nullptr,reinterpret_cast<int64_t*>(uintptr_t{4097}),1,zero,flag));
+    assert(!c71_dense::valid_pointwise_buffers(nullptr,nullptr,address,1,zero,reinterpret_cast<uint32_t*>(uintptr_t{4097})));
+    assert(!c71_dense::valid_pointwise_buffers(nullptr,nullptr,nullptr,1,zero,flag));
+    assert(!c71_dense::valid_pointwise_buffers(nullptr,nullptr,address,1,zero,nullptr));
+    assert(!c71_dense::valid_pointwise_buffers(nullptr,nullptr,reinterpret_cast<int64_t*>(UINTPTR_MAX&~uintptr_t{7}),8,zero,flag));
+    assert(!c71_dense::valid_pointwise_buffers(reinterpret_cast<int16_t*>(address),nullptr,address,1,zero,flag));
+
+    auto* c=create();
+    const auto before=stats(c);
+    uint64_t output_bytes=0;
+    const uint64_t counts[]={1,3,8,255,256,257,106*151};
+    for(const auto count:counts) {
+        const auto output=alloc(c,C71_I64,count);
+        std::memset(last_allocation,0xa5,count*8);
+        const auto submitted=stats(c);
+        assert(!c71_dense_pointwise(c,0,0,0,0,zero,output));
+        const auto completed=stats(c);
+        assert(completed.launches==submitted.launches);
+        assert(completed.fences==submitted.fences+1 && completed.d2h_bytes==submitted.d2h_bytes+4);
+        assert(completed.zeroed_bytes==submitted.zeroed_bytes+4+count*8);
+        assert(completed.h2d_bytes==submitted.h2d_bytes && completed.d2d_bytes==submitted.d2d_bytes);
+        std::vector<int64_t> actual(count,-1);
+        assert(!c71_original_read(c,output,C71_I64,0,count,actual.data()));
+        for(const auto value:actual) assert(value==0);
+        assert(!c71_range_release(c,output) && stats(c).arena_bytes==256);
+        output_bytes+=count*8;
+    }
+    const auto after=stats(c);
+    assert(after.allocations-before.allocations==8 && after.releases-before.releases==7);
+    assert(after.launches==before.launches && after.fences-before.fences==21);
+    assert(after.d2h_bytes-before.d2h_bytes==28+output_bytes);
+    assert(after.zeroed_bytes-before.zeroed_bytes==28+output_bytes);
+    close(c);
+
+    // Reject reset, output-memset, download, completion and error-flag faults
+    // before publication, retaining the same output and warm flag capacities.
+    for(unsigned fault=0;fault<5;++fault) {
+        c=create();
+        const auto first=alloc(c,C71_I64,1);
+        assert(!c71_dense_pointwise(c,0,0,0,0,zero,first));
+        assert(!c71_range_release(c,first));
+        const auto output=alloc(c,C71_I64,3);
+        const auto submitted=stats(c);
+        memset_fail_after=fault<2?int(fault):-1;
+        download_fail_after=fault==2?0:-1;
+        fail_fence=fault==3; corrupt=fault==4;
+        assert(c71_dense_pointwise(c,0,0,0,0,zero,output));
+        memset_fail_after=download_fail_after=-1; fail_fence=corrupt=false;
+        const auto stopped=stats(c);
+        assert(stopped.stopped && stopped.allocations==submitted.allocations && stopped.releases==submitted.releases);
+        assert(stopped.arena_bytes==submitted.arena_bytes && stopped.launches==submitted.launches);
+        assert(stopped.zeroed_bytes-submitted.zeroed_bytes==(fault==0?0u:fault==1?4u:28u));
+        assert(stopped.fences-submitted.fences==(fault>=3?1u:0u));
+        assert(stopped.d2h_bytes-submitted.d2h_bytes==(fault>=3?4u:0u));
+        int64_t unpublished=123;
+        assert(c71_original_read(c,output,C71_I64,0,1,&unpublished) && unpublished==123);
+        assert(c71_dense_pointwise(c,0,0,0,0,zero,output));
+        assert(stats(c).fences==stopped.fences && stats(c).zeroed_bytes==stopped.zeroed_bytes);
+        close(c);
+    }
+    // Zero coefficients do not permit unused input handles or row offsets.
+    for(unsigned fault=0;fault<4;++fault) {
+        c=create(); const auto input=dense_input(c), output=alloc(c,C71_I64,3);
+        const auto submitted=stats(c);
+        assert(c71_dense_pointwise(c,fault==0?input:0,fault==1?1:0,
+                                   fault==2?input:0,fault==3?1:0,zero,output));
+        assert(stats(c).stopped && stats(c).zeroed_bytes==submitted.zeroed_bytes);
+        assert(stats(c).launches==submitted.launches && stats(c).allocations==submitted.allocations);
+        close(c);
+    }
+    // A private PCS byte flag must remain sticky across the zero producer.
+    c=create(); const auto input=alloc(c,C71_I16,4), bad=alloc(c,C71_I64,4), output=alloc(c,C71_I64,4);
+    const int16_t large[]={32767,32767,32767,32767};
+    assert(!c71_range_upload(c,input,large,sizeof(large)));
+    uint8_t encoded=0;
+    assert(!c71_byte::encode(int64_t(large[0])*(int64_t{1}<<30),4,0,encoded));
+    assert(!c71_dense_pointwise(c,input,0,0,0,{1<<30,0,0},bad));
+    const auto bytes=alloc(c,C71_BYTE_PENDING,128);
+    assert(!c71_byte_begin(c,bytes));
+    const c71_byte::Tile tile{0,4,1,1,0,0,128,0,4,4,7,0,0};
+    assert(!c71_byte_scatter(c,bad,&tile,bytes));
+    assert(!c71_dense_pointwise(c,0,0,0,0,zero,output));
+    assert(c71_byte_seal(c,bytes) && stats(c).stopped);
+    close(c);
+    std::printf("C71_POINTWISE_PUBLIC_ZERO {\"ragged_cases\":7,\"output_zeroed_bytes\":%llu,\"flag_zeroed_bytes\":28,\"application_kernel_launches\":0,\"completion_fences\":7,\"flag_download_bytes\":28,\"retained_device_capacity_bytes\":256,\"terminal_fault_rejections\":5,\"unused_input_rejections\":4,\"sticky_byte_flag_preserved\":true,\"gpu_execution\":false,\"credit\":false}\n",(unsigned long long)output_bytes);
 }
 static void byte_checks() {
     // Independent biased addition, including both signed-48 and signed-32 ends.
@@ -2537,6 +2639,7 @@ int main() {
     dense_checks();
     embedding_checks();
     pointwise_checks();
+    pointwise_zero_checks();
     byte_checks();
     residual_test::component_checks();
     residual_test::contract_checks();

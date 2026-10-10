@@ -52,6 +52,15 @@ def test_native_range_owner_with_deferred_fake_driver(tmp_path):
         "gpu_execution": False, "credit": False,
     }
 
+    assert reports.pop("C71_POINTWISE_PUBLIC_ZERO") == {
+        "ragged_cases": 7, "output_zeroed_bytes": 134288,
+        "flag_zeroed_bytes": 28, "application_kernel_launches": 0,
+        "completion_fences": 7, "flag_download_bytes": 28,
+        "retained_device_capacity_bytes": 256, "terminal_fault_rejections": 5,
+        "unused_input_rejections": 4, "sticky_byte_flag_preserved": True,
+        "gpu_execution": False, "credit": False,
+    }
+
     expected_components = {
         "C71_RUNTIME_STACK_LIMIT": {
             "requested_bytes": 256, "terminal_rejections": 3,

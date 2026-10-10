@@ -106,16 +106,7 @@ extern "C" __global__ void c71_dense_pointwise_kernel(const int16_t* x,const int
 }
 extern "C" cudaError_t c71_dense_pointwise_launch(cudaStream_t stream,const int16_t* x,const int16_t* y,
     int64_t* output,uint64_t count,Pointwise op,uint32_t* failed) {
-    uintptr_t oe,fe;
-    if(!stream || !valid_pointwise(op) || !count || count>uint64_t(max_m)*max_n ||
-       reinterpret_cast<uintptr_t>(output)%8 || reinterpret_cast<uintptr_t>(failed)%4 ||
-       !span(output,count*8,oe) || !span(failed,4,fe) || overlaps(output,oe,failed,fe)) return cudaErrorInvalidValue;
-    const int16_t* inputs[]={x,y}; const bool used[]={op.multiply || op.a,op.multiply || op.b};
-    for(unsigned j=0;j<2;++j) {
-        uintptr_t end;
-        if(used[j] ? (reinterpret_cast<uintptr_t>(inputs[j])%2 || !span(inputs[j],count*2,end) ||
-           overlaps(inputs[j],end,output,oe) || overlaps(inputs[j],end,failed,fe)) : inputs[j]!=nullptr) return cudaErrorInvalidValue;
-    }
+    if(!stream || !valid_pointwise_buffers(x,y,output,count,op,failed)) return cudaErrorInvalidValue;
     c71_dense_pointwise_kernel<<<(count+255)/256,256,0,stream>>>(x,y,output,count,op,failed);
     return cudaGetLastError();
 }

@@ -297,7 +297,10 @@ fn fixture(base: Recipe, sources: [u32; 2]) {
             assert_eq!(products[i], x * if recipe.weighted { i64::from(weights[i]) } else { 1 });
         }
         assert!(output.iter().any(|&y| y != 0));
-        for &i in &[0, 1, 8, base.columns / 2, base.columns - 1] {
+        // The physical X row has period 17. Choose both nonzero signs and its
+        // exact zero explicitly: columns/2 and columns-1 can alias its negative
+        // side (256%17 == 511%17 == 1 for the unweighted recipe).
+        for &i in &[0, 1, 8, 16, base.columns - 1] {
             signs[if output[i] < 0 {
                 0
             } else if output[i] == 0 {

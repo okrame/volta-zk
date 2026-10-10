@@ -72,3 +72,7 @@ Benchmark, fonti in `sota` e milestone formali non sono modificati.
 - [H100: coda SHAKE cGGM differita, 9 ottobre 2026](h100-cggm-tail-2026-10-09.md).
 
 - [H100: quinto trial canonico, 9 ottobre 2026](h100-canonical-05-2026-10-09.md).
+
+- [H100: diagnostico A, 10 ottobre 2026](h100-a-diagnostic-2026-10-10.md).
+
+- [H100: candidata sul prefisso KV, 10 ottobre 2026](h100-prefix-candidate-2026-10-10.md).

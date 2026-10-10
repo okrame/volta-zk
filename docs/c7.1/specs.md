@@ -12,6 +12,19 @@ Il [quinto trial](../c7.1-history/h100-canonical-05-2026-10-09.md) termina
 con `Stop` durante A, senza accettazione o violazione fisica osservata.
 I journal rimangono bruciati; la diagnosi di componente usa monete nuove.
 
+Il [diagnostico A](../c7.1-history/h100-a-diagnostic-2026-10-10.md) riproduce
+un rifiuto del tile originale: i consumer PCS/lineari richiedono capacità
+interamente scritta, mentre KV contiene un prefisso inizializzato. La
+correzione deve limitare gli span a quel prefisso, senza ammettere la coda.
+
+La correzione dei tre consumer usa `initialized` come limite degli span,
+come il gather già esistente; capacità, byte originali e ordine restano
+immutati. Richiede l'invariante del driver che `initialized` descriva un
+prefisso contiguo scritto prima della lettura. Nessun lemma Lean raffina
+questo contatore C++; la corrispondenza resta una premessa implementativa
+esplicita, con regressione prima/dopo e parità finita, non nuovo credito
+al protocollo. Nessuna lettura della coda o modifica dei MAC è ammessa.
+
 ## Input e identità
 
 Il checkpoint testuale è `google/gemma-4-31B` alla revisione

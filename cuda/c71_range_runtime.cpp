@@ -1153,8 +1153,9 @@ extern "C" int c71_pcs_source_tile(C71RangeContext* c,uint64_t original,const c7
     if(!ready(c)) return -1;
     auto* input=buffer(c,original);
     const auto s=c->source.shape;
-    if(!c->source.values[0] || !input || (input->kind!=C71_I16 && input->kind!=C71_I64) || input->initialized!=input->count ||
-       !tile || !c71_pcs::valid(*tile,input->kind,input->count,s.live)) return fail(c,"PCS original source tile or state");
+    // KV reserves future rows; only its initialized prefix is an original source.
+    if(!c->source.values[0] || !input || (input->kind!=C71_I16 && input->kind!=C71_I64) || input->initialized>input->count ||
+       !tile || !c71_pcs::valid(*tile,input->kind,input->initialized,s.live)) return fail(c,"PCS original source tile or state");
     const uint64_t bytes=tile->rows*tile->columns*tile->width;
     if(bytes>s.live-c->source.bytes) return fail(c,"PCS source byte coverage exceeds live prefix");
     auto* a=buffer(c,c->source.values[0]); auto* b=buffer(c,c->source.values[1]);
@@ -1518,7 +1519,7 @@ extern "C" int c71_linear_source_tile(C71RangeContext* c,uint64_t token,uint64_t
     if(!linear_session(c,token)) return -1;
     auto& s=c->linear; auto* original=buffer(c,input);
     if(s.mode==2 || !original || (original->kind!=C71_I16 && original->kind!=C71_I64) ||
-       original->initialized!=original->count || !c71_pcs::valid(tile,original->kind,original->count,s.shape.live))
+       original->initialized>original->count || !c71_pcs::valid(tile,original->kind,original->initialized,s.shape.live))
         return fail(c,"linear original tile type, coverage or mode");
     const uint64_t visited=tile.rows*tile.columns*tile.width;
     if(visited>s.shape.live-s.visited) return fail(c,"linear original tile excess coverage");
@@ -1636,14 +1637,14 @@ int residual_submit(C71RangeContext* c,uint64_t input,const c71_pcs::SourceTile*
     if(tile) {
         auto* original=buffer(c,input);
         if(s.mode==2 || s.mode==3 || !original || (original->kind!=C71_I16 && original->kind!=C71_I64) ||
-           original->initialized!=original->count || !c71_pcs::valid(*tile,original->kind,original->count,s.shape.live))
+           original->initialized>original->count || !c71_pcs::valid(*tile,original->kind,original->initialized,s.shape.live))
             return fail(c,"PCS residual original tile type, coverage or mode");
         visits=tile->rows*tile->columns*tile->width;
         // The trusted canonical adapter owns exact unique source-row coverage.
         // This boundary validates spans/count, as for the initial native A PCS.
         if(visits>s.shape.live-s.visited)
             return fail(c,"PCS residual original tile excess");
-        status=c71_pcs_residual_source_launch(c->stream,ptr<void>(c,original),original->count,original->kind,*tile,
+        status=c71_pcs_residual_source_launch(c->stream,ptr<void>(c,original),original->initialized,original->kind,*tile,
             s.shape,chunks,tables,s.phase,residual_output(c),s.cosets,high,s.powers,low_power,high_power,flag);
         s.mode=1;
     } else if(resident_planes) {

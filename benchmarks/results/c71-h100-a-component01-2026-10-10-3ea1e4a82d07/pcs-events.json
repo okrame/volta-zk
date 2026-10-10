@@ -1,0 +1,602 @@
+[
+  {
+    "credit": false,
+    "elapsed_ns": 310899094676,
+    "event": {
+      "geometry": {
+        "base_columns": 128,
+        "coset_rows": 1048576,
+        "cosets": 2048,
+        "cut": 4096,
+        "height": 2147483648,
+        "native_kind": "source"
+      },
+      "kind": "start",
+      "phase": "pcs_commitment"
+    },
+    "host_process": [
+      "VmHWM:\t60139956 kB",
+      "VmRSS:\t60126968 kB"
+    ],
+    "joint_allocations": {
+      "denied_allocations": 0,
+      "enforced": true,
+      "excluded_packed_w_capacity_bytes": 61394690560,
+      "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+      "host_layout_bytes": 61494511003,
+      "native_reservation_bytes": 591319912,
+      "operational_margin_required_bytes": 268435456,
+      "payload_limit_bytes": 5905580032,
+      "peak_plus_runtime_allowance_bytes": 961263454,
+      "physical_runtime_allowance_verified": false,
+      "runtime_allowance_bytes": 268435456,
+      "temporary_live_bytes": 691141080,
+      "temporary_payload_peak_bytes": 692827998
+    },
+    "schema": "volta-c71-progress-v1",
+    "sequence": 21,
+    "thread": "ThreadId(1)"
+  },
+  {
+    "credit": false,
+    "elapsed_ns": 310899590418,
+    "event": {
+      "geometry": {
+        "candidate_capacity": 16777216,
+        "cosets": 2048,
+        "cut": 4096,
+        "rows": 1048576,
+        "samples": 8589934592
+      },
+      "kind": "start",
+      "phase": "pcs_salts_prescan_gpu"
+    },
+    "host_process": [
+      "VmHWM:\t60139956 kB",
+      "VmRSS:\t60126976 kB"
+    ],
+    "joint_allocations": {
+      "denied_allocations": 0,
+      "enforced": true,
+      "excluded_packed_w_capacity_bytes": 61394690560,
+      "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+      "host_layout_bytes": 61507094567,
+      "native_reservation_bytes": 591319912,
+      "operational_margin_required_bytes": 268435456,
+      "payload_limit_bytes": 5905580032,
+      "peak_plus_runtime_allowance_bytes": 972159375,
+      "physical_runtime_allowance_verified": false,
+      "runtime_allowance_bytes": 268435456,
+      "temporary_live_bytes": 703724644,
+      "temporary_payload_peak_bytes": 703723919
+    },
+    "schema": "volta-c71-progress-v1",
+    "sequence": 22,
+    "thread": "ThreadId(1)"
+  },
+  {
+    "credit": false,
+    "elapsed_ns": 310979405481,
+    "event": {
+      "complete": true,
+      "geometry": {
+        "candidate_capacity": 16777216,
+        "cosets": 2048,
+        "cut": 4096,
+        "rows": 1048576,
+        "samples": 8589934592
+      },
+      "kind": "end",
+      "phase": "pcs_salts_prescan_gpu",
+      "wall_ns": 79295578,
+      "work": {
+        "chunks": 513,
+        "completed_samples": 8589934592,
+        "computed_xof_blocks": 1073742337,
+        "logical_candidate_bytes": 68719476760,
+        "native": {
+          "allocations": 3641225,
+          "arena_bytes": 601763840,
+          "cleanup_failed": 0,
+          "d2d_bytes": 235161600,
+          "d2h_bytes": 17348764,
+          "fences": 3669072,
+          "h2d_bytes": 61418645280,
+          "host_owner_bytes": 42088,
+          "launches": 1187872,
+          "live_capacity_bytes": 601763840,
+          "logical_bytes": 601762680,
+          "peak_capacity_bytes": 614380544,
+          "peak_reserved_bytes": 62009071104,
+          "releases": 3640919,
+          "stopped": 0,
+          "weights_bytes": 61394690560,
+          "weights_loaded_bytes": 61394690560,
+          "weights_sealed": 1,
+          "zeroed_bytes": 68180960
+        },
+        "native_d2h_bytes": 12605484,
+        "native_fences": 515,
+        "native_h2d_bytes": 168,
+        "native_launches": 2052
+      }
+    },
+    "host_process": [
+      "VmHWM:\t60139956 kB",
+      "VmRSS:\t60139436 kB"
+    ],
+    "joint_allocations": {
+      "denied_allocations": 0,
+      "enforced": true,
+      "excluded_packed_w_capacity_bytes": 61394690560,
+      "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+      "host_layout_bytes": 61507104841,
+      "native_reservation_bytes": 601805928,
+      "operational_margin_required_bytes": 268435456,
+      "payload_limit_bytes": 5905580032,
+      "peak_plus_runtime_allowance_bytes": 995258683,
+      "physical_runtime_allowance_verified": false,
+      "runtime_allowance_bytes": 268435456,
+      "temporary_live_bytes": 714220934,
+      "temporary_payload_peak_bytes": 726823227
+    },
+    "schema": "volta-c71-progress-v1",
+    "sequence": 23,
+    "thread": "ThreadId(1)"
+  },
+  {
+    "credit": false,
+    "elapsed_ns": 310982227669,
+    "event": {
+      "geometry": {
+        "columns": 128,
+        "cosets": 2048,
+        "cosets_per_reconstruction": 4,
+        "groups": 512,
+        "height": 2147483648,
+        "live_source": 13154672538,
+        "rows": 1048576
+      },
+      "kind": "start",
+      "phase": "pcs_a_resident"
+    },
+    "host_process": [
+      "VmHWM:\t60139956 kB",
+      "VmRSS:\t60139836 kB"
+    ],
+    "joint_allocations": {
+      "denied_allocations": 0,
+      "enforced": true,
+      "excluded_packed_w_capacity_bytes": 61394690560,
+      "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+      "host_layout_bytes": 61507094634,
+      "native_reservation_bytes": 913757288,
+      "operational_margin_required_bytes": 268435456,
+      "payload_limit_bytes": 5905580032,
+      "peak_plus_runtime_allowance_bytes": 1294596818,
+      "physical_runtime_allowance_verified": false,
+      "runtime_allowance_bytes": 268435456,
+      "temporary_live_bytes": 1026162087,
+      "temporary_payload_peak_bytes": 1026161362
+    },
+    "schema": "volta-c71-progress-v1",
+    "sequence": 24,
+    "thread": "ThreadId(1)"
+  },
+  {
+    "credit": false,
+    "elapsed_ns": 311988981597,
+    "event": {
+      "geometry": {
+        "columns": 128,
+        "cosets": 2048,
+        "cosets_per_reconstruction": 4,
+        "groups": 512,
+        "height": 2147483648,
+        "live_source": 13154672538,
+        "rows": 1048576
+      },
+      "kind": "progress",
+      "phase": "pcs_a_resident",
+      "wall_ns": 1006272541,
+      "work": {
+        "active_first_coset": 0,
+        "completed_groups": 0,
+        "native": {
+          "allocations": 3645172,
+          "arena_bytes": 5255000320,
+          "cleanup_failed": 0,
+          "d2d_bytes": 236774400,
+          "d2h_bytes": 17353848,
+          "fences": 3672942,
+          "h2d_bytes": 61420218224,
+          "host_owner_bytes": 42088,
+          "launches": 1202534,
+          "live_capacity_bytes": 5255000320,
+          "logical_bytes": 5254994768,
+          "peak_capacity_bytes": 5310830336,
+          "peak_reserved_bytes": 66705520896,
+          "releases": 3644777,
+          "stopped": 0,
+          "weights_bytes": 61394690560,
+          "weights_loaded_bytes": 61394690560,
+          "weights_sealed": 1,
+          "zeroed_bytes": 4373116712
+        },
+        "original_bytes_in_group": 1887420000,
+        "source_visits": 1887420000
+      }
+    },
+    "host_process": [
+      "VmHWM:\t60145296 kB",
+      "VmRSS:\t60145296 kB"
+    ],
+    "joint_allocations": {
+      "denied_allocations": 0,
+      "enforced": true,
+      "excluded_packed_w_capacity_bytes": 61394690560,
+      "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+      "host_layout_bytes": 61512413648,
+      "native_reservation_bytes": 5255042408,
+      "operational_margin_required_bytes": 268435456,
+      "payload_limit_bytes": 5905580032,
+      "peak_plus_runtime_allowance_bytes": 5696996896,
+      "physical_runtime_allowance_verified": false,
+      "runtime_allowance_bytes": 268435456,
+      "temporary_live_bytes": 5372766221,
+      "temporary_payload_peak_bytes": 5428561440
+    },
+    "schema": "volta-c71-progress-v1",
+    "sequence": 25,
+    "thread": "ThreadId(1)"
+  },
+  {
+    "credit": false,
+    "elapsed_ns": 312989876106,
+    "event": {
+      "geometry": {
+        "columns": 128,
+        "cosets": 2048,
+        "cosets_per_reconstruction": 4,
+        "groups": 512,
+        "height": 2147483648,
+        "live_source": 13154672538,
+        "rows": 1048576
+      },
+      "kind": "progress",
+      "phase": "pcs_a_resident",
+      "wall_ns": 2007166970,
+      "work": {
+        "active_first_coset": 0,
+        "completed_groups": 0,
+        "native": {
+          "allocations": 3649260,
+          "arena_bytes": 5317526016,
+          "cleanup_failed": 0,
+          "d2d_bytes": 236774400,
+          "d2h_bytes": 17359100,
+          "fences": 3677077,
+          "h2d_bytes": 61420218304,
+          "host_owner_bytes": 42088,
+          "launches": 1218018,
+          "live_capacity_bytes": 5317526016,
+          "logical_bytes": 5317524068,
+          "peak_capacity_bytes": 5321316096,
+          "peak_reserved_bytes": 66716006656,
+          "releases": 3648902,
+          "stopped": 0,
+          "weights_bytes": 61394690560,
+          "weights_loaded_bytes": 61394690560,
+          "weights_sealed": 1,
+          "zeroed_bytes": 4383607564
+        },
+        "original_bytes_in_group": 4007046300,
+        "source_visits": 4007046300
+      }
+    },
+    "host_process": [
+      "VmHWM:\t60145408 kB",
+      "VmRSS:\t60145408 kB"
+    ],
+    "joint_allocations": {
+      "denied_allocations": 0,
+      "enforced": true,
+      "excluded_packed_w_capacity_bytes": 61394690560,
+      "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+      "host_layout_bytes": 61512480180,
+      "native_reservation_bytes": 5317568104,
+      "operational_margin_required_bytes": 268435456,
+      "payload_limit_bytes": 5905580032,
+      "peak_plus_runtime_allowance_bytes": 5707564900,
+      "physical_runtime_allowance_verified": false,
+      "runtime_allowance_bytes": 268435456,
+      "temporary_live_bytes": 5435358449,
+      "temporary_payload_peak_bytes": 5439129444
+    },
+    "schema": "volta-c71-progress-v1",
+    "sequence": 26,
+    "thread": "ThreadId(1)"
+  },
+  {
+    "credit": false,
+    "elapsed_ns": 313997517814,
+    "event": {
+      "geometry": {
+        "columns": 128,
+        "cosets": 2048,
+        "cosets_per_reconstruction": 4,
+        "groups": 512,
+        "height": 2147483648,
+        "live_source": 13154672538,
+        "rows": 1048576
+      },
+      "kind": "progress",
+      "phase": "pcs_a_resident",
+      "wall_ns": 3014808822,
+      "work": {
+        "active_first_coset": 0,
+        "completed_groups": 0,
+        "native": {
+          "allocations": 3653282,
+          "arena_bytes": 5328011776,
+          "cleanup_failed": 0,
+          "d2d_bytes": 236774400,
+          "d2h_bytes": 17364284,
+          "fences": 3681089,
+          "h2d_bytes": 61420218384,
+          "host_owner_bytes": 42088,
+          "launches": 1233147,
+          "live_capacity_bytes": 5328011776,
+          "logical_bytes": 5328009668,
+          "peak_capacity_bytes": 5331801856,
+          "peak_reserved_bytes": 66726492416,
+          "releases": 3652904,
+          "stopped": 0,
+          "weights_bytes": 61394690560,
+          "weights_loaded_bytes": 61394690560,
+          "weights_sealed": 1,
+          "zeroed_bytes": 4394098348
+        },
+        "original_bytes_in_group": 6043139708,
+        "source_visits": 6043139708
+      }
+    },
+    "host_process": [
+      "VmHWM:\t60145516 kB",
+      "VmRSS:\t60145516 kB"
+    ],
+    "joint_allocations": {
+      "denied_allocations": 0,
+      "enforced": true,
+      "excluded_packed_w_capacity_bytes": 61394690560,
+      "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+      "host_layout_bytes": 61512562624,
+      "native_reservation_bytes": 5328053864,
+      "operational_margin_required_bytes": 268435456,
+      "payload_limit_bytes": 5905580032,
+      "peak_plus_runtime_allowance_bytes": 5718132800,
+      "physical_runtime_allowance_verified": false,
+      "runtime_allowance_bytes": 268435456,
+      "temporary_live_bytes": 5445926653,
+      "temporary_payload_peak_bytes": 5449697344
+    },
+    "schema": "volta-c71-progress-v1",
+    "sequence": 27,
+    "thread": "ThreadId(1)"
+  },
+  {
+    "credit": false,
+    "elapsed_ns": 314998539843,
+    "event": {
+      "geometry": {
+        "columns": 128,
+        "cosets": 2048,
+        "cosets_per_reconstruction": 4,
+        "groups": 512,
+        "height": 2147483648,
+        "live_source": 13154672538,
+        "rows": 1048576
+      },
+      "kind": "progress",
+      "phase": "pcs_a_resident",
+      "wall_ns": 4015830720,
+      "work": {
+        "active_first_coset": 0,
+        "completed_groups": 0,
+        "native": {
+          "allocations": 3657315,
+          "arena_bytes": 5305153024,
+          "cleanup_failed": 0,
+          "d2d_bytes": 236774400,
+          "d2h_bytes": 17369488,
+          "fences": 3685111,
+          "h2d_bytes": 61420218464,
+          "host_owner_bytes": 42088,
+          "launches": 1248364,
+          "live_capacity_bytes": 5305153024,
+          "logical_bytes": 5305150748,
+          "peak_capacity_bytes": 5343336192,
+          "peak_reserved_bytes": 66738026752,
+          "releases": 3656916,
+          "stopped": 0,
+          "weights_bytes": 61394690560,
+          "weights_loaded_bytes": 61394690560,
+          "weights_sealed": 1,
+          "zeroed_bytes": 4405113432
+        },
+        "original_bytes_in_group": 8092476604,
+        "source_visits": 8092476604
+      }
+    },
+    "host_process": [
+      "VmHWM:\t60145624 kB",
+      "VmRSS:\t60145624 kB"
+    ],
+    "joint_allocations": {
+      "denied_allocations": 0,
+      "enforced": true,
+      "excluded_packed_w_capacity_bytes": 61394690560,
+      "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+      "host_layout_bytes": 61512644914,
+      "native_reservation_bytes": 5305195112,
+      "operational_margin_required_bytes": 268435456,
+      "payload_limit_bytes": 5905580032,
+      "peak_plus_runtime_allowance_bytes": 5729757506,
+      "physical_runtime_allowance_verified": false,
+      "runtime_allowance_bytes": 268435456,
+      "temporary_live_bytes": 5423150191,
+      "temporary_payload_peak_bytes": 5461322050
+    },
+    "schema": "volta-c71-progress-v1",
+    "sequence": 28,
+    "thread": "ThreadId(1)"
+  },
+  {
+    "credit": false,
+    "elapsed_ns": 315999943630,
+    "event": {
+      "geometry": {
+        "columns": 128,
+        "cosets": 2048,
+        "cosets_per_reconstruction": 4,
+        "groups": 512,
+        "height": 2147483648,
+        "live_source": 13154672538,
+        "rows": 1048576
+      },
+      "kind": "progress",
+      "phase": "pcs_a_resident",
+      "wall_ns": 5017234497,
+      "work": {
+        "active_first_coset": 0,
+        "completed_groups": 0,
+        "native": {
+          "allocations": 3661379,
+          "arena_bytes": 5305750784,
+          "cleanup_failed": 0,
+          "d2d_bytes": 236774400,
+          "d2h_bytes": 17374740,
+          "fences": 3689163,
+          "h2d_bytes": 61420218544,
+          "host_owner_bytes": 42088,
+          "launches": 1263793,
+          "live_capacity_bytes": 5305750784,
+          "logical_bytes": 5305748348,
+          "peak_capacity_bytes": 5353821952,
+          "peak_reserved_bytes": 66748512512,
+          "releases": 3660958,
+          "stopped": 0,
+          "weights_bytes": 61394690560,
+          "weights_loaded_bytes": 61394690560,
+          "weights_sealed": 1,
+          "zeroed_bytes": 4415604284
+        },
+        "original_bytes_in_group": 10224175652,
+        "source_visits": 10224175652
+      }
+    },
+    "host_process": [
+      "VmHWM:\t60145736 kB",
+      "VmRSS:\t60145736 kB"
+    ],
+    "joint_allocations": {
+      "denied_allocations": 0,
+      "enforced": true,
+      "excluded_packed_w_capacity_bytes": 61394690560,
+      "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+      "host_layout_bytes": 61512730894,
+      "native_reservation_bytes": 5305792872,
+      "operational_margin_required_bytes": 268435456,
+      "payload_limit_bytes": 5905580032,
+      "peak_plus_runtime_allowance_bytes": 5740328998,
+      "physical_runtime_allowance_verified": false,
+      "runtime_allowance_bytes": 268435456,
+      "temporary_live_bytes": 5423833931,
+      "temporary_payload_peak_bytes": 5471893542
+    },
+    "schema": "volta-c71-progress-v1",
+    "sequence": 29,
+    "thread": "ThreadId(1)"
+  },
+  {
+    "credit": false,
+    "elapsed_ns": 316980403074,
+    "event": {
+      "complete": false,
+      "geometry": {
+        "columns": 128,
+        "cosets": 2048,
+        "cosets_per_reconstruction": 4,
+        "groups": 512,
+        "height": 2147483648,
+        "live_source": 13154672538,
+        "rows": 1048576
+      },
+      "kind": "end",
+      "phase": "pcs_a_resident",
+      "wall_ns": 5997693168
+    },
+    "host_process": [
+      "VmHWM:\t60145848 kB",
+      "VmRSS:\t60145848 kB"
+    ],
+    "joint_allocations": {
+      "denied_allocations": 0,
+      "enforced": true,
+      "excluded_packed_w_capacity_bytes": 61394690560,
+      "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+      "host_layout_bytes": 61507094748,
+      "native_reservation_bytes": 5242285672,
+      "operational_margin_required_bytes": 268435456,
+      "payload_limit_bytes": 5905580032,
+      "peak_plus_runtime_allowance_bytes": 5822820136,
+      "physical_runtime_allowance_verified": false,
+      "runtime_allowance_bytes": 268435456,
+      "temporary_live_bytes": 5354690585,
+      "temporary_payload_peak_bytes": 5554384680
+    },
+    "schema": "volta-c71-progress-v1",
+    "sequence": 30,
+    "thread": "ThreadId(1)"
+  },
+  {
+    "credit": false,
+    "elapsed_ns": 316982107758,
+    "event": {
+      "complete": false,
+      "geometry": {
+        "base_columns": 128,
+        "coset_rows": 1048576,
+        "cosets": 2048,
+        "cut": 4096,
+        "height": 2147483648,
+        "native_kind": "source"
+      },
+      "kind": "end",
+      "phase": "pcs_commitment",
+      "wall_ns": 6082537844
+    },
+    "host_process": [
+      "VmHWM:\t60140268 kB",
+      "VmRSS:\t60133552 kB"
+    ],
+    "joint_allocations": {
+      "denied_allocations": 0,
+      "enforced": true,
+      "excluded_packed_w_capacity_bytes": 61394690560,
+      "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+      "host_layout_bytes": 61494511117,
+      "native_reservation_bytes": 5242285672,
+      "operational_margin_required_bytes": 268435456,
+      "payload_limit_bytes": 5905580032,
+      "peak_plus_runtime_allowance_bytes": 5822820136,
+      "physical_runtime_allowance_verified": false,
+      "runtime_allowance_bytes": 268435456,
+      "temporary_live_bytes": 5342106954,
+      "temporary_payload_peak_bytes": 5554384680
+    },
+    "schema": "volta-c71-progress-v1",
+    "sequence": 31,
+    "thread": "ThreadId(1)"
+  }
+]

@@ -67,6 +67,16 @@ con un job e stop RSS 3 GiB. Passano otto test ridotti: sei del runner,
 un controllo fail-closed e parità dell'albero sorgente. La CLI con
 input canonici si esegue soltanto sul pod autorizzato.
 
+Il [diagnostico A](../c7.1-history/h100-a-diagnostic-2026-10-10.md) riproduce
+un rifiuto del tile originale: i consumer PCS/lineari richiedono capacità
+interamente scritta, mentre KV contiene un prefisso inizializzato. La
+correzione deve limitare gli span a quel prefisso, senza ammettere la coda.
+
+La [candidata sul prefisso KV](../c7.1-history/h100-prefix-candidate-2026-10-10.md)
+passa sei test locali, inclusa regressione prima/dopo, 12 span validi e
+invalidi nei tre consumer, parità A e MAC originali. Attende ricompilazione
+sm_90 e nuova parità reale prima di un altro trial.
+
 ## Limiti e ambiente
 
 I controlli locali usano input piccoli, un solo processo di test per volta,

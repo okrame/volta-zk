@@ -3614,9 +3614,12 @@ mod tests {
         let weights = Arc::new(vec![0i16; 512]);
         let mut runtime = device::Runtime::new(config).unwrap();
         runtime.install_weights(weights.clone(), [17; 32]).unwrap();
-        let input = Arc::new(runtime.upload_signed(&words).unwrap());
-        let raw = Arc::new(runtime.pointwise([Some((&input, 0)), None], words.len(),
+        let uploaded = runtime.upload_signed(&words).unwrap();
+        let raw = Arc::new(runtime.pointwise([Some((&uploaded, 0)), None], words.len(),
             device::Pointwise { a: 1 << 30, b: 0, multiply: 0 }).unwrap());
+        let input = Arc::new(runtime.signed_capacity(3 * words.len()).unwrap());
+        runtime.append_signed(&uploaded, 0, words.len(), &input, 0).unwrap();
+        runtime.release_buffer(uploaded).unwrap();
         let runtime = Arc::new(Mutex::new(runtime));
         let reconstructions = Arc::new(AtomicU64::new(0));
         let owner = runtime.clone();

@@ -1,0 +1,6 @@
+
+thread 'c71_matrix::range::windowed::native::tests::c71_b12_native_original_tiles_read_only_initialized_prefix' (6) panicked at volta-pcs/src/c71_matrix/range/windowed/native.rs:3038:17:
+assertion `left == right` failed: consumer 0, first 0: Err("native range stopped: PCS original source tile or state")
+  left: false
+ right: true
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

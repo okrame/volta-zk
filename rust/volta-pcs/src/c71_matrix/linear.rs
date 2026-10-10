@@ -717,7 +717,10 @@ mod tests {
         let logits=runtime.upload_signed(&logits).unwrap();
         let (input,tokens)=runtime.argmax(&logits,0,1,words.len()).unwrap();
         assert_eq!(tokens,vec![0]);
-        let input=Arc::new(input);
+        let prefix=runtime.signed_capacity(3*words.len()).unwrap();
+        runtime.append_signed(&input,0,words.len(),&prefix,0).unwrap();
+        runtime.release_buffer(input).unwrap();
+        let input=Arc::new(prefix);
         let raw_input=runtime.upload_signed(&raw_words).unwrap();
         let raw=Arc::new(runtime.pointwise([Some((&raw_input,0)),None],raw_words.len(),
             device::Pointwise { a:1<<30,b:0,multiply:0 }).unwrap());

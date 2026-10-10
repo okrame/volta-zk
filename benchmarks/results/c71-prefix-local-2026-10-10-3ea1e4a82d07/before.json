@@ -1,0 +1,17 @@
+{
+  "command": [
+    "timeout",
+    "-k",
+    "5s",
+    "60s",
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+    "c71_b12_native_original_tiles_read_only_initialized_prefix",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "exit_code": 101,
+  "wall_seconds": 10.030367332976311,
+  "expected_failure": true,
+  "as_bytes": 2147483648,
+  "deadline_seconds": 60
+}

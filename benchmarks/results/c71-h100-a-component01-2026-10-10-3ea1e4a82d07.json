@@ -1,0 +1,223 @@
+{
+  "schema": "c71-h100-initial-a-diagnostic-v1",
+  "date": "2026-10-10",
+  "git_sha": "3ea1e4a82d07c87bf9c41ce2926a9344b8d86072",
+  "git_dirty": false,
+  "component_complete": false,
+  "credit": false,
+  "canonical_certificates_verified": 0,
+  "launch": {
+    "source_git_sha": "3ea1e4a82d07c87bf9c41ce2926a9344b8d86072",
+    "git_dirty": false,
+    "binary_sha256": "f418d235572ae21ad8aae74fb9a0c4eec81b8ff7e299d443ba97a99d91b40b64",
+    "library_sha256": "88f3138effc9af42068e77aa3b4bf2c5d0d6c7b634c9608900da50aa94a6b0c2",
+    "library_source_git_sha": "a32a6c3286b556b43f8ede0b1a2ae39b5d7ebb2d",
+    "argv": [
+      "/workspace/c71-h100-20261009/binaries/c71_canonical_reference-3ea1e4a",
+      "commitment-a-cuda",
+      "/workspace/c71-h100-20261009/gamma-inputs/candidate.json",
+      "/workspace/c71-h100-20261009/gamma-inputs/tables.bin",
+      "/workspace/c71-h100-20261009/weights/gemma-4-31b-5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89.packed.i16",
+      "/workspace/c71-h100-20261009/a-component-01/journals",
+      "2147483648",
+      "/workspace/c71-h100-20261009/libc71_device_runner_stack256.so",
+      "0"
+    ],
+    "monitor_label": "commitment-a",
+    "diagnostic_timeout_seconds": 900,
+    "response_target_seconds": 65,
+    "component": "O=0 initial A commitment after exact inference; no W commitment, setup, proof, verification or continuation",
+    "credit": false,
+    "coins": "fresh PCS randomness after NoPeek preparation; no PCG or correlations used",
+    "geometry": "canonical D34; four cosets/all128columns;512reconstructions",
+    "canonical_caps_enforced": true,
+    "packed_reuse": "same sealed0400 body, priorSHA256 and per-loadBLAKE3 measured",
+    "prepared_epoch": 1791591085.3152766
+  },
+  "monitor": {
+    "authorized_end_epoch": 1791601722.0,
+    "close_reserve_seconds": 1800,
+    "command": [
+      "bash",
+      "-c",
+      "ulimit -S -v unlimited; exec \"$@\"",
+      "c71-a-component",
+      "/workspace/c71-h100-20261009/binaries/c71_canonical_reference-3ea1e4a",
+      "commitment-a-cuda",
+      "/workspace/c71-h100-20261009/gamma-inputs/candidate.json",
+      "/workspace/c71-h100-20261009/gamma-inputs/tables.bin",
+      "/workspace/c71-h100-20261009/weights/gemma-4-31b-5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89.packed.i16",
+      "/workspace/c71-h100-20261009/a-component-01/journals",
+      "2147483648",
+      "/workspace/c71-h100-20261009/libc71_device_runner_stack256.so",
+      "0"
+    ],
+    "compute_end_epoch": 1791599922.0,
+    "exit_code": 1,
+    "gpu_uuid": "GPU-9f6b4728-e7d8-ff40-d9f1-e1cec5dd2b3a",
+    "incomplete_samples": 4,
+    "label": "commitment-a",
+    "mode": "canonical",
+    "observed_payload_peak_bytes": 5554384680,
+    "payload_limit_bytes": 5905580032,
+    "physical_complete_peak": false,
+    "physical_temporary_limit_bytes": 6174015488,
+    "resource_failure": null,
+    "sampled_host_rss_peak_bytes": 61607624704,
+    "sampled_stable_temporary_peak_bytes": 5994184192,
+    "sampled_whole_gpu_peak_bytes": 67175972864,
+    "samples": 1582,
+    "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+    "sampling_target_seconds": 0.2,
+    "smaps_read_failures": 0,
+    "stable_samples": 1578,
+    "start_unix_seconds": 1791591085.354395,
+    "wall_seconds": 317.53057011030614
+  },
+  "terminal_reason": "native range stopped: PCS original source tile or state",
+  "phase_seconds": [
+    {
+      "role": "prover",
+      "phase": "read_and_compile_public",
+      "seconds": 7.558929223,
+      "complete": true
+    },
+    {
+      "role": "coordinator",
+      "phase": "public_distribution",
+      "seconds": 0.018598519,
+      "complete": true
+    },
+    {
+      "role": "verifier",
+      "phase": "compile_received_public",
+      "seconds": 7.50604346,
+      "complete": true
+    },
+    {
+      "role": "prover",
+      "phase": "load_packed_w",
+      "seconds": 189.29717131,
+      "complete": true
+    },
+    {
+      "role": "coordinator",
+      "phase": "global_initialization",
+      "seconds": 205.307772547,
+      "complete": true
+    },
+    {
+      "role": "prover",
+      "phase": "native_global_residency",
+      "seconds": 20.989565335,
+      "complete": true
+    },
+    {
+      "role": "prover",
+      "phase": "preparation_including_inference",
+      "seconds": 84.558582104,
+      "complete": true
+    },
+    {
+      "role": "prover",
+      "phase": "commitment_a_component",
+      "seconds": 6.085798605,
+      "complete": false
+    },
+    {
+      "role": "coordinator",
+      "phase": "command_total",
+      "seconds": 317.041078335,
+      "complete": false
+    }
+  ],
+  "scope": "O=0 original initial A commitment after preparation, canonical geometry and physicalcaps. No W commitment, Seed6 setup, proof, verification, original-MAC closure or continuation. Fresh PCS coins after NoPeek preparation; no correlations used.",
+  "diagnosis": "Native source tile boundary rejects partially initialized KV capacity. Source-level candidate: use initialized prefix as span bound in initial PCS, linear source and residual source consumers, matching existing byte gather. Precise equivalence to C05 uniform Stop is an inference until a corrected canonical run.",
+  "physical_complete_peak": false,
+  "private_bundle": {
+    "path": "artifact/c7.1-pod/h100-final-a-component01-20261010T001700Z",
+    "manifest_sha256": "d267c7622dc999b0e13ba17597897da0c0b764493933393578486046df42009c"
+  },
+  "artifacts": [
+    {
+      "path": "benchmarks/results/c71-h100-a-component01-2026-10-10-3ea1e4a82d07/a-diagnostic-build.json",
+      "bytes": 2451,
+      "sha256": "5560418c447a3e5abcef5128b8a74128bc1a509e7eb9ca9fe26dec237d1e8d75"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-a-component01-2026-10-10-3ea1e4a82d07/build-a-diagnostic.end",
+      "bytes": 18,
+      "sha256": "89a3012a8bbd15b749cd32e17d21076b801310ce890751d2ad37c9b7a5f6ace3"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-a-component01-2026-10-10-3ea1e4a82d07/build-a-diagnostic.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-a-component01-2026-10-10-3ea1e4a82d07/build-a-diagnostic.memory.csv",
+      "bytes": 146418,
+      "sha256": "5588ec89cc9f90b365aa7eb3c0b1896392e1c7b30312f466af3fdf4471512d6c"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-a-component01-2026-10-10-3ea1e4a82d07/build-a-diagnostic.start",
+      "bytes": 19,
+      "sha256": "c3fb68bb9399921b003d96361b89e59c6ab93461807f3f7812fa7f80152fe54a"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-a-component01-2026-10-10-3ea1e4a82d07/build-a-diagnostic.stderr",
+      "bytes": 19546,
+      "sha256": "97a4ce791856f1f577ffe49851ef913150f9754885725615583883a172cc6481"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-a-component01-2026-10-10-3ea1e4a82d07/build-a-diagnostic.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-a-component01-2026-10-10-3ea1e4a82d07/build-a-diagnostic.summary.json",
+      "bytes": 1541,
+      "sha256": "df5d2ea2c3a2f7767cfaff882363fb5bece7b083e4cfa69d980140016cd4eb69"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-a-component01-2026-10-10-3ea1e4a82d07/build-a-diagnostic.time.txt",
+      "bytes": 878,
+      "sha256": "d158a4bdaa2ca87607e8c98e781fead3c0973201c9fa1ac9173b5e72102bd744"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-a-component01-2026-10-10-3ea1e4a82d07/commitment-a.memory.csv",
+      "bytes": 203189,
+      "sha256": "5ff964bf330a12514a681bea9286dd5c84a08f3cdaf571ae7bbfc0a29d0eff28"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-a-component01-2026-10-10-3ea1e4a82d07/commitment-a.stderr",
+      "bytes": 23311,
+      "sha256": "92ec0378fd5b331cc7d3cff5f9039d5b2207faa205ee1ae3108e3d00706d6b19"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-a-component01-2026-10-10-3ea1e4a82d07/commitment-a.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-a-component01-2026-10-10-3ea1e4a82d07/commitment-a.summary.json",
+      "bytes": 1983,
+      "sha256": "b5dd11ccc67c1c117005aa26bedb22dd64535c34a0d1c1fa28fe53b9ef32b133"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-a-component01-2026-10-10-3ea1e4a82d07/commitment-a.time.txt",
+      "bytes": 1254,
+      "sha256": "983c65b481c512a3ecbe602126922ba859c60f951a4335d96e58ec52948d08dc"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-a-component01-2026-10-10-3ea1e4a82d07/pcs-events.json",
+      "bytes": 18804,
+      "sha256": "625c3e5deae56cf51d26cdfeb4fa7294cf14c167f1c9c1b5048d40f3ee4269a0"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-a-component01-2026-10-10-3ea1e4a82d07/phases.json",
+      "bytes": 23257,
+      "sha256": "a79579fb1c3f680ea3e39798dceed866c37c114abac023a19eb65cb04c995df9"
+    }
+  ]
+}

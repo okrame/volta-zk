@@ -1,0 +1,24 @@
+Command exited with non-zero status 1
+	Command being timed: "bash -c ulimit -S -v unlimited; exec "$@" c71-a-component /workspace/c71-h100-20261009/binaries/c71_canonical_reference-3ea1e4a commitment-a-cuda /workspace/c71-h100-20261009/gamma-inputs/candidate.json /workspace/c71-h100-20261009/gamma-inputs/tables.bin /workspace/c71-h100-20261009/weights/gemma-4-31b-5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89.packed.i16 /workspace/c71-h100-20261009/a-component-01/journals 2147483648 /workspace/c71-h100-20261009/libc71_device_runner_stack256.so 0"
+	User time (seconds): 168.61
+	System time (seconds): 147.42
+	Percent of CPU this job got: 99%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 5:17.48
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 60140268
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 1240418
+	Voluntary context switches: 1650
+	Involuntary context switches: 588
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 552
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 1

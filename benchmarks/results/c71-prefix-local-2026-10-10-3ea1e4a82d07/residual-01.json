@@ -1,0 +1,20 @@
+{
+  "filter": "c71_b12_native_residual_state_exact_coefficients_late_retention_and_views",
+  "exit_code": 0,
+  "wall_seconds": 10.199351632036269,
+  "command": [
+    "timeout",
+    "-k",
+    "5s",
+    "60s",
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+    "c71_b12_native_residual_state_exact_coefficients_late_retention_and_views",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "deadline_seconds": 60,
+  "as_limit_bytes": 2147483648,
+  "passed": 1,
+  "failed": 0,
+  "ignored": 0
+}

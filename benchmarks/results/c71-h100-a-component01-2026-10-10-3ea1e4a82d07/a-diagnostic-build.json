@@ -1,0 +1,42 @@
+{
+  "source_git_sha": "3ea1e4a82d07c87bf9c41ce2926a9344b8d86072",
+  "git_dirty": false,
+  "canonical_binary_path": "/workspace/c71-h100-20261009/binaries/c71_canonical_reference-3ea1e4a",
+  "canonical_binary_sha256": "f418d235572ae21ad8aae74fb9a0c4eec81b8ff7e299d443ba97a99d91b40b64",
+  "library_sha256": "88f3138effc9af42068e77aa3b4bf2c5d0d6c7b634c9608900da50aa94a6b0c2",
+  "library_source_git_sha": "a32a6c3286b556b43f8ede0b1a2ae39b5d7ebb2d",
+  "cuda_sources_unchanged": true,
+  "prior_15_cuda_parity_reused": true,
+  "parity_record": "queue1-validation.json",
+  "source_compatibility": "CUDA, PCS source/tree, native owner/range and numerical producer files unchanged from already validated source, except test-only geometry metadata788463b; new CLI component and private failure telemetry; cGGM exact lazy tail separatelyvalidated",
+  "summary": {
+    "authorized_end_epoch": 1791601722.0,
+    "close_reserve_seconds": 1800,
+    "command": [
+      "bash",
+      "-c",
+      "cd \"$C71_ROOT/rust\"; cargo build --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --example c71_canonical_reference"
+    ],
+    "compute_end_epoch": 1791599922.0,
+    "exit_code": 0,
+    "gpu_uuid": "GPU-9f6b4728-e7d8-ff40-d9f1-e1cec5dd2b3a",
+    "incomplete_samples": 1,
+    "label": "build-a-diagnostic",
+    "mode": "calibration",
+    "observed_payload_peak_bytes": null,
+    "payload_limit_bytes": null,
+    "physical_complete_peak": false,
+    "physical_temporary_limit_bytes": null,
+    "resource_failure": null,
+    "sampled_host_rss_peak_bytes": 1785901056,
+    "sampled_stable_temporary_peak_bytes": 0,
+    "sampled_whole_gpu_peak_bytes": 0,
+    "samples": 1435,
+    "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+    "sampling_target_seconds": 0.2,
+    "smaps_read_failures": 0,
+    "stable_samples": 1434,
+    "start_unix_seconds": 1791590762.1128054,
+    "wall_seconds": 287.1310867127031
+  }
+}

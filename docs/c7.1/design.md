@@ -15,6 +15,19 @@ isola preparazione e commitment iniziale A con geometria/limiti originali
 e monete fresche, senza setup, W commitment o certificati. Il suo risultato
 non sostituisce il percorso canonico; serve a diagnosticare questo stop.
 
+Il [diagnostico A](../c7.1-history/h100-a-diagnostic-2026-10-10.md) riproduce
+un rifiuto del tile originale: i consumer PCS/lineari richiedono capacità
+interamente scritta, mentre KV contiene un prefisso inizializzato. La
+correzione deve limitare gli span a quel prefisso, senza ammettere la coda.
+
+La correzione dei tre consumer usa `initialized` come limite degli span,
+come il gather già esistente; capacità, byte originali e ordine restano
+immutati. Richiede l'invariante del driver che `initialized` descriva un
+prefisso contiguo scritto prima della lettura. Nessun lemma Lean raffina
+questo contatore C++; la corrispondenza resta una premessa implementativa
+esplicita, con regressione prima/dopo e parità finita, non nuovo credito
+al protocollo. Nessuna lettura della coda o modifica dei MAC è ammessa.
+
 ## Obiettivo e relazione dimostrata
 
 C7.1 dimostra a un verificatore designato l'inferenza intera di un modello
@@ -88,8 +101,8 @@ causale, replay A, PCS/range/GKR, verifica e promozione per O=0/150/300.
 È un percorso misto GPU/CPU. La tabella descrive l'integrazione corrente.
 La [campagna H100 del 9 ottobre](../c7.1-history/h100-components-2026-10-09.md)
 ha compilato sm_90 e passato i 15 test CUDA reali. I benchmark sono
-componenti ridotti. Il [commitment W completo](../c7.1-history/h100-w-setup-2026-10-09.md)
-termina in 360,301 s; risposta canonica e picco fisico completo restano aperti. Gli ingressi di test e il lancio
+componenti ridotti. Il [commitment W completo più recente](../c7.1-history/h100-w05-checkpoint-2026-10-09.md)
+termina in 190,200 s; risposta canonica e picco fisico completo restano aperti. Gli ingressi di test e il lancio
 sorvegliato sono nel
 [runbook](runpod-tests.md#preparazione-operativa-della-campagna).
 
@@ -105,7 +118,7 @@ sorvegliato sono nel
 | Closure lineare | Owner e caller nativi integrati con parità ridotta: una scan originale per round, D·live visite, cinque elementi MAC e flag restituiti; mapping W riusato, nessun getter A sostitutivo |
 | PCS S1 e successori | Route canonica collegata a `model.native_original`: singleton, coset/FFT/hash/sali, OOD, retention A dopo apertura del predecessore, fold e contrazioni sul common owner; W continua a leggere il packed originale |
 | Query extension A/W | Tre componenti PCS caricate nello stesso passaggio e resti residenti in tutti gli stadi; A legge le plane trattenute, senza ricostruzioni originali aggiunte; sole valutazioni finali D2H |
-| Accumulo W Tensor Core | Limb16 esatto selezionato dopo parità CUDA: 5,663× sul componente W da 256 MiB; stesso owner e capacità globali; PCS W completa in 360,301 s |
+| Accumulo W Tensor Core | Limb16 esatto selezionato dopo parità CUDA: 5,663× sul componente W da 256 MiB; stesso owner e capacità globali; PCS W completa più recente in 190,200 s |
 | QK/PV | Default scalare esatto; candidata MMA con prefisso causale comune e bordo scalare non selezionata |
 | RMS misto | Replay Booleano CPU a 64 lane con DAG per depth; primo round esatto e cache compatta delle geometrie pubbliche. Selezione solo senza pattern prefix e con più programmi; coefficienti Fp3 ed endpoint restano CPU |
 | Resto della prova | Fattori pubblici, rigenerazione Merkle delle aperture, GKR/MAC, Seed6 reale AES, codec, verifica e journal CPU; tempi completi da misurare |
@@ -145,7 +158,7 @@ modifiche; si ripete la calibrazione solo quando l'ammissione pertinente
 è invalidata. È l'unico Γ ammesso finora, non un optimum prestazionale
 dimostrato. Cambiare scale può semplificare i circuiti ma cambia la
 relazione numerica; la ricerca di un altro Γ è distinta dal goal corrente.
-La [campagna H100 corrente](../c7.1-history/h100-w-setup-2026-10-09.md)
+Il [primo W della campagna H100](../c7.1-history/h100-w-setup-2026-10-09.md)
 ha completato PCS W in 360,301 s e l'installazione W in 404,340 s,
 con 128 scansioni/7,859 TB logici. Il setup Seed6/AES termina in
 2.018,838 s; il [primo trial](../c7.1-history/h100-canonical-01-2026-10-09.md)
@@ -202,7 +215,8 @@ se il primo candidato del terzo slot è scartato. Frame e tre slot da
 64 byte restano identici; cambiano soltanto byte effettivamente estratti
 e relativo contatore. Golden, parità col campionatore completo, rifiuti
 fino a esaurimento e setup/journal ridotti passano localmente. Non è
-usata da `canonical-05`; prestazioni H100 e setup completo sono da misurare.
+usata da `canonical-05`; il microbenchmark H100 misura 1,475×, mentre
+il setup completo con questa modifica resta da misurare.
 Il raffinamento generale Seed6/CUDA resta aperto come in [security](security.md).
 
 Il goal corrente esegue la campagna H100 autorizzata, entro otto ore

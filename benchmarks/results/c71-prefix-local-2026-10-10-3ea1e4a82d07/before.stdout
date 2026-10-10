@@ -1,0 +1,11 @@
+
+running 1 test
+test c71_matrix::range::windowed::native::tests::c71_b12_native_original_tiles_read_only_initialized_prefix ... FAILED
+
+failures:
+
+failures:
+    c71_matrix::range::windowed::native::tests::c71_b12_native_original_tiles_read_only_initialized_prefix
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 601 filtered out; finished in 10.03s
+

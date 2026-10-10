@@ -15,6 +15,16 @@ isola preparazione e commitment iniziale A con geometria/limiti originali
 e monete fresche, senza setup, W commitment o certificati. Il suo risultato
 non sostituisce il percorso canonico; serve a diagnosticare questo stop.
 
+Il [diagnostico A](../c7.1-history/h100-a-diagnostic-2026-10-10.md) riproduce
+un rifiuto del tile originale: i consumer PCS/lineari richiedono capacità
+interamente scritta, mentre KV contiene un prefisso inizializzato. La
+correzione deve limitare gli span a quel prefisso, senza ammettere la coda.
+
+La [candidata sul prefisso KV](../c7.1-history/h100-prefix-candidate-2026-10-10.md)
+passa sei test locali, inclusa regressione prima/dopo, 12 span validi e
+invalidi nei tre consumer, parità A e MAC originali. Attende ricompilazione
+sm_90 e nuova parità reale prima di un altro trial.
+
 ## Stato e sequenza operativa
 
 Γ è ammesso e riusato dopo verifica degli input, dell'ammissione e dei tre

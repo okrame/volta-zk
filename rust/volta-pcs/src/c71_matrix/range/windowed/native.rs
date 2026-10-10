@@ -3006,6 +3006,43 @@ pub(in crate::c71_matrix) mod tests {
     }
 
     #[test]
+    fn c71_b12_native_original_tiles_read_only_initialized_prefix() {
+        let fixture = fixture(512);
+        for consumer in 0..3 {
+            for first in [0, 1, 4, u64::MAX] {
+                let mut runtime = Runtime::new(&fixture.config).unwrap();
+                let uploaded = runtime.upload_signed(&[1, -2, 3, -4]).unwrap();
+                let prefix = runtime.signed_capacity(12).unwrap();
+                runtime.append_signed(&uploaded, 0, 4, &prefix, 0).unwrap();
+                runtime.release_buffer(uploaded).unwrap();
+                let tile = PcsSourceTile { input_first:first, input_stride:1, rows:4,
+                    columns:1, original_first:0, byte_first:0, width:2, signed_width:2 };
+                let result = match consumer {
+                    0 => {
+                        let shape = PcsSourceShape {message_rows:4,rows:4,live:8,pad_rows:3,cosets:16,first_coset:0};
+                        let (low, high) = runtime.pcs_source_powers(shape).unwrap();
+                        runtime.pcs_source_begin(&low, &high, shape, false).unwrap();
+                        runtime.pcs_source_tile(&prefix, tile)
+                    }
+                    1 => {
+                        let token = runtime.linear_begin(&linear_fixture_packet()).unwrap();
+                        runtime.linear_source_tile(&token, &prefix, tile)
+                    }
+                    _ => {
+                        let packet = residual_fixture_packet(2, &[E::ZERO, E::ONE]);
+                        let token = runtime.residual_begin(&packet, ResidualPhase::Singleton,
+                            ResidualCosets::default(), &[], E::ZERO).unwrap();
+                        runtime.residual_source_tile(&token, &prefix, tile)
+                    }
+                };
+                assert_eq!(result.is_ok(), first == 0, "consumer {consumer}, first {first}: {result:?}");
+                assert_eq!(runtime.stats().unwrap().stopped, u64::from(first != 0));
+                assert_eq!(runtime.close().unwrap().arena_bytes, 0);
+            }
+        }
+    }
+
+    #[test]
     fn c71_b12_native_source_pending_coverage_owner_and_failure() {
         let fixture = fixture(128);
         let injection = Injection::new(&fixture.config);

@@ -1451,7 +1451,14 @@ pub(super) mod tests {
             let values=words.iter().flat_map(|&x|((i32::from(x)+32768) as u16).to_le_bytes())
                 .map(Goldilocks::from_u8).collect();
             let rows=words.len();
-            let input=Arc::new(owner.lock().unwrap().upload_signed(&words).unwrap());
+            let input={
+                let mut runtime=owner.lock().unwrap();
+                let uploaded=runtime.upload_signed(&words).unwrap();
+                let prefix=runtime.signed_capacity(3*words.len()).unwrap();
+                runtime.append_signed(&uploaded,0,words.len(),&prefix,0).unwrap();
+                runtime.release_buffer(uploaded).unwrap();
+                Arc::new(prefix)
+            };
             let runtime=owner.clone();let visits=scans.clone();
             let query_input=input.clone();
             let query_window:super::super::replay::NativeByteWindow=Arc::new(move |runtime,first,count| {

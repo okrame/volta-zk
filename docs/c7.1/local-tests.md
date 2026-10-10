@@ -32,10 +32,13 @@ più piccoli della variazione fra ripetizioni. Nessun guadagno A stabile;
 Il pool è selezionato per l’inferenza; il fill resta semplificazione esatta
 senza credito di wall stabile. Nessun A/root completo o picco congiunto.
 
-Il [primo SDPA](../c7.1-history/h100-sdpa-scalar-correction-2026-10-10.md)
-si ferma per un’assunzione errata di scalari unitari nel diagnostico;
-60 valori BF16 verificati contro il manifest, loader corretto, nuovi trial
-nelle due precisioni. RMS coarser ancora non ammesso.
+Il [confronto SDPA completo](../c7.1-history/h100-followup-optimized-2026-10-10.md)
+misura 2,420–2,634 s per risposta BF16 originale e 2,493–2,687 s
+per i16→BF16, a O=0/150/300, load e warmup separati. Tutti i 357 raw
+head per precisione sono finiti; token floating divergenti, nessuna
+parità intera o selezione nel protocollo. Il primo loader fallito resta
+conservato, corretto con i bit pubblici dei 60 scalari.
+RMS coarser: screen numerico O=0 in corso, candidato non ammesso.
 Compiler 159→91 e possesso dei programmi ridotto sono componenti;
 qualità, GKR e tempi completi non derivano da questi risultati.
 CPU wrapper AS 64 GiB, solo il figlio CUDA senza cap AS. I nuovi caller
@@ -43,7 +46,7 @@ attendono GPU idle dopo teardown, senza nuova esenzione W o cap aumentati.
 Journal e correlazioni non sono riusati; cause, bound e target 65 s aperti.
 
 Le correzioni della campagna conservano [fallimenti e controlli](../c7.1-history/h100-canonical-06-2026-10-10.md)
-nei record datati. Localmente passano 36 test del monitor, due test Python
+nei record datati. Localmente passano 43 test del monitor, due test Python
 dell'owner CUDA e i nove controlli documentali. Le regressioni Rust ridotte
 coprono marker non selezionati/selezionati, entrambi gli errori di ruolo,
 reader W con pagine grandi, codec cGGM e span del prefisso originale.
@@ -68,8 +71,10 @@ non test locali né prova completa. Il setup H100 con
 La [chiusura locale del 10 ottobre](../c7.1-history/local-exploration-close-2026-10-10.md) registra le nuove verifiche locali e l'inventario dei
 report/input effettivamente conservati; packed e tracce complete non
 sono disponibili e non vengono scaricati. Gli 84,382 s della H100 sono
-il nostro esecutore intero esatto: manca il confronto con un motore
-ottimizzato sullo stesso workload. Il [piano hardware mirato](../c7.1-history/local-hardware-plan-2026-10-10.md)
+il nostro esecutore intero esatto. Il seguito misura 76,760 s con pool
+e completa il confronto SDPA floating sullo stesso prompt/lunghezza,
+con aritmetica e storie libere diverse: nessuna equivalenza intera.
+Il [piano hardware mirato](../c7.1-history/local-hardware-plan-2026-10-10.md)
 è coperto dalla nuova autorizzazione sopra; i limiti locali restano
 invariati e sul pod valgono quelli del runbook.
 
@@ -92,7 +97,8 @@ Il controller della [finestra CUDA](../c7.1-history/h100-window-method-2026-10-1
 ha due controlli in `tests/test_c71_profile_window.py`, sotto i limiti
 Python usuali. Sono trigger/guardie su metadati: niente cattura hardware
 o credito della finestra. Il confronto SDPA controlla anche 357 raw head
-prima del softcap; il relativo caricamento CUDA resta da eseguire.
+prima del softcap; entrambe le precisioni completano caricamento CUDA,
+passate e controlli, come nel record collegato sopra.
 
 Il [seguito locale](../c7.1-history/local-followup-2026-10-10.md) conserva
 nove test Rust distinti e 40 Python passati, più il failure iniziale della

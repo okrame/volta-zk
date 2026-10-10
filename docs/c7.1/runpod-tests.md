@@ -32,10 +32,13 @@ più piccoli della variazione fra ripetizioni. Nessun guadagno A stabile;
 Il pool è selezionato per l’inferenza; il fill resta semplificazione esatta
 senza credito di wall stabile. Nessun A/root completo o picco congiunto.
 
-Il [primo SDPA](../c7.1-history/h100-sdpa-scalar-correction-2026-10-10.md)
-si ferma per un’assunzione errata di scalari unitari nel diagnostico;
-60 valori BF16 verificati contro il manifest, loader corretto, nuovi trial
-nelle due precisioni. RMS coarser ancora non ammesso.
+Il [confronto SDPA completo](../c7.1-history/h100-followup-optimized-2026-10-10.md)
+misura 2,420–2,634 s per risposta BF16 originale e 2,493–2,687 s
+per i16→BF16, a O=0/150/300, load e warmup separati. Tutti i 357 raw
+head per precisione sono finiti; token floating divergenti, nessuna
+parità intera o selezione nel protocollo. Il primo loader fallito resta
+conservato, corretto con i bit pubblici dei 60 scalari.
+RMS coarser: screen numerico O=0 in corso, candidato non ammesso.
 Compiler 159→91 e possesso dei programmi ridotto sono componenti;
 qualità, GKR e tempi completi non derivano da questi risultati.
 CPU wrapper AS 64 GiB, solo il figlio CUDA senza cap AS. I nuovi caller
@@ -49,7 +52,8 @@ al cleanup; reset per operazione, letture di errore, fence e garanzie
 restano invariati. Il [preflight H100 del seguito](../../benchmarks/results/c71-h100-followup-preflight-2026-10-10-7b0885ad316f.json)
 passa 15 filtri hardware e il nuovo test numerico su ciascuna delle tre
 librerie; valori, copie e fence sono identici. Il beneficio di wall sui
-caller A è in corso; inferenza pool misurata come sopra. Il logger
+caller A è misurato senza vantaggio stabile; inferenza pool misurata
+come sopra. Il logger
 completo esaurisce 16 MiB in
 2,47 s del primo gruppo A, senza completarlo. La build diagnostica con
 `-DC71_OWNER_TRACE -DC71_OWNER_TRACE_LARGE_ONLY` conserva snapshot e

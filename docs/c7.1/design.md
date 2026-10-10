@@ -32,10 +32,13 @@ più piccoli della variazione fra ripetizioni. Nessun guadagno A stabile;
 Il pool è selezionato per l’inferenza; il fill resta semplificazione esatta
 senza credito di wall stabile. Nessun A/root completo o picco congiunto.
 
-Il [primo SDPA](../c7.1-history/h100-sdpa-scalar-correction-2026-10-10.md)
-si ferma per un’assunzione errata di scalari unitari nel diagnostico;
-60 valori BF16 verificati contro il manifest, loader corretto, nuovi trial
-nelle due precisioni. RMS coarser ancora non ammesso.
+Il [confronto SDPA completo](../c7.1-history/h100-followup-optimized-2026-10-10.md)
+misura 2,420–2,634 s per risposta BF16 originale e 2,493–2,687 s
+per i16→BF16, a O=0/150/300, load e warmup separati. Tutti i 357 raw
+head per precisione sono finiti; token floating divergenti, nessuna
+parità intera o selezione nel protocollo. Il primo loader fallito resta
+conservato, corretto con i bit pubblici dei 60 scalari.
+RMS coarser: screen numerico O=0 in corso, candidato non ammesso.
 Compiler 159→91 e possesso dei programmi ridotto sono componenti;
 qualità, GKR e tempi completi non derivano da questi risultati.
 CPU wrapper AS 64 GiB, solo il figlio CUDA senza cap AS. I nuovi caller
@@ -57,8 +60,8 @@ verifica degli artefatti conservati, riuso di un solo flag numerico sincrono
 di scale A alternative. Il flag viene azzerato prima di ogni operazione;
 kernel, letture di stato, fence necessari e controlli restano invariati.
 La parità CUDA ridotta delle tre librerie passa nel nuovo preflight;
-il pool misura −9,847% in una coppia d’inferenza reale; confronto A
-e sufficienza dell’allowance rimangono aperti. Il conto del setup AES
+il pool misura −9,847% in una coppia d’inferenza reale. Il confronto A
+è concluso senza vantaggio stabile; l’allowance rimane aperta. Il conto del setup AES
 reale include anche cache W e owner già installati.
 
 Γ ammesso resta il riferimento. Gli screening mantengono W, architettura,
@@ -112,7 +115,8 @@ upper packed 325.906.729/191.732.984/193.965.966 B per riferimento/coarser/
 finer, compreso fixed storico: differenze fra upper, non memoria risparmiata
 misurata. Circuiti e PYS coesistono; altro stato del caller/PCG e picco
 dei due ruoli restano esclusi. Nessun nuovo bound completo o ammissione.
-Il seguito precisa le quattro domande hardware e gli stop, senza eseguirli.
+Le verifiche hardware del seguito sono eseguite nella campagna corrente
+con i risultati e i confini indicati sopra.
 
 ## Obiettivo e relazione dimostrata
 
@@ -243,9 +247,11 @@ e ricette pinned. Si riusa dopo verifica di identità e impatto delle
 modifiche; si ripete la calibrazione solo quando l'ammissione pertinente
 è invalidata. È l'unico Γ ammesso finora, non un optimum prestazionale
 dimostrato. Cambiare scale può semplificare i circuiti ma cambia la
-relazione numerica; la ricerca di un altro Γ resta un lavoro distinto dalla campagna conclusa.
-La baseline della campagna è `c7e05cf`, che include `24b54d4`.
-I [sei trial](runpod-tests.md#stato-e-sequenza-operativa) mantengono Γ,
+relazione numerica; lo screen coarser della campagna corrente non
+eredita ammissione.
+La campagna precedente usava `c7e05cf`, che include `24b54d4`;
+il seguito parte da `ccbea66b` e conserva gli sviluppi successivi.
+I trial canonici nuovi e quelli [precedenti](runpod-tests.md#stato-e-sequenza-operativa) mantengono Γ,
 semantica, MAC originali, correlazioni monouso e PCG AES. Ogni nuovo trial
 riparte da W e KV vuoto, senza importare una sessione terminale.
 Il [setup completo aggiornato](../c7.1-history/h100-setup06-checkpoint-2026-10-10.md)
@@ -260,7 +266,8 @@ inferenza il massimo temporaneo scende da 1.474.276.864 a 1.216.531.968 B;
 sono scope identici di componente, non picchi canonici completi.
 Il batching del prompt esatto rallenta a 132,036 s (+45,71%) ed è
 [ritirato](../c7.1-history/h100-prefill-2026-10-09.md). L'inferenza scalare
-selezionata misura 84,382 s; il caricamento W varia fra i trial e viene
+storica misura 84,382 s; il seguito con pool misura 76,760 s a O=0.
+Il caricamento W varia fra i trial e viene
 registrato separatamente, senza attribuirne la variabilità ai kernel.
 
 Lo [stop del sesto trial](../c7.1-history/h100-canonical-06-2026-10-10.md)

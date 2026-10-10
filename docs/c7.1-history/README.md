@@ -50,6 +50,8 @@ le nuove domande hardware; non esegue una nuova campagna.
 - [Ritenzione degli artefatti](artifact-retention-2026-10-08.md): inventario verificato e rimozioni autorizzate.
 - [Runbook alla chiusura del 7 ottobre](runpod-tests-2026-10-07.md) e [design dello stesso checkpoint](design-2026-10-07.md): cronache, stime e autorizzazioni storiche; non istruzioni per nuove campagne.
 
+[Confronto SDPA H100 completo](h100-followup-optimized-2026-10-10.md).
+
 ## Conservazione e mappa dei percorsi
 
 Origine della migrazione: commit `5b293bc9f9b976ba4b6fc9e6a612fdbaf42b6fdb`. I file qui archiviati mantengono

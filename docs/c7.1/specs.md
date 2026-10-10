@@ -32,10 +32,13 @@ più piccoli della variazione fra ripetizioni. Nessun guadagno A stabile;
 Il pool è selezionato per l’inferenza; il fill resta semplificazione esatta
 senza credito di wall stabile. Nessun A/root completo o picco congiunto.
 
-Il [primo SDPA](../c7.1-history/h100-sdpa-scalar-correction-2026-10-10.md)
-si ferma per un’assunzione errata di scalari unitari nel diagnostico;
-60 valori BF16 verificati contro il manifest, loader corretto, nuovi trial
-nelle due precisioni. RMS coarser ancora non ammesso.
+Il [confronto SDPA completo](../c7.1-history/h100-followup-optimized-2026-10-10.md)
+misura 2,420–2,634 s per risposta BF16 originale e 2,493–2,687 s
+per i16→BF16, a O=0/150/300, load e warmup separati. Tutti i 357 raw
+head per precisione sono finiti; token floating divergenti, nessuna
+parità intera o selezione nel protocollo. Il primo loader fallito resta
+conservato, corretto con i bit pubblici dei 60 scalari.
+RMS coarser: screen numerico O=0 in corso, candidato non ammesso.
 Compiler 159→91 e possesso dei programmi ridotto sono componenti;
 qualità, GKR e tempi completi non derivano da questi risultati.
 CPU wrapper AS 64 GiB, solo il figlio CUDA senza cap AS. I nuovi caller

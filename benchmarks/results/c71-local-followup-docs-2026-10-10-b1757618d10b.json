@@ -1,0 +1,58 @@
+{
+  "artifacts": [
+    {
+      "bytes": 627,
+      "path": "benchmarks/results/c71-local-followup-docs-2026-10-10-b1757618d10b/docs-development.json",
+      "sha256": "e578b6e17e3280e1ba72088a5f1eae40bde204d2d4f47065b7a8e2e69ace3640"
+    },
+    {
+      "bytes": 98,
+      "path": "benchmarks/results/c71-local-followup-docs-2026-10-10-b1757618d10b/docs-development.log",
+      "sha256": "971240c0fdd5c3ada26ebc90947d2fc1e105b86cf86bb9ccd2ceb0a54684cccf"
+    },
+    {
+      "bytes": 621,
+      "path": "benchmarks/results/c71-local-followup-docs-2026-10-10-b1757618d10b/docs-clean.json",
+      "sha256": "e76f9ab8d22bd8b85bd3a59d6bdd8ad31ca23ac1032923f013d265403c4d8cfa"
+    },
+    {
+      "bytes": 98,
+      "path": "benchmarks/results/c71-local-followup-docs-2026-10-10-b1757618d10b/docs-clean.log",
+      "sha256": "dfa60bd85afdc3d7e5c52d064f1c3029d4f412f72b83f2ea150b2ee7c11082e3"
+    }
+  ],
+  "code_and_docs_whitespace_check": "git diff 8421fada..HEAD --check -- cuda scripts tests rust docs: exit0",
+  "credit": false,
+  "followup_linked_artifacts_verified": 84,
+  "followup_record": "benchmarks/results/c71-local-followup-2026-10-10-f9a738ae5ea7.json",
+  "followup_record_sha256": "c0d4efc21adff09c578cb386f862096e1d7cd88fcf0b253177313bf60f1a567c",
+  "git_dirty": false,
+  "primary_check": {
+    "as_limit_bytes": 2147483648,
+    "command": [
+      ".venv/bin/python",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_c71_docs.py"
+    ],
+    "cwd": "/home/okrame/projects/volta-zk",
+    "deadline_s": 60,
+    "exit_code": 0,
+    "git_dirty": false,
+    "log": "/tmp/c71-local-followup-20261010-0802/docs-clean.log",
+    "max_rss_bytes": 59490304,
+    "recorded_at_utc": "2026-10-10T08:53:51.082372+00:00",
+    "sha256": "dfa60bd85afdc3d7e5c52d064f1c3029d4f412f72b83f2ea150b2ee7c11082e3",
+    "source_git_sha": "b1757618d10b861528a6845a48bc18c8631b512e",
+    "wall_s": 1.082900860812515,
+    "workers": 1
+  },
+  "primary_tests_passed": 9,
+  "raw_log_whitespace": "preserved byte-identically; broad diff --check also reports original pytest whitespace, intentionally not normalized",
+  "schema": "volta-c71-local-followup-docs-v1",
+  "scope": "document/identity/link checks only; no protocol rebuild or hardware execution",
+  "source_git_sha": "b1757618d10b861528a6845a48bc18c8631b512e"
+}

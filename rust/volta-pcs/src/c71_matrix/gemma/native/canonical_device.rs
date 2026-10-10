@@ -1444,11 +1444,12 @@ mod tests {
             Ok(())
         }).unwrap();
         let after_pcs = session.stats().unwrap();
-        // A complete scan owns no producer rows, replay KV copies or
-        // duplicate histograms after returning to the PCS hash consumer.
+        // This fixture installs tables/cuts without running scalar inference,
+        // so its first scan creates the 256 B numeric flag. Real preparation
+        // has already charged it. Producer rows/copies/histograms still retire.
         // This is a lifetime assertion, not a pinned arena-peak admission.
-        assert_eq!(after_pcs.arena_bytes, before_pcs.arena_bytes);
-        assert_eq!(after_pcs.live_capacity_bytes, before_pcs.live_capacity_bytes);
+        assert_eq!(after_pcs.arena_bytes, before_pcs.arena_bytes + 256);
+        assert_eq!(after_pcs.live_capacity_bytes, before_pcs.live_capacity_bytes + 256);
         assert_eq!(resident_bytes, (150 * columns * (6 + 2)) as u64);
         assert!(resident_tiles > 0);
         assert_eq!(after_pcs.h2d_bytes, before_pcs.h2d_bytes);
@@ -1465,6 +1466,8 @@ mod tests {
             "native_peak_capacity_bytes":after_pcs.peak_capacity_bytes,
             "producer_capacity_before_scan":before_pcs.live_capacity_bytes,
             "producer_capacity_after_scan":after_pcs.live_capacity_bytes,
+            "retained_numeric_flag_capacity_bytes":256,
+            "numeric_flag_initialized_on_first_fixture_scan":true,
             "producer_temporaries_retired_before_PCS_hash":true,
             "gpu_execution":false, "credit":false
         }));
@@ -1503,6 +1506,9 @@ mod tests {
                 .unwrap();
         }
         assert_eq!(observed, 300);
+        let after_warm_scan = session.stats().unwrap();
+        assert_eq!(after_warm_scan.arena_bytes, after_pcs.arena_bytes);
+        assert_eq!(after_warm_scan.live_capacity_bytes, after_pcs.live_capacity_bytes);
         assert_eq!(prepared.value(relation.raw, 17, 44).unwrap(), raw(17, 44));
         let before = session.stats().unwrap();
         assert_eq!(prepared.value(relation.raw, 17, 45).unwrap(), raw(17, 45));

@@ -22,6 +22,7 @@ static int download_fail_after=-1;
 static int upload_fail_after=-1;
 static size_t fake_free=80000000000ULL;
 static unsigned allocations=0, frees=0, launches=0;
+static void* last_allocation=nullptr;
 static std::vector<uint8_t> expected_bytes;
 static std::vector<int64_t> expected_raw;
 static std::vector<uint64_t> expected_pcs;
@@ -45,7 +46,7 @@ cudaError_t cudaStreamSynchronize(cudaStream_t s) {
     return fail_fence?1:0;
 }
 cudaError_t cudaStreamDestroy(cudaStream_t s) { assert(s->pending.empty()); delete s; return 0; }
-cudaError_t cudaMalloc(void** p,size_t n) { ++allocations; *p=new unsigned char[n]; return 0; }
+cudaError_t cudaMalloc(void** p,size_t n) { ++allocations; *p=new unsigned char[n]; last_allocation=*p; return 0; }
 cudaError_t cudaMemGetInfo(size_t* free,size_t* total) { *free=fake_free; *total=80000000000ULL; return 0; }
 cudaError_t cudaFree(void* p) {
     ++frees; delete[] static_cast<unsigned char*>(p); return fail_free?1:0;
@@ -1114,7 +1115,7 @@ static void dense_checks() {
         assert(std::memcmp(limbs,&reference,sizeof(reference))==0);
         assert(!c71_range_release(c,root) && !c71_range_release(c,y) && !c71_range_release(c,raw));
         assert(stats(c).h2d_bytes==before.h2d_bytes);
-        assert(stats(c).live_capacity_bytes==before.live_capacity_bytes);
+        assert(stats(c).live_capacity_bytes==before.live_capacity_bytes+256);
         assert(stats(c).peak_capacity_bytes>=before.live_capacity_bytes+4*256);
     }
     assert(stats(c).d2h_bytes-before.d2h_bytes==2*(8+48));
@@ -1192,7 +1193,7 @@ static void embedding_checks() {
         assert(!c71_dense_quantize(c,raw,0,rounded)); // exact ordered observation
         assert(expected_raw.empty());
         assert(!c71_range_release(c,raw) && !c71_range_release(c,rounded) && !c71_range_release(c,out));
-        assert(stats(c).live_capacity_bytes==0);
+        assert(stats(c).live_capacity_bytes==256);
     }
     close(c);
     for(unsigned test=0;test<17;++test) {
@@ -1379,9 +1380,7 @@ static void joint_budget_checks() {
     assert(joint_live==0);
 }
 static void dense_completion_fence_checks() {
-    // The deferred driver executes the original data and flag writes only at
-    // the completion fence. A successful completion frees the flag once;
-    // failed fence/flag/free leaves the output unpublished and its debt live.
+    // Deferred writes execute only at the unchanged completion fence.
     joint_limit=uint64_t{1}<<20;
     for(unsigned fault=0;fault<4;++fault) {
         assert(!joint_live);
@@ -1390,16 +1389,18 @@ static void dense_completion_fence_checks() {
         const auto x=dense_input(c), raw=alloc(c,C71_I64,8);
         const auto before=stats(c);
         const auto free_before=frees;
-        fail_fence=fault==1; corrupt=fault==2; fail_free=fault==3;
+        fail_fence=fault==1; corrupt=fault==2; fail_launch=fault==3;
         const int status=c71_dense_pointwise(c,x,0,0,0,{2,0,0},raw);
-        fail_fence=false; corrupt=false; fail_free=false;
+        fail_fence=false; corrupt=false; fail_launch=false;
         const auto after=stats(c);
-        assert(after.fences==before.fences+1 && after.d2h_bytes==before.d2h_bytes+4);
+        assert(after.fences==before.fences+unsigned(fault!=3));
+        assert(after.d2h_bytes==before.d2h_bytes+4*unsigned(fault!=3));
         assert(after.allocations==before.allocations+1);
+        assert(after.releases==before.releases && frees==free_before);
+        assert(after.arena_bytes==before.arena_bytes+256);
+        assert(joint_live==after.host_owner_bytes+after.arena_bytes);
         if(!fault) {
             assert(!status && !after.stopped);
-            assert(after.releases==before.releases+1 && frees==free_before+1);
-            assert(after.arena_bytes==before.arena_bytes && joint_live==after.host_owner_bytes+after.arena_bytes);
             int64_t actual[8]{};
             const int64_t expected[]={2,4,6,8,-2,-4,-6,-8};
             assert(!c71_original_read(c,raw,C71_I64,0,8,actual));
@@ -1410,29 +1411,102 @@ static void dense_completion_fence_checks() {
             close(c);
             assert(!joint_live);
         } else {
-            assert(status && after.stopped && after.releases==before.releases);
-            assert(after.arena_bytes==before.arena_bytes+256);
-            assert(joint_live==after.host_owner_bytes+after.arena_bytes);
-            assert(frees==free_before+(fault==3));
+            assert(status && after.stopped);
             int64_t untouched=1234;
             assert(c71_original_read(c,raw,C71_I64,0,1,&untouched) && untouched==1234);
             assert(c71_dense_pointwise(c,x,0,0,0,{2,0,0},raw));
             assert(c71_range_release(c,raw));
             const auto stopped=stats(c);
             assert(stopped.launches==after.launches && stopped.allocations==after.allocations);
-            assert(stopped.fences==after.fences && frees==free_before+(fault==3));
+            assert(stopped.fences==after.fences && frees==free_before);
             C71RangeStats final{};
-            const auto closed=c71_range_close(c,&final);
-            // A failed free is never retried, even though this fake driver
-            // physically freed the pointer before reporting its failure.
+            assert(!c71_range_close(c,&final));
             assert(frees==free_before+3);
-            if(fault==3) {
-                assert(closed && final.cleanup_failed && final.arena_bytes==256 && joint_live==256);
-                joint_live=0; // Isolated test receipt retains the failed debt above.
-            } else {
-                assert(!closed && !final.cleanup_failed && !final.arena_bytes && !joint_live);
-            }
+            assert(!final.cleanup_failed && !final.arena_bytes && !joint_live);
         }
+    }
+
+    C71RangeContext* c=nullptr;
+    assert(!c71_range_create(0,262144,256,joint_account,&c));
+    const auto input=dense_input(c);
+    const auto before=stats(c);
+    void* flag_pointer=nullptr;
+    for(unsigned operation=0;operation<32;++operation) {
+        const auto raw=alloc(c,C71_I64,8);
+        const auto submitted=stats(c);
+        assert(!c71_dense_pointwise(c,input,0,0,0,{2,0,0},raw));
+        if(!operation) flag_pointer=last_allocation;
+        assert(stats(c).fences==submitted.fences+1 && stats(c).d2h_bytes==submitted.d2h_bytes+4);
+        int64_t actual[8]{};
+        const int64_t expected[]={2,4,6,8,-2,-4,-6,-8};
+        assert(!c71_original_read(c,raw,C71_I64,0,8,actual));
+        assert(!std::memcmp(actual,expected,sizeof(expected)));
+        assert(!c71_range_release(c,raw));
+        // Poison the retained device word after completion: the next call
+        // must reset it before launch even when no allocation occurs.
+        *static_cast<uint32_t*>(flag_pointer)=UINT32_MAX;
+    }
+    const auto after=stats(c);
+    assert(after.allocations-before.allocations==33 && after.releases-before.releases==32);
+    assert(after.launches-before.launches==32 && after.fences-before.fences==96);
+    assert(after.d2h_bytes-before.d2h_bytes==32*(4+64) && after.zeroed_bytes-before.zeroed_bytes==32*4);
+    assert(!c71_range_release(c,input));
+    assert(stats(c).arena_bytes==256 && joint_live==stats(c).host_owner_bytes+256);
+    const auto retained=stats(c);
+    close(c); assert(!joint_live);
+    std::printf("C71_SYNC_ERROR_FLAG_REUSE {\"host_owner_bytes\":%llu,\"retained_device_capacity_bytes\":256,\"flag_count\":1,\"sync_flag_reuse\":true,\"numeric_operations\":32,\"numeric_flag_allocations\":1,\"numeric_flag_allocations_before\":32,\"numeric_completion_fences\":32,\"numeric_flag_download_bytes\":128,\"gpu_execution\":false,\"credit\":false}\n",
+        (unsigned long long)retained.host_owner_bytes);
+
+    // Lazy pool allocation must respect the same simultaneous joint budget.
+    assert(!c71_range_create(0,262144,256,joint_account,&c));
+    const auto x=dense_input(c), raw=alloc(c,C71_I64,8);
+    joint_limit=joint_live;
+    const auto bounded=stats(c);
+    assert(c71_dense_pointwise(c,x,0,0,0,{2,0,0},raw));
+    assert(stats(c).stopped && stats(c).allocations==bounded.allocations && stats(c).launches==bounded.launches);
+    joint_limit=uint64_t{1}<<20;
+    close(c); assert(!joint_live);
+
+    // A sticky byte flag survives a successful producer between begin/seal.
+    c=create();
+    const auto large=alloc(c,C71_I16,4), bad_raw=alloc(c,C71_I64,4), good_raw=alloc(c,C71_I64,4);
+    const int16_t values[]={32767,32767,32767,32767};
+    assert(!c71_range_upload(c,large,values,sizeof(values)));
+    assert(!c71_dense_pointwise(c,large,0,0,0,{1<<30,0,0},bad_raw));
+    const auto bytes=alloc(c,C71_BYTE_PENDING,128);
+    assert(!c71_byte_begin(c,bytes));
+    const c71_byte::Tile tile{0,4,1,1,0,0,128,0,4,4,7,0,0};
+    assert(!c71_byte_scatter(c,bad_raw,&tile,bytes));
+    assert(!c71_dense_pointwise(c,large,0,0,0,{1,0,0},good_raw));
+    assert(c71_byte_seal(c,bytes) && stats(c).stopped);
+    close(c);
+
+    // Dedicated transaction flags retain the previous free-failure behavior.
+    assert(!c71_range_create(0,262144,256,joint_account,&c));
+    const auto pending=alloc(c,C71_BYTE_PENDING,8);
+    assert(!c71_byte_begin(c,pending));
+    fail_free=true;
+    assert(c71_byte_seal(c,pending) && stats(c).stopped);
+    fail_free=false;
+    const auto free_before=frees;
+    C71RangeStats final{};
+    assert(c71_range_close(c,&final) && final.cleanup_failed);
+    assert(frees==free_before+1 && final.arena_bytes==256 && joint_live==256);
+    joint_live=0; // Isolated receipt retains the failed-free debt above.
+
+    // A pooled flag is private even if an internal handle is guessed.
+    for(unsigned fault=0;fault<3;++fault) {
+        c=create(); const auto original=dense_input(c), output=alloc(c,C71_I64,8);
+        assert(!c71_dense_pointwise(c,original,0,0,0,{2,0,0},output));
+        const uint64_t private_flag=output+1;
+        const auto guarded=stats(c); uint32_t word=123;
+        int status=0;
+        if(fault==0) status=c71_range_release(c,private_flag);
+        if(fault==1) status=c71_range_upload(c,private_flag,&word,4);
+        if(fault==2) status=c71_original_read(c,private_flag,C71_U8,0,4,&word);
+        assert(status && stats(c).stopped && word==123);
+        assert(stats(c).d2h_bytes==guarded.d2h_bytes && stats(c).h2d_bytes==guarded.h2d_bytes);
+        close(c);
     }
 }
 

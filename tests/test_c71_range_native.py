@@ -13,7 +13,8 @@ def test_native_range_host_algebra_and_bounded_groups(tmp_path):
          str(ROOT / "cuda/c71_range_native_host.cpp"), "-o", str(binary)],
         check=True, timeout=30,
     )
-    result = subprocess.run([str(binary)], check=True, capture_output=True, text=True, timeout=10)
+    result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=10)
+    assert result.returncode == 0, result.stdout + result.stderr
     report = json.loads(result.stdout.removeprefix("C71_NATIVE_RANGE_HOST "))
     assert report == {"cases": 37, "max_original_words": 2048,
                       "max_shared_payload_bytes": 52224, "gpu_execution": False, "credit": False}
@@ -28,7 +29,8 @@ def test_native_range_owner_with_deferred_fake_driver(tmp_path):
          str(ROOT / "cuda/c71_range_runtime.cpp"), str(ROOT / "tests/c71_range_runtime_host.cpp"),
          "-o", str(binary)], check=True, timeout=30,
     )
-    result = subprocess.run([str(binary)], check=True, capture_output=True, text=True, timeout=10)
+    result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=10)
+    assert result.returncode == 0, result.stdout + result.stderr
     reports = {}
     for line in result.stdout.splitlines():
         marker, payload = line.split(" ", 1)
@@ -38,6 +40,16 @@ def test_native_range_owner_with_deferred_fake_driver(tmp_path):
     report = reports.pop("C71_RANGE_OWNER_HOST")
     assert report == {"rejections": 13, "dense_rejections": 23, "byte_rejections": 19, "pointwise_rejections": 14, "embedding_rejections": 17, "dense_batches": 2, "dense_row_views": 1, "max_arena_bytes": 262144,
                       "gpu_execution": False, "credit": False}
+
+    reuse = reports.pop("C71_SYNC_ERROR_FLAG_REUSE")
+    assert reuse.pop("host_owner_bytes") == 42096
+    assert reuse == {
+        "retained_device_capacity_bytes": 256, "flag_count": 1,
+        "sync_flag_reuse": True, "numeric_operations": 32,
+        "numeric_flag_allocations": 1, "numeric_flag_allocations_before": 32,
+        "numeric_completion_fences": 32, "numeric_flag_download_bytes": 128,
+        "gpu_execution": False, "credit": False,
+    }
 
     expected_components = {
         "C71_RUNTIME_STACK_LIMIT": {

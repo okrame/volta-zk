@@ -146,6 +146,7 @@ struct C71RangeContext {
     int16_t* weights=nullptr;
     uint64_t usable=0;
     Buffer buffers[512]{};
+    uint64_t numeric_flag=0;
     C71RangeStats stats{};
     const char* error="";
     // At most one pending source reconstruction on this owner. Numeric
@@ -478,8 +479,13 @@ extern "C" int c71_dense_weights_seal(C71RangeContext* c) {
     c->stats.weights_sealed=1; return 0;
 }
 namespace {
-int dense_flag(C71RangeContext* c,uint64_t* id) {
-    if(c71_range_alloc(c,C71_U8,4,id)) return -1;
+int dense_flag(C71RangeContext* c,uint64_t* id,bool numeric=false) {
+    // Only synchronous numeric calls share this flag; PCS/byte transactions
+    // keep their own sticky flags while producers use the same stream.
+    if(numeric) {
+        if(!c->numeric_flag && allocate(c,C71_PCS_PRIVATE,4,&c->numeric_flag)) return -1;
+        *id=c->numeric_flag;
+    } else if(c71_range_alloc(c,C71_U8,4,id)) return -1;
     if(checked(c,cudaMemsetAsync(ptr<void>(c,buffer(c,*id)),0,4,c->stream))) return -1;
     c->stats.zeroed_bytes+=4; return 0;
 }
@@ -489,12 +495,14 @@ int dense_complete(C71RangeContext* c,uint64_t flag,Buffer* output) {
     c->stats.d2h_bytes+=4;
     if(fence(c)) return -1;
     if(failed) return fail(c,"dense device arithmetic rejection");
-    // This stream has already completed every use of its internal flag. No
-    // operation is queued before the free; the public release remains fenced.
-    auto* completed_flag=buffer(c,flag);
-    if(checked(c,cudaFree(completed_flag->allocation))) { completed_flag->release_failed=true; return -1; }
-    if(c->account) c->account(-int64_t(completed_flag->capacity));
-    *completed_flag={}; ++c->stats.releases; recount(c);
+    // Completion keeps a reusable flag charged; dedicated flags are freed
+    // after the same fence. Public release still requires its own fence.
+    if(flag!=c->numeric_flag) {
+        auto* completed_flag=buffer(c,flag);
+        if(checked(c,cudaFree(completed_flag->allocation))) { completed_flag->release_failed=true; return -1; }
+        if(c->account) c->account(-int64_t(completed_flag->capacity));
+        *completed_flag={}; ++c->stats.releases; recount(c);
+    }
     output->initialized=output->count; return 0;
 }
 }
@@ -507,7 +515,7 @@ extern "C" int c71_dense_product_rows(C71RangeContext* c,uint64_t in,uint64_t fi
        !c71_dense::valid(s,a->count,nw,b->count) || a->count%s.k || first_row>a->count/s.k ||
        s.m>a->count/s.k-first_row || b->count!=uint64_t(s.m)*s.n)
         return fail(c,"dense product shape or unsealed W");
-    uint64_t flag=0; if(dense_flag(c,&flag)) return -1;
+    uint64_t flag=0; if(dense_flag(c,&flag,true)) return -1;
     if(launched(c,c71_dense_i16_launch(c->stream,ptr<int16_t>(c,a)+first_row*s.k,uint64_t(s.m)*s.k,c->weights+offset,nw,
                                      ptr<int64_t>(c,b),b->count,ptr<uint32_t>(c,buffer(c,flag)),s))) return -1;
     return dense_complete(c,flag,b);
@@ -523,7 +531,7 @@ extern "C" int c71_dense_quantize(C71RangeContext* c,uint64_t in,int32_t shift,u
     auto* a=buffer(c,in); auto* b=buffer(c,out);
     if(!full(a,C71_I64) || !b || b->kind!=C71_I16 || b->initialized || a->count!=b->count)
         return fail(c,"dense RNE shape");
-    uint64_t flag=0; if(dense_flag(c,&flag)) return -1;
+    uint64_t flag=0; if(dense_flag(c,&flag,true)) return -1;
     if(launched(c,c71_dense_rne_launch(c->stream,ptr<int64_t>(c,a),ptr<int16_t>(c,b),a->count,shift,
                                      ptr<uint32_t>(c,buffer(c,flag))))) return -1;
     return dense_complete(c,flag,b);
@@ -567,7 +575,7 @@ extern "C" int c71_dense_pointwise(C71RangeContext* c,uint64_t x,uint64_t x_firs
         if(!full(a,C71_I16) || first[j]>a->count || b->count>a->count-first[j]) return fail(c,"pointwise original input span");
         inputs[j]=ptr<int16_t>(c,a)+first[j];
     }
-    uint64_t flag=0; if(dense_flag(c,&flag)) return -1;
+    uint64_t flag=0; if(dense_flag(c,&flag,true)) return -1;
     if(launched(c,c71_dense_pointwise_launch(c->stream,inputs[0],inputs[1],ptr<int64_t>(c,b),b->count,op,
                                            ptr<uint32_t>(c,buffer(c,flag))))) return -1;
     return dense_complete(c,flag,b);
@@ -635,7 +643,7 @@ extern "C" int c71_dense_rms(C71RangeContext* context,uint64_t input,uint64_t fi
     if(!sums || !rounded || !values || (shape.weighted && (!raw || raw==sums))) return fail(context,"RMS buffers differ");
     if(shape.weighted && (!context->stats.weights_sealed || weight_offset>context->stats.weights_bytes/2 ||
         shape.columns>context->stats.weights_bytes/2-weight_offset)) return fail(context,"RMS original W span");
-    uint64_t flag=0; if(dense_flag(context,&flag)) return -1;
+    uint64_t flag=0; if(dense_flag(context,&flag,true)) return -1;
     if(launched(context,c71_rms_launch(context->stream,values,shape.weighted?context->weights+weight_offset:nullptr,
         raw?ptr<int64_t>(context,raw):nullptr,ptr<int64_t>(context,sums),ptr<int16_t>(context,rounded),shape,ptr<uint32_t>(context,buffer(context,flag))))) return -1;
     if(dense_complete(context,flag,rounded)) return -1;
@@ -648,7 +656,7 @@ extern "C" int c71_dense_qk(C71RangeContext* context,uint64_t query,uint64_t fir
     const auto* left=nonlinear_input(context,query,first,uint64_t(shape.rows)*32*shape.lanes);
     const auto* right=attention_tail(context,keys,shape);
     if(!target || !left || !right) return -1;
-    uint64_t flag=0; if(dense_flag(context,&flag)) return -1;
+    uint64_t flag=0; if(dense_flag(context,&flag,true)) return -1;
     if(launched(context,c71_qk_launch(context->stream,left,right,ptr<int64_t>(context,target),shape,ptr<uint32_t>(context,buffer(context,flag))))) return -1;
     return dense_complete(context,flag,target);
 }
@@ -666,7 +674,7 @@ extern "C" int c71_dense_pv(C71RangeContext* context,const uint64_t* probabiliti
         pointers[head]=nonlinear_input(context,probabilities[head],first[head],uint64_t(shape.rows)*(shape.old+150));
         if(!pointers[head]) return -1;
     }
-    uint64_t flag=0; if(dense_flag(context,&flag)) return -1;
+    uint64_t flag=0; if(dense_flag(context,&flag,true)) return -1;
     if(launched(context,c71_pv_launch(context->stream,pointers,tail,ptr<int64_t>(context,target),shape,ptr<uint32_t>(context,buffer(context,flag))))) return -1;
     return dense_complete(context,flag,target);
 }
@@ -689,7 +697,7 @@ extern "C" int c71_dense_softmax(C71RangeContext* context,uint64_t input,uint64_
     const auto* scores=nonlinear_input(context,input,first,count);
     const auto* lookup=nonlinear_table(context,table,table_offset,65535*4,4);
     if(!scores || !lookup) return -1;
-    uint64_t flag=0; if(dense_flag(context,&flag)) return -1;
+    uint64_t flag=0; if(dense_flag(context,&flag,true)) return -1;
     if(launched(context,c71_softmax_launch(context->stream,scores,reinterpret_cast<const int32_t*>(lookup),
         ptr<int16_t>(context,targets[0]),ptr<int16_t>(context,targets[1]),ptr<int64_t>(context,targets[2]),
         ptr<int64_t>(context,targets[3]),ptr<int16_t>(context,targets[4]),ptr<int64_t>(context,counts),shape,ptr<uint32_t>(context,buffer(context,flag))))) return -1;
@@ -718,7 +726,7 @@ extern "C" int c71_histogram_seal(C71RangeContext* c,uint64_t id) {
     if(!ready(c)) return -1;
     auto* h=buffer(c,id);
     if(!full(h,C71_HISTOGRAM_PENDING) || h->count!=65535) return fail(c,"histogram seal shape");
-    uint64_t flag=0; if(dense_flag(c,&flag)) return -1;
+    uint64_t flag=0; if(dense_flag(c,&flag,true)) return -1;
     if(launched(c,c71_histogram_seal_launch(c->stream,ptr<int64_t>(c,h),ptr<uint32_t>(c,buffer(c,flag))))) return -1;
     if(dense_complete(c,flag,h)) return -1;
     h->kind=C71_I64; return 0;
@@ -731,7 +739,7 @@ extern "C" int c71_dense_lookup(C71RangeContext* c,uint64_t in,uint64_t first,ui
     const auto* x=nonlinear_input(c,in,first,b->count);
     const auto* t=nonlinear_table(c,table,offset,65535*2,2);
     if(!x || !t) return -1;
-    uint64_t flag=0; if(dense_flag(c,&flag)) return -1;
+    uint64_t flag=0; if(dense_flag(c,&flag,true)) return -1;
     if(launched(c,c71_lookup_launch(c->stream,x,reinterpret_cast<const int16_t*>(t),ptr<int16_t>(c,b),ptr<int64_t>(c,h),b->count,ptr<uint32_t>(c,buffer(c,flag))))) return -1;
     if(dense_complete(c,flag,b)) return -1;
     h->visits+=b->count; return 0;
@@ -744,7 +752,7 @@ extern "C" int c71_dense_rope(C71RangeContext* c,uint64_t in,uint64_t first,uint
     const auto* x=nonlinear_input(c,in,first,count);
     const auto* t=nonlinear_table(c,table,offset,uint64_t(s.rows)*s.pairs*8,4);
     if(!x || !t) return -1;
-    uint64_t flag=0; if(dense_flag(c,&flag)) return -1;
+    uint64_t flag=0; if(dense_flag(c,&flag,true)) return -1;
     if(launched(c,c71_rope_launch(c->stream,x,reinterpret_cast<const int32_t*>(t),ptr<int64_t>(c,b),s,ptr<uint32_t>(c,buffer(c,flag))))) return -1;
     return dense_complete(c,flag,b);
 }
@@ -756,7 +764,7 @@ extern "C" int c71_dense_argmax(C71RangeContext* c,uint64_t in,uint64_t first,ui
        !c71_dense::span(public_tokens,rows*4,end)) return fail(c,"argmax output shape");
     const auto* x=nonlinear_input(c,in,first,b->count); if(!x) return -1;
     uint64_t flag=0,tokens=0;
-    if(dense_flag(c,&flag) || c71_range_alloc(c,C71_U8,rows*4,&tokens)) return -1;
+    if(dense_flag(c,&flag,true) || c71_range_alloc(c,C71_U8,rows*4,&tokens)) return -1;
     auto* t=buffer(c,tokens); auto* f=buffer(c,flag);
     if(launched(c,c71_argmax_select_launch(c->stream,x,ptr<uint32_t>(c,t),rows,columns,ptr<uint32_t>(c,f))) ||
        launched(c,c71_argmax_slack_launch(c->stream,x,ptr<uint32_t>(c,t),ptr<int16_t>(c,b),rows,columns,ptr<uint32_t>(c,f)))) return -1;

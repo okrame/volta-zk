@@ -359,6 +359,15 @@ def ledger_native(directory, query_record, linear_record, proposed_s1=False, lif
         if not owner_observations:
             raise ValueError('missing current S1/query common-owner host bytes; old LINEAR sizeofCtx cannot substitute')
         owner = max(item['bytes'] for item in owner_observations)
+    sync_flag = records(directory, 'C71_SYNC_ERROR_FLAG_REUSE')
+    if sync_flag:
+        if (len(sync_flag) != 1 or sync_flag[0].get('sync_flag_reuse') is not True
+                or sync_flag[0].get('flag_count') != 1
+                or sync_flag[0].get('retained_device_capacity_bytes') != 256
+                or sync_flag[0].get('host_owner_bytes', 0) < owner):
+            raise ValueError('incompatible measured synchronous flag retention')
+        owner = sync_flag[0]['host_owner_bytes']
+        owner_observations.append({'marker': 'C71_SYNC_ERROR_FLAG_REUSE', 'bytes': owner})
     replay = max(row['replay_upper_bytes_including_persistent'] for row in device)
     persistent = max(row['persistent_device_bytes'] for row in device)
     c = claims[0]
@@ -403,6 +412,9 @@ def ledger_native(directory, query_record, linear_record, proposed_s1=False, lif
                   'retained_initial_private_host_pads': (1+caches)*pad,
                   'two_public_table_host_payloads': 2*23_954_072,
                   'native_common_owner_host': owner}
+        if sync_flag:
+            # Keep the old replay bounds: they still include per-operation flags.
+            result['native_retained_sync_error_flag_upper'] = 256
         if numeric:
             # Complete producer scans retire their temporary rows. Proof
             # phases charge replay explicitly only while reconstructing A.
@@ -533,6 +545,7 @@ def ledger_native(directory, query_record, linear_record, proposed_s1=False, lif
             'prepared_S1_is_selected_in_canonical_runner': proposed_s1,
             'S1_query_E_all_selected_extension_stages_modeled': proposed_s1,
             'current_owner_host_byte_observations': owner_observations,
+            'synchronous_error_flag_retention': sync_flag[0] if sync_flag else None,
             'additional_explicit_component_caps': {
                 'residual_dim35_EQ_packet_device': residual_packet(35)['device'],
                 'residual_dim35_EQ_packet_host_upper': residual_packet(35)['host_upper'],
@@ -914,6 +927,7 @@ def complete_prepared_phases(phases, directory, common, persistent, replay, init
                   class9_after_cleanup_report_metadata_upper=tele['after_cleanup_report_metadata_heap_upper_bytes'],
                   class4_idle_real_AES_PCG_payload=pcg_idle)
     report.pop('original_W_tile_descriptors_host_upper',None)
+    report.pop('native_retained_sync_error_flag_upper', None)
     extra('after_crypto_cleanup_report', report,
           'Alternative report clones after native cleanup. Crypto metadata and query/planes are not summed again.')
     return {'markers': {'capacity':cap,'telemetry':tele,'forms':list(forms.values()),'wire':list(wire.values())},

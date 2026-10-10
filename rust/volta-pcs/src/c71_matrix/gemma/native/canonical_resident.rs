@@ -1363,7 +1363,7 @@ mod tests {
                                 rows.release(&mut runtime).unwrap();
                             }
                             runtime.release_buffer(input).unwrap();
-                            assert_eq!(runtime.stats().unwrap().live_capacity_bytes, 0);
+                            assert_eq!(runtime.stats().unwrap().live_capacity_bytes, 256);
                             accepted += 1;
                         }
                     }
@@ -1523,7 +1523,7 @@ mod tests {
             for tail in tails {
                 tail.release(&mut runtime).unwrap();
             }
-            assert_eq!(runtime.stats().unwrap().live_capacity_bytes, 0);
+            assert_eq!(runtime.stats().unwrap().live_capacity_bytes, 256);
         }
         assert_eq!(families.len(), 2);
         runtime.close().unwrap();
@@ -1605,13 +1605,13 @@ mod tests {
                     query.release(&mut runtime).unwrap();
                 }
                 let capacity = runtime.stats().unwrap().live_capacity_bytes;
-                assert_eq!(capacity, (450 * tails[0].columns * 2).next_multiple_of(256) as u64);
+                assert_eq!(capacity, (450 * tails[0].columns * 2).next_multiple_of(256) as u64 + 256);
                 let count = tails.len();
                 for (index, tail) in tails.into_iter().enumerate() {
                     tail.release(&mut runtime).unwrap();
                     assert_eq!(
                         runtime.stats().unwrap().live_capacity_bytes,
-                        if index + 1 == count { 0 } else { capacity }
+                        if index + 1 == count { 256 } else { capacity }
                     );
                 }
             }
@@ -1797,7 +1797,7 @@ mod tests {
                 }
                 output.release(&mut runtime).unwrap();
                 input.release(&mut runtime).unwrap();
-                assert_eq!(runtime.stats().unwrap().live_capacity_bytes, baseline);
+                assert_eq!(runtime.stats().unwrap().live_capacity_bytes, baseline + 256);
                 counts[category] += 1;
             }
             assert_eq!(counts[0], 60);
@@ -1976,10 +1976,10 @@ mod tests {
                 }
             }
             assert_eq!((norm_count, softmax_count), (60, 60));
-            assert_eq!(runtime.stats().unwrap().live_capacity_bytes, baseline);
+            assert_eq!(runtime.stats().unwrap().live_capacity_bytes, baseline + 256);
             eprintln!("C71_RESIDENT_NORM_SOFTMAX slot={slot} unweighted_norm={norm_count} softmax={softmax_count} padded_histogram_complete=true gpu=false");
             tables.release(&mut runtime).unwrap();
-            assert_eq!(runtime.stats().unwrap().live_capacity_bytes, 0);
+            assert_eq!(runtime.stats().unwrap().live_capacity_bytes, 256);
             runtime.close().unwrap();
             if slot == 0 {
                 let index =
@@ -2166,7 +2166,7 @@ mod tests {
         for block in blocks {
             block.release(&mut runtime).unwrap();
         }
-        assert_eq!(runtime.stats().unwrap().live_capacity_bytes, 0);
+        assert_eq!(runtime.stats().unwrap().live_capacity_bytes, 256);
         runtime.close().unwrap();
         eprintln!("C71_RESIDENT_BYTE_WINDOWS count={windows} codecs=6/2/4 max_bytes=128 exact_order=true intermediate_download_bytes=0 gpu=false");
     }
@@ -2350,7 +2350,7 @@ mod tests {
                 runtime.release_buffer(bytes).unwrap();
             }
             embedding.release(&mut runtime).unwrap();
-            assert_eq!(runtime.stats().unwrap().live_capacity_bytes, 0);
+            assert_eq!(runtime.stats().unwrap().live_capacity_bytes, 256);
             assert_eq!(runtime.stats().unwrap().h2d_bytes, before.h2d_bytes);
         }
         assert_eq!(runtime.stats().unwrap().d2d_bytes, 20);
@@ -2560,7 +2560,7 @@ mod tests {
                 for input in operands {
                     input.release(&mut runtime).unwrap();
                 }
-                assert_eq!(runtime.stats().unwrap().live_capacity_bytes, 0);
+                assert_eq!(runtime.stats().unwrap().live_capacity_bytes, 256);
                 counts[usize::from(multiply)] += 1;
             }
             assert_eq!(counts[1], 60);
@@ -2698,13 +2698,13 @@ mod tests {
             assert_eq!(runtime.stats().unwrap().h2d_bytes, before.h2d_bytes);
             product.release(&mut runtime).unwrap();
             rounded.release(&mut runtime).unwrap();
-            assert_eq!(runtime.stats().unwrap().live_capacity_bytes, before.live_capacity_bytes);
+            assert_eq!(runtime.stats().unwrap().live_capacity_bytes, before.live_capacity_bytes + 256);
         }
         let after = runtime.stats().unwrap();
         assert_eq!(after.d2h_bytes - before.d2h_bytes, 112); // two flags and one scalar root per batch
         assert!(after.peak_capacity_bytes >= before.live_capacity_bytes + 3 * 256);
         input.release(&mut runtime).unwrap();
-        assert_eq!(runtime.stats().unwrap().live_capacity_bytes, 0);
+        assert_eq!(runtime.stats().unwrap().live_capacity_bytes, 256);
         let final_stats = runtime.close().unwrap();
         assert_eq!(final_stats.weights_bytes + final_stats.arena_bytes, 0);
         assert!(runtime.upload_signed(&values).is_err());

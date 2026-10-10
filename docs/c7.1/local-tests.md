@@ -17,6 +17,12 @@ completa 35/512 gruppi A con W/setup presenti, poi esaurisce il logger
 da 16 MiB. Il picco stabile campionato è 6.141.582.848 B: non è
 un picco completo né una soluzione dello spike. Il trial default senza
 logger/profiler è in corso, con timeout 90 minuti entro la deadline.
+Il [monitor per il profiler](../c7.1-history/h100-profiler-monitor-2026-10-10.md)
+conta identità PID/start-ticks dei figli anche in nuove sessioni e usa
+pidfd per il loro stop. W richiede ancora discendenza dal launcher,
+identità e smaps completi; limiti invariati. Passano 41 test ridotti
+del monitor e nove documentali; il trial già in corso usa il modulo
+precedente caricato, senza nuovo credito fisico.
 
 La [precedente campagna H100 è conclusa](../c7.1-history/h100-campaign-close-2026-10-10.md),
 con pod spento entro la deadline e zero certificati canonici. A04 termina per cap fisico dopo 86/512 gruppi, wall 780,205 s.

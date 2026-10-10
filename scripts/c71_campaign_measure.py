@@ -43,9 +43,15 @@ def process_rows():
     return rows
 
 
-def host_tree(root_pid, session_id=None):
+def host_tree(root_pid, session_id=None, remembered=None):
     rows = process_rows()
     selected = {root_pid}
+    for pid, ticks in (remembered or {}).items():
+        try:
+            if pid in rows and start_ticks(pid) == ticks:
+                selected.add(pid)
+        except (FileNotFoundError, ProcessLookupError):
+            pass
     if session_id is not None:
         for pid in rows:
             try:
@@ -61,7 +67,52 @@ def host_tree(root_pid, session_id=None):
     return {pid: rows[pid] for pid in selected if pid in rows}
 
 
-def stop_session(session_id):
+def descendant_of(rows, pid, root_pid):
+    seen = set()
+    while pid in rows and pid not in seen:
+        if pid == root_pid:
+            return True
+        seen.add(pid)
+        pid = rows[pid][0]
+    return False
+
+
+def remember_descendants(rows, session_id, remembered):
+    roots = {session_id}
+    for pid, ticks in list(remembered.items()):
+        try:
+            if pid in rows and start_ticks(pid) == ticks:
+                roots.add(pid)
+        except (FileNotFoundError, ProcessLookupError):
+            pass
+    for pid in rows:
+        try:
+            if os.getsid(pid) == session_id or any(descendant_of(rows, pid, root) for root in roots):
+                ticks = start_ticks(pid)
+                if remembered.get(pid, ticks) != ticks:
+                    raise ValueError('monitored descendant PID was reused')
+                remembered[pid] = ticks
+        except (FileNotFoundError, ProcessLookupError):
+            pass
+
+
+def stop_session(session_id, remembered=None):
+    remembered = dict(remembered or {})
+    remember_descendants(host_tree(session_id, session_id, remembered), session_id, remembered)
+    # Profilers can put their application in a new session. Retain its
+    # identity while parented, and use pidfds even if it is later orphaned.
+    for pid, ticks in remembered.items():
+        try:
+            if os.getsid(pid) == session_id:
+                continue
+            descriptor = os.pidfd_open(pid)
+            try:
+                if start_ticks(pid) == ticks:
+                    signal.pidfd_send_signal(descriptor, signal.SIGKILL)
+            finally:
+                os.close(descriptor)
+        except (FileNotFoundError, ProcessLookupError):
+            pass
     groups = {session_id}
     for proc in Path('/proc').iterdir():
         if not proc.name.isdigit():
@@ -238,7 +289,8 @@ class Progress:
                                        for space in ('host', 'device')):
             return 0, 0
         pid, ticks = self.process
-        if pid not in rows or start_ticks(pid) != ticks or os.getsid(pid) != session_id:
+        if pid not in rows or start_ticks(pid) != ticks or (
+                os.getsid(pid) != session_id and not descendant_of(rows, pid, session_id)):
             raise ValueError('resident W owner is not the monitored process session')
         host = device = 0
         if self.states.get('host', {}).get('state') == 'live':
@@ -362,6 +414,7 @@ def run(args):
         started = time.monotonic()
         stop_at = started + args.seconds
         samples = incomplete = 0
+        remembered = {}
         joint_peak = host_peak = gpu_peak = 0
         failure = None
         for signum in (signal.SIGTERM, signal.SIGINT):
@@ -378,7 +431,8 @@ def run(args):
                 generation = progress.generation if progress else 0
                 smaps_before = progress.smaps_read_failures if progress else 0
                 transitioning = progress.transition() if progress else False
-                rows = host_tree(os.getpid(), process.pid)
+                rows = host_tree(os.getpid(), process.pid, remembered)
+                remember_descendants(rows, process.pid, remembered)
                 host_w = device_w = 0
                 exemption_error = None
                 if progress:
@@ -393,7 +447,8 @@ def run(args):
                 if len(fields) != 3:
                     raise ValueError('exactly one GPU memory sample required')
                 used, total, free = (int(value.strip()) * (1 << 20) for value in fields)
-                after = host_tree(os.getpid(), process.pid)
+                after = host_tree(os.getpid(), process.pid, remembered)
+                remember_descendants(after, process.pid, remembered)
                 for pid, (parent, rss, swap) in after.items():
                     old = rows.get(pid, (parent, 0, 0))
                     rows[pid] = (parent, max(rss, old[1]), max(swap, old[2]))
@@ -445,7 +500,7 @@ def run(args):
         except BaseException as error:
             failure = type(error).__name__ + ': ' + str(error)
         finally:
-            stop_session(process.pid)
+            stop_session(process.pid, remembered)
         try:
             code = process.wait(timeout=max(0, min(5, deadline - time.time())))
         except subprocess.TimeoutExpired:
@@ -459,6 +514,7 @@ def run(args):
             'compute_end_epoch': end, 'command': args.command, 'exit_code': code,
             'start_unix_seconds': start, 'wall_seconds': time.monotonic() - started,
             'samples': samples, 'incomplete_samples': incomplete,
+            'tracked_descendant_identities': len(remembered),
             'stable_samples': samples - incomplete,
             'smaps_read_failures': progress.smaps_read_failures if progress else 0,
             'sampling_target_seconds': SAMPLE_SECONDS,

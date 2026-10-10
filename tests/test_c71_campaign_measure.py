@@ -60,6 +60,44 @@ def test_process_sampling_skips_exited_processes_but_keeps_read_errors(monkeypat
         monitor.process_rows()
 
 
+def test_orphaned_profiler_descendants_remain_accounted_only_with_matching_identity(monkeypatch):
+    rows = {2: (1, 4096, 0), 3: (2, 8192, 0)}
+    monkeypatch.setattr(monitor, 'process_rows', lambda: rows)
+    monkeypatch.setattr(monitor.os, 'getsid', lambda _pid: 123)
+    monkeypatch.setattr(monitor, 'start_ticks', lambda _pid: 100)
+    assert monitor.host_tree(999, 999, {2: 100}) == rows
+    assert monitor.host_tree(999, 999, {2: 101}) == {}
+
+
+def test_W_owner_in_new_session_requires_root_ancestry_and_original_identity(tmp_path, monkeypatch):
+    progress = monitor.Progress(tmp_path / 'none')
+    progress.consume(record(0, resident('device', 'allocating')))
+    progress.consume(record(1, resident('device', 'live')))
+    pid = os.getpid()
+    monkeypatch.setattr(monitor.os, 'getsid', lambda _pid: 123)
+    rows = {pid: (999, 12288, 0), 999: (0, 4096, 0)}
+    assert progress.exemptions(rows, 999) == (0, monitor.W_BYTES)
+    with pytest.raises(ValueError, match='monitored process'):
+        progress.exemptions({pid: (998, 12288, 0)}, 999)
+    progress.process = (pid, progress.process[1] + 1)
+    with pytest.raises(ValueError, match='monitored process'):
+        progress.exemptions(rows, 999)
+
+
+def test_stop_never_signals_reused_detached_PID(monkeypatch):
+    delivered, closed = [], []
+    monkeypatch.setattr(monitor, 'host_tree', lambda *_: {})
+    monkeypatch.setattr(monitor.os, 'getsid', lambda pid: pid)
+    monkeypatch.setattr(monitor, 'start_ticks', lambda _pid: 2)
+    monkeypatch.setattr(monitor.os, 'pidfd_open', lambda _pid: 12)
+    monkeypatch.setattr(monitor.signal, 'pidfd_send_signal', lambda *args: delivered.append(args))
+    monkeypatch.setattr(monitor.os, 'close', lambda fd: closed.append(fd))
+    monkeypatch.setattr(Path, 'iterdir', lambda _path: iter(()))
+    monkeypatch.setattr(monitor.os, 'killpg', lambda *_: None)
+    monitor.stop_session(999, {123: 1})
+    assert delivered == [] and closed == [12]
+
+
 def test_smaps_exempts_only_guaranteed_resident_whole_W_pages():
     smaps = ('1000-5000 rw-p 00000000 00:00 0\nRss: 12 kB\n'
              '9000-a000 r-xp 00000000 00:00 0\nRss: 4 kB\n')
@@ -287,13 +325,16 @@ def test_fake_GPU_process_success_private_outputs_and_no_overwrite(campaign):
     assert (log / 'fixture.summary.json').read_bytes() == original
 
 
-def test_runtime_deadline_kills_descendant_in_another_process_group(campaign):
+@pytest.mark.parametrize('new_session', [False, True])
+def test_runtime_deadline_kills_descendant_in_another_process_group(campaign, new_session):
     pid_path = campaign.root / 'descendant'
     campaign.seconds = 1
     campaign.command = [sys.executable, '-c',
         'import pathlib,subprocess,sys,time; '
-        'p=subprocess.Popen([sys.executable,"-c","import time; time.sleep(60)"],process_group=0); '
+        'p=subprocess.Popen([sys.executable,"-c","import time; time.sleep(60)"],**json.loads(sys.argv[2])); '
         'pathlib.Path(sys.argv[1]).write_text(str(p.pid)); time.sleep(60)', str(pid_path)]
+    campaign.command[2] = 'import json; ' + campaign.command[2]
+    campaign.command.append(json.dumps({'start_new_session': True} if new_session else {'process_group': 0}))
     assert monitor.run(campaign) != 0
     report = json.loads((campaign.root / 'logs/fixture.summary.json').read_text())
     assert 'deadline' in report['resource_failure']
@@ -362,7 +403,8 @@ def test_canonical_mode_requires_new_progress_path_before_launch(campaign):
     assert not (campaign.root / 'logs').exists()
 
 
-def test_canonical_controller_reads_real_small_host_mapping_with_fake_device(campaign, monkeypatch):
+@pytest.mark.parametrize('new_session', [False, True])
+def test_canonical_controller_reads_real_small_host_mapping_with_fake_device(campaign, monkeypatch, new_session):
     # The controller fixture reduces only the pinned W-size constant; the
     # launched Python process supplies an actual live mapping for /proc/smaps.
     monkeypatch.setattr(monitor, 'W_BYTES', 8192)
@@ -394,6 +436,10 @@ state('host','retiring');memory.close();state('host','retired')
 emit({'kind':'command_result','complete':True})
 '''
     campaign.command = [sys.executable, '-c', source, str(campaign.progress)]
+    if new_session:
+        campaign.command = [sys.executable, '-c',
+            'import subprocess,sys; sys.exit(subprocess.run(sys.argv[1:],start_new_session=True).returncode)',
+            *campaign.command]
     assert monitor.run(campaign) == 0
     report = json.loads((campaign.root / 'logs/fixture.summary.json').read_text())
     assert report['stable_samples'] > 0
@@ -410,7 +456,7 @@ def test_zero_samples_are_failure_even_when_child_returns_zero(campaign, monkeyp
         def wait(self, timeout=None):
             return 0
     monkeypatch.setattr(monitor.subprocess, 'Popen', lambda *args, **kwargs: Finished())
-    monkeypatch.setattr(monitor, 'stop_session', lambda _pid: None)
+    monkeypatch.setattr(monitor, 'stop_session', lambda *_args: None)
     assert monitor.run(campaign) != 0
     report = json.loads((campaign.root / 'logs/fixture.summary.json').read_text())
     assert report['samples'] == 0

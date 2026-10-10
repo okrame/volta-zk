@@ -233,7 +233,7 @@ pub fn command(args: &[String]) -> Result<serde_json::Value, String> {
     // A new, private sibling of the journal directory survives timeout/kill.
     // Existing output is never overwritten or used to resume a session.
     let _progress = match (args.first().map(String::as_str), args.len()) {
-        (Some("reference-cpu"), 6) | (Some("experiment-cuda" | "inference-cuda"), 8) =>
+        (Some("reference-cpu"), 6) | (Some("experiment-cuda" | "inference-cuda" | "commitment-a-cuda"), 8) =>
             Some(kernel::progress::Recording::start(&Path::new(&args[4]).with_extension("progress.jsonl"))?),
         _ => None,
     };
@@ -291,11 +291,11 @@ fn measured_command(
 ) -> Result<serde_json::Value, String> {
     let native = match (args.first().map(String::as_str), args.len()) {
         (Some("reference-cpu"), 6) => None,
-        (Some("experiment-cuda" | "inference-cuda"), 8) => Some(kernel::range::windowed::native::Config::new(
+        (Some("experiment-cuda" | "inference-cuda" | "commitment-a-cuda"), 8) => Some(kernel::range::windowed::native::Config::new(
             args[6].clone().into(), args[7].parse().map_err(|_| "invalid CUDA device")?,
             6_442_450_944, 256 * 1024 * 1024, 1 << 30, 32,
         )),
-        _ => return Err("Stop: explicit backend required: c71_canonical_reference reference-cpu CANDIDATE TABLES PACKED NEW_JOURNAL_DIRECTORY PREPARATION_BYTES; or experiment-cuda with LIBRARY DEVICE appended; inference-cuda uses the same arguments for an O=0 component without proof or acceptance".into()),
+        _ => return Err("Stop: explicit backend required: c71_canonical_reference reference-cpu CANDIDATE TABLES PACKED NEW_JOURNAL_DIRECTORY PREPARATION_BYTES; or experiment-cuda with LIBRARY DEVICE appended; inference-cuda and commitment-a-cuda use the same arguments for O=0 components without proof or acceptance".into()),
     };
     let timeout = {
         let timeout_env = std::env::var("C71_DIAGNOSTIC_TIMEOUT_SECONDS");
@@ -401,7 +401,7 @@ fn measured_command(
                 packed_digest,
                 native.clone(),
                 timeout,
-                args[0] == "inference-cuda",
+                &args[0],
             )
         })
     })
@@ -418,7 +418,7 @@ fn run(
     packed_digest: String,
     native_config: Option<kernel::range::windowed::native::Config>,
     timeout: Duration,
-    inference_only: bool,
+    mode: &str,
 ) -> Result<serde_json::Value, String> {
     let geometry = Geometry::new(675, 19, 11).map_err(|e| e.to_string())?;
     if public.required.iter().sum::<usize>() * 3 > geometry.capacity().map_err(|e| e.to_string())? {
@@ -439,13 +439,36 @@ fn run(
     } else {
         None
     };
-    if inference_only {
+    if matches!(mode, "inference-cuda" | "commitment-a-cuda") {
         // This component stops at O=0. It cannot promote KV or claim acceptance;
         // prepare receives no PCS coins, PCG state or verifier challenges.
         let session = native.as_ref().ok_or("inference diagnostic requires CUDA")?;
         let phase = measurements.phase("prover", Some(0), "preparation_including_inference");
         let prepared = session.prepare(0, &pinned_prompt()?)?;
         let preparation_ns = phase.finish();
+        if mode == "commitment-a-cuda" {
+            // Same native source and PCS geometry, with fresh commitment coins.
+            // No W commitment, PCG, acceptance or continuation is represented.
+            let phase = measurements.phase("prover", Some(0), "commitment_a_component");
+            let coins = fresh_pcs_coins()?;
+            let (getter, scanner, windows) = (prepared.clone(), prepared.clone(), prepared.clone());
+            let current = b12::replay::ReplayModel::new_native_source(
+                Domain::Flat(34), coins.seed, coins.salt_seed,
+                Arc::new(move |i| E::from(Goldilocks::from_u64(u64::from(
+                    getter.byte_at(i).expect("immutable canonical A"))))),
+                Arc::new(move |emit| scanner.scan_original(emit)),
+                Arc::new(move |first, out| windows.window(first, out)),
+                public.profiles[0].bytes().live, prepared.source_pcs(),
+            )?;
+            let commitment_ns = phase.finish();
+            return Ok(serde_json::json!({"credit":false,"readiness":false,
+                "scope":"O=0 initial A commitment component; no W commitment, PCG, proof, verification or continuation",
+                "canonical_certificates_verified":0,"gpu_execution":true,"old_tokens":0,
+                "preparation_including_inference_wall_ns":preparation_ns,
+                "inference_wall_ns":prepared.inference_ns(),"commitment_a_wall_ns":commitment_ns,
+                "packed_blake3":packed_digest,"retained_pcs":current.retained_census(),
+                "native_cumulative":session.stats()?}));
+        }
         return Ok(serde_json::json!({"credit":false,"readiness":false,
             "scope":"O=0 inference component; no commitment, PCG, proof, verification or continuation",
             "canonical_certificates_verified":0,"gpu_execution":true,"old_tokens":0,

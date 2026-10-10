@@ -730,6 +730,11 @@ impl<'a> Prover<'a> {
                 session.stop();
             }
         }
+        if let Err(error) = &result {
+            // Private lab log only: the peer still receives the uniform stop.
+            let _ = kernel::progress::emit(serde_json::json!({"kind":"private_failure",
+                "role":"prover", "reason":error.chars().take(512).collect::<String>()}));
+        }
         result.map_err(|_| "Stop".into())
     }
 }

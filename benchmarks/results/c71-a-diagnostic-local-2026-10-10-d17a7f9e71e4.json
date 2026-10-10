@@ -1,0 +1,316 @@
+{
+  "schema": "c71-local-a-diagnostic-v1",
+  "date": "2026-10-10",
+  "git_sha": "d17a7f9e71e435e98d406e86b2488778da387c28",
+  "git_dirty": true,
+  "credit": false,
+  "scope": "Targeted build and eight small tests of runner, source-tree parity and fail-closed. New A-only CLI will be exercised on authorized pod; no local canonical buffers.",
+  "builds": [
+    {
+      "command": [
+        "cargo",
+        "rustc",
+        "--offline",
+        "--locked",
+        "-j",
+        "1",
+        "-p",
+        "volta-pcs",
+        "--features",
+        "c71-seed6-reference",
+        "--lib",
+        "--profile",
+        "test",
+        "--config",
+        "profile.dev.package.volta-pcs.opt-level=0",
+        "--config",
+        "profile.dev.package.volta-pcs.codegen-units=64",
+        "--",
+        "-Clink-arg=-fuse-ld=lld",
+        "-Clink-arg=-B/home/okrame/.rustup/toolchains/stable-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/bin/gcc-ld",
+        "-Clink-arg=-Wl,--threads=1"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk/rust",
+      "exit_code": 124,
+      "wall_s": 120.01531516527757,
+      "max_rss_bytes": 1026895872,
+      "sampled_aggregate_live_rss_peak_bytes": 2592792576,
+      "sampled_processes": {
+        "21": {
+          "name": "timeout",
+          "max_rss_bytes": 1576960,
+          "cpu_ticks": 0,
+          "first_seen_s": 0.0008732089772820473,
+          "last_seen_s": 120.0151035822928
+        },
+        "22": {
+          "name": "cargo",
+          "max_rss_bytes": 53415936,
+          "cpu_ticks": 17,
+          "first_seen_s": 0.10398812126368284,
+          "last_seen_s": 119.91442954400554
+        },
+        "37": {
+          "name": "rustc",
+          "max_rss_bytes": 460197888,
+          "cpu_ticks": 1187,
+          "first_seen_s": 0.20579824037849903,
+          "last_seen_s": 12.064742770045996
+        },
+        "77": {
+          "name": "rustc",
+          "max_rss_bytes": 319766528,
+          "cpu_ticks": 437,
+          "first_seen_s": 12.165759097319096,
+          "last_seen_s": 16.521191047970206
+        },
+        "117": {
+          "name": "rustc",
+          "max_rss_bytes": 1012371456,
+          "cpu_ticks": 7561,
+          "first_seen_s": 16.62186541641131,
+          "last_seen_s": 92.10716790240258
+        },
+        "157": {
+          "name": "rustc",
+          "max_rss_bytes": 2537799680,
+          "cpu_ticks": 2779,
+          "first_seen_s": 92.20920806517825,
+          "last_seen_s": 120.01516449823976
+        }
+      },
+      "sample_interval_s": 0.1,
+      "clock_ticks_per_s": 100,
+      "deadline_s": 120,
+      "workers": 1,
+      "as_limit_mib": null,
+      "sampled_aggregate_rss_stop_bytes": 3221225472,
+      "memory_stop": false,
+      "user_s": 90.214251,
+      "system_s": 2.073592,
+      "log": "/tmp/c71-a-diagnostic-local-20261010/build.log"
+    },
+    {
+      "command": [
+        "cargo",
+        "rustc",
+        "--offline",
+        "--locked",
+        "-j",
+        "1",
+        "-p",
+        "volta-pcs",
+        "--features",
+        "c71-seed6-reference",
+        "--lib",
+        "--profile",
+        "test",
+        "--config",
+        "profile.dev.package.volta-pcs.opt-level=0",
+        "--config",
+        "profile.dev.package.volta-pcs.codegen-units=64",
+        "--",
+        "-Clink-arg=-fuse-ld=lld",
+        "-Clink-arg=-B/home/okrame/.rustup/toolchains/stable-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/bin/gcc-ld",
+        "-Clink-arg=-Wl,--threads=1"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk/rust",
+      "exit_code": 0,
+      "wall_s": 56.155858132988214,
+      "max_rss_bytes": 2547511296,
+      "sampled_aggregate_live_rss_peak_bytes": 2589564928,
+      "sampled_processes": {
+        "19": {
+          "name": "timeout",
+          "max_rss_bytes": 1572864,
+          "cpu_ticks": 0,
+          "first_seen_s": 0.0008270419202744961,
+          "last_seen_s": 56.1557732578367
+        },
+        "20": {
+          "name": "cargo",
+          "max_rss_bytes": 53022720,
+          "cpu_ticks": 18,
+          "first_seen_s": 0.10156903881579638,
+          "last_seen_s": 56.05336100887507
+        },
+        "35": {
+          "name": "rustc",
+          "max_rss_bytes": 2534969344,
+          "cpu_ticks": 5491,
+          "first_seen_s": 0.2047181618399918,
+          "last_seen_s": 55.952467885799706
+        },
+        "105": {
+          "name": "rustc",
+          "max_rss_bytes": 2117632,
+          "cpu_ticks": 0,
+          "first_seen_s": 55.03567123087123,
+          "last_seen_s": 55.95251138601452
+        },
+        "106": {
+          "name": "collect2",
+          "max_rss_bytes": 1568768,
+          "cpu_ticks": 0,
+          "first_seen_s": 55.137475688010454,
+          "last_seen_s": 55.952553844079375
+        },
+        "107": {
+          "name": "rust-lld",
+          "max_rss_bytes": 597364736,
+          "cpu_ticks": 88,
+          "first_seen_s": 55.1375744799152,
+          "last_seen_s": 55.95259613590315
+        }
+      },
+      "sample_interval_s": 0.1,
+      "clock_ticks_per_s": 100,
+      "deadline_s": 120,
+      "workers": 1,
+      "as_limit_mib": null,
+      "sampled_aggregate_rss_stop_bytes": 3221225472,
+      "memory_stop": false,
+      "user_s": 49.923833,
+      "system_s": 6.182438,
+      "log": "/tmp/c71-a-diagnostic-local-20261010/build-02.log"
+    }
+  ],
+  "validation": {
+    "binary_sha256": "64c587abd15e1156d66afb1fac6953118ad894fdc77ccb4f404a0ced37d5f98c",
+    "checks": [
+      {
+        "filter": "c71_canonical_runner_",
+        "exit_code": 0,
+        "wall_seconds": 0.16027575358748436,
+        "command": [
+          "timeout",
+          "-k",
+          "5s",
+          "60s",
+          "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+          "c71_canonical_runner_",
+          "--test-threads=1",
+          "--nocapture"
+        ],
+        "deadline_seconds": 60,
+        "as_limit_bytes": 2147483648,
+        "passed": 6,
+        "failed": 0,
+        "ignored": 0
+      },
+      {
+        "filter": "c71_b12_native_source_tree_fail_closed_without_scalar_fallback",
+        "exit_code": 0,
+        "wall_seconds": 9.893652682658285,
+        "command": [
+          "timeout",
+          "-k",
+          "5s",
+          "60s",
+          "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+          "c71_b12_native_source_tree_fail_closed_without_scalar_fallback",
+          "--test-threads=1",
+          "--nocapture"
+        ],
+        "deadline_seconds": 60,
+        "as_limit_bytes": 2147483648,
+        "passed": 1,
+        "failed": 0,
+        "ignored": 0
+      },
+      {
+        "filter": "c71_b12_native_source_tree_exact_roots_openings_histogram_and_work",
+        "exit_code": 0,
+        "wall_seconds": 22.288325338158756,
+        "command": [
+          "timeout",
+          "-k",
+          "5s",
+          "60s",
+          "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+          "c71_b12_native_source_tree_exact_roots_openings_histogram_and_work",
+          "--test-threads=1",
+          "--nocapture"
+        ],
+        "deadline_seconds": 60,
+        "as_limit_bytes": 2147483648,
+        "passed": 1,
+        "failed": 0,
+        "ignored": 0
+      }
+    ],
+    "all_passed": true
+  },
+  "artifacts": [
+    {
+      "path": "benchmarks/results/c71-a-diagnostic-local-2026-10-10-d17a7f9e71e4/build-02.json",
+      "bytes": 2157,
+      "sha256": "9641097170d2125b62afa6bb370b4470de100321571ed40916b53b81a68254e8"
+    },
+    {
+      "path": "benchmarks/results/c71-a-diagnostic-local-2026-10-10-d17a7f9e71e4/build-02.log",
+      "bytes": 14061,
+      "sha256": "f19de390d744e4c65979b487c636e6ab0ba2ec65f2261c63d26bb5ffb29773fd"
+    },
+    {
+      "path": "benchmarks/results/c71-a-diagnostic-local-2026-10-10-d17a7f9e71e4/build.json",
+      "bytes": 2166,
+      "sha256": "fc7d2b13fc9213ad65768c0e5ffeca93d0fbb78226b0ef930d20ecf7e15e20bc"
+    },
+    {
+      "path": "benchmarks/results/c71-a-diagnostic-local-2026-10-10-d17a7f9e71e4/build.log",
+      "bytes": 14117,
+      "sha256": "2d3c347731bbc57d18829207af5b8ae3992c7cec6d51986c65462f83658a7d1e"
+    },
+    {
+      "path": "benchmarks/results/c71-a-diagnostic-local-2026-10-10-d17a7f9e71e4/test-01.json",
+      "bytes": 426,
+      "sha256": "e334676f9fa54ecdc976e35c2c8600c44238e408d9d1128d80ffff3ec21e195b"
+    },
+    {
+      "path": "benchmarks/results/c71-a-diagnostic-local-2026-10-10-d17a7f9e71e4/test-01.stderr",
+      "bytes": 9262,
+      "sha256": "be84c507fe76cf974f53fb470d3b4f21aacbcea5beb8d7c6fe90ad152b40aea8"
+    },
+    {
+      "path": "benchmarks/results/c71-a-diagnostic-local-2026-10-10-d17a7f9e71e4/test-01.stdout",
+      "bytes": 879,
+      "sha256": "6d0e697a0f2af21e8f03a2baed0cbc1a26aa3c318fc1228cb043ee9a705d4a70"
+    },
+    {
+      "path": "benchmarks/results/c71-a-diagnostic-local-2026-10-10-d17a7f9e71e4/test-02.json",
+      "bytes": 506,
+      "sha256": "b2a3f62dbe5150cb3493a8609f09e364a7d8314464113deb8ee93d896e1b66aa"
+    },
+    {
+      "path": "benchmarks/results/c71-a-diagnostic-local-2026-10-10-d17a7f9e71e4/test-02.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "benchmarks/results/c71-a-diagnostic-local-2026-10-10-d17a7f9e71e4/test-02.stdout",
+      "bytes": 325,
+      "sha256": "809de2eabbeb04dfce16c0ab2ced7629df38729f5ff2f326fd44e506bfbe0b27"
+    },
+    {
+      "path": "benchmarks/results/c71-a-diagnostic-local-2026-10-10-d17a7f9e71e4/test-03.json",
+      "bytes": 515,
+      "sha256": "3f009f1b56d26e660791a6c5f3821ea2c84f710d1fd0316076334b0144bc3162"
+    },
+    {
+      "path": "benchmarks/results/c71-a-diagnostic-local-2026-10-10-d17a7f9e71e4/test-03.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "benchmarks/results/c71-a-diagnostic-local-2026-10-10-d17a7f9e71e4/test-03.stdout",
+      "bytes": 2847,
+      "sha256": "5d0f26c95f88a64a8c61b6665984d785c30d4358881cadacc82749bfe5fd29e8"
+    },
+    {
+      "path": "benchmarks/results/c71-a-diagnostic-local-2026-10-10-d17a7f9e71e4/validation.json",
+      "bytes": 1820,
+      "sha256": "27857edf9b8a2befd1601bf730ec44bf388fc6ccba72769d3a10d8e755a42df7"
+    }
+  ]
+}

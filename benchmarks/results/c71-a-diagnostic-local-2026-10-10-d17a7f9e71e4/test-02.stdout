@@ -1,0 +1,7 @@
+
+running 1 test
+test c71_matrix::b12::replay::tests::c71_b12_native_source_tree_fail_closed_without_scalar_fallback ... C71_NATIVE_A_TREE_REJECTIONS {"cases":8,"scalar_fallback_calls":0,"gpu_execution":false,"credit":false}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 600 filtered out; finished in 9.89s
+

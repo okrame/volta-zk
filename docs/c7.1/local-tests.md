@@ -57,6 +57,16 @@ passa 17 test CPU sul pod e conserva output, scarti e correlazioni monouso.
 Il microbenchmark misura 1,475× sul componente; il setup completo con
 questa modifica non è misurato e `canonical-05` usa il binario precedente.
 
+Il [quinto trial](../c7.1-history/h100-canonical-05-2026-10-09.md) termina
+con `Stop` durante A, senza accettazione o violazione fisica osservata.
+I journal rimangono bruciati; la diagnosi di componente usa monete nuove.
+
+Il [diagnostico A isolato](../../benchmarks/results/c71-a-diagnostic-local-2026-10-10-d17a7f9e71e4.json)
+compila dopo un timeout 120,015 s e una nuova build 56,156 s, sempre
+con un job e stop RSS 3 GiB. Passano otto test ridotti: sei del runner,
+un controllo fail-closed e parità dell'albero sorgente. La CLI con
+input canonici si esegue soltanto sul pod autorizzato.
+
 ## Limiti e ambiente
 
 I controlli locali usano input piccoli, un solo processo di test per volta,

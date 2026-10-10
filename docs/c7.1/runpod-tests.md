@@ -8,6 +8,13 @@ passa 17 test CPU sul pod e conserva output, scarti e correlazioni monouso.
 Il microbenchmark misura 1,475× sul componente; il setup completo con
 questa modifica non è misurato e `canonical-05` usa il binario precedente.
 
+`canonical-05` termina con `Stop` nel primo gruppo A dopo preparazione
+84,831 s; massimo fisico campionato 6.140.513.792 B, sotto il cap.
+La causa privata era persa dal messaggio uniforme. `commitment-a-cuda`
+isola preparazione e commitment iniziale A con geometria/limiti originali
+e monete fresche, senza setup, W commitment o certificati. Il suo risultato
+non sostituisce il percorso canonico; serve a diagnosticare questo stop.
+
 ## Stato e sequenza operativa
 
 Γ è ammesso e riusato dopo verifica degli input, dell'ammissione e dei tre

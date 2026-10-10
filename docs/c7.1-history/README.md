@@ -70,3 +70,5 @@ Benchmark, fonti in `sota` e milestone formali non sono modificati.
 - [Tree PCS A, sali strided e candidata limb16](crypto-a-tree-2026-10-08.md).
 
 - [H100: coda SHAKE cGGM differita, 9 ottobre 2026](h100-cggm-tail-2026-10-09.md).
+
+- [H100: quinto trial canonico, 9 ottobre 2026](h100-canonical-05-2026-10-09.md).

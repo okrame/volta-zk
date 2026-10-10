@@ -8,6 +8,13 @@ passa 17 test CPU sul pod e conserva output, scarti e correlazioni monouso.
 Il microbenchmark misura 1,475× sul componente; il setup completo con
 questa modifica non è misurato e `canonical-05` usa il binario precedente.
 
+`canonical-05` termina con `Stop` nel primo gruppo A dopo preparazione
+84,831 s; massimo fisico campionato 6.140.513.792 B, sotto il cap.
+La causa privata era persa dal messaggio uniforme. `commitment-a-cuda`
+isola preparazione e commitment iniziale A con geometria/limiti originali
+e monete fresche, senza setup, W commitment o certificati. Il suo risultato
+non sostituisce il percorso canonico; serve a diagnosticare questo stop.
+
 ## Obiettivo e relazione dimostrata
 
 C7.1 dimostra a un verificatore designato l'inferenza intera di un modello
@@ -179,7 +186,9 @@ freschi; il picco canonico rimane da verificare.
 Il [checkpoint W successivo](../c7.1-history/h100-w05-checkpoint-2026-10-09.md)
 misura PCS 190,200 s e installazione 207,973 s (PCS −53,060% rispetto
 al trial precedente). Il caricamento sale a 322,159 s: W pronto a
-571,376 s, contro 552,786 s. Setup in corso, nessun certificato acquisito.
+571,376 s, contro 552,786 s. Il [trial concluso](../c7.1-history/h100-canonical-05-2026-10-09.md)
+completa setup 1.986,453 s e preparazione 84,831 s, poi termina con `Stop`
+nel primo gruppo A. Nessun certificato acquisito.
 Il profilo pubblico del replay attribuisce il transiente da 131.072.000 B
 al RNE finale; è un'indicazione analitica, senza nuova schedule selezionata.
 Γ, causalità, replay e garanzie restano invariati. O=0/150/300 non sono verificati.

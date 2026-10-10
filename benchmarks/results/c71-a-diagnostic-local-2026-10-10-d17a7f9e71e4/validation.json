@@ -1,0 +1,66 @@
+{
+  "binary_sha256": "64c587abd15e1156d66afb1fac6953118ad894fdc77ccb4f404a0ced37d5f98c",
+  "checks": [
+    {
+      "filter": "c71_canonical_runner_",
+      "exit_code": 0,
+      "wall_seconds": 0.16027575358748436,
+      "command": [
+        "timeout",
+        "-k",
+        "5s",
+        "60s",
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+        "c71_canonical_runner_",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "deadline_seconds": 60,
+      "as_limit_bytes": 2147483648,
+      "passed": 6,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "filter": "c71_b12_native_source_tree_fail_closed_without_scalar_fallback",
+      "exit_code": 0,
+      "wall_seconds": 9.893652682658285,
+      "command": [
+        "timeout",
+        "-k",
+        "5s",
+        "60s",
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+        "c71_b12_native_source_tree_fail_closed_without_scalar_fallback",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "deadline_seconds": 60,
+      "as_limit_bytes": 2147483648,
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "filter": "c71_b12_native_source_tree_exact_roots_openings_histogram_and_work",
+      "exit_code": 0,
+      "wall_seconds": 22.288325338158756,
+      "command": [
+        "timeout",
+        "-k",
+        "5s",
+        "60s",
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+        "c71_b12_native_source_tree_exact_roots_openings_histogram_and_work",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "deadline_seconds": 60,
+      "as_limit_bytes": 2147483648,
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0
+    }
+  ],
+  "all_passed": true
+}

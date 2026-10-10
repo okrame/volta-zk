@@ -8,6 +8,10 @@ passa 17 test CPU sul pod e conserva output, scarti e correlazioni monouso.
 Il microbenchmark misura 1,475× sul componente; il setup completo con
 questa modifica non è misurato e `canonical-05` usa il binario precedente.
 
+Il [quinto trial](../c7.1-history/h100-canonical-05-2026-10-09.md) termina
+con `Stop` durante A, senza accettazione o violazione fisica osservata.
+I journal rimangono bruciati; la diagnosi di componente usa monete nuove.
+
 ## Ambito e ipotesi
 
 I §§1–6 definiscono e dimostrano la composizione matematica

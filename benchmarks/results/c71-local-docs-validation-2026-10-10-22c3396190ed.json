@@ -1,0 +1,92 @@
+{
+  "schema": "volta-c71-local-docs-validation-v1",
+  "source_git_sha": "22c3396190eda1802cef26664eb2dd9fc1dba340",
+  "git_dirty": false,
+  "recorded_at_utc": "2026-10-10T07:53:18.055212+00:00",
+  "scope": "Document checks after coherent local exploration handoff; no runtime, provider or hardware execution. Development check retained separately with git_dirty:true.",
+  "credit": false,
+  "gpu_execution": false,
+  "tests_passed": 9,
+  "clean_check": {
+    "command": [
+      ".venv/bin/python",
+      "-m",
+      "pytest",
+      "-q",
+      "tests/test_c71_docs.py"
+    ],
+    "source_git_sha": "22c3396190eda1802cef26664eb2dd9fc1dba340",
+    "git_dirty": false,
+    "cwd": "/home/okrame/projects/volta-zk",
+    "exit_code": 0,
+    "wall_s": 1.2688169493339956,
+    "max_rss_bytes": 59461632,
+    "deadline_s": 60,
+    "as_limit_bytes": 2147483648,
+    "workers": 1,
+    "recorded_at_utc": "2026-10-10T07:51:31.211989+00:00",
+    "log": "/tmp/c71-local-20261010/documents-clean.log",
+    "sha256": "8ee01317196d6f2739df70655380a9128eebacde47c1b93d08a1b87797a42c77"
+  },
+  "artifacts": [
+    {
+      "path": "benchmarks/results/c71-local-docs-validation-2026-10-10-22c3396190ed/documents-clean.json",
+      "bytes": 579,
+      "sha256": "2c47fd1974ba5d91f13397d664682340bb53dd834c983c05c8f0a6f3cf933d96"
+    },
+    {
+      "path": "benchmarks/results/c71-local-docs-validation-2026-10-10-22c3396190ed/documents-clean.log",
+      "bytes": 98,
+      "sha256": "8ee01317196d6f2739df70655380a9128eebacde47c1b93d08a1b87797a42c77"
+    },
+    {
+      "path": "benchmarks/results/c71-local-docs-validation-2026-10-10-22c3396190ed/documents-development.json",
+      "bytes": 584,
+      "sha256": "8e76c0c11e4026d3f6b05e851237df2192a900d53ae56c29afc04a2d295119fb"
+    },
+    {
+      "path": "benchmarks/results/c71-local-docs-validation-2026-10-10-22c3396190ed/documents-development.log",
+      "bytes": 98,
+      "sha256": "dfa60bd85afdc3d7e5c52d064f1c3029d4f412f72b83f2ea150b2ee7c11082e3"
+    }
+  ],
+  "document_hashes": [
+    {
+      "path": "docs/c7.1/design.md",
+      "sha256": "245bc84adc52e9b79a55d60748cea95a98106377ae0d3ef5ddca77282df252e5"
+    },
+    {
+      "path": "docs/c7.1/specs.md",
+      "sha256": "590489822861c495e7b6251bb775fed6b297a701af701b58404673265ad6a75a"
+    },
+    {
+      "path": "docs/c7.1/security.md",
+      "sha256": "4cd9af8d29fc4a01a221d58072042301d636edfe67b12d0de1ff2147bf78c374"
+    },
+    {
+      "path": "docs/c7.1/local-tests.md",
+      "sha256": "df6e4ee5b6eb3f3f280fea3fe00edb730c1f172598aa0b3fbeef15432d48918e"
+    },
+    {
+      "path": "docs/c7.1/runpod-tests.md",
+      "sha256": "2a6ac5ead0f3d0d0ff5e6734f761735259ccf74f1e92d45aebb8ee38f7743d8f"
+    },
+    {
+      "path": "docs/c7.1-history/README.md",
+      "sha256": "11325a6292a99dd93637395486b995aff8feac5429d01e5b105f98e0cb97e28a"
+    },
+    {
+      "path": "docs/c7.1-history/local-exploration-close-2026-10-10.md",
+      "sha256": "c0b089be28c7a7a91d9578ff4ba12e3f6b26513ead92450f78726f4b19738af3"
+    },
+    {
+      "path": "docs/c7.1-history/local-executor-2026-10-10.md",
+      "sha256": "14d0edc6b2e1ecf4b646d8e11ab5e34a0734addc32b00d0773f4d709d012dc13"
+    },
+    {
+      "path": "docs/c7.1-history/gamma-screen-2026-10-10.md",
+      "sha256": "53acee5a5b2e58b0944ce1c8f357f5d13e286f093975c58afe29bc3febc85527"
+    }
+  ],
+  "implementation_evidence": "benchmarks/results/c71-local-exploration-2026-10-10-f71a12519ad9.json"
+}

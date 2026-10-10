@@ -4,13 +4,14 @@
 [Test locali](local-tests.md) · [Archivio](../c7.1-history/README.md)
 
 La [campagna H100 autorizzata del 10 ottobre](../c7.1-history/h100-followup-start-2026-10-10.md)
-usa solo `z6wx2kkn69eoc0`: sei ore dall’avvio provider conservativo,
-con trenta minuti di chiusura. Fine calcolo 21:57:24 UTC, guard
-22:22:24 UTC, stop confermato entro 22:27:24 UTC del 10 ottobre
-(00:27:24 Italia dell’11 ottobre). Guard indipendente ancora attivo.
-La nuova autorizzazione copre correzioni e trial nello stesso ambito;
-altro hardware o durata restano esclusi. Γ ammesso, W verificata, NoPeek,
-MAC originali, AES reale e correlazioni monouso restano il riferimento.
+è [chiusa](../c7.1-history/h100-followup-close-2026-10-10.md): solo
+`z6wx2kkn69eoc0`, provider **EXITED con runtime assente alle 21:24:47 UTC**
+(23:24:47 Italia del 10 ottobre), guard ritirato tramite pidfd dopo
+la conferma provider. Avvio conservativo 16:27:24 UTC, durata 4 h 57 min 23 s;
+stop oltre un’ora prima della deadline 22:27:24 UTC, senza estensioni.
+L’autorizzazione ha coperto correzioni e trial entro lo stesso pod,
+ambito e termine. Γ ammesso, W verificata, NoPeek, MAC originali,
+AES reale e correlazioni monouso restano il riferimento.
 
 **Zero certificati canonici.** Il [default](../c7.1-history/h100-followup-default-2026-10-10.md)
 completa W/setup e 116/512 gruppi A, poi supera il cap fisico:
@@ -86,9 +87,9 @@ all'arming sono capacità già vive; il gruppo indica l'ultimo begin
 validato, comprese le allocazioni preparatorie con etichetta precedente.
 Stop anche per dati persi o finestra incompleta, senza aumentare cap.
 Confronti temporali senza profiler e parità CUDA reale precedono ogni
-credito prestazionale. Le fasi hardware sono ora autorizzate nella nuova
-campagna sopra; il prefisso diagnostico e i suoi limiti sono registrati
-nella nuova evidenza collegata all'inizio.
+credito prestazionale. Le fasi hardware del seguito sono concluse nella
+campagna chiusa sopra; prefisso diagnostico, negativi e limiti sono
+registrati nelle evidenze collegate all’inizio.
 
 Γ è ammesso e riusato dopo verifica dei cinque controlli, degli input e
 dei tre piani pubblici. La precedente campagna sul pod è **conclusa**:

@@ -1,0 +1,307 @@
+{
+  "schema": "volta-c71-h100-followup-close-v1",
+  "date": "2026-10-10",
+  "git_sha": "9803f4a123d25cdd60dba68e81401653713d5ee1",
+  "git_dirty": false,
+  "credit": false,
+  "readiness": false,
+  "scope": "Closure of the one owner-authorized H100 campaign; measured negative canonical result and completed component questions, not complete proof or target credit.",
+  "pod_id": "z6wx2kkn69eoc0",
+  "fixed_deadlines": {
+    "pod_id": "z6wx2kkn69eoc0",
+    "start_epoch": 1791649644.2009835,
+    "deadline_epoch": 1791671244.2009835,
+    "campaign_end_epoch": 1791669444.2009835,
+    "guard_stop_epoch": 1791670944.2009835,
+    "close_reserve_seconds": 1800,
+    "authorization": "Owner attachment 2026-10-10: same H100 pod, six hours from provider start including thirty minutes for closure; fresh trials within scope",
+    "start_definition": "API request start minus runtime uptime minus conservative sixty seconds; SSH does not reset start",
+    "shutdown_owner": "Root agent and independent local VM guard",
+    "start_utc": "2026-10-10T16:27:24.200984+00:00",
+    "deadline_utc": "2026-10-10T22:27:24.200984+00:00",
+    "campaign_end_utc": "2026-10-10T21:57:24.200984+00:00",
+    "guard_stop_utc": "2026-10-10T22:22:24.200984+00:00"
+  },
+  "provider_stop_confirmed": {
+    "action": "get",
+    "observed_epoch": 1791667487.2892973,
+    "pod": {
+      "id": "z6wx2kkn69eoc0",
+      "desiredStatus": "EXITED",
+      "imageName": "runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404",
+      "gpuCount": 1,
+      "memoryInGb": 251,
+      "vcpuCount": 28,
+      "volumeInGb": 0,
+      "containerDiskInGb": 230,
+      "runtime": null
+    }
+  },
+  "guard_retired": {
+    "pid": 4077733,
+    "start_ticks": 323578760,
+    "command_verified": true,
+    "pidfd_exit_confirmed": true,
+    "observed_epoch": 1791667487.2984073,
+    "provider_stop_preceded_retirement": true
+  },
+  "stop_confirmed_utc": "2026-10-10T21:24:47.289297+00:00",
+  "elapsed_from_conservative_provider_start_seconds": 17843.088313817978,
+  "seconds_before_authorized_deadline": 3756.911686182022,
+  "no_new_hardware_or_duration_extension": true,
+  "canonical_certificates_verified": 0,
+  "original_gamma_admitted_unchanged": true,
+  "gamma_close_verification": {
+    "observed_epoch": 1791667561.8520818,
+    "original_gamma_selected_files_verified": 8,
+    "required_admission_inputs_unchanged": true,
+    "source_bundle": "artifact/c7.1-pod/h100-components-20261009T194100Z",
+    "source_manifest_sha256": "f6199166fae9f0a1b84e36c2273d52afc180cf6c741c08eae941f2538dd1c262"
+  },
+  "hardware_questions": {
+    "A_spike": "Canonical default stops at 116/512 groups, physical 6545690112 > 6174015488 B. An A component without W PCS/AES setup stops after 33 groups at 6494850560 B. GPU steps 511/496 MiB, constant host RSS, unchanged observed named maxima. Allocation/kernel cause remains unassigned; profiler attempts stop before any A group.",
+    "pool": "Selected exact implementation: 85.143982375 -> 76.759851062 s inference O=0, observed -9.847% in one pair. 1185769 allocations avoided, unchanged launches/fences/traffic. Six A runs do not establish stable wall gain.",
+    "fill": "Retained exact zero-fill simplification: 3840 fewer application launches per A group, identical values/checks/fences/copies on finite parity. Six A runs do not establish stable wall gain.",
+    "optimized_inference": "Both SDPA precisions finish O=0/150/300 with 357 finite raw-head checks each. Original BF16 response 2.420-2.634 s, dequantized i16->BF16 2.493-2.687 s; floating arithmetic and free tokens differ, not selected for integer protocol.",
+    "RMS_coarser": "Original compiler 159->91 programs; numerical O=0 screen finishes in 77.209854981 s inference, matches 2/50 generated positions, first divergence third decision. Rejected by pretrial stability criterion; later contexts and substitution line not started."
+  },
+  "selected": [
+    "Existing exact pooled flag implementation",
+    "Existing exact public zero fill with no stable A wall claim",
+    "Mandatory prefix guards and fail-closed semantics",
+    "Subreaper-owned monitor cleanup and GPU idle prerequisite",
+    "Corrected public BF16 scalar loading only in the floating diagnostic"
+  ],
+  "not_selected": [
+    "Floating SDPA as an integer protocol implementation",
+    "Coarser Gamma substitution rejected by the numerical screen",
+    "Nsight capture as usable evidence of this A spike"
+  ],
+  "remaining_blocks": [
+    "Exact allocation/kernel attribution and physical runtime allowance",
+    "Complete joint resource peak and 512-group A root/parity",
+    "Complete O=0/150/300 proof, verification and <=65 s response",
+    "Full real RMS/GKR coefficient work: remaining analytic 844006203160300 Fp3 CPU multiplications per response",
+    "Open Seed6/composition and Rust/CUDA refinement premises stated in active design/security"
+  ],
+  "closure_ready": {
+    "evidence_verified": true,
+    "observed_epoch": 1791667462.0028956,
+    "prestop_source_commit": "9803f4a123d25cdd60dba68e81401653713d5ee1",
+    "private_retained_bytes": 303851835,
+    "pod_anonymous_checkout_verified": true,
+    "gpu_compute_apps_absent": true,
+    "native_and_profiler_processes_absent": true,
+    "rms_screen_rejected": true,
+    "canonical_certificates_verified": 0,
+    "no_more_compute_required": true
+  },
+  "pod_https_publication_verified": {
+    "credit": false,
+    "observed_epoch": 1791667438.9927022,
+    "branch": "runpod/z6wx2kkn69eoc0/c71-h100-20261010",
+    "commit": "9803f4a123d25cdd60dba68e81401653713d5ee1",
+    "checkout": "/workspace/c71-published-followup-20261010-01",
+    "anonymous_https": true,
+    "clean": true,
+    "files": [
+      {
+        "path": "docs/c7.1/design.md",
+        "bytes": 33269,
+        "sha256": "4cec990063a9e3a138a129df6e0819f4d35322e5f56c1afcf5efe51d1304df91"
+      },
+      {
+        "path": "docs/c7.1/local-tests.md",
+        "bytes": 60657,
+        "sha256": "9f6cb9bd8bf5c193b9f0a2fba963d331e6e5a916ce41301aa294e1c2e20b40ea"
+      },
+      {
+        "path": "docs/c7.1/runpod-tests.md",
+        "bytes": 58804,
+        "sha256": "5c719e5676c23e5d3d9c928252d60e2c3dd33e05e9235c7b837b7e85891e2a63"
+      },
+      {
+        "path": "docs/c7.1/security.md",
+        "bytes": 59702,
+        "sha256": "6745d38fbe3fc706e1aa8f98fbb11656dd81cdf100ef3684da084ad6a3a04233"
+      },
+      {
+        "path": "docs/c7.1/specs.md",
+        "bytes": 113654,
+        "sha256": "1f68297143f23d66754113eff0ff94d9b64dd1c9d29d06a9189f2ef5bfe386ea"
+      },
+      {
+        "path": "benchmarks/results/c71-h100-followup-callers-2026-10-10-b2468f3e1b17.json",
+        "bytes": 108174,
+        "sha256": "cf77816d28175c33e9aa5642b7b3f1a9e9ba892c815eda34bb3c7b954e5fde77"
+      },
+      {
+        "path": "benchmarks/results/c71-h100-followup-component-profile-2026-10-10-b2468f3e1b17.json",
+        "bytes": 4845,
+        "sha256": "235dc1efe73e75c7a2a664b56dd591f61560c851777d028ba37ad3849463a53b"
+      },
+      {
+        "path": "benchmarks/results/c71-h100-followup-default-2026-10-10-a77c31f98de8.json",
+        "bytes": 10181,
+        "sha256": "bc9c72e5d72a3122607084a11cee9e0a36404dd261f545455712f6a7c7200da1"
+      },
+      {
+        "path": "benchmarks/results/c71-h100-followup-inference-2026-10-10-b2468f3e1b17.json",
+        "bytes": 18898,
+        "sha256": "49a3680f46c04429f222b685bddfe5f28e0848b493dce022c56593c0f9dfef1d"
+      },
+      {
+        "path": "benchmarks/results/c71-h100-followup-optimized-2026-10-10-0ef9db4fe6f1.json",
+        "bytes": 86360,
+        "sha256": "f279557db828182a1b2b4f09c013ea9d1a99dff7818259da16a44891e9aab1a2"
+      },
+      {
+        "path": "benchmarks/results/c71-h100-followup-preflight-2026-10-10-7b0885ad316f.json",
+        "bytes": 9405,
+        "sha256": "021009376ed64dc93ecad6e7baf0d36d83e6c11621017c27c0acdd6219b85a6f"
+      },
+      {
+        "path": "benchmarks/results/c71-h100-followup-profile-2026-10-10-76a9201d8704.json",
+        "bytes": 7023,
+        "sha256": "9c0670cda28b7072e6b5dc37bb7c51f9472207218efda3e9c0d0253313ef8fe5"
+      },
+      {
+        "path": "benchmarks/results/c71-h100-followup-rms-2026-10-10-0ef9db4fe6f1.json",
+        "bytes": 9317,
+        "sha256": "87929643f4d4d93559660ee25d20ac42862f339089d4ea6c69991903cb184f82"
+      },
+      {
+        "path": "benchmarks/results/c71-h100-followup-spike-prefix-2026-10-10-b9043c5d5f51.json",
+        "bytes": 7629,
+        "sha256": "13946834486db1aad4804e295d1f50512c916c359644736bd3d522ecd4dfdd79"
+      }
+    ],
+    "gpu_compute_apps": "",
+    "native_and_profiler_processes": []
+  },
+  "historical_evidence_preserved": {
+    "base": "ccbea66b",
+    "current_sha": "78dd16aca86e8898045a891462521135b369af02",
+    "preexisting_record_and_history_files_verified": 3095,
+    "changed_or_deleted": [],
+    "excluded_navigation_index": "docs/c7.1-history/README.md",
+    "observed_epoch": 1791667199.6036189
+  },
+  "private_artifact_verification": {
+    "observed_epoch": 1791667380.0746975,
+    "all_followup_bundle_files_sha256_verified": true,
+    "bundles": [
+      {
+        "path": "artifact/c7.1-pod/h100-followup-callers-20261010T210000Z/files.json",
+        "manifest_sha256": "6dcbea297382880d146621470788764a4107adf688e4d075b6cf3e6ef3643f8f",
+        "files": 89,
+        "bytes": 3719610
+      },
+      {
+        "path": "artifact/c7.1-pod/h100-followup-component-20261010T200300Z/files.json",
+        "manifest_sha256": "add5c952538ef4ab000e75d6cdb104ef64765c2d4bfe3ffa43350b966b131027",
+        "files": 16,
+        "bytes": 196247
+      },
+      {
+        "path": "artifact/c7.1-pod/h100-followup-default-20261010T192300Z/files.json",
+        "manifest_sha256": "05d77bfa2388f210e28bd6ff01a06b58a41ec4869ca3a76dc1c4f627ee1a4210",
+        "files": 289,
+        "bytes": 7475813
+      },
+      {
+        "path": "artifact/c7.1-pod/h100-followup-inference-20261010T201900Z/files.json",
+        "manifest_sha256": "f128fdfd5999871f9dea68ba6deff8e30b01dd0ccf004a4a12a342d6db5cb032",
+        "files": 36,
+        "bytes": 1091003
+      },
+      {
+        "path": "artifact/c7.1-pod/h100-followup-optimized-20261010T211429Z/files.json",
+        "manifest_sha256": "15c2486fc857f935ccb01522c55204958bf634433925225f886c1ca998c50ddb",
+        "files": 30,
+        "bytes": 438214
+      },
+      {
+        "path": "artifact/c7.1-pod/h100-followup-preflight-20261010T172400Z/files.json",
+        "manifest_sha256": "4686143ea484c9acfec8e7b94d555cff96d4f2f3d296a7cff8d5d26d377eb1d6",
+        "files": 633,
+        "bytes": 24645140
+      },
+      {
+        "path": "artifact/c7.1-pod/h100-followup-profile-20261010T195900Z/files.json",
+        "manifest_sha256": "31868a5e6c0af0d4b4e7be05764c3f68de5dd83ef0d985778c2b9d9bbe194ca7",
+        "files": 27,
+        "bytes": 9990655
+      },
+      {
+        "path": "artifact/c7.1-pod/h100-followup-rms-20261010T212015Z/files.json",
+        "manifest_sha256": "d097e5975fa6b9a732dbfcb94e5758557678d112d01a53feb2b5f4008f657a8f",
+        "files": 14,
+        "bytes": 372046
+      },
+      {
+        "path": "artifact/c7.1-pod/h100-followup-sdpa-failure-20261010T210600Z/files.json",
+        "manifest_sha256": "526ad387eba9beb62c35a63059b46125e0132b1d7a70d8f4d5391a4cdb3d2f78",
+        "files": 13,
+        "bytes": 133514
+      },
+      {
+        "path": "artifact/c7.1-pod/h100-followup-spike-20261010T183000Z/files.json",
+        "manifest_sha256": "efe11553a57efbadee303344a23bd86ca69216de3f83a8cb3ab4361ff3c2449f",
+        "files": 47,
+        "bytes": 20750855
+      }
+    ],
+    "total_retained_bytes": 303851835,
+    "cap_bytes": 10000000000,
+    "files_removed": [],
+    "original_manifests_unchanged": true
+  },
+  "private_total_retained_bytes": 303879152,
+  "private_cap_bytes": 10000000000,
+  "files_removed": [],
+  "component_records": [
+    {
+      "path": "benchmarks/results/c71-h100-followup-callers-2026-10-10-b2468f3e1b17.json",
+      "sha256": "cf77816d28175c33e9aa5642b7b3f1a9e9ba892c815eda34bb3c7b954e5fde77"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-followup-component-profile-2026-10-10-b2468f3e1b17.json",
+      "sha256": "235dc1efe73e75c7a2a664b56dd591f61560c851777d028ba37ad3849463a53b"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-followup-default-2026-10-10-a77c31f98de8.json",
+      "sha256": "bc9c72e5d72a3122607084a11cee9e0a36404dd261f545455712f6a7c7200da1"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-followup-inference-2026-10-10-b2468f3e1b17.json",
+      "sha256": "49a3680f46c04429f222b685bddfe5f28e0848b493dce022c56593c0f9dfef1d"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-followup-optimized-2026-10-10-0ef9db4fe6f1.json",
+      "sha256": "f279557db828182a1b2b4f09c013ea9d1a99dff7818259da16a44891e9aab1a2"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-followup-preflight-2026-10-10-7b0885ad316f.json",
+      "sha256": "021009376ed64dc93ecad6e7baf0d36d83e6c11621017c27c0acdd6219b85a6f"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-followup-profile-2026-10-10-76a9201d8704.json",
+      "sha256": "9c0670cda28b7072e6b5dc37bb7c51f9472207218efda3e9c0d0253313ef8fe5"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-followup-rms-2026-10-10-0ef9db4fe6f1.json",
+      "sha256": "87929643f4d4d93559660ee25d20ac42862f339089d4ea6c69991903cb184f82"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-followup-spike-prefix-2026-10-10-b9043c5d5f51.json",
+      "sha256": "13946834486db1aad4804e295d1f50512c916c359644736bd3d522ecd4dfdd79"
+    }
+  ],
+  "private_bundle": {
+    "path": "artifact/c7.1-pod/h100-followup-close-20261010T212601Z",
+    "files": 20,
+    "bytes": 23854,
+    "manifest_sha256": "92bd1daab631493fc791048c158c7c12e585f088c5ee8036395a1e08f319ef1f"
+  }
+}

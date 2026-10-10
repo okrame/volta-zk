@@ -1,5 +1,7 @@
 # Documentazione
 
+[Chiusura del seguito H100 del 10 ottobre](c7.1-history/h100-followup-close-2026-10-10.md).
+
 ## Documentazione operativa
 
 - [Design](c7.1/design.md)

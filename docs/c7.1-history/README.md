@@ -50,6 +50,7 @@ le nuove domande hardware; non esegue una nuova campagna.
 - [Ritenzione degli artefatti](artifact-retention-2026-10-08.md): inventario verificato e rimozioni autorizzate.
 - [Runbook alla chiusura del 7 ottobre](runpod-tests-2026-10-07.md) e [design dello stesso checkpoint](design-2026-10-07.md): cronache, stime e autorizzazioni storiche; non istruzioni per nuove campagne.
 
+[Chiusura del seguito H100 e conferma provider](h100-followup-close-2026-10-10.md).
 [Confronto SDPA H100 completo](h100-followup-optimized-2026-10-10.md).
 [Screen RMS coarser respinto](h100-followup-rms-2026-10-10.md).
 

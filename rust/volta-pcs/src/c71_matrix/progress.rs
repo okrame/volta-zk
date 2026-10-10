@@ -171,6 +171,13 @@ impl Span {
     }
     pub(super) fn checkpoint(&mut self, work: impl FnOnce() -> Value) -> Result<(), String> {
         if ACTIVE.load(Ordering::Relaxed) && self.last.elapsed() >= Duration::from_secs(1) {
+            self.milestone(work)?;
+        }
+        Ok(())
+    }
+    // Complete public group boundaries must survive the one-second throttle.
+    pub(super) fn milestone(&mut self, work: impl FnOnce() -> Value) -> Result<(), String> {
+        if ACTIVE.load(Ordering::Relaxed) {
             emit(json!({"kind": "progress", "phase": self.phase,
                 "geometry": self.geometry, "work": work(), "wall_ns": self.started.elapsed().as_nanos() as u64}))?;
             self.last = Instant::now();
@@ -214,7 +221,7 @@ mod tests {
         ));
         let recording = Recording::start(&path).unwrap();
         assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
-        let span = Span::start("salt_prescan", json!({"leaves": 16})).unwrap();
+        let mut span = Span::start("salt_prescan", json!({"leaves": 16})).unwrap();
         // Read the durable prefix while the writer and unfinished span are live.
         let rows: Vec<Value> = std::fs::read_to_string(&path)
             .unwrap()
@@ -229,6 +236,8 @@ mod tests {
         let upper = anchor["instant_origin_upper_ns"].as_u64().unwrap();
         assert!(0 < lower && lower <= upper && upper <= monotonic_ns().unwrap());
         assert_eq!(rows[1]["event"]["kind"], "start");
+        span.milestone(|| json!({"boundary": "start", "completed_groups": 0})).unwrap();
+        span.milestone(|| json!({"boundary": "end", "completed_groups": 1})).unwrap();
         drop(span);
         Span::start("fft", Value::Null).unwrap().finish(json!({"columns": 8})).unwrap();
         check().unwrap();
@@ -239,9 +248,11 @@ mod tests {
             .lines()
             .map(|line| serde_json::from_str(line).unwrap())
             .collect();
-        assert_eq!(rows.len(), 5);
-        assert_eq!(rows[2]["event"]["complete"], false);
-        assert_eq!(rows[4]["event"]["work"]["columns"], 8);
+        assert_eq!(rows.len(), 7);
+        assert_eq!(rows[2]["event"]["work"]["completed_groups"], 0);
+        assert_eq!(rows[3]["event"]["work"]["completed_groups"], 1);
+        assert_eq!(rows[4]["event"]["complete"], false);
+        assert_eq!(rows[6]["event"]["work"]["columns"], 8);
         for (i, row) in rows.iter().enumerate() {
             assert_eq!(row["sequence"], i);
         }

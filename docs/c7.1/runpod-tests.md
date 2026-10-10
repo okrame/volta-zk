@@ -585,6 +585,11 @@ Conservare anche `$RUN/journals.progress.jsonl`, privato e durevole, con
 fasi, avanzamento, lavoro, traffico e campioni congiunti. Un'ultima riga
 troncata resta nel file originale e si esclude dalla lettura. Il log non
 misura il picco fisico HBM/bus né abilita il riuso dello stato.
+Le milestone `pcs_a_resident` con `work.boundary:start/end` conservano
+entrambi i confini di ciascun gruppo, senza throttle, e i relativi contatori.
+Usarle per confronti di prefissi completi e per armare finestre profiler;
+un arresto dopo una milestone resta un run incompleto, senza commitment
+pubblicato, prova o accettazione. Contare anche il costo della diagnostica.
 Al primo errore numerico, parity, verifica, OOM o timeout non proseguire
 il run fallito. La preautorizzazione dei trial successivi non permette
 prosecuzione/importazione dello stato terminale o riuso di correlazioni.

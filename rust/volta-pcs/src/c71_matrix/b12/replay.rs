@@ -1158,6 +1158,8 @@ impl Code {
                     "rows": rows, "cosets": cosets, "groups": groups, "columns": 128,
                     "cosets_per_reconstruction": 4, "live_source": code.live}))?;
                 for group in 0..groups {
+                    phase.milestone(|| json!({"boundary": "start", "completed_groups": group,
+                        "source_visits": source_visits, "native": runtime.stats().ok()}))?;
                     let shape = device::PcsSourceShape { message_rows: n as u64, rows: rows as u64,
                         live: code.live as u64, pad_rows: pad as u32, cosets: cosets as u32,
                         first_coset: (4 * group) as u32 };
@@ -1234,7 +1236,7 @@ impl Code {
                         }
                     }
                     runtime.release_buffer(roots)?;
-                    phase.checkpoint(|| json!({"completed_groups": group + 1,
+                    phase.milestone(|| json!({"boundary": "end", "completed_groups": group + 1,
                         "source_visits": source_visits, "leaf_hashes": work.leaf_hashes,
                         "node_hashes": work.node_hashes, "native": runtime.stats().ok()}))?;
                 }

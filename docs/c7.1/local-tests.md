@@ -140,6 +140,12 @@ Le fonti congelate conservano i riferimenti originali secondo la
 
 ## Compilazione mirata
 
+Il checkpoint durevole `c71_progress_durable_prefix_no_overwrite_and_failure`
+verifica anche due milestone consecutive senza attendere il throttle di un
+secondo. Il commitment A registra così inizio/fine di ogni gruppo completo,
+con contatori nativi e sorgenti visitate. Sono diagnostica fuori wire/FS;
+non modificano geometria, scansione, monete o condizioni di accettazione.
+
 Il wrapper seguente è quello della VM `/home/okrame/projects/volta-zk`;
 contiene quel target assoluto. Su un altro host predisporre un wrapper
 equivalente senza modificare l'artefatto storico. Log/report devono essere

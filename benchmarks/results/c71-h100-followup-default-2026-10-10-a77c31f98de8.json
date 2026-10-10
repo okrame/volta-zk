@@ -1,0 +1,234 @@
+{
+  "a_prefix": {
+    "completed_groups": 116,
+    "failed_active_group": 116,
+    "last_native_census": {
+      "allocations": 6144096,
+      "arena_bytes": 5252580096,
+      "cleanup_failed": 0,
+      "d2d_bytes": 423859200,
+      "d2h_bytes": 116057684,
+      "fences": 10065573,
+      "h2d_bytes": 89799173776,
+      "host_owner_bytes": 42096,
+      "launches": 18549891,
+      "live_capacity_bytes": 5252580096,
+      "logical_bytes": 5252577904,
+      "peak_capacity_bytes": 5436230400,
+      "peak_reserved_bytes": 66830920960,
+      "releases": 6143769,
+      "stopped": 0,
+      "weights_bytes": 61394690560,
+      "weights_loaded_bytes": 61394690560,
+      "weights_sealed": 1,
+      "zeroed_bytes": 813346512992
+    },
+    "last_payload_census": {
+      "denied_allocations": 0,
+      "enforced": true,
+      "excluded_packed_w_capacity_bytes": 61394690560,
+      "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+      "host_layout_bytes": 61590752107,
+      "native_reservation_bytes": 5252622192,
+      "operational_margin_required_bytes": 268435456,
+      "payload_limit_bytes": 5905580032,
+      "peak_plus_runtime_allowance_bytes": 5901216323,
+      "physical_runtime_allowance_verified": false,
+      "runtime_allowance_bytes": 268435456,
+      "temporary_live_bytes": 5448684464,
+      "temporary_payload_peak_bytes": 5632780867
+    },
+    "total_groups": 512
+  },
+  "admitted_gamma_reused": true,
+  "canonical_certificates_verified": 0,
+  "canonical_complete": false,
+  "contexts_started": [
+    0
+  ],
+  "credit": false,
+  "date": "2026-10-10",
+  "git_dirty": false,
+  "git_sha": "a77c31f98de8c48e7a1aa7fb9f33f73095d2c612",
+  "limits": "Physical stop is preserved. No complete A, proof, verification, runtime allowance, Gamma-candidate quality or complete response timing credit.",
+  "monitor": {
+    "authorized_end_epoch": 1791671244.0,
+    "close_reserve_seconds": 1800,
+    "compute_end_epoch": 1791669444.0,
+    "exit_code": -9,
+    "gpu_uuid": "GPU-e05e977b-758d-f3f4-cbe8-5720b83d1ae1",
+    "incomplete_samples": 0,
+    "label": "canonical-default02",
+    "mode": "canonical",
+    "observed_payload_peak_bytes": 5632780867,
+    "payload_limit_bytes": 5905580032,
+    "physical_complete_peak": false,
+    "physical_temporary_limit_bytes": 6174015488,
+    "resource_failure": "RuntimeError: resource stop: canonical simultaneous physical temporaries exceed allowance",
+    "sample_interval_clock": "Linux CLOCK_MONOTONIC, absolute nanoseconds on this host boot",
+    "sample_interval_scope": "Start/end bracket collection of the resource sample; no GPU synchronization or instantaneous peak. External profiler clock alignment requires a matching clock or explicit anchor.",
+    "sampled_host_rss_peak_bytes": 61697155072,
+    "sampled_stable_temporary_peak_bytes": 6545690112,
+    "sampled_whole_gpu_peak_bytes": 67645734912,
+    "samples": 13443,
+    "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+    "sampling_target_seconds": 0.2,
+    "smaps_read_failures": 0,
+    "stable_samples": 13443,
+    "start_unix_seconds": 1791656105.2197123,
+    "wall_seconds": 2701.4956755898893
+  },
+  "phase_timing_scope": "Nested roles overlap; duplicate setup intervals must not be summed.",
+  "phases": [
+    {
+      "complete": true,
+      "phase": "installation_w_commitment",
+      "wall_seconds": 212.261671791
+    },
+    {
+      "complete": true,
+      "phase": "seed6_setup",
+      "wall_seconds": 1486.604380588
+    },
+    {
+      "complete": true,
+      "phase": "seed6_setup",
+      "wall_seconds": 1486.60354808
+    },
+    {
+      "complete": true,
+      "phase": "preparation_including_inference",
+      "wall_seconds": 77.12256241
+    }
+  ],
+  "physical_step": {
+    "host_rss_changed_between_these_samples": false,
+    "interpretation": "GPU space outside the maximum native named reservation is at least 814,813,952 bytes at the final sampled peak. The named peak did not grow. Whole-device samples and asynchronous journal checkpoints do not identify a specific allocation, kernel, cache or leak; an external CUDA timeline remains required.",
+    "last_two_samples": [
+      {
+        "W_transition_incomplete": "0",
+        "cgroup_memory_current_bytes": "188355293184",
+        "disk_available_bytes": "120659296256",
+        "host_tree_rss_bytes": "61689331712",
+        "host_tree_swap_bytes": "0",
+        "monotonic_sample_end_ns": "14684300106026460",
+        "monotonic_sample_start_ns": "14684300018381273",
+        "resident_device_W_bytes": "61394690560",
+        "resident_host_W_lower_bound_bytes": "61394685952",
+        "sample_duration_seconds": "0.08764945156872272",
+        "sampled_temporary_bytes": "6009867776",
+        "smaps_read_failures": "0",
+        "unix_seconds": "1791658806.527203",
+        "whole_gpu_free_bytes": "17908629504",
+        "whole_gpu_used_bytes": "67109912576"
+      },
+      {
+        "W_transition_incomplete": "0",
+        "cgroup_memory_current_bytes": "188355256320",
+        "disk_available_bytes": "120659296256",
+        "host_tree_rss_bytes": "61689331712",
+        "host_tree_swap_bytes": "0",
+        "monotonic_sample_end_ns": "14684300294316116",
+        "monotonic_sample_start_ns": "14684300218465497",
+        "resident_device_W_bytes": "61394690560",
+        "resident_host_W_lower_bound_bytes": "61394685952",
+        "sample_duration_seconds": "0.07585505582392216",
+        "sampled_temporary_bytes": "6545690112",
+        "smaps_read_failures": "0",
+        "unix_seconds": "1791658806.715493",
+        "whole_gpu_free_bytes": "17372807168",
+        "whole_gpu_used_bytes": "67645734912"
+      }
+    ],
+    "native_maximum_reserved_bytes": 66830920960,
+    "whole_gpu_above_maximum_named_reservation_bytes": 814813952,
+    "whole_gpu_increase_bytes": 535822336,
+    "whole_gpu_increase_mib": 511
+  },
+  "pod_id": "z6wx2kkn69eoc0",
+  "private_evidence": {
+    "bundle": "artifact/c7.1-pod/h100-followup-default-20261010T192300Z",
+    "files": 289,
+    "manifest_sha256": "05d77bfa2388f210e28bd6ff01a06b58a41ec4869ca3a76dc1c4f627ee1a4210"
+  },
+  "profiler_lifecycle": {
+    "incomplete_probe_correction": {
+      "application_stop_check_passed": true,
+      "checked_epoch": 1791659839.4897392,
+      "credit": false,
+      "original_check_sha256": "55a8aed21f555e7e9ee560cab727cd22e773bd06b36028e6f8093be8a7b1938b",
+      "passed": false,
+      "reason": "Agent double-forked to PID 1; subreaper adoption required for complete memory and shutdown accounting. Original receipt is preserved.",
+      "retired_agents": [
+        {
+          "pid": 94184,
+          "session": "c71_owned_stop_20261010_02",
+          "start_ticks": 1468498346
+        },
+        {
+          "pid": 94258,
+          "session": "c71_joint_20261010_03",
+          "start_ticks": 1468503526
+        }
+      ],
+      "whole_profiler_stop_check_was_incomplete": true
+    },
+    "replacement_probe": {
+      "checked_epoch": 1791660037.5990696,
+      "cpu_wrapper_as_bytes": 68719476736,
+      "credit": false,
+      "live_agents_remaining": [],
+      "monitored_descendant_identities": 7,
+      "passed": true,
+      "resource_failure": "TimeoutError: phase or authorized compute deadline reached",
+      "target_stopped": true
+    }
+  },
+  "provenance": {
+    "binary": {
+      "bytes": 9853000,
+      "path": "/workspace/c71-h100-20261010/binaries/c71_canonical_reference-cfc04b6f",
+      "sha256": "fbb773cc231995f8336f09f57be2d4efc5fb99a5ace2a7eb23ac2d91a8948f06"
+    },
+    "binary_build_sha": "cfc04b6f38226c4315e7bf96eeb4f5cd2fb0db2a",
+    "credit": false,
+    "fresh_session": true,
+    "git_dirty": false,
+    "git_sha": "a77c31f98de8c48e7a1aa7fb9f33f73095d2c612",
+    "library": {
+      "bytes": 3567488,
+      "path": "/workspace/c71-h100-20261010/libc71_current.so",
+      "sha256": "8a67c85d8306c01267b33f1f704bb2f0ba10511a415a06eccea52a30af7f03e7"
+    },
+    "library_source_sha": "b7c6d0acd12d138d2abbac6ade9918903de2890e",
+    "nsight": false,
+    "owner_trace": false,
+    "reason": "Trace trial completed 35 A groups but stopped on its 16 MiB logger ceiling at physical sampled peak 6,141,582,848 B. Run the default pooled/zero-fill executor to test physical progress independently of instrumentation and continue toward canonical proof within a bounded 90-minute allocation."
+  },
+  "reference_recalibrated": false,
+  "rms_compiler_component": {
+    "admitted": {
+      "binary_sha256": "99a705bfa5b13bfd5bf0930a245bbc7fd771ba8920f582634a02448bde0dab72",
+      "candidate_sha256": "8965d0c3dc170e41b304982b90409b0362e93de4d029b08bba3716ab64dbf95e",
+      "cli_batches_wall_seconds": 2.8037401847541332,
+      "maximum_single_program_owned_bytes": 2928784,
+      "metadata_matches_frozen_original_compiler": true,
+      "programs": 159,
+      "sum_compiled_program_owned_bytes": 457634736
+    },
+    "coarser": {
+      "binary_sha256": "99a705bfa5b13bfd5bf0930a245bbc7fd771ba8920f582634a02448bde0dab72",
+      "candidate_sha256": "a3e5b03a1af642ab3567bd019890254525b194dea154b4cc1d85a78db03cd286",
+      "cli_batches_wall_seconds": 1.6130784507840872,
+      "maximum_single_program_owned_bytes": 2904208,
+      "metadata_matches_frozen_original_compiler": true,
+      "programs": 91,
+      "sum_compiled_program_owned_bytes": 260594224
+    },
+    "complete_caller_cost": false,
+    "credit": false,
+    "gpu_execution": false,
+    "scope": "Individual original compiler calls and metadata serialization; two-gigabyte stricter CPU child AS, one thread; timed while canonical AES setup ran. Program ownership sums are not simultaneous compiler peaks."
+  },
+  "schema": "volta-c71-h100-followup-default-negative-v1"
+}

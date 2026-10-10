@@ -16,8 +16,12 @@ bound e tempi completi restano aperti. Il [prefisso diagnostico canonico](../c7.
 completa 35/512 gruppi A con W/setup presenti, poi esaurisce il logger
 da 16 MiB. Il picco stabile campionato è 6.141.582.848 B: non è
 un picco completo né una soluzione dello spike. Il trial default senza
-logger/profiler termina dopo 116/512 gruppi per cap fisico:
-6.545.690.112 B contro 6.174.015.488 B; lo spike resta aperto.
+logger/profiler [termina dopo 116/512 gruppi](../c7.1-history/h100-followup-default-2026-10-10.md)
+per cap fisico: 6.545.690.112 B contro 6.174.015.488 B. Ultimo step GPU
+511 MiB con RSS costante e massimo native invariato: almeno 814.813.952 B
+fuori dal massimo nominato, senza attribuzione a una specifica causa.
+La nuova cattura canonica mira ai gruppi 113–117 con subreaper verificato;
+CPU wrapper AS 64 GiB, solo il figlio CUDA senza cap AS. Zero certificati.
 Il [monitor per il profiler](../c7.1-history/h100-profiler-monitor-2026-10-10.md)
 conta PID/start-ticks anche in nuove sessioni. La [correzione degli orfani](../c7.1-history/h100-profiler-orphans-2026-10-10.md)
 attiva e ripristina il subreaper Linux, contandone e fermandone tramite

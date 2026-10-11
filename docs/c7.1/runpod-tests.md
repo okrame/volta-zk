@@ -573,6 +573,19 @@ contesto successivo fallisce. Un file risposta senza accettazione resta
 un certificato generato non verificato. Il nuovo ledger deve includere
 il marker export da 32.768 B, con cap fisici e payload originali.
 
+Il nuovo filtro ignorato
+`c71_rms_pinned_representative_full_depth_benchmark` misura il prover e
+verifier GKR a profondità originale su 2–8 ricette pubbliche del Γ ammesso,
+con 16..256 celle ridotte, righe intere sintetiche nonzero e padding.
+Richiede `C71_RMS_BENCH_RECIPES` (JSON bounded di columns/exponents/weighted)
+e `C71_RMS_BENCH_CELLS` (potenza di due). Eseguirlo presto sulla CPU del
+pod con AS64 GiB e timeout diagnostico finito, prima del setup AES.
+La ricevuta registra compilazione, prove/verify, circuiti, callback,
+prodotti Fp3, full wire ed endpoint MAC/FS verificato. Correlazioni ideali
+solo nella fixture, nessuna selezione nel runner AES. Le dimensioni ridotte
+non misurano una risposta completa: qualunque extrapolazione deve restare
+distinta, con statistic caller, PCS e replay reale esclusi.
+
 ## Esperimento della prova
 
 Il comando è ora `c71_canonical_reference experiment-cuda`. Gli esempi

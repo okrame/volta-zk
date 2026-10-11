@@ -1776,6 +1776,88 @@ mod tests {
     use rand_010::RngExt;
 
     #[test]
+    #[ignore = "representative full-depth CPU GKR; authorized hardware and finite monitor required"]
+    fn c71_rms_pinned_representative_full_depth_benchmark() {
+        use std::io::Read;
+        #[derive(serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Recipe { columns: usize, exponents: [i32; 3], weighted: bool }
+        let path = std::env::var("C71_RMS_BENCH_RECIPES").expect("explicit public recipes required");
+        let mut body = Vec::new();
+        std::fs::File::open(path).unwrap().take(1_048_577).read_to_end(&mut body).unwrap();
+        assert!(body.len() <= 1 << 20);
+        let recipes: Vec<Recipe> = serde_json::from_slice(&body).unwrap();
+        assert!((2..=8).contains(&recipes.len()));
+        let cells: usize = std::env::var("C71_RMS_BENCH_CELLS").unwrap().parse().unwrap();
+        assert!(cells.is_power_of_two() && cells >= 2 * recipes.len() && cells <= 256);
+        let started = std::time::Instant::now();
+        let programs: Vec<_> = recipes.iter().map(|r| {
+            let [x, w, y] = r.exponents;
+            super::super::compile(r.columns, x, w, y, r.weighted).unwrap()
+        }).collect();
+        let compile_ns = started.elapsed().as_nanos();
+        let numeric: Vec<_> = recipes.iter().map(|r| {
+            let [x, w, y] = r.exponents;
+            let reference = super::super::Integer::new(r.columns, x, w, y, r.weighted).unwrap();
+            let input: Vec<_> = (0..r.columns).map(|i| 4 * (i as i64 % 17 - 8)).collect();
+            let weights: Vec<_> = (0..r.columns).map(|i| 257 + (i % 17) as i16).collect();
+            reference.row(&input, r.weighted.then_some(weights.as_slice())).unwrap()
+        }).collect();
+        let assignments: Vec<_> = (0..cells).map(|i| {
+            if i == cells - 1 { None } else { Some(i % programs.len()) }
+        }).collect();
+        let frames: Vec<_> = assignments.iter().enumerate().map(|(i, &p)| {
+            p.map_or([0; 12], |p| {
+                let (statistic, products, outputs) = &numeric[p];
+                let col = i % recipes[p].columns;
+                frame(products[col], *statistic, outputs[col], recipes[p].weighted)
+            })
+        }).collect();
+        let root = C61Commitment::new(vec![[19; 32]]);
+        let statement = Statement { root: &root, profile: &body, view: [20; 32],
+            attempt: AttemptContext { session: [21; 32], capacity: [22; 32], slot: 0,
+                predecessor: [0; 32], nonce: [23; 32] },
+            programs: &programs, assignments: Assignments::dense(&assignments) };
+        let count = statement.required().unwrap();
+        let delta = Fp3::new(Fp::new(5), Fp::new(7), Fp::new(11));
+        let mut rng = MatrixRng::from_seed([127; 32]);
+        let rows: Vec<_> = (0..count).map(|_|
+            Auth::new(from_p3(rng.random::<E>()), from_p3(rng.random::<E>()))).collect();
+        let keys: Vec<_> = rows.iter().map(|a| Key::new(a.m + delta * a.x)).collect();
+        let start = || Fs::new(b"representative original RMS full depth", 100_000_000);
+        let mut fs = start();
+        let mut rows = rows.into_iter();
+        println!("C71_RMS_BENCH_BEGIN {}", serde_json::json!({"recipes_blake3":blake3::hash(&body).to_hex().as_str(),
+            "cells":cells,"live_cells":cells-1,"programs":programs.len(),
+            "depth":widths(&programs).unwrap().len()-1,"compile_ns":compile_ns,
+            "program_inner_capacity_bytes":program_inner_capacity_bytes(&programs),"credit":false}));
+        let started = std::time::Instant::now();
+        let (proof, point, original, work) = prove_sourcewise(&statement, |i| {
+            assert!(assignments[i].is_some()); frames[i]
+        }, &mut fs, &mut rows).unwrap();
+        let prove_ns = started.elapsed().as_nanos();
+        assert_eq!(rows.len(), 0);
+        let mut verify_fs = start();
+        let mut keys = keys.into_iter();
+        let started = std::time::Instant::now();
+        let (verified_point, verified) = verify(&statement, &proof, delta, &mut verify_fs, &mut keys).unwrap();
+        let verify_ns = started.elapsed().as_nanos();
+        assert_eq!(point, verified_point);
+        assert_eq!(verified.k, original.m + delta * original.x);
+        assert_eq!(fs.digest(), verify_fs.digest());
+        assert_eq!(keys.len(), 0);
+        let mut wire = Vec::new();
+        crate::c71_matrix::wire::Wire::write(&proof, &mut wire);
+        println!("C71_RMS_BENCH_COMPLETE {}", serde_json::json!({"cells":cells,
+            "compile_ns":compile_ns,"prove_ns":prove_ns,"verify_ns":verify_ns,
+            "work":work,"wire_bytes":wire.len(),"correlations":count,
+            "same_FS_original_MAC_endpoint":true,"all_original_layers_executed":true,
+            "private_values":"nonzero synthetic rows evaluated with original integer RMS",
+            "scope":"selected pinned recipes with reduced cells; excludes statistics caller, PCS, real model, AES setup and full response",
+            "credit":false,"GPU_execution":false}));
+    }
+
+    #[test]
     fn c71_b12_packed_mixed_gkr_complete_wire_mac_and_endpoint() {
         let programs: Vec<_> = (0..3).map(|p| {
             let product_bits = if p == 1 { 16 } else { 32 };

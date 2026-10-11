@@ -203,6 +203,12 @@ telemetria include 32 KiB per export e path; i sette controlli di
 modificare gli input storici. `tests/test_c71_cuda_allocation_replay.py`
 valida una sequenza periodica di allocazioni conservate e i cap, senza GPU.
 
+Il filtro hardware CPU
+`c71_rms_pinned_representative_full_depth_benchmark` rimane ignorato
+localmente: compilazione e presenza del test non sono una misura. Usa le
+ricette pubbliche e i limiti della procedura RunPod, senza pesi reali;
+le sue righe sintetiche mantengono il predicato RMS originale.
+
 ## Compilazione mirata
 
 `tests/test_c71_optimized_inference.py` controlla gli ID/storie pinned e

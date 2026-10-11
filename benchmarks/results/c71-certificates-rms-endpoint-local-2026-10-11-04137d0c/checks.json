@@ -1,0 +1,32 @@
+[
+  {
+    "filter": "c71_b12_boolean_first_cell_round_exact_all_gate_patterns",
+    "exit_code": 0,
+    "wall_s": 0.005838717799633741,
+    "max_rss_bytes": 15814656,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "credit": false
+  },
+  {
+    "filter": "sourcewise_cell_coefficients_match_dense_folds_without_cell_wire_matrix",
+    "exit_code": 0,
+    "wall_s": 0.003877130802720785,
+    "max_rss_bytes": 16007168,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "credit": false
+  },
+  {
+    "filter": "c71_b12_packed_mixed_gkr_complete_wire_mac_and_endpoint",
+    "exit_code": 0,
+    "wall_s": 2.57482342235744,
+    "max_rss_bytes": 123006976,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "credit": false
+  }
+]

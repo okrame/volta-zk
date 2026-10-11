@@ -159,6 +159,11 @@ supporto originale è 751.359.028.655.932 prodotti Fp3 per contesto,
 92.647.174.504.368 in meno (10,98%); replay, callback e memoria invariati.
 Nessun tempo completo dedotto. [Evidenza e limiti](../c7.1-history/h100-certificates-rms-endpoint-2026-10-11.md).
 
+Il [record RMS pulito](../../benchmarks/results/c71-certificates-rms-endpoint-local-2026-10-11-04137d0c.json)
+conserva tre parità Rust, 11 controlli Python/documenti e il census entro
+AS 2 GiB/60 s. Binario compilato prima del commit con sorgenti identici,
+provenienza distinta. La misura H100 con tutte le ricette resta pendente.
+
 La [campagna precedente](../c7.1-history/h100-followup-close-2026-10-10.md)
 è chiusa con provider EXITED alle 21:24:47 UTC del 10 ottobre e zero
 certificati. Γ originale, pool e fill selezionati, geometria PCS,

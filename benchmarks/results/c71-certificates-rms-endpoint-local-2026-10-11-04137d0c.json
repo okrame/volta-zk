@@ -1,0 +1,95 @@
+{
+  "schema": "volta-c71-rms-endpoint-local-v1",
+  "source_git_sha": "04137d0c5595ea53d3c82ecd5ca0dd64672efdee",
+  "git_dirty": false,
+  "credit": false,
+  "gpu_execution": false,
+  "certificates_generated": 0,
+  "certificates_verified": 0,
+  "checks": [
+    {
+      "filter": "c71_b12_boolean_first_cell_round_exact_all_gate_patterns",
+      "exit_code": 0,
+      "wall_s": 0.005838717799633741,
+      "max_rss_bytes": 15814656,
+      "as_bytes": 2147483648,
+      "deadline_s": 60,
+      "workers": 1,
+      "credit": false
+    },
+    {
+      "filter": "sourcewise_cell_coefficients_match_dense_folds_without_cell_wire_matrix",
+      "exit_code": 0,
+      "wall_s": 0.003877130802720785,
+      "max_rss_bytes": 16007168,
+      "as_bytes": 2147483648,
+      "deadline_s": 60,
+      "workers": 1,
+      "credit": false
+    },
+    {
+      "filter": "c71_b12_packed_mixed_gkr_complete_wire_mac_and_endpoint",
+      "exit_code": 0,
+      "wall_s": 2.57482342235744,
+      "max_rss_bytes": 123006976,
+      "as_bytes": 2147483648,
+      "deadline_s": 60,
+      "workers": 1,
+      "credit": false
+    }
+  ],
+  "python_checks": "11 passed in 1.10s",
+  "source_provenance": {
+    "source_git_sha": "04137d0c5595ea53d3c82ecd5ca0dd64672efdee",
+    "git_dirty": false,
+    "as_bytes": 2147483648,
+    "binary_build_git_dirty": true,
+    "binary_source_identical": true,
+    "binary_sha256": "5515414d501cfd84a44fd7768bf13312531d7dda85354a5c956462853ce7f7fb"
+  },
+  "coefficient_core_old_products": 844006203160300,
+  "coefficient_core_selected_products": 751359028655932,
+  "saved_products": 92647174504368,
+  "scope": "exact core arithmetic count on original support; no replay/fold/callback reduction or complete runtime result",
+  "canonical_selected": false,
+  "artifact_directory": "benchmarks/results/c71-certificates-rms-endpoint-local-2026-10-11-04137d0c",
+  "artifacts": [
+    {
+      "path": "source.json",
+      "bytes": 271,
+      "sha256": "b9bdce01272efec285a221df6e187289296999aebc33f8128727edc4d7ba21c8"
+    },
+    {
+      "path": "checks.json",
+      "bytes": 788,
+      "sha256": "7b1e95322945f88c3d801aab4e801e572000afb435b076d8a09b731ebad3f71e"
+    },
+    {
+      "path": "census.json",
+      "bytes": 10296,
+      "sha256": "0323e0d95b56994f014bdef57ddcb86b38379a16324fd9de84fae5ffc0212ff4"
+    },
+    {
+      "path": "c71_b12_packed_mixed_gkr_complete_wire_mac_and_endpoint.log",
+      "bytes": 8618,
+      "sha256": "6f29122e920ec826ec051b98348aa738672d891be2e2b638f44a28d5757bf5bc"
+    },
+    {
+      "path": "sourcewise_cell_coefficients_match_dense_folds_without_cell_wire_matrix.log",
+      "bytes": 227,
+      "sha256": "6cfe59edda8a23c4eb0caaf8bb1f66235a7486a443d6543413a8d3faf29b8c68"
+    },
+    {
+      "path": "c71_b12_boolean_first_cell_round_exact_all_gate_patterns.log",
+      "bytes": 212,
+      "sha256": "8c4cb24a4003ad1b4180aac2b39e54bcd9b6c3b58d8e65569bbd9316ac4a586d"
+    },
+    {
+      "path": "c71-rms-endpoint-clean-python-20261011.log",
+      "bytes": 99,
+      "sha256": "32d06ca72351ed90db8a8a344ecbbb8b16687cf5456f5451cb3e0c3e6b766625"
+    }
+  ],
+  "precommit_private_bundle": "artifact/c7.1-pod/certificates-rms-endpoint-local-20261011T114500Z",
+  "precommit_private_manifest_sha256": "e55a78a1bc46635472b9c49c0b22d72d219fa6666c6ad335b139b6e85d1296ae"
+}

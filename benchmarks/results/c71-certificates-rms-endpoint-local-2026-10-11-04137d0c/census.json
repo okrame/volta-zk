@@ -1,0 +1,225 @@
+{
+  "status": "quantified partial source work on admitted Gamma; no instruction/time lower bound",
+  "Gamma_admission_verified_by_ledger_digest": true,
+  "ledger": "artifact/c7.1-pod/ledger-20261007T150200Z/ledger-attention.json",
+  "ledger_sha256": "478ef250fdb61db673b4d4efa86b3d3ce274081ca1e00653703bc6d8b0d74d7d",
+  "admission": "artifact/c7.1-pod/gamma-admission-20261007T155133Z/admission.json",
+  "admission_sha256": "a6d6abe28da2d50629e1e6790d7af76ab58002f0f21aab8b917dab16b0676259",
+  "recipes": "artifact/c7.1-pod/ledger-20261007T150200Z/recipes-attention.json",
+  "recipes_sha256": "2397d8ca1a2ad65c2df36057e3232e4c51f844a5e044b7cab8a95ed99ac7dc6d",
+  "recipe_digest": "d96b9350cfe9e47acda8cebaf02b895de66d55c525fa2c4463f20022dc3c1014",
+  "historical_ledger_flags_preserved": {
+    "calibrated": false,
+    "complete_work": false,
+    "complete_physical_peak": false,
+    "credit": false
+  },
+  "selected_route": "canonical_prove -> caller.prove_rms -> gkr.prove -> prove_sourcewise -> prove_impl(true,None); no pattern histogram; canonical byte endpoint sourcewise",
+  "selected_boolean_first_round_masks": true,
+  "selected_three_endpoint_products": true,
+  "selected_packed_replay": true,
+  "packed_replay_scope": "64 original cells per packet, one disjoint live mask per present program; mixed packets may have no 64x sharing. Historical scalar gate counts are not selected packed counts",
+  "frame_callback_scope": "CompactFrames cache reads/replay; not additional complete A reconstructions",
+  "contexts": [
+    {
+      "old_tokens": 0,
+      "programs": 159,
+      "depth": 99,
+      "live_cells": 347937024,
+      "padded_cells": 536870912,
+      "cell_sumcheck_rounds": 2871,
+      "cell_phase": {
+        "boolean_fold_masks_active": 1251968571852288,
+        "cell_first_logical_frame_callbacks": 998927195904,
+        "cell_first_scalar_boolean_replay_gates": 48463257729999360,
+        "field_fold_additions_active_boolean_rows": 1252967499188011,
+        "field_fold_multiplications_active_boolean_rows": 998927335723,
+        "field_fold_subtractions_terminal": 139819,
+        "field_value_source_scalars": 1251968571852288,
+        "prefix_weight_multiplications": 21578989436928,
+        "prefix_weight_subtractions": 10789494718464,
+        "structural_selector_assigned_terms": 998927195904,
+        "structural_selector_callbacks": 1541356388352
+      },
+      "gate_iterations_after_public_support_pruning": {
+        "all": 218471570851765,
+        "and": 54771736018896,
+        "copy": 111712208119301,
+        "xor": 51987626713568
+      },
+      "coefficient_core_Fp3": {
+        "Fp3_mul": 972294988954860,
+        "Fp3_add": 911955034325308,
+        "Fp3_sub": 429465359276200,
+        "Fp3_neg": 51987626713568
+      },
+      "coefficient_core_Fp3_scope": "immutable historical baseline; selected route is separate",
+      "selected_coefficient_core_Fp3": {
+        "Fp3_mul": 751359028655932,
+        "Fp3_add": 885016881403788,
+        "Fp3_sub": 615129741410824,
+        "Fp3_neg": 45116549162464
+      },
+      "selected_boolean_first_round_products_saved": 114176597566464,
+      "selected_boolean_first_round_scope": "exact source-operation count on public structural support; no timing or instruction credit",
+      "byte_endpoint_children_source_work": {
+        "cubic_additions": 39427799777136,
+        "cubic_multiplications": 59141699665704,
+        "cubic_subtractions": 10952166604760,
+        "equality_additions": 4380866641612,
+        "equality_multiplications": 346363342617732,
+        "equality_subtractions": 175372104629672,
+        "fold_additions": 350744209260544,
+        "fold_multiplications": 350744209260544,
+        "fold_subtractions": 0,
+        "getter_calls": 87686052315136,
+        "getter_scalar_values": 350744209260544,
+        "prefix_terms": 87686052315136
+      },
+      "compact_frames_named_payload_and_metadata_bytes": 2023511878,
+      "missing": [
+        "index/terminal/authentication work",
+        "full proof and allocator capacity",
+        "original frame getter work",
+        "measured fused kernel service rate"
+      ]
+    },
+    {
+      "old_tokens": 150,
+      "programs": 159,
+      "depth": 99,
+      "live_cells": 347937024,
+      "padded_cells": 536870912,
+      "cell_sumcheck_rounds": 2871,
+      "cell_phase": {
+        "boolean_fold_masks_active": 1251968571852288,
+        "cell_first_logical_frame_callbacks": 998927195904,
+        "cell_first_scalar_boolean_replay_gates": 48463257729999360,
+        "field_fold_additions_active_boolean_rows": 1252967499188011,
+        "field_fold_multiplications_active_boolean_rows": 998927335723,
+        "field_fold_subtractions_terminal": 139819,
+        "field_value_source_scalars": 1251968571852288,
+        "prefix_weight_multiplications": 21578989436928,
+        "prefix_weight_subtractions": 10789494718464,
+        "structural_selector_assigned_terms": 998927195904,
+        "structural_selector_callbacks": 1541356388352
+      },
+      "gate_iterations_after_public_support_pruning": {
+        "all": 218471570851765,
+        "and": 54771736018896,
+        "copy": 111712208119301,
+        "xor": 51987626713568
+      },
+      "coefficient_core_Fp3": {
+        "Fp3_mul": 972294988954860,
+        "Fp3_add": 911955034325308,
+        "Fp3_sub": 429465359276200,
+        "Fp3_neg": 51987626713568
+      },
+      "coefficient_core_Fp3_scope": "immutable historical baseline; selected route is separate",
+      "selected_coefficient_core_Fp3": {
+        "Fp3_mul": 751359028655932,
+        "Fp3_add": 885016881403788,
+        "Fp3_sub": 615129741410824,
+        "Fp3_neg": 45116549162464
+      },
+      "selected_boolean_first_round_products_saved": 114176597566464,
+      "selected_boolean_first_round_scope": "exact source-operation count on public structural support; no timing or instruction credit",
+      "byte_endpoint_children_source_work": {
+        "cubic_additions": 39427799777136,
+        "cubic_multiplications": 59141699665704,
+        "cubic_subtractions": 10952166604760,
+        "equality_additions": 4380866641612,
+        "equality_multiplications": 346363342617732,
+        "equality_subtractions": 175372104629672,
+        "fold_additions": 350744209260544,
+        "fold_multiplications": 350744209260544,
+        "fold_subtractions": 0,
+        "getter_calls": 87686052315136,
+        "getter_scalar_values": 350744209260544,
+        "prefix_terms": 87686052315136
+      },
+      "compact_frames_named_payload_and_metadata_bytes": 2023511878,
+      "missing": [
+        "index/terminal/authentication work",
+        "full proof and allocator capacity",
+        "original frame getter work",
+        "measured fused kernel service rate"
+      ]
+    },
+    {
+      "old_tokens": 300,
+      "programs": 159,
+      "depth": 99,
+      "live_cells": 347937024,
+      "padded_cells": 536870912,
+      "cell_sumcheck_rounds": 2871,
+      "cell_phase": {
+        "boolean_fold_masks_active": 1251968571852288,
+        "cell_first_logical_frame_callbacks": 998927195904,
+        "cell_first_scalar_boolean_replay_gates": 48463257729999360,
+        "field_fold_additions_active_boolean_rows": 1252967499188011,
+        "field_fold_multiplications_active_boolean_rows": 998927335723,
+        "field_fold_subtractions_terminal": 139819,
+        "field_value_source_scalars": 1251968571852288,
+        "prefix_weight_multiplications": 21578989436928,
+        "prefix_weight_subtractions": 10789494718464,
+        "structural_selector_assigned_terms": 998927195904,
+        "structural_selector_callbacks": 1541356388352
+      },
+      "gate_iterations_after_public_support_pruning": {
+        "all": 218471570851765,
+        "and": 54771736018896,
+        "copy": 111712208119301,
+        "xor": 51987626713568
+      },
+      "coefficient_core_Fp3": {
+        "Fp3_mul": 972294988954860,
+        "Fp3_add": 911955034325308,
+        "Fp3_sub": 429465359276200,
+        "Fp3_neg": 51987626713568
+      },
+      "coefficient_core_Fp3_scope": "immutable historical baseline; selected route is separate",
+      "selected_coefficient_core_Fp3": {
+        "Fp3_mul": 751359028655932,
+        "Fp3_add": 885016881403788,
+        "Fp3_sub": 615129741410824,
+        "Fp3_neg": 45116549162464
+      },
+      "selected_boolean_first_round_products_saved": 114176597566464,
+      "selected_boolean_first_round_scope": "exact source-operation count on public structural support; no timing or instruction credit",
+      "byte_endpoint_children_source_work": {
+        "cubic_additions": 39427799777136,
+        "cubic_multiplications": 59141699665704,
+        "cubic_subtractions": 10952166604760,
+        "equality_additions": 4380866641612,
+        "equality_multiplications": 346363342617732,
+        "equality_subtractions": 175372104629672,
+        "fold_additions": 350744209260544,
+        "fold_multiplications": 350744209260544,
+        "fold_subtractions": 0,
+        "getter_calls": 87686052315136,
+        "getter_scalar_values": 350744209260544,
+        "prefix_terms": 87686052315136
+      },
+      "compact_frames_named_payload_and_metadata_bytes": 2023511878,
+      "missing": [
+        "index/terminal/authentication work",
+        "full proof and allocator capacity",
+        "original frame getter work",
+        "measured fused kernel service rate"
+      ]
+    }
+  ],
+  "excluded_other_nonrange_families": [
+    "RMS statistic/P0",
+    "RNE/tableRNE",
+    "gate/Rope/QK/PV claims",
+    "EXP30 maximum/lookup/ratio pattern branch",
+    "GELU/softcap lookup",
+    "index/terminal/MAC/FS/codec/verifier"
+  ],
+  "target_status": "structural dominant CPU work remains open; H100 profiling alone does not close or accelerate this route",
+  "minimum_native_candidate": "reuse common owner, MAC-u3=2 arithmetic/reduction and bounded CompactFrames chunks; add RMS Boolean replay+four-coefficient consumer and byte-LUT consumer, preserving index/MAC/FS order and joint cap. No existing drop-in kernel; no candidate selected or performance inferred",
+  "new_campaign_requirement": "time and count selected RMS cell/byte consumers separately with current Gamma, exact coefficient/wire/MAC parity, both-role CPU profiles and complete scratch/caches; remaining named families need their own counters before complete work/time claim"
+}

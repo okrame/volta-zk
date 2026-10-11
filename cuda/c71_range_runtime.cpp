@@ -241,7 +241,7 @@ int trace_event(C71RangeContext* c,const char* op,const char* edge,
         const auto used_status=cudaMemPoolGetAttribute(c->async_pool,cudaMemPoolAttrUsedMemCurrent,&pool_used);
         if(reserved_status!=cudaSuccess || used_status!=cudaSuccess || pool_used>pool_reserved ||
             pool_reserved>c->stats.arena_bytes+c->async_cache_upper) {
-            (void)c->diagnostic.emit("pool_account","reject",a.slot,a.kind,a.logical,a.capacity,
+            (void)c->diagnostic.emit("pool_account","after",a.slot,a.kind,a.logical,a.capacity,
                 c->stats.arena_bytes,c->stats.weights_bytes,-1,__LINE__,0,0,caller,caller_line,0,
                 pool_reserved,pool_used,c->async_cache_peak);
             c->diagnostic.failed=true;

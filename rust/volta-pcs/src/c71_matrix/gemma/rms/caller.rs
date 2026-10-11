@@ -1011,6 +1011,16 @@ mod tests {
 
     #[test]
     fn c71_b12_gemma_rms_dispatch_joins_p0_local_v_rne_and_both_original_roots() {
+        check_dispatch(false);
+    }
+
+    #[test]
+    #[ignore="explicit real CUDA library and authorized hardware required"]
+    fn c71_b12_gemma_rms_common_gpu_dispatch_joins_both_original_roots() {
+        check_dispatch(true);
+    }
+
+    fn check_dispatch(gpu:bool) {
         let plan = super::super::tests::toy_plan(2, 1);
         let sources = plan.rms_sources().unwrap();
         assert_eq!((sources.cells, sources.bytes.live), (28, 462));
@@ -1107,8 +1117,9 @@ mod tests {
             let expanded = std::cell::Cell::new(0);
             let first_read = std::cell::Cell::new(false);
             let required_rms = sources.rms_required(&statement, &parameters).unwrap();
+            let native_start=gpu.then(||(fs.fork(),prows.clone()));
             let mut lazy_rows = prows.by_ref().inspect(|_| expanded.set(expanded.get() + 1));
-            let (rms_proof, rms) = sources
+            let (mut rms_proof, mut rms) = sources
                 .prove_rms(
                     &statement,
                     &parameters,
@@ -1124,6 +1135,27 @@ mod tests {
                 .unwrap();
             assert!(first_read.get());
             assert_eq!(expanded.get(), required_rms);
+            if let Some((mut native_fs,mut native_rows))=native_start {
+                use crate::c71_matrix::range::windowed::native;
+                let config=native::tests::hardware_config(512,64<<20);
+                let weights=Arc::new(Vec::new());
+                let _budget=crate::c71_matrix::census::Budget::new(&weights).unwrap();
+                let mut runtime=native::Runtime::new(&config).unwrap();
+                let (candidate,pending)=sources.prove_rms_native(&statement,&parameters,read,&mut native_fs,
+                    &mut native_rows,&mut runtime,256).unwrap();
+                let mut bytes=Vec::new();let mut reference=Vec::new();
+                crate::c71_matrix::wire::Wire::write(&candidate,&mut bytes);
+                crate::c71_matrix::wire::Wire::write(&rms_proof,&mut reference);
+                assert_eq!(bytes,reference);assert_eq!(native_fs.digest(),fs.digest());
+                assert_eq!(native_rows.len(),prows.len());
+                assert_eq!(pending.byte_point,rms.byte_point);
+                assert_eq!((pending.byte.x,pending.byte.m),(rms.byte.x,rms.byte.m));
+                let stats=runtime.stats().unwrap();
+                assert!(stats.launches>0);assert_eq!(stats.arena_bytes,0);assert_eq!(stats.allocations,stats.releases);
+                println!("C71_RMS_COMMON_CALLER_GPU {}",serde_json::json!({"fault":fault,"stats":stats,
+                    "original_wire_fs_mac":true,"gpu_execution":true,"canonical_certificates":0,"credit":false}));
+                runtime.close().unwrap();rms_proof=candidate;rms=pending;fs=native_fs;
+            }
             let mut rne_proofs = Vec::new();
             let mut rne_targets = Vec::new();
             for (source, view, shape, point, original) in demands(&sources, &plan, &p0, &rms) {

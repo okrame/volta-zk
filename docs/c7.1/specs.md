@@ -42,6 +42,9 @@ privati nell’arena, con staging host addebitato e copertura delle sezioni
 prima della pubblicazione. Il caller esplicito usa gli intervalli delle
 tile originali; build e prove sul pod, nessuna selezione canonica o
 ammissione del conto simultaneo da questa preparazione.
+Il primo controllo C++ si ferma per `-Werror=misleading-indentation`
+nel cleanup; [negativo conservato](../../benchmarks/results/c71-certificates-rms-common-prefix-negative-2026-10-11-369636be.json),
+istruzione corretta prima del nuovo trial.
 **Zero certificati canonici**: O=0 incompleto, O=150/300 non iniziati.
 Backend RMS completo, conto simultaneo e premessa di raffinamento aperti.
 

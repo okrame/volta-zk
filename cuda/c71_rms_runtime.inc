@@ -224,7 +224,8 @@ extern "C" int c71_rms_prefix_finish(C71RangeContext* c,uint64_t token,Fp3* outp
     c->stats.host_owner_bytes+=bytes;
     const auto cleanup=[&](int status) {
         delete[] staged; c->stats.host_owner_bytes-=bytes;
-        if(c->account)c->account(-int64_t(bytes));return status;
+        if(c->account)c->account(-int64_t(bytes));
+        return status;
     };
     const bool error=checked(c,cudaMemcpyAsync(staged,ptr<void>(c,buffer(c,s.aggregate)),bytes,cudaMemcpyDeviceToHost,c->stream))!=0;
     if(!error)c->stats.d2h_bytes+=bytes;

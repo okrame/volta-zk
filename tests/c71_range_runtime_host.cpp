@@ -13,6 +13,10 @@
 #include "c71_pcs_residual_query.cuh"
 using namespace c71_range;
 struct FakeStream { std::vector<std::function<void()>> pending; };
+struct FakePool { std::vector<std::pair<void*,size_t>> allocations; uint64_t threshold=0; };
+static FakePool fake_pool;
+static bool fail_pool_query=false, fail_pool_trim=false, fail_pool_alloc=false;
+static uint64_t fake_pool_reserved_extra=0;
 static bool fail_launch=false, fail_fence=false, fail_free=false, corrupt=false;
 static bool fail_dense=false;
 static bool fail_memset=false;
@@ -49,8 +53,28 @@ cudaError_t cudaStreamSynchronize(cudaStream_t s) {
 }
 cudaError_t cudaStreamDestroy(cudaStream_t s) { assert(s->pending.empty()); delete s; return 0; }
 cudaError_t cudaMalloc(void** p,size_t n) { ++allocations; *p=new unsigned char[n]; last_allocation=*p; return 0; }
+cudaError_t cudaDeviceGetDefaultMemPool(cudaMemPool_t* p,int device) { assert(device==0); *p=&fake_pool; return 0; }
+cudaError_t cudaMemPoolSetAttribute(cudaMemPool_t p,cudaMemPoolAttr attr,void* value) {
+    assert(p==&fake_pool && attr==cudaMemPoolAttrReleaseThreshold); p->threshold=*static_cast<uint64_t*>(value); return 0;
+}
+cudaError_t cudaMemPoolGetAttribute(cudaMemPool_t p,cudaMemPoolAttr attr,void* value) {
+    assert(p==&fake_pool); if(fail_pool_query) return 1;
+    uint64_t used=0; for(auto allocation:p->allocations) used+=allocation.second;
+    *static_cast<uint64_t*>(value)=attr==cudaMemPoolAttrReleaseThreshold?p->threshold:
+        attr==cudaMemPoolAttrUsedMemCurrent?used:((used+(1<<21)-1)&~uint64_t((1<<21)-1))+fake_pool_reserved_extra;
+    return 0;
+}
+cudaError_t cudaMemPoolTrimTo(cudaMemPool_t p,size_t minimum) {
+    assert(p==&fake_pool && !minimum); if(fail_pool_trim) return 1; fake_pool_reserved_extra=0; return 0;
+}
+cudaError_t cudaMallocFromPoolAsync(void** output,size_t bytes,cudaMemPool_t pool,cudaStream_t stream) {
+    assert(pool==&fake_pool && stream); if(fail_pool_alloc) return 1;
+    const auto status=cudaMalloc(output,bytes); if(!status) pool->allocations.emplace_back(*output,bytes); return status;
+}
 cudaError_t cudaMemGetInfo(size_t* free,size_t* total) { *free=fake_free; *total=80000000000ULL; return 0; }
 cudaError_t cudaFree(void* p) {
+    for(auto it=fake_pool.allocations.begin();it!=fake_pool.allocations.end();++it)
+        if(it->first==p) { fake_pool.allocations.erase(it); break; }
     ++frees; delete[] static_cast<unsigned char*>(p); return fail_free?1:0;
 }
 cudaError_t cudaMemcpyAsync(void* d,const void* s,size_t n,cudaMemcpyKind kind,cudaStream_t stream) {

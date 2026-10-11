@@ -113,7 +113,8 @@ struct Trace {
               uint64_t weights, int status, unsigned line,
               uint64_t physical_used = 0, uint64_t physical_total = 0,
               const char* caller = nullptr, unsigned caller_line = 0,
-              uint64_t stack_bytes = 0) noexcept {
+              uint64_t stack_bytes = 0, uint64_t pool_reserved = 0,
+              uint64_t pool_used = 0, uint64_t pool_cache_peak = 0) noexcept {
         if (failed || fd < 0) return reject();
         if (!armed) return true;
         if (seq >= max_records || slot < -1 || slot >= 512) return reject();
@@ -147,10 +148,17 @@ struct Trace {
         record.text(",\"caller\":\""); record.text(caller?caller:op); record.text("\"");
         record.text(",\"caller_line\":"); record.number(caller_line?caller_line:line);
         record.text(",\"cuda_stack_limit_bytes\":"); record.number(stack_bytes);
+#ifdef C71_ASYNC_ALLOCATOR_EXPERIMENT
+        record.text(",\"pool_reserved_bytes\":"); record.number(pool_reserved);
+        record.text(",\"pool_used_bytes\":"); record.number(pool_used);
+        record.text(",\"pool_cache_peak_bytes\":"); record.number(pool_cache_peak);
+        record.text(",\"pool_cache_upper_bytes\":67108864");
+#endif
 #else
         (void)physical_used; (void)physical_total;
         (void)caller; (void)caller_line; (void)stack_bytes;
 #endif
+        (void)pool_reserved; (void)pool_used; (void)pool_cache_peak;
         record.text(",\"status\":"); record.signed_number(status);
         record.text(",\"line\":"); record.number(line); record.text("}\n");
         if (!record.valid || used > max_bytes || record.length > max_bytes - used)

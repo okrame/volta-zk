@@ -26,15 +26,19 @@ canonico o target 65 s dedotto. Zero certificati canonici; lo spike A e
 il costo RMS completo restano aperti. Il ledger con export ha massimo
 nominato 5.878.767.874 B e 26.812.158 B residui, senza ammissione fisica.
 
-Il [nuovo componente A diagnostico](../c7.1-history/h100-certificates-a-physical01-2026-10-11.md)
-si ferma a **41/512 gruppi** in 473,380 s: campione fisico 6.530.682.368 B,
-compresa la riserva cache di 16 MiB. Lo spike compare dopo una fence CUDA,
-con payload massimo invariato; chiamante, stack e causa restano da distinguere.
-GPU idle dopo teardown, zero certificati. Il default passa 16 filtri H100;
-la diagnostica passa la trasformazione a owner singolo, mentre il filtro
-con due owner conserva il rifiuto di riapertura del file esclusivo.
-La nuova traccia aggiunge chiamante/riga e limite stack CUDA, record 768 B,
-owner sempre 42.136 B e stesso cap file/fisico. Nessuna selezione definitiva.
+I due componenti A diagnostici si fermano a
+[41/512 gruppi](../c7.1-history/h100-certificates-a-physical01-2026-10-11.md)
+e [15/512 gruppi](../c7.1-history/h100-certificates-a-physical02-2026-10-11.md),
+con campioni fisici 6.530.682.368 e 6.487.887.360 B. Il secondo spike
+compare dopo `cudaFree` di un buffer I64 da 4.915.200 B; stack CUDA
+invariato a 256 B. GPU idle dopo ogni teardown, zero certificati.
+Default: 16 filtri H100 passati; diagnostiche: trasformazione a owner
+singolo passata, rifiuto del file esclusivo al secondo owner conservato.
+Il nuovo esperimento di allocazione stream-ordered addebita 64 MiB di
+cache prima dell’uso, controlla reserved/used e conserva i fence.
+Owner 42.160 B e cap invariati. È **solo un diagnostico A**: la riserva
+permanente supera il margine del ledger generale e blocca la selezione
+canonica finché non viene ridotta o motivata con lifetime distinto.
 
 La [campagna precedente](../c7.1-history/h100-followup-close-2026-10-10.md)
 è chiusa con provider EXITED alle 21:24:47 UTC del 10 ottobre e zero
@@ -137,6 +141,12 @@ la riserva per l’intero file viene aggiunta a RSS+GPU prima del confronto
 con lo stesso cap fisico. Owner e stack restano contati nei rispettivi
 bound; nessuna esenzione o estensione del limite. La modalità è esclusa
 dalla calibrazione e accetta solo zero o il cap completo di 16 MiB.
+
+`tests/test_c71_async_allocator.py` compila solo la variante sperimentale:
+sette scenari su driver simulato, inclusi debito conservato e free dopo
+fence. Eseguire separatamente con AS 2 GiB/60 s e un worker. Non confondere
+la riserva cache del pool (payload addebitato) con i 16 MiB del file di traccia
+(riserva aggiunta dal monitor al campione fisico).
 
 ## Limiti e ambiente
 

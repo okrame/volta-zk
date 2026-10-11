@@ -1,0 +1,84 @@
+{
+  "source_git_sha": "fe5f9d659eb3b8c742b595cd1cf2c0c0265261ea",
+  "git_dirty": false,
+  "as_bytes": 2147483648,
+  "deadline_per_process_s": 60,
+  "workers": 1,
+  "credit": false,
+  "gpu_execution": false,
+  "runs": [
+    {
+      "name": "exhaustive",
+      "command": [
+        "rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+        "c71_rms_shared_support_pairs_match_exhaustive_residues",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "first_depth": null,
+      "last_depth": null,
+      "exit_code": 0,
+      "wall_s": 0.0075805820524692535,
+      "max_rss_bytes": 16465920,
+      "log": "exhaustive.log"
+    },
+    {
+      "name": "depths-1-33",
+      "command": [
+        "rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+        "c71_rms_pinned_shared_gate_screen",
+        "--ignored",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "first_depth": 1,
+      "last_depth": 33,
+      "exit_code": 0,
+      "wall_s": 47.91049284301698,
+      "max_rss_bytes": 478973952,
+      "log": "depths-1-33.log"
+    },
+    {
+      "name": "depths-34-66",
+      "command": [
+        "rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+        "c71_rms_pinned_shared_gate_screen",
+        "--ignored",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "first_depth": 34,
+      "last_depth": 66,
+      "exit_code": 0,
+      "wall_s": 49.49130431981757,
+      "max_rss_bytes": 517197824,
+      "log": "depths-34-66.log"
+    },
+    {
+      "name": "depths-67-99",
+      "command": [
+        "rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+        "c71_rms_pinned_shared_gate_screen",
+        "--ignored",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "first_depth": 67,
+      "last_depth": 99,
+      "exit_code": 0,
+      "wall_s": 32.57004434010014,
+      "max_rss_bytes": 468680704,
+      "log": "depths-67-99.log"
+    }
+  ],
+  "input_files": [
+    {
+      "path": "/tmp/c71-rms-shared-recipes-20261011.json",
+      "sha256": "b0c69fdb2395a1014f877725b119948af038a48baaebcbb4b336551f87f35853"
+    },
+    {
+      "path": "/tmp/c71-rms-shared-support-20261011.json",
+      "sha256": "f0bfa90edb48e12963d5078b4a8aa1e9257a8f5e9736ee38a8b9f45f56067473"
+    }
+  ]
+}

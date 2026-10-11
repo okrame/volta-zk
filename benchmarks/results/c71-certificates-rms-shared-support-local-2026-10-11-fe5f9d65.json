@@ -1,0 +1,199 @@
+{
+  "artifact_directory": "benchmarks/results/c71-certificates-rms-shared-support-local-2026-10-11-fe5f9d65",
+  "artifacts": [
+    {
+      "bytes": 46963,
+      "path": "depths-67-99.log",
+      "sha256": "e70668176fbafea7aa51fe9685856c6bd4ff6d4d4f7dc77c7c72a75a46e34341"
+    },
+    {
+      "bytes": 50375,
+      "path": "depths-34-66.log",
+      "sha256": "1d4c28e69bd2e7b6e9d657af43e5b06e482c7ff0bf761a6f2bf93bd293b5bfa0"
+    },
+    {
+      "bytes": 49232,
+      "path": "depths-1-33.log",
+      "sha256": "c07ccf9e75a51c5a8d91286de708e2404e375a637d6acfab0515092b03be0c2f"
+    },
+    {
+      "bytes": 210,
+      "path": "exhaustive.log",
+      "sha256": "0a440576714573fa8e3e7d96807fcc72e6c64d0a18a54c9803a1f9add9573fa0"
+    },
+    {
+      "bytes": 2237,
+      "path": "checks.json",
+      "sha256": "392216d8f67ed6d22043fb29bec122e18d7fb00ffb34c7de6834f70b3a02f755"
+    },
+    {
+      "bytes": 68719,
+      "path": "c71-rms-shared-support-20261011.json",
+      "sha256": "f0bfa90edb48e12963d5078b4a8aa1e9257a8f5e9736ee38a8b9f45f56067473"
+    },
+    {
+      "bytes": 10291,
+      "path": "c71-rms-shared-recipes-20261011.json",
+      "sha256": "b0c69fdb2395a1014f877725b119948af038a48baaebcbb4b336551f87f35853"
+    }
+  ],
+  "certificates_generated": 0,
+  "certificates_verified": 0,
+  "checks": {
+    "as_bytes": 2147483648,
+    "credit": false,
+    "deadline_per_process_s": 60,
+    "git_dirty": false,
+    "gpu_execution": false,
+    "input_files": [
+      {
+        "path": "/tmp/c71-rms-shared-recipes-20261011.json",
+        "sha256": "b0c69fdb2395a1014f877725b119948af038a48baaebcbb4b336551f87f35853"
+      },
+      {
+        "path": "/tmp/c71-rms-shared-support-20261011.json",
+        "sha256": "f0bfa90edb48e12963d5078b4a8aa1e9257a8f5e9736ee38a8b9f45f56067473"
+      }
+    ],
+    "runs": [
+      {
+        "command": [
+          "rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+          "c71_rms_shared_support_pairs_match_exhaustive_residues",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "exit_code": 0,
+        "first_depth": null,
+        "last_depth": null,
+        "log": "exhaustive.log",
+        "max_rss_bytes": 16465920,
+        "name": "exhaustive",
+        "wall_s": 0.0075805820524692535
+      },
+      {
+        "command": [
+          "rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+          "c71_rms_pinned_shared_gate_screen",
+          "--ignored",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "exit_code": 0,
+        "first_depth": 1,
+        "last_depth": 33,
+        "log": "depths-1-33.log",
+        "max_rss_bytes": 478973952,
+        "name": "depths-1-33",
+        "wall_s": 47.91049284301698
+      },
+      {
+        "command": [
+          "rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+          "c71_rms_pinned_shared_gate_screen",
+          "--ignored",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "exit_code": 0,
+        "first_depth": 34,
+        "last_depth": 66,
+        "log": "depths-34-66.log",
+        "max_rss_bytes": 517197824,
+        "name": "depths-34-66",
+        "wall_s": 49.49130431981757
+      },
+      {
+        "command": [
+          "rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+          "c71_rms_pinned_shared_gate_screen",
+          "--ignored",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "exit_code": 0,
+        "first_depth": 67,
+        "last_depth": 99,
+        "log": "depths-67-99.log",
+        "max_rss_bytes": 468680704,
+        "name": "depths-67-99",
+        "wall_s": 32.57004434010014
+      }
+    ],
+    "source_git_sha": "fe5f9d659eb3b8c742b595cd1cf2c0c0265261ea",
+    "workers": 1
+  },
+  "credit": false,
+  "git_dirty": false,
+  "gpu_execution": false,
+  "keep_first_two_original_products": 542419458937257,
+  "merged_products": 559922206698409,
+  "merged_products_by_round": [
+    15490234960896,
+    129698817990656,
+    116621129259264,
+    95396316034048,
+    72474505268992,
+    50936762761728,
+    33014820722688,
+    20633272937472,
+    11911297874944,
+    6856157306880,
+    3444452360192,
+    1722226180096,
+    861113090048,
+    430556545024,
+    215278272512,
+    107639136256,
+    53819568128,
+    26909784064,
+    13454892032,
+    6727446016,
+    3363723008,
+    1681861504,
+    840930752,
+    420465376,
+    210232688,
+    105116344,
+    52558172,
+    26279086,
+    13139543
+  ],
+  "original_products": 844006203160300,
+  "original_products_by_round": [
+    206261282304,
+    127480043908096,
+    126508695222272,
+    121732344883712,
+    113875519458304,
+    100366842525696,
+    83298550716416,
+    64109207972352,
+    44435915010560,
+    30832212307968,
+    15580334653440,
+    7790167326720,
+    3895083663360,
+    1947541831680,
+    973770915840,
+    486885457920,
+    243442728960,
+    121721364480,
+    60860682240,
+    30430341120,
+    15215170560,
+    7607585280,
+    3803792640,
+    1901896320,
+    950948160,
+    475474080,
+    237737040,
+    118868520,
+    59434260
+  ],
+  "private_inputs": false,
+  "schema": "volta-c71-rms-shared-support-local-v1",
+  "scope": "public core arithmetic after structural pruning and Boolean first round; excludes selector sums, plan construction, replay, row folds, callbacks and runtime",
+  "selected_implementation": false,
+  "source_git_sha": "fe5f9d659eb3b8c742b595cd1cf2c0c0265261ea"
+}

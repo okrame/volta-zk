@@ -109,7 +109,9 @@ rapporto 0,663410, rispetto allo screen precedente a supporto completo.
 Conservare i primi due round correnti darebbe 542.419.458.937.257 prodotti.
 Esclusi replay, fold, callback e costruzione; nessuna implementazione o
 selezione, costo RMS completo ancora irrisolto. Controllo esaustivo dei
-residui e tre screen locali bounded passano sulle 99 profondità.
+residui e tre screen locali bounded passano sulle 99 profondità; il
+[record pulito](../../benchmarks/results/c71-certificates-rms-shared-support-local-2026-10-11-fe5f9d65.json)
+conserva input, log e conti, RSS massimo 517.197.824 B.
 
 La [campagna precedente](../c7.1-history/h100-followup-close-2026-10-10.md)
 è chiusa con provider EXITED alle 21:24:47 UTC del 10 ottobre e zero

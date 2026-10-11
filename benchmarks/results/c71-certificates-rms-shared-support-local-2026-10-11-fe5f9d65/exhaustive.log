@@ -1,0 +1,6 @@
+
+running 1 test
+test c71_matrix::rms::gkr::tests::c71_rms_shared_support_pairs_match_exhaustive_residues ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 612 filtered out; finished in 0.00s
+

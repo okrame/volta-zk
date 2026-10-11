@@ -90,7 +90,11 @@ passa18 check su `f868468e`, inclusi23 rifiuti owner e stesso wire159/99:
 launch707.364, prover126,808 s; la singola misura non migliora il tempo
 rispetto a124,478 s precedente. Fisico campionato1.272.659.968 B, un
 incompleto, nessun credito al picco stabile. Il conto sopra resta92afea54;
-il confronto temporale AB/BA fra i due binari congelati è in corso.
+il [confronto temporale AB/BA concluso](../c7.1-history/h100-rms-native-paired-2026-10-11.md)
+misura prover medio127,079→113,956 s, −10,3266% osservato sullo stesso
+componente512/159/99, stesso wire e9.919 righe ideali. Quattro processi,
+GPU idle ai bordi, nessuna build concorrente. B2 ha un campione incompleto,
+nessun credito al picco fisico completo o al tempo canonico.
 La [riduzione per programma del tail verificata](../c7.1-history/h100-rms-tail-program-reduction-parity-2026-10-11.md)
 passa18 check su `c0e0448d`:23 rifiuti owner,84 coefficienti/24 terminali
 densi originali e80/10 indici, caller RMS/PCS e stesso wire159/99.

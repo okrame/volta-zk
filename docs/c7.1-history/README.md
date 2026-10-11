@@ -1,5 +1,7 @@
 # C7.1 — archivio e provenienza
 
+[Confronto GPU RMS AB/BA: wire uguale e tempi del tail](h100-rms-native-paired-2026-10-11.md).
+
 [Riduzione tail per programma: coefficienti e wire159/99 verificati](h100-rms-tail-program-reduction-parity-2026-10-11.md).
 
 [Calendario analitico dei batching: screen e confronti GPU](h100-rms-batched-schedule-parity-2026-10-11.md).

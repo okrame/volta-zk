@@ -50,6 +50,42 @@ fn role_results<T>(verifier: Result<(), String>, prover: Result<T, String>) -> R
     }
 }
 
+// Publish only a complete, synced file. Interrupted partials remain evidence;
+// neither a partial nor a final artifact may be overwritten by another run.
+fn export_file(path: &Path, write: impl FnOnce(&mut std::fs::File) -> io::Result<()>) -> io::Result<()> {
+    use std::os::unix::fs::OpenOptionsExt;
+    let partial = path.with_extension("partial");
+    let parent = path.parent().ok_or_else(|| invalid("export parent missing"))?;
+    let mut file = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&partial)?;
+    write(&mut file)?;
+    file.sync_all()?;
+    std::fs::hard_link(&partial, path)?;
+    std::fs::File::open(parent)?.sync_all()?;
+    std::fs::remove_file(partial)?;
+    std::fs::File::open(parent)?.sync_all()
+}
+
+fn export_response(directory: &Path, slot: usize, response: &Response) -> Result<(), String> {
+    if slot >= 3 || response.certificate.is_empty() {
+        return Err("certificate export context differs".into());
+    }
+    let name = format!("response-{slot}.bin");
+    export_file(&directory.join(&name), |file| response.write(file)).map_err(|e| e.to_string())?;
+    // Stream the existing certificate: no second certificate-sized allocation.
+    let record = serde_json::json!({
+        "schema": "volta-c71-certificate-export-v1", "slot": slot, "old_tokens": 150 * slot,
+        "response_file": name, "response_bytes": response.certificate.len() + 680,
+        "certificate_offset": 680, "certificate_bytes": response.certificate.len(),
+        "certificate_blake3": blake3::hash(&response.certificate).to_hex().as_str(),
+        "generated_complete": true, "verification": "separate durable verifier acceptance",
+        "acceptance_file": format!("acceptance-{slot}.bin"),
+        "scope": "complete C71RSP01 frame including canonical certificate; installation and Seed6 traffic counted separately",
+    });
+    export_file(&directory.join(format!("response-{slot}.json")), |file| {
+        serde_json::to_writer(file, &record).map_err(io::Error::other)
+    }).map_err(|e| e.to_string())
+}
+
 // Transport the exact public input bytes. Each role compiles its own public
 // profile; numerical certification remains a separate prerequisite.
 fn write_public(channel: &mut impl Write, candidate: &[u8], tables: &[u8]) -> io::Result<()> {
@@ -558,6 +594,7 @@ fn run(
                     measurements,
                     |response| {
                         body_bytes = response.certificate.len();
+                        export_response(directory, slot, response)?;
                         response.write(&mut proof_p).map_err(|e| e.to_string())?;
                         let mut completion = vec![0; acceptance_transport::BYTES];
                         proof_p.read_exact(&mut completion).map_err(|e| e.to_string())?;
@@ -598,6 +635,13 @@ fn run(
                 let verification =
                     measurements.phase("verifier", Some(slot), "verify_journal_and_completion");
                 v.verify_authenticated(&prompt, &response, &mut capacity, &mut proof_v)?;
+                // verify_authenticated has already synced the acceptance journal.
+                // Persist its exact completion record before requesting the next slot.
+                let receipt = v.accepted.last().ok_or("verifier acceptance missing")?.receipt;
+                export_file(&directory.join(format!("acceptance-{slot}.bin")), |file| {
+                    acceptance_transport::send(file,
+                        Some((*blake3::hash(&response.certificate).as_bytes(), receipt)))
+                }).map_err(|e| e.to_string())?;
                 verification.finish();
                 phase.finish();
             }
@@ -634,6 +678,36 @@ fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn c71_canonical_certificate_export_complete_no_overwrite_and_partial_failure() {
+        use std::os::unix::fs::PermissionsExt;
+        let directory = std::env::temp_dir().join(format!("c71-export-{}-{}", std::process::id(), rand::random::<u64>()));
+        std::fs::create_dir(&directory).unwrap();
+        // Transport fixture, not a cryptographically valid certificate.
+        let response = Response { root: C61Commitment::new(vec![[9; 32]]),
+            tokens: [7; 150], nonce: [8; 32], certificate: vec![3, 4, 5] };
+        export_response(&directory, 0, &response).unwrap();
+        let path = directory.join("response-0.bin");
+        let body = std::fs::read(&path).unwrap();
+        assert_eq!(body.len(), 683);
+        assert_eq!(&body[680..], &response.certificate);
+        assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+        let decoded = Response::read(&mut body.as_slice()).unwrap();
+        assert_eq!(decoded.certificate, response.certificate);
+        assert_eq!(decoded.tokens, response.tokens);
+        assert_eq!(decoded.nonce, response.nonce);
+        let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(directory.join("response-0.json")).unwrap()).unwrap();
+        assert_eq!(manifest["certificate_blake3"], blake3::hash(&response.certificate).to_hex().as_str());
+        assert!(!directory.join("acceptance-0.bin").exists());
+        assert!(export_response(&directory, 0, &response).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), body);
+        let failed = directory.join("failure.bin");
+        assert!(export_file(&failed, |f| { f.write_all(b"prefix")?; Err(io::Error::other("injected failure")) }).is_err());
+        assert!(!failed.exists());
+        assert_eq!(std::fs::read(failed.with_extension("partial")).unwrap(), b"prefix");
+        assert!(export_response(&directory, 3, &response).is_err());
+        std::fs::remove_dir_all(directory).unwrap();
+    }
     #[test]
     fn c71_canonical_runner_preserves_both_role_failures() {
         assert_eq!(role_results(Ok(()), Ok(7)), Ok(7));

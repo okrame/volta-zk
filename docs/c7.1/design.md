@@ -132,6 +132,14 @@ dei due ruoli restano esclusi. Nessun nuovo bound completo o ammissione.
 Le verifiche hardware del seguito sono eseguite nella campagna ora chiusa
 con i risultati e i confini indicati sopra.
 
+Il runner ora esporta ogni risposta completa prima dell’invio e conserva
+il completamento dopo il journal del verifier, come nelle
+[specifiche](specs.md#esportazione-immediata-del-certificato). Non ci sono
+ancora certificati reali: la verifica locale riguarda trasporto,
+pubblicazione durevole e rifiuti I/O. Il bound corrente deve aggiungere
+32.768 B di metadata export a quello storico; allowance fisica e
+completamento rimangono aperti.
+
 ## Obiettivo e relazione dimostrata
 
 C7.1 dimostra a un verificatore designato l'inferenza intera di un modello

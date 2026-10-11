@@ -194,6 +194,15 @@ senza chiamare il provider o scaricare pesi.
 Le fonti congelate conservano i riferimenti originali secondo la
 [mappa storica](../c7.1-history/README.md#conservazione-e-mappa-dei-percorsi).
 
+La regressione `c71_canonical_certificate_export_complete_no_overwrite_and_partial_failure`
+controlla il frame completo, offset/dimensione/hash, mode 0600, decoding,
+rifiuto di sovrascrittura e conservazione dei parziali su errore.
+È una fixture di trasporto, non un certificato valido. Il test della
+telemetria include 32 KiB per export e path; i sette controlli di
+`tests/test_c71_temporary_ledger.py` rifiutano ricevute obsolete senza
+modificare gli input storici. `tests/test_c71_cuda_allocation_replay.py`
+valida una sequenza periodica di allocazioni conservate e i cap, senza GPU.
+
 ## Compilazione mirata
 
 `tests/test_c71_optimized_inference.py` controlla gli ID/storie pinned e

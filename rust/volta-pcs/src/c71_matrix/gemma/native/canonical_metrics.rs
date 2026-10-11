@@ -298,7 +298,10 @@ mod tests {
         let process_read = 3 * (crate::c71_matrix::progress::PROCESS_STATUS_MAX_BYTES + 1);
         // P/V diagnostics can overlap. A progress read runs on its emitting
         // role's thread, not a third diagnostic worker.
-        let crypto = stored+7*sample+3*progress+12*(16+size_of::<AtomicU64>())+size_of::<Measurements>()+2*process_read;
+        // Export streams the existing certificate; bounded manifest plus
+        // three transient paths under the existing 4096-byte path premise.
+        let certificate_export = 32 * 1024;
+        let crypto = stored+7*sample+3*progress+12*(16+size_of::<AtomicU64>())+size_of::<Measurements>()+2*process_read+certificate_export;
         let report = 4*stored+3*progress+6*sample+2*process_read;
         println!("C71_PUBLIC_METADATA_TELEMETRY {}",serde_json::json!({
             "schema":"volta-c71-public-metadata-telemetry-v1","credit":false,"admission":false,
@@ -307,6 +310,7 @@ mod tests {
             "sample_heap_upper_bytes":sample,"phase_record_heap_upper_bytes":phase,
             "resource_record_heap_upper_bytes":resource,"progress_heap_upper_bytes":progress,
             "crypto_live_metadata_heap_upper_bytes":crypto,
+            "certificate_export_heap_upper_bytes":certificate_export,
             "diagnostic_status_read_moving_upper_bytes_per_role":process_read,
             "after_cleanup_report_metadata_heap_upper_bytes":report,
             "source":"canonical_runner/canonical_state call sites; current sample/Stats/Session JSON schema",

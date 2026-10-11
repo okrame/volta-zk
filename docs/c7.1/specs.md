@@ -813,6 +813,29 @@ per ruolo; CPU-time e HBM osservata richiedono il monitor esterno.
 Le etichette CPU/GPU del report descrivono le route selezionate, inclusi
 sali, query W/A e contrazioni residenti; non attribuiscono tempi ai kernel.
 
+### Esportazione immediata del certificato
+
+Il runner scrive `journals/response-SLOT.bin` appena il prover completa
+il corpo, prima dell’invio al verifier e delle risposte successive.
+È l’intero frame `C71RSP01`: header di 680 B seguito dai byte del
+certificato canonico. `response-SLOT.json` registra slot/O, offset,
+dimensioni e BLAKE3 del corpo; le identità e la provenienza della build
+rimangono nel manifest della campagna. L’export non assegna accettazione.
+Dopo `verify_authenticated`, già successivo al journal durevole del
+verifier, `acceptance-SLOT.bin` conserva gli stessi 73 B `C71ACC01`
+vincolati al corpo e alla ricevuta FS, prima della richiesta seguente.
+
+File privati 0600, creazione esclusiva e fsync di file/directory;
+pubblicazione tramite hard link senza sovrascrittura. Su errore rimangono
+`.partial` distinti dagli export completi e il run termina. Il corpo
+esistente è scritto in streaming, senza secondo buffer della sua taglia.
+L’I/O e gli hash sono inclusi nella risposta; metadata/path aggiungono
+32.768 B al bound heap della telemetria, sotto la premessa path ≤4.096 B.
+Kernel/file cache e stack restano nella riserva fisica da misurare.
+Il ledger corrente rifiuta marker TELEMETRY privi di questo addebito;
+le ricevute storiche non vengono modificate. Setup/installazione e
+traffico iniziale restano voci separate, non implicite nel solo file.
+
 ### Telemetria durevole del percorso crittografico
 
 [progress.rs](../../rust/volta-pcs/src/c71_matrix/progress.rs) scrive JSONL

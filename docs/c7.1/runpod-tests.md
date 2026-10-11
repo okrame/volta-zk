@@ -556,6 +556,23 @@ Misurare separatamente installazione, setup, inferenza, prova e verifica;
 quantificare i colli residui, incluso il core RMS CPU. Valutare TMA,
 fusioni e CUDA Graphs solo con parità, risorse e beneficio misurati.
 
+La nuova ipotesi allocator usa `scripts/c71_cuda_allocation_replay.py`:
+ricava da un gruppo completo della traccia conservata le sole allocazioni
+≥1 MiB e richiede identico stato live ai due confini. Ripete quel ciclo
+CUDA senza W, kernel numerici o profiler. Usare monitor canonico senza
+alcuna esenzione W, timeout finito e GPU idle prima/dopo; conta anche
+32 MiB conservativi host nel preflight del diagnostico. Non riproduce
+allocazioni piccole, mapping W o kernel: un negativo restringe l’ipotesi,
+nessun esito autorizza da solo il picco del runner completo.
+
+Prima del runner completo verificare l’export descritto nelle
+[specifiche](specs.md#esportazione-immediata-del-certificato). Conservare
+immediatamente i file `response-0.bin/json` e, quando accettato,
+`acceptance-0.bin` con i journal e manifest verificato, anche se un
+contesto successivo fallisce. Un file risposta senza accettazione resta
+un certificato generato non verificato. Il nuovo ledger deve includere
+il marker export da 32.768 B, con cap fisici e payload originali.
+
 ## Esperimento della prova
 
 Il comando è ora `c71_canonical_reference experiment-cuda`. Gli esempi

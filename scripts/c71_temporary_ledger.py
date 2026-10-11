@@ -585,6 +585,8 @@ def prepared_capacity_markers(directory):
     if (telemetry['phase_count_upper'], telemetry['resource_count_upper'],
             telemetry['channel_count_upper'], telemetry['active_phase_count_upper']) != (44, 6, 6, 7):
         raise ValueError('canonical telemetry lifecycle changed')
+    if telemetry.get('certificate_export_heap_upper_bytes') != 32768:
+        raise ValueError('complete certificate export accounting missing')
     if any(r['W_targets'] != 775 or r['A_targets'] != 4446 for r in forms):
         raise ValueError('pinned claim schema changed')
     if any(not r.get('current_batch_preflight_cap_through_W_and_history')

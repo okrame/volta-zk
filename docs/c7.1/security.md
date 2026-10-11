@@ -86,6 +86,14 @@ Il [piano hardware mirato](../c7.1-history/local-hardware-plan-2026-10-10.md)
 era coperto dall'autorizzazione della campagna ora chiusa, entro il suo
 ambito e termine; le candidate Γ restano screening non ammessi.
 
+L’export del certificato è diagnostica privata, successiva alla costruzione
+del corpo; non modifica wire, transcript, sfide o correlazioni. Il file
+`response-SLOT.bin` non implica verifica: il record `acceptance-SLOT.bin`
+è scritto solo dopo il successo del verifier e del suo journal durevole.
+Un errore di export termina la sessione senza riuso. Nessuna chiave DV
+o correlazione è esportata; il bundle non introduce verifica pubblica,
+resume o un nuovo lemma di raffinamento.
+
 ## Ambito e ipotesi
 
 Il [preflight del seguito H100](../../benchmarks/results/c71-h100-followup-preflight-2026-10-10-7b0885ad316f.json)

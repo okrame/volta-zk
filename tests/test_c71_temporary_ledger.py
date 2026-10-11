@@ -13,6 +13,21 @@ SPEC.loader.exec_module(LEDGER)
 INPUTS = ROOT / "benchmarks/results/c71-preh100-operational-local-2026-10-09-24b54d414421/ledger-inputs"
 
 
+def prepare_inputs(directory, *, export=True):
+    # Upgrade copies of the historical fixture; immutable receipts stay intact.
+    prefix = "C71_PUBLIC_METADATA_TELEMETRY "
+    for path in INPUTS.glob("*.log"):
+        lines = path.read_text().splitlines()
+        for i, line in enumerate(lines):
+            if export and prefix in line:
+                before, payload = line.split(prefix, 1)
+                marker = json.loads(payload)
+                marker["certificate_export_heap_upper_bytes"] = 32768
+                marker["crypto_live_metadata_heap_upper_bytes"] += 32768
+                lines[i] = before + prefix + json.dumps(marker)
+        (directory / path.name).write_text("\n".join(lines) + "\n")
+
+
 def compute(directory):
     return LEDGER.ledger(directory, "s1-prepared",
         ROOT / "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6.json",
@@ -21,8 +36,7 @@ def compute(directory):
 
 
 def test_retained_sync_flag_is_charged_until_native_cleanup(tmp_path):
-    for path in INPUTS.glob("*.log"):
-        (tmp_path / path.name).symlink_to(path)
+    prepare_inputs(tmp_path)
     before = compute(tmp_path)
     marker = dict(sync_flag_reuse=True, flag_count=1, retained_device_capacity_bytes=256,
                   host_owner_bytes=max(x["bytes"] for x in before["current_owner_host_byte_observations"])+8)
@@ -41,8 +55,9 @@ def test_retained_sync_flag_is_charged_until_native_cleanup(tmp_path):
     assert after["credit"] is False
 
 
-def test_AES_setup_keeps_the_already_installed_W_cache_and_owner():
-    phases = {r["phase"]: r for r in compute(INPUTS)["named_phase_crosschecks"]}
+def test_AES_setup_keeps_the_already_installed_W_cache_and_owner(tmp_path):
+    prepare_inputs(tmp_path)
+    phases = {r["phase"]: r for r in compute(tmp_path)["named_phase_crosschecks"]}
     parts = phases["real_AES_seed6_setup"]["parts"]
     installed = phases["native_initial_W_install"]["parts"]
     for key in ("initial_W_and_A_root_offset_caches", "retained_initial_private_host_pads",
@@ -56,10 +71,15 @@ def test_AES_setup_keeps_the_already_installed_W_cache_and_owner():
 @pytest.mark.parametrize("change", [dict(retained_device_capacity_bytes=0), dict(flag_count=2),
                                   dict(host_owner_bytes=1), dict(sync_flag_reuse=False)])
 def test_invalid_retention_receipt_is_rejected(tmp_path, change):
-    for path in INPUTS.glob("*.log"):
-        (tmp_path / path.name).symlink_to(path)
+    prepare_inputs(tmp_path)
     marker = dict(sync_flag_reuse=True, flag_count=1, retained_device_capacity_bytes=256,
                   host_owner_bytes=42104) | change
     (tmp_path / "sync.log").write_text("C71_SYNC_ERROR_FLAG_REUSE " + json.dumps(marker) + "\n")
     with pytest.raises(ValueError, match="flag retention"):
+        compute(tmp_path)
+
+
+def test_current_ledger_rejects_receipt_without_certificate_export(tmp_path):
+    prepare_inputs(tmp_path, export=False)
+    with pytest.raises(ValueError, match="certificate export"):
         compute(tmp_path)

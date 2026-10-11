@@ -12,9 +12,14 @@ Finestra invariata: calcolo fino a23:43:00, guard00:03:00 e hard stop
 preparazione computazionale, test e build si svolgono sul pod.
 Tre test F97 del prefisso misto e nove documentali passano sul checkout
 pulito `f25452bf`; primo negativo documentale per fonti assenti conservato.
-L'oracolo Rust dei momenti misti è preparato per parità Goldilocks/wire,
-**ancora da compilare e verificare**. È solo `cfg(test)`, massimo512 celle,
-pesatura per sorgente; non è il builder nativo a pesatura tardiva.
+Il [primo controllo Rust misto](../c7.1-history/h100-rms-moments-rust-negative-2026-10-11.md)
+passa build, coefficienti Goldilocks, EXP30/decoder e check produzione.
+Il test wire composto è **negativo**: parità onesta presente, ma l'input
+negativo della fixture violava già il predicato prima del controllo PCS.
+Correzione preparata, ancora da riverificare. Il percorso è solo `cfg(test)`,
+max512 celle/pesatura per sorgente; nessun builder CUDA completo.
+Census parallel per i159 programmi e screen chunk32/batch4096 preparati,
+ancora da eseguire; residuo fold/core e conto completo restano aperti.
 **Zero certificati canonici**: O=0 incompleto, O=150/300 non iniziati.
 Backend RMS completo, conto simultaneo e premessa di raffinamento aperti.
 

@@ -2057,6 +2057,19 @@ mod tests {
         let last: usize = std::env::var("C71_RMS_SCREEN_LAST_DEPTH").map_or(geometry.len()-1, |v| v.parse().unwrap());
         assert!(first >= 1 && first <= last && last < geometry.len());
         for depth in first..=last {
+            if std::env::var("C71_RMS_SCREEN_NATIVE_REPLAY").as_deref()==Ok("1") {
+                let replay=patterns::PackedReplay::new_validated(&programs,depth-1,geometry[depth-1]).unwrap();
+                let counts=programs.iter().map(|p| {
+                    let mut ops=[0usize;3];
+                    for g in gates(p,depth) {ops[match g.op {Op::And=>0,Op::Xor=>1,Op::Copy=>2}]+=1;}
+                    ops
+                }).collect::<Vec<_>>();
+                println!("C71_RMS_NATIVE_REPLAY_PLAN_SCREEN {}",serde_json::json!({
+                    "depth":depth,"input_width":geometry[depth-1],"original_gates_by_program":counts,
+                    "recipes_blake3":blake3::hash(&body).to_hex().as_str(),
+                    "native_plan":replay.native_plan_census(depth-1),"credit":false,"gpu_execution":false}));
+                continue;
+            }
             if std::env::var("C71_RMS_SCREEN_IMPLEMENTED_SHARED").as_deref()==Ok("1") {
                 let plan=SharedGates::new(&programs,depth,geometry[depth-1],&vec![Fp3::ONE;geometry[depth]]).unwrap();
                 let mut products=vec![];
@@ -2997,8 +3010,9 @@ mod tests {
             })
         }).collect::<Vec<_>>();
         let changed = assignments.iter().position(|p| *p == Some(0)).unwrap();
+        // Unused bit 6 preserves this fixture's predicate and isolates PCS rejection.
         check_cells_with_mixed_prefix(&programs, &assignments, &honest,
-            (changed, frame(3, 1, 0, true)), (changed, frame(4, 1, 0, true)), true);
+            (changed, frame(3, 1, 0, true)), (changed, frame(64, 1, 0, true)), true);
     }
 
     fn check(

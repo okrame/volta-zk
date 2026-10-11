@@ -305,6 +305,30 @@ impl<'a> PackedReplay<'a> {
     pub(super) fn planes(&self) -> &[u64] { &self.planes }
     pub(super) fn work(&self) -> PackedReplayWork { self.work }
 
+    #[cfg(test)]
+    pub(super) fn native_plan_census(&self, selected_depth: usize) -> serde_json::Value {
+        let programs = self.programs.iter().zip(&self.plans).enumerate().map(|(p, (program, plan))| {
+            let parallel = plan.parallel(program.ports);
+            for live in [u64::MAX, 0x8421_137f_aab9_7654, 0] {
+                let mut input = (0..program.ports).map(|i|
+                    (i as u64 + 7).wrapping_mul(0x9e37_79b9_7f4a_7c15).rotate_left(i as u32 % 64) & live)
+                    .collect::<Vec<_>>();
+                input[0] = 0; input[1] = live;
+                let (expected, _) = program.replay_layer(&input, live,
+                    selected_depth.min(program.levels.len())).unwrap();
+                assert_eq!(parallel.replay(&input), expected, "parallel RMS program {p}");
+            }
+            serde_json::json!({"program":p,"ports":program.ports,"word_operations":plan.nodes.len(),
+                "selected_wires":plan.outputs.len(),"parallel_shared_slots":parallel.slots,
+                "parallel_shared_bytes_per_CTA":8*parallel.slots,
+                "parallel_stages":parallel.boundaries.len()-1,
+                "parallel_plan_requested_bytes":16*parallel.ops.len()+4*(parallel.boundaries.len()+parallel.outputs.len())})
+        }).collect::<Vec<_>>();
+        serde_json::json!({"programs":programs,"packed_replay_capacity":self.work,
+            "credit":false,"gpu_execution":false,"CPU_parallel_vs_original_layer_bitplane_parity":true,
+            "scope":"Public plan geometry and CPU parallel scheduling parity only; no CUDA launch, source transfer, fold/core or complete resource credit"})
+    }
+
     /// Compatibility seam for the original scalar coefficient callback.
     /// A batch coefficient loop can read planes directly to avoid Fp3 rows.
     pub(super) fn row(&self, lane: usize, out: &mut [Fp3]) -> Result<(), String> {

@@ -125,3 +125,5 @@ Benchmark, fonti in `sota` e milestone formali non sono modificati.
 - [H100: candidata sul prefisso KV, 10 ottobre 2026](h100-prefix-candidate-2026-10-10.md).
 
 [Riavvio sul pod per i momenti RMS misti](h100-rms-moments-restart-2026-10-11.md).
+
+[Coefficienti RMS misti e fixture wire negativa](h100-rms-moments-rust-negative-2026-10-11.md).

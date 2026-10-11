@@ -32,20 +32,32 @@ byte conserva 30.985.128 letture dei frame, non ridotte dai nuovi callback
 di cella. Le premesse di raffinamento e Seed6 non sono scaricate da questa
 misura; nessuna extrapolazione canonica o attribuzione del target 65 s.
 
-Il proprietario ha autorizzato la [nuova campagna RMS byte e certificati](../c7.1-history/h100-rms-byte-start-2026-10-11.md)
-secondo il [piano preparato](../c7.1-history/h100-rms-byte-followup-plan-2026-10-11.md).
-Avvio provider verificato **16:13:00 UTC** dell'11 ottobre, massimo otto
-ore compresi trenta minuti di chiusura. Termine calcolo **23:43:00**,
-stop del nuovo guard **00:03:00**, hard stop **00:13:00 UTC** del 12 ottobre.
-Stessa H100 UUID verificata e idle; disco effimero vuoto. Checkout nuovo
-via Git HTTPS e primo confronto AB/BA con 512 celle e tutte le 159 ricette,
-cache/gate comuni, contrazione byte spenta/accesa. I tempi di test
-separano cella/replay, indici, byte e residuo. Zero certificati canonici;
-costo completo e backend RMS CUDA restano aperti. Non si riusa alcuno
-stato terminale, KV o correlazione AES delle campagne precedenti.
-Il [record di avvio `30867b9b`](../../benchmarks/results/c71-certificates-rms-byte-start-2026-10-11-30867b9b.json)
-conserva le nuove ricevute; workflow vivo, checkout e ricette verificati,
-compilazione in corso. Nessun risultato completo attribuito all'avvio.
+Il [seguito RMS byte autorizzato](../c7.1-history/h100-rms-byte-paired-2026-10-11.md)
+è concluso con **zero certificati canonici**. Il provider conferma
+`EXITED` e runtime assente alle **16:48:04 UTC** dell'11 ottobre;
+GPU idle prima dello stop e nuovo guard ritirato dopo la conferma.
+Il [record AB/BA pulito `30867b9b`](../../benchmarks/results/c71-certificates-rms-byte-paired-2026-10-11-30867b9b.json)
+conserva quattro prove CPU: 159 ricette/99 profondità, 511 celle sintetiche
+vive più padding, cache16 MiB/gate comuni e byte0/1/1/0.
+Prover medio **156,495→147,572 s**, −5,70% osservato; endpoint byte
+**10,024→0,890 s**, −91,12%. Cella/replay e indici restano circa70/76 s;
+wire320.320 B/BLAKE3 e9.919 correlazioni ideali uguali in tutte le prove.
+Letture frame byte30.985.128→97.056; core/fold della cella invariati.
+La variante aggiunge il budget evaluator32 MiB, stato osservato5.155.256 B.
+A1/B1/B2 hanno GPU zero nei campioni; A2 e build registrano ciascuna15
+occupazioni non attribuite fino a556.793.856 B. Nessuna attribuzione al
+prover CPU, picco istantaneo o isolamento della coppia BA dedotto.
+Modello, statistiche, PCS, AES e risposta completa rimangono esclusi;
+nessuna selezione canonica o extrapolazione dal timing ridotto.
+Il [record di chiusura](../../benchmarks/results/c71-certificates-rms-byte-close-2026-10-11-30867b9b.json)
+conserva anche i primi poll con runtime ancora presente. Backend RMS
+completo e conto fisico simultaneo restano aperti; il seguito è locale,
+senza lasciare acceso hardware privo di un caller completo eseguibile.
+L'avvio autorizzato16:13:00 e la deadline12 ottobre00:13:00 UTC restano
+immutati dallo stop anticipato; nessun nuovo setup/sessione AES avviato.
+Le [ricevute di avvio](../../benchmarks/results/c71-certificates-rms-byte-start-2026-10-11-30867b9b.json)
+e il [piano pretrial](../c7.1-history/h100-rms-byte-followup-plan-2026-10-11.md)
+restano conservati separatamente.
 Il [record pulito `47373d72`](../../benchmarks/results/c71-certificates-rms-phase-local-2026-10-11-47373d72.json)
 conserva build, parità RMS mista e nove controlli documentali passati;
 provider `EXITED` con runtime assente riverificato alle 15:33:09 UTC.
@@ -527,10 +539,12 @@ alle 14:27:28 UTC. L’autorizzazione era di otto ore dall’avvio provider,
 inclusi trenta minuti di chiusura; la deadline originale era 15:31:18 UTC.
 Lo stop anticipato non azzera l’avvio o estende quella finestra.
 Altra durata o hardware richiedono una nuova decisione.
-La risposta `resume autorizzo a proseguire` autorizza ora la nuova
-campagna descritta sopra, con il massimo di otto ore del piano richiesto.
-REST data l'avvio al 11 ottobre16:13:00 UTC: termine calcolo23:43:00,
+La risposta `resume autorizzo a proseguire` autorizza il nuovo seguito
+RMS byte, concluso anticipatamente con EXITED/runtime assente alle16:48:04 UTC.
+REST data l'avvio all'11 ottobre16:13:00 UTC: termine calcolo23:43:00,
 stop guard00:03:00 e deadline12 ottobre00:13:00 UTC. Cap e ambito invariati.
+Lo stop non sposta la finestra autorizzata; qualsiasi trial coperto ancora
+ammissibile deve conservarne l'avvio e ristabilire il guard prima del resume.
 
 L'agent registra deadline e responsabile dello spegnimento dall'avvio
 provider, verifica l'accesso all'arresto API e predispone un guard indipendente.

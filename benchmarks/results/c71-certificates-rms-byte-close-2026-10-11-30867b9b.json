@@ -1,0 +1,66 @@
+{
+  "schema": "volta-c71-rms-byte-close-v1",
+  "source_git_sha": "30867b9b4d000943d25daacc816367b9b7435a03",
+  "git_dirty": false,
+  "credit": false,
+  "certificates_generated": 0,
+  "certificates_verified": 0,
+  "canonical_contexts_completed": [],
+  "shutdown": {
+    "requested": {
+      "action": "stop",
+      "observed_epoch": 1791737219.8275485,
+      "pod": {
+        "id": "z6wx2kkn69eoc0",
+        "desiredStatus": "EXITED"
+      }
+    },
+    "confirmed": {
+      "action": "get",
+      "observed_epoch": 1791737284.6292357,
+      "pod": {
+        "id": "z6wx2kkn69eoc0",
+        "desiredStatus": "EXITED",
+        "imageName": "runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404",
+        "gpuCount": 1,
+        "memoryInGb": 251,
+        "vcpuCount": 28,
+        "volumeInGb": 0,
+        "containerDiskInGb": 230,
+        "runtime": null
+      }
+    },
+    "before_stop": {
+      "epoch": 1791737219.0694897,
+      "gpu": "GPU-e05e977b-758d-f3f4-cbe8-5720b83d1ae1, 0",
+      "apps": "",
+      "git_sha": "30867b9b4d000943d25daacc816367b9b7435a03",
+      "git_dirty": false
+    },
+    "reason": "AB/BA comparison complete and evidence verified. Complete RMS backend and canonical runner prerequisites unresolved; close early per approved plan. Zero canonical certificates.",
+    "initial_confirmation_failed": true
+  },
+  "guard_retirement": {
+    "epoch": 1791737313.1911438,
+    "guard_pid": 21664,
+    "verified_argv": [
+      "python3",
+      "/tmp/c71-rms-byte-guard-20261011.py",
+      "/tmp/c71-rms-byte-campaign-20261011"
+    ],
+    "process_start_ticks": "332107132",
+    "signal": "SIGTERM",
+    "guard_retired_after_confirmed_shutdown": true,
+    "confirmed_shutdown_epoch": 1791737284.6292357,
+    "guard_sha256": "f345138d5acbd626c378b924c3294354b660744143cea6e7e3e76f6b678a25f5"
+  },
+  "paired_record": "benchmarks/results/c71-certificates-rms-byte-paired-2026-10-11-30867b9b.json",
+  "paired_record_sha256": "6f6c98968ade72bd719133411d9d6e5848fb16057167d094f3a4f276b7dcd7a9",
+  "scope": "Campaign closure after completed component AB/BA. All raw files and binary preserved, hashes verified before stop. No complete canonical proof or fresh AES session began.",
+  "verification_note": "Initial stop was accepted but first five get polls exposed runtime; preserved failure, kept independent guard. Follow-up get confirmed EXITED/runtime null before guard retirement. An early retirement invocation failed closed on the absent shutdown receipt and sent no signal.",
+  "gpu_observation_note": "CPU fixtures A1/B1/B2 had zero whole-GPU samples. A2 and build each had 15 unattributed samples up to556793856B; no contemporaneous process inventory, no attribution to fixture. GPU idle before/after all tests and before stop. BA pair is not established as isolated hardware.",
+  "private_bundle": "artifact/c7.1-pod/certificates-rms-byte03-close-20261011",
+  "private_files": 17,
+  "private_bytes": 24574,
+  "private_manifest_sha256": "1f387c7ebaa3e995d706657b7628d1ac603c5e7ceb87c6187b82a03b87262fc3"
+}

@@ -1,5 +1,7 @@
 # C7.1 — archivio e provenienza
 
+[Confronto H100 RMS byte AB/BA e chiusura confermata](h100-rms-byte-paired-2026-10-11.md).
+
 [Avvio autorizzato della nuova campagna RMS byte e certificati](h100-rms-byte-start-2026-10-11.md).
 
 [Piano del seguito RMS byte, nuova autorizzazione richiesta](h100-rms-byte-followup-plan-2026-10-11.md).

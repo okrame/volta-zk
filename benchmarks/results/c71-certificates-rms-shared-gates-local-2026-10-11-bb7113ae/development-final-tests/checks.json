@@ -1,0 +1,62 @@
+[
+  {
+    "filter": "c71_rms_shared_gate_",
+    "exit_code": 0,
+    "wall_s": 0.018539432901889086,
+    "max_rss_bytes": 14790656,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "summary": [
+      "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 616 filtered out; finished in 0.01s"
+    ]
+  },
+  {
+    "filter": "c71_rms_folded_cache_",
+    "exit_code": 0,
+    "wall_s": 0.015040013007819653,
+    "max_rss_bytes": 12038144,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "summary": [
+      "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 615 filtered out; finished in 0.01s"
+    ]
+  },
+  {
+    "filter": "c71_b12_packed_mixed_gkr_complete_wire_mac_and_endpoint",
+    "exit_code": 0,
+    "wall_s": 8.540451914072037,
+    "max_rss_bytes": 124170240,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "summary": [
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 617 filtered out; finished in 8.54s"
+    ]
+  },
+  {
+    "filter": "sourcewise_cell_coefficients_match_dense_folds_without_cell_wire_matrix",
+    "exit_code": 0,
+    "wall_s": 0.004557753913104534,
+    "max_rss_bytes": 14057472,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "summary": [
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 617 filtered out; finished in 0.00s"
+    ]
+  },
+  {
+    "filter": "c71_b12_boolean_first_cell_round_exact_all_gate_patterns",
+    "exit_code": 0,
+    "wall_s": 0.0035396702587604523,
+    "max_rss_bytes": 9797632,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "summary": [
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 617 filtered out; finished in 0.00s"
+    ]
+  }
+]

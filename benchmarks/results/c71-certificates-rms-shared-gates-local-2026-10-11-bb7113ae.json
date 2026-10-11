@@ -1,0 +1,477 @@
+{
+  "schema": "volta-c71-rms-shared-gates-local-v1",
+  "source_git_sha": "bb7113aeb184de057c8efe9e44ad4f88332601b4",
+  "git_dirty": false,
+  "credit": false,
+  "canonical_selected": false,
+  "gpu_execution": false,
+  "certificates_generated": 0,
+  "certificates_verified": 0,
+  "contexts_completed": [],
+  "checks": [
+    {
+      "check": "c71_rms_shared_gate_",
+      "exit_code": 0,
+      "wall_s": 0.009557799901813269,
+      "max_rss_bytes": 14790656,
+      "as_bytes": 2147483648,
+      "deadline_s": 60,
+      "workers": 1,
+      "summary": [
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 616 filtered out; finished in 0.01s"
+      ]
+    },
+    {
+      "check": "c71_rms_folded_cache_",
+      "exit_code": 0,
+      "wall_s": 0.013924845028668642,
+      "max_rss_bytes": 12222464,
+      "as_bytes": 2147483648,
+      "deadline_s": 60,
+      "workers": 1,
+      "summary": [
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 615 filtered out; finished in 0.01s"
+      ]
+    },
+    {
+      "check": "c71_b12_packed_mixed_gkr_complete_wire_mac_and_endpoint",
+      "exit_code": 0,
+      "wall_s": 8.542343646287918,
+      "max_rss_bytes": 124178432,
+      "as_bytes": 2147483648,
+      "deadline_s": 60,
+      "workers": 1,
+      "summary": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 617 filtered out; finished in 8.54s"
+      ]
+    },
+    {
+      "check": "sourcewise_cell_coefficients_match_dense_folds_without_cell_wire_matrix",
+      "exit_code": 0,
+      "wall_s": 0.0038004200905561447,
+      "max_rss_bytes": 14057472,
+      "as_bytes": 2147483648,
+      "deadline_s": 60,
+      "workers": 1,
+      "summary": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 617 filtered out; finished in 0.00s"
+      ]
+    },
+    {
+      "check": "c71_b12_boolean_first_cell_round_exact_all_gate_patterns",
+      "exit_code": 0,
+      "wall_s": 0.00351441977545619,
+      "max_rss_bytes": 10043392,
+      "as_bytes": 2147483648,
+      "deadline_s": 60,
+      "workers": 1,
+      "summary": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 617 filtered out; finished in 0.00s"
+      ]
+    },
+    {
+      "check": "documents",
+      "exit_code": 0,
+      "wall_s": 1.063420514576137,
+      "max_rss_bytes": 59695104,
+      "as_bytes": 2147483648,
+      "deadline_s": 60,
+      "workers": 1,
+      "summary": [
+        "9 passed in 0.93s"
+      ]
+    },
+    {
+      "check": "census-1-11",
+      "exit_code": 0,
+      "wall_s": 25.196506628766656,
+      "max_rss_bytes": 466677760,
+      "as_bytes": 2147483648,
+      "deadline_s": 60,
+      "workers": 1,
+      "summary": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 617 filtered out; finished in 25.19s"
+      ]
+    },
+    {
+      "check": "census-12-22",
+      "exit_code": 0,
+      "wall_s": 31.34348969673738,
+      "max_rss_bytes": 466690048,
+      "as_bytes": 2147483648,
+      "deadline_s": 60,
+      "workers": 1,
+      "summary": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 617 filtered out; finished in 31.34s"
+      ]
+    },
+    {
+      "check": "census-23-33",
+      "exit_code": 0,
+      "wall_s": 38.54374230699614,
+      "max_rss_bytes": 474607616,
+      "as_bytes": 2147483648,
+      "deadline_s": 60,
+      "workers": 1,
+      "summary": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 617 filtered out; finished in 38.54s"
+      ]
+    },
+    {
+      "check": "census-34-44",
+      "exit_code": 0,
+      "wall_s": 37.436497824732214,
+      "max_rss_bytes": 495517696,
+      "as_bytes": 2147483648,
+      "deadline_s": 60,
+      "workers": 1,
+      "summary": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 617 filtered out; finished in 37.43s"
+      ]
+    },
+    {
+      "check": "census-45-55",
+      "exit_code": 0,
+      "wall_s": 32.77713772980496,
+      "max_rss_bytes": 484818944,
+      "as_bytes": 2147483648,
+      "deadline_s": 60,
+      "workers": 1,
+      "summary": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 617 filtered out; finished in 32.77s"
+      ]
+    },
+    {
+      "check": "census-56-66",
+      "exit_code": 0,
+      "wall_s": 29.562209263909608,
+      "max_rss_bytes": 468459520,
+      "as_bytes": 2147483648,
+      "deadline_s": 60,
+      "workers": 1,
+      "summary": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 617 filtered out; finished in 29.56s"
+      ]
+    },
+    {
+      "check": "census-67-77",
+      "exit_code": 0,
+      "wall_s": 29.889338094275445,
+      "max_rss_bytes": 466821120,
+      "as_bytes": 2147483648,
+      "deadline_s": 60,
+      "workers": 1,
+      "summary": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 617 filtered out; finished in 29.88s"
+      ]
+    },
+    {
+      "check": "census-78-88",
+      "exit_code": 0,
+      "wall_s": 25.479368872009218,
+      "max_rss_bytes": 466685952,
+      "as_bytes": 2147483648,
+      "deadline_s": 60,
+      "workers": 1,
+      "summary": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 617 filtered out; finished in 25.48s"
+      ]
+    },
+    {
+      "check": "census-89-99",
+      "exit_code": 0,
+      "wall_s": 23.07510427478701,
+      "max_rss_bytes": 466690048,
+      "as_bytes": 2147483648,
+      "deadline_s": 60,
+      "workers": 1,
+      "summary": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 617 filtered out; finished in 23.07s"
+      ]
+    }
+  ],
+  "source_provenance": {
+    "build_base_git_sha": "ba8b11f3e9dd2c98c5a28a06e9445591f96e98c9",
+    "binary_build_git_dirty": true,
+    "binary_source_identical": true,
+    "source_files": {
+      "rust/volta-pcs/src/c71_matrix/rms/gkr.rs": "4af1100390b6b70e2464bfe444ee0bb9ffad3261c0a4aa9c886c0f9d6f20399a",
+      "rust/volta-pcs/src/c71_matrix/rms/gkr/shared_gates.rs": "d0d70e60caa61d68e6f667a55a595382873c111c42eb2531fbae5ddf64284ec7",
+      "rust/volta-pcs/src/c71_matrix/rms/gkr/cell_cache.rs": "88d6236c74c708f2ad86b7031ac681dd92c73f04d8a5012624c76ea499b71cd2"
+    },
+    "binary_path": "rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+    "binary_sha256": "fb5b7919da2dca43485a9b9f3c0e8606250352506cbd2baf7eaf7d4a609c9868",
+    "binary_bytes": 97435888,
+    "source_git_sha": "bb7113aeb184de057c8efe9e44ad4f88332601b4",
+    "git_dirty": false
+  },
+  "census": {
+    "credit": false,
+    "canonical_selected": false,
+    "depths": 99,
+    "programs": 159,
+    "baseline_core_products": 751359028655932,
+    "forced_shared_core_products": 503219729758972,
+    "adaptive_core_products_upper": 481289178399996,
+    "saved_core_products_lower": 270069850255936,
+    "upper_over_baseline": 0.6405581886211573,
+    "plan_capacity_peak_bytes": 7147696,
+    "builder_peak_bytes": 26531896,
+    "weight_additions_total": 0,
+    "excludes": [
+      "selector sums",
+      "sorting",
+      "plan selection",
+      "replay",
+      "folds",
+      "byte endpoint",
+      "statistics caller",
+      "PCS",
+      "AES",
+      "full response"
+    ]
+  },
+  "wire_parity": {
+    "GPU_execution": false,
+    "PCS_composition_excluded": true,
+    "cells": 8,
+    "correlations": 472,
+    "credit": false,
+    "dense_prove_ns": 1209268892,
+    "exact_wire_FS_RNG_original_MAC": true,
+    "folded_cache_candidates": [
+      {
+        "budget_bytes": 1,
+        "cell_original_frames": 36,
+        "cell_owned_heap_peak_bytes": 20083,
+        "exact_wire_FS_original_MAC": true
+      },
+      {
+        "budget_bytes": 4096,
+        "cell_original_frames": 24,
+        "cell_owned_heap_peak_bytes": 20083,
+        "exact_wire_FS_original_MAC": true
+      },
+      {
+        "budget_bytes": 16777216,
+        "cell_original_frames": 12,
+        "cell_owned_heap_peak_bytes": 45379,
+        "exact_wire_FS_original_MAC": true
+      }
+    ],
+    "packed_prove_ns": 1237958125,
+    "programs": 3,
+    "shared_gate_candidates": [
+      {
+        "baseline_coefficient_products": 266,
+        "cache_budget_bytes": 0,
+        "cell_owned_heap_peak_bytes": 20499,
+        "exact_wire_FS_original_MAC": true,
+        "shared_coefficient_products": 204
+      },
+      {
+        "baseline_coefficient_products": 266,
+        "cache_budget_bytes": 16777216,
+        "cell_owned_heap_peak_bytes": 45795,
+        "exact_wire_FS_original_MAC": true,
+        "shared_coefficient_products": 204
+      }
+    ],
+    "wire_bytes": 14320
+  },
+  "development_provenance": {
+    "initial_intermediate_source_snapshot_preserved": false,
+    "initial_binary_not_retained": true,
+    "final_binary_sources_identical_to_record": true,
+    "initial_census_timeout_preserved": "depths 34\u201344, exit 124, 60.042 s, AS 2 GiB; final screen reuses projected support and skips superseded analysis"
+  },
+  "artifact_directory": "benchmarks/results/c71-certificates-rms-shared-gates-local-2026-10-11-bb7113ae",
+  "artifacts": [
+    {
+      "path": "c71_b12_boolean_first_cell_round_exact_all_gate_patterns.log",
+      "bytes": 212,
+      "sha256": "aa4278c370d9675d9ede8a1fd8bec78480334b59331f315e14ea447c92a94204"
+    },
+    {
+      "path": "c71_b12_packed_mixed_gkr_complete_wire_mac_and_endpoint.log",
+      "bytes": 9360,
+      "sha256": "9400c99f3d48a462bda05e15ac96fcd321735561cb025233845e43f6970b34ca"
+    },
+    {
+      "path": "c71_rms_folded_cache_.log",
+      "bytes": 424,
+      "sha256": "88b7da48eb1667fcbe9f131db51f65e7db0796b1e9d2c381f0cb2f6ce4dd315f"
+    },
+    {
+      "path": "c71_rms_shared_gate_.log",
+      "bytes": 347,
+      "sha256": "a03b569977d8f35960929e9d6b4680b38aade4f55b61fe011d4417b4cdc8d8f3"
+    },
+    {
+      "path": "census-1-11.log",
+      "bytes": 15028,
+      "sha256": "532efa1e22776f2be6c0cd9f91c9064978a0920ef1093723c21629f1b67459c6"
+    },
+    {
+      "path": "census-12-22.log",
+      "bytes": 15403,
+      "sha256": "676cd90ec68fd6a98192ed8342a8f9c05bf8f0febabc69923a0442d4211feae6"
+    },
+    {
+      "path": "census-23-33.log",
+      "bytes": 15672,
+      "sha256": "fa7b8b4b5b053fe26ee4258951f73ce279c228b03b794ce0d6afc1c96cb8860a"
+    },
+    {
+      "path": "census-34-44.log",
+      "bytes": 16180,
+      "sha256": "2ac1dc86d07033cb1079f3e47cd223cfd001bcbe87646f8c4bdafa93949194e5"
+    },
+    {
+      "path": "census-45-55.log",
+      "bytes": 15994,
+      "sha256": "27b72d225bcec1728696dcea171274ddd6fb05a0f3afca13335fae22c8d4586d"
+    },
+    {
+      "path": "census-56-66.log",
+      "bytes": 15591,
+      "sha256": "bfb61a07f8dd0b6c3f84c3ed76eb6d78cf65ba284726b0b0308281515de84e40"
+    },
+    {
+      "path": "census-67-77.log",
+      "bytes": 15463,
+      "sha256": "ff10ccaf784339d7ea5289358ac77c6201c091b5779372da620067edd0c1ba58"
+    },
+    {
+      "path": "census-78-88.log",
+      "bytes": 14697,
+      "sha256": "f3833481e2b8a348be96993bd2c12299d7169cf6331782aa976efe4aef673f29"
+    },
+    {
+      "path": "census-89-99.log",
+      "bytes": 13091,
+      "sha256": "7e87712a9d928d6f786ab15c1aebb93463834ed16928c30f6f099a6a1ca50224"
+    },
+    {
+      "path": "census-summary.json",
+      "bytes": 625,
+      "sha256": "6c028dac1b63693a6527316a9b35dd38eda4e7c310cf34fa1928de30b4dd482d"
+    },
+    {
+      "path": "checks.json",
+      "bytes": 4875,
+      "sha256": "d66fcdf2ec3b059ca23c74cb04b4613050a62ce38c72cace8581de0b698bcbea"
+    },
+    {
+      "path": "development-c71-rms-shared-adaptive-build-20261011.json",
+      "bytes": 2149,
+      "sha256": "3d368ffab8e8e8ffcf5304c35c1d31806e075503415ba54242441799a912204e"
+    },
+    {
+      "path": "development-c71-rms-shared-adaptive-build-20261011.log",
+      "bytes": 14061,
+      "sha256": "dd8e12229b8399c0ffecd5fc13171fbf15958be21393c7d0df4156a7af5e1ab0"
+    },
+    {
+      "path": "development-c71-rms-shared-adaptive-docs-20261011.log",
+      "bytes": 98,
+      "sha256": "8ee01317196d6f2739df70655380a9128eebacde47c1b93d08a1b87797a42c77"
+    },
+    {
+      "path": "development-c71-rms-shared-clean-20261011.py",
+      "bytes": 2705,
+      "sha256": "7c4a0d1da4cfd5d3ac8db50b52b82e62a39067e180b864b768a1191de55ef7b7"
+    },
+    {
+      "path": "development-c71-rms-shared-impl-build-20261011.json",
+      "bytes": 2146,
+      "sha256": "b4913cd16b10efb03d21d094382e07dffb2d8a9717239057570adf99a1147e24"
+    },
+    {
+      "path": "development-c71-rms-shared-impl-build-20261011.log",
+      "bytes": 14061,
+      "sha256": "7c0dc10b3b30ef6d061398b722f2f4be3afd1f8a4e217152d07ae27be4365a7c"
+    },
+    {
+      "path": "development-c71-rms-shared-impl-unit-20261011.log",
+      "bytes": 347,
+      "sha256": "a03b569977d8f35960929e9d6b4680b38aade4f55b61fe011d4417b4cdc8d8f3"
+    },
+    {
+      "path": "development-c71-rms-shared-impl-wire-20261011.log",
+      "bytes": 9360,
+      "sha256": "50e68ecf754f62f4080b2e833325029e3590a6bc7947dbe059f0c2f94271495f"
+    },
+    {
+      "path": "development-final-tests/c71_b12_boolean_first_cell_round_exact_all_gate_patterns.log",
+      "bytes": 212,
+      "sha256": "aa4278c370d9675d9ede8a1fd8bec78480334b59331f315e14ea447c92a94204"
+    },
+    {
+      "path": "development-final-tests/c71_b12_packed_mixed_gkr_complete_wire_mac_and_endpoint.log",
+      "bytes": 9360,
+      "sha256": "5dd53cadc97b8e28bd6e97b416269242f0b81e7caf98a2b7199ade183a25317e"
+    },
+    {
+      "path": "development-final-tests/c71_rms_folded_cache_.log",
+      "bytes": 424,
+      "sha256": "88b7da48eb1667fcbe9f131db51f65e7db0796b1e9d2c381f0cb2f6ce4dd315f"
+    },
+    {
+      "path": "development-final-tests/c71_rms_shared_gate_.log",
+      "bytes": 347,
+      "sha256": "a03b569977d8f35960929e9d6b4680b38aade4f55b61fe011d4417b4cdc8d8f3"
+    },
+    {
+      "path": "development-final-tests/checks.json",
+      "bytes": 1769,
+      "sha256": "cc59b2c6ec500d2c430a40f008a99c96fc962537f97e07fd020e675b648d8543"
+    },
+    {
+      "path": "development-final-tests/sourcewise_cell_coefficients_match_dense_folds_without_cell_wire_matrix.log",
+      "bytes": 227,
+      "sha256": "bacc5d0860d3931910ad224d49bec0ec7644ef495c8bc30b3508ed5b9f89bc9c"
+    },
+    {
+      "path": "development-initial-census/1-11.log",
+      "bytes": 22819,
+      "sha256": "b2c6fe1c687b83de2281e9dc449c38a80927bd0f4cebd8816f0abf053f00c055"
+    },
+    {
+      "path": "development-initial-census/12-22.log",
+      "bytes": 23282,
+      "sha256": "18c0370c2b41c7478daf83c4976dc7ae4cbc15b906fd2e857e1d17e4ceab2548"
+    },
+    {
+      "path": "development-initial-census/23-33.log",
+      "bytes": 23589,
+      "sha256": "49000043e4195466a349179a6b5174b850d5b42ec01e7eed9f37d04628a46719"
+    },
+    {
+      "path": "development-initial-census/34-44.log",
+      "bytes": 14028,
+      "sha256": "bd274d709cd4f2705a52a342a7bdef70f18669765284c331446a73af4dd3236b"
+    },
+    {
+      "path": "development-initial-census/checks.json",
+      "bytes": 781,
+      "sha256": "8ab95557cda927cd9973aa57bffbe1bf6c214346f461a898c5ebf3b4d863b567"
+    },
+    {
+      "path": "documents.log",
+      "bytes": 98,
+      "sha256": "ce1cd66cb576df8bbe980ab708e3014d5d3913274a3a593e12761d078b8c08e9"
+    },
+    {
+      "path": "source.json",
+      "bytes": 807,
+      "sha256": "db8f638152fb43bb4a7d8549731c13baa7867f8a826fccca593fcedae6134a71"
+    },
+    {
+      "path": "sourcewise_cell_coefficients_match_dense_folds_without_cell_wire_matrix.log",
+      "bytes": 227,
+      "sha256": "bacc5d0860d3931910ad224d49bec0ec7644ef495c8bc30b3508ed5b9f89bc9c"
+    }
+  ],
+  "scope": "exact reduced wire/FS/MAC and original public shapes; adaptive product upper excludes total runtime work; no full-response or hardware credit"
+}

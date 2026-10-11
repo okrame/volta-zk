@@ -1,0 +1,15 @@
+{
+  "build_base_git_sha": "ba8b11f3e9dd2c98c5a28a06e9445591f96e98c9",
+  "binary_build_git_dirty": true,
+  "binary_source_identical": true,
+  "source_files": {
+    "rust/volta-pcs/src/c71_matrix/rms/gkr.rs": "4af1100390b6b70e2464bfe444ee0bb9ffad3261c0a4aa9c886c0f9d6f20399a",
+    "rust/volta-pcs/src/c71_matrix/rms/gkr/shared_gates.rs": "d0d70e60caa61d68e6f667a55a595382873c111c42eb2531fbae5ddf64284ec7",
+    "rust/volta-pcs/src/c71_matrix/rms/gkr/cell_cache.rs": "88d6236c74c708f2ad86b7031ac681dd92c73f04d8a5012624c76ea499b71cd2"
+  },
+  "binary_path": "rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+  "binary_sha256": "fb5b7919da2dca43485a9b9f3c0e8606250352506cbd2baf7eaf7d4a609c9868",
+  "binary_bytes": 97435888,
+  "source_git_sha": "bb7113aeb184de057c8efe9e44ad4f88332601b4",
+  "git_dirty": false
+}

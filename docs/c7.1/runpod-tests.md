@@ -3,39 +3,37 @@
 [Design](design.md) · [Specifiche](specs.md) · [Sicurezza](security.md) ·
 [Test locali](local-tests.md) · [Archivio](../c7.1-history/README.md)
 
-La [campagna certificati dell’11 ottobre è chiusa](../c7.1-history/h100-certificates-close-2026-10-11.md)
-con **zero certificati canonici generati e verificati**: il minimo O=0
-richiesto non è raggiunto e nessun contesto canonico è completato.
-Avvio provider conservativo 07:31:18 UTC, conferma **EXITED/runtime assente
-alle 12:59:46 UTC**, dopo 5 h 28 min 28 s, entro le otto ore autorizzate.
-Guard indipendente ritirato dopo la conferma; nessun processo GPU prima
-dello stop. Codice ed evidenze revisionate sul branch dedicato
-`runpod/z6wx2kkn69eoc0/c71-certificates-20261011`.
+La [prima fase della campagna certificati](../c7.1-history/h100-certificates-close-2026-10-11.md)
+si è conclusa con **zero certificati canonici generati e verificati**:
+O=0 non è completato. Il provider ha confermato EXITED alle 12:59:46 UTC;
+commitment A 512/512 sotto il cap campionato e due fixture RMS complete
+restano risultati di componente. Γ originale è ammesso e invariato.
 
-Risultati acquisiti: primo commitment A reale O=0 con 512/512 gruppi sotto
-il cap fisico campionato e due fixture RMS complete su tutte le 159 ricette.
-Il costo RMS canonico resta irrisolto; nessun nuovo setup AES o runner
-canonico completo è stato avviato. La chiusura anticipata conserva questa
-mancanza e non attribuisce il target 65 s. Γ originale resta ammesso,
-verificato e invariato; input, successi e fallimenti sono conservati con
-manifest verificati. Il seguito richiede una riduzione esatta sostanziale
-del lavoro RMS, parità e contabilità pertinenti, quindi una nuova sessione
-canonica da O=0 quando gli impedimenti siano chiusi. I componenti non sono
-certificati e non forniscono stato da riprendere.
+Il [seguito RMS](../c7.1-history/local-rms-shared-gates-2026-10-11.md) ha
+verificato localmente cache folded e fattorizzazione esatta dei gate.
+Un trial aggiuntivo sullo stesso pod `z6wx2kkn69eoc0` è stato riavviato
+alle **13:56:11 UTC**, entro l'autorizzazione originale: avvio di riferimento
+07:31:18, termine di calcolo 15:01:18 e hard stop 15:31:18 UTC, senza reset.
+Guard indipendente vivo con stop anticipato alle **14:39:15 UTC**.
+Chiave SSH verificata tramite proxy e stessa H100 idle confermata.
+Il filesystem effimero è nuovo: checkout anonimo e ambiente RMS vengono
+ripristinati; nessun nuovo setup AES o runner canonico.
+Il benchmark deve distinguere vantaggio misurato, sottoconti analitici e
+prova completa. Il costo RMS e le premesse residue restano aperti.
 
 La [candidata locale folded-cache RMS](../c7.1-history/local-rms-fold-cache-2026-10-11.md)
 aggiunge al benchmark ignorato il limite `C71_RMS_BENCH_CACHE_BYTES`
 (default 0, massimo 16777216) e l'hash BLAKE3 della wire. Un eventuale
 confronto deve usare gli stessi 159 programmi, celle, seed e sorgenti,
 contare memoria e verificare gli hash; non è ancora eseguito. La candidata
-non seleziona la cache nel runner canonico. Il pod resta spento; queste
-verifiche locali non riaprono né estendono la finestra della campagna.
+non seleziona la cache nel runner canonico. Le verifiche locali precedono il
+trial aggiuntivo riportato sopra; la finestra originale resta invariata.
 
 Il benchmark della [candidata RMS a gate condivisi](../c7.1-history/local-rms-shared-gates-2026-10-11.md)
 accetta `C71_RMS_BENCH_SHARED_GATES=1` (default 0), indipendentemente dal
 budget della cache folded. Confrontare gli stessi input, seed, hash wire
 e cap; contare anche sorting, selettori e scelta del piano. Nessuna misura
-rappresentativa o selezione canonica acquisita; il pod resta spento.
+rappresentativa o selezione canonica acquisita; trial aggiuntivo in preparazione.
 
 Il [preflight dell’11 ottobre](../c7.1-history/h100-certificates-preflight-2026-10-11.md)
 conferma packed ed esponenti originali e conserva il replay di 512 cicli di
@@ -458,8 +456,8 @@ esito locale attribuisce compilazione CUDA o parità sulla H100.
 
 Regole permanenti approvate dal proprietario l'8 ottobre 2026;
 [motivazione e decisioni](../c7.1-history/operating-rules-2026-10-08.md).
-La campagna dell’11 ottobre sul solo pod `z6wx2kkn69eoc0` è conclusa
-come riportato sopra. La sua autorizzazione era di otto ore dall’avvio
+La campagna dell’11 ottobre sul solo pod `z6wx2kkn69eoc0` ha un trial RMS
+aggiuntivo entro la stessa finestra, come sopra. L’autorizzazione è di otto ore dall’avvio
 provider, inclusi trenta minuti di chiusura; la deadline originale era
 15:31:18 UTC. Lo stop anticipato non azzera l’avvio o estende quella finestra.
 Altra durata o hardware richiedono una nuova decisione.

@@ -1,0 +1,7 @@
+
+running 2 tests
+test c71_matrix::rms::gkr::shared_gates::tests::c71_rms_shared_gate_coefficients_exact_mixed_support_and_challenges ... ok
+test c71_matrix::rms::gkr::shared_gates::tests::c71_rms_shared_gate_plan_bounds_masks_and_zero_weight ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 616 filtered out; finished in 0.01s
+

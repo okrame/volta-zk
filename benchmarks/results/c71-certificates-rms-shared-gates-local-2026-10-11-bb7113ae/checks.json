@@ -1,0 +1,182 @@
+[
+  {
+    "check": "c71_rms_shared_gate_",
+    "exit_code": 0,
+    "wall_s": 0.009557799901813269,
+    "max_rss_bytes": 14790656,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "summary": [
+      "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 616 filtered out; finished in 0.01s"
+    ]
+  },
+  {
+    "check": "c71_rms_folded_cache_",
+    "exit_code": 0,
+    "wall_s": 0.013924845028668642,
+    "max_rss_bytes": 12222464,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "summary": [
+      "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 615 filtered out; finished in 0.01s"
+    ]
+  },
+  {
+    "check": "c71_b12_packed_mixed_gkr_complete_wire_mac_and_endpoint",
+    "exit_code": 0,
+    "wall_s": 8.542343646287918,
+    "max_rss_bytes": 124178432,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "summary": [
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 617 filtered out; finished in 8.54s"
+    ]
+  },
+  {
+    "check": "sourcewise_cell_coefficients_match_dense_folds_without_cell_wire_matrix",
+    "exit_code": 0,
+    "wall_s": 0.0038004200905561447,
+    "max_rss_bytes": 14057472,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "summary": [
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 617 filtered out; finished in 0.00s"
+    ]
+  },
+  {
+    "check": "c71_b12_boolean_first_cell_round_exact_all_gate_patterns",
+    "exit_code": 0,
+    "wall_s": 0.00351441977545619,
+    "max_rss_bytes": 10043392,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "summary": [
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 617 filtered out; finished in 0.00s"
+    ]
+  },
+  {
+    "check": "documents",
+    "exit_code": 0,
+    "wall_s": 1.063420514576137,
+    "max_rss_bytes": 59695104,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "summary": [
+      "9 passed in 0.93s"
+    ]
+  },
+  {
+    "check": "census-1-11",
+    "exit_code": 0,
+    "wall_s": 25.196506628766656,
+    "max_rss_bytes": 466677760,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "summary": [
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 617 filtered out; finished in 25.19s"
+    ]
+  },
+  {
+    "check": "census-12-22",
+    "exit_code": 0,
+    "wall_s": 31.34348969673738,
+    "max_rss_bytes": 466690048,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "summary": [
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 617 filtered out; finished in 31.34s"
+    ]
+  },
+  {
+    "check": "census-23-33",
+    "exit_code": 0,
+    "wall_s": 38.54374230699614,
+    "max_rss_bytes": 474607616,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "summary": [
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 617 filtered out; finished in 38.54s"
+    ]
+  },
+  {
+    "check": "census-34-44",
+    "exit_code": 0,
+    "wall_s": 37.436497824732214,
+    "max_rss_bytes": 495517696,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "summary": [
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 617 filtered out; finished in 37.43s"
+    ]
+  },
+  {
+    "check": "census-45-55",
+    "exit_code": 0,
+    "wall_s": 32.77713772980496,
+    "max_rss_bytes": 484818944,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "summary": [
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 617 filtered out; finished in 32.77s"
+    ]
+  },
+  {
+    "check": "census-56-66",
+    "exit_code": 0,
+    "wall_s": 29.562209263909608,
+    "max_rss_bytes": 468459520,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "summary": [
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 617 filtered out; finished in 29.56s"
+    ]
+  },
+  {
+    "check": "census-67-77",
+    "exit_code": 0,
+    "wall_s": 29.889338094275445,
+    "max_rss_bytes": 466821120,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "summary": [
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 617 filtered out; finished in 29.88s"
+    ]
+  },
+  {
+    "check": "census-78-88",
+    "exit_code": 0,
+    "wall_s": 25.479368872009218,
+    "max_rss_bytes": 466685952,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "summary": [
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 617 filtered out; finished in 25.48s"
+    ]
+  },
+  {
+    "check": "census-89-99",
+    "exit_code": 0,
+    "wall_s": 23.07510427478701,
+    "max_rss_bytes": 466690048,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "summary": [
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 617 filtered out; finished in 23.07s"
+    ]
+  }
+]

@@ -1,0 +1,42 @@
+[
+  {
+    "first": 1,
+    "last": 11,
+    "exit_code": 0,
+    "wall_s": 28.07130820862949,
+    "max_rss_bytes": 467357696,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1
+  },
+  {
+    "first": 12,
+    "last": 22,
+    "exit_code": 0,
+    "wall_s": 42.275631599128246,
+    "max_rss_bytes": 468385792,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1
+  },
+  {
+    "first": 23,
+    "last": 33,
+    "exit_code": 0,
+    "wall_s": 57.07408950198442,
+    "max_rss_bytes": 483053568,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1
+  },
+  {
+    "first": 34,
+    "last": 44,
+    "exit_code": 124,
+    "wall_s": 60.04235321795568,
+    "max_rss_bytes": 499208192,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1
+  }
+]

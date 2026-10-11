@@ -1,0 +1,84 @@
+{
+  "command": [
+    "cargo",
+    "rustc",
+    "--offline",
+    "--locked",
+    "-j",
+    "1",
+    "-p",
+    "volta-pcs",
+    "--features",
+    "c71-seed6-reference",
+    "--lib",
+    "--profile",
+    "test",
+    "--config",
+    "profile.dev.package.volta-pcs.opt-level=0",
+    "--config",
+    "profile.dev.package.volta-pcs.codegen-units=64",
+    "--",
+    "-Clink-arg=-fuse-ld=lld",
+    "-Clink-arg=-B/home/okrame/.rustup/toolchains/stable-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/bin/gcc-ld",
+    "-Clink-arg=-Wl,--threads=1"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk/rust",
+  "exit_code": 0,
+  "wall_s": 57.51698225690052,
+  "max_rss_bytes": 2569056256,
+  "sampled_aggregate_live_rss_peak_bytes": 2616860672,
+  "sampled_processes": {
+    "19": {
+      "name": "timeout",
+      "max_rss_bytes": 1576960,
+      "cpu_ticks": 0,
+      "first_seen_s": 0.0010741259902715683,
+      "last_seen_s": 57.51679075695574
+    },
+    "20": {
+      "name": "cargo",
+      "max_rss_bytes": 53014528,
+      "cpu_ticks": 14,
+      "first_seen_s": 0.10237699700519443,
+      "last_seen_s": 57.41469296813011
+    },
+    "35": {
+      "name": "rustc",
+      "max_rss_bytes": 2562269184,
+      "cpu_ticks": 5622,
+      "first_seen_s": 0.2034345339052379,
+      "last_seen_s": 57.41477771801874
+    },
+    "105": {
+      "name": "cc",
+      "max_rss_bytes": 2113536,
+      "cpu_ticks": 1,
+      "first_seen_s": 56.396515992004424,
+      "last_seen_s": 57.313297345303
+    },
+    "106": {
+      "name": "collect2",
+      "max_rss_bytes": 1507328,
+      "cpu_ticks": 0,
+      "first_seen_s": 56.39656394999474,
+      "last_seen_s": 57.31347363721579
+    },
+    "107": {
+      "name": "rust-lld",
+      "max_rss_bytes": 604094464,
+      "cpu_ticks": 93,
+      "first_seen_s": 56.39663824206218,
+      "last_seen_s": 57.313656262122095
+    }
+  },
+  "sample_interval_s": 0.1,
+  "clock_ticks_per_s": 100,
+  "deadline_s": 120,
+  "workers": 1,
+  "as_limit_mib": null,
+  "sampled_aggregate_rss_stop_bytes": 3221225472,
+  "memory_stop": false,
+  "user_s": 51.221738,
+  "system_s": 6.302583,
+  "log": "/tmp/c71-rms-shared-impl-build-20261011.log"
+}

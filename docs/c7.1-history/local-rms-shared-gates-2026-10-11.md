@@ -77,3 +77,36 @@ endpoint, statistiche del caller, PCS, AES e risposta completa.
 Prima della selezione servono misura rappresentativa, conto simultaneo e
 valutazione del residuo. Nessun certificato, nuovo setup AES o processo
 provider è stato avviato in questo seguito locale.
+
+Il [record pulito `bb7113ae`](../../benchmarks/results/c71-certificates-rms-shared-gates-local-2026-10-11-bb7113ae.json)
+conserva otto test Rust, nove controlli documentali e nove blocchi pubblici
+sulle 99 profondità. Tutti passano: AS 2 GiB/60 s/un worker; massimo RSS
+495.517.696 B. La variante adattiva finale dà 266→204 prodotti nella
+fixture wire, byte/FS/MAC identici, con e senza cache. Piano finale massimo
+7.147.696 B, builder 26.531.896 B. L'upper del core è 481.289.178.399.996
+rispetto a 751.359.028.655.932: almeno 270.069.850.255.936 prodotti in meno,
+35,94%; nessun tempo completo dedotto. Il raggruppamento forzato sarebbe
+503.219.729.758.972. Sulle ricette originali non vi sono pesi duplicati
+sommati; il risparmio deriva dai programmi condivisi.
+
+I 37 artefatti, 295.859 B, conservano anche sviluppo e timeout. La build
+finale è precedente al commit, con sorgenti identici, e passa in 58,793 s,
+RSS aggregato 2.610.647.040 B. Il binario e lo snapshot della primissima
+variante intermedia non sono conservati; i suoi log sono evidenze di
+sviluppo, non il run of record.
+
+Dopo la conclusione dei controlli locali, il provider ha accettato un
+riavvio alle 13:56:11 UTC per un trial RMS nello stesso ambito. Restano
+le deadline originali 15:01:18/15:31:18 UTC; un nuovo guard indipendente
+anticipa lo stop alle 14:39:15. Il primo accesso diretto rifiuta la chiave
+host cambiata: il preflight verifica l'identità tramite il proxy RunPod.
+
+La chiave nuova è verificata nel terminale del proxy autenticato, senza
+rimuovere quella vecchia o disabilitare i controlli. Stessa H100 UUID
+`GPU-e05e977b-758d-f3f4-cbe8-5720b83d1ae1`, 0 MiB e nessun processo GPU.
+Il disco effimero non conserva checkout o toolchain. Alle 14:07:21 parte
+un workflow nuovo con Git HTTPS anonimo sulla SHA `bb7113ae`, Rust 1.96.1,
+AS CPU 64 GiB e monitor per build/fixture. Ogni fase deve lasciare almeno
+120 s prima dello stop anticipato del guard; la finestra originale non cambia.
+Il confronto previsto usa lo stesso binario: baseline senza candidati e
+piano condiviso più cache 16 MiB, 512 celle/159 ricette/99 profondità.

@@ -1,0 +1,26 @@
+{
+  "credit": false,
+  "canonical_selected": false,
+  "depths": 99,
+  "programs": 159,
+  "baseline_core_products": 751359028655932,
+  "forced_shared_core_products": 503219729758972,
+  "adaptive_core_products_upper": 481289178399996,
+  "saved_core_products_lower": 270069850255936,
+  "upper_over_baseline": 0.6405581886211573,
+  "plan_capacity_peak_bytes": 7147696,
+  "builder_peak_bytes": 26531896,
+  "weight_additions_total": 0,
+  "excludes": [
+    "selector sums",
+    "sorting",
+    "plan selection",
+    "replay",
+    "folds",
+    "byte endpoint",
+    "statistics caller",
+    "PCS",
+    "AES",
+    "full response"
+  ]
+}

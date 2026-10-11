@@ -1,4 +1,4 @@
-"""Count the implemented RMS GPU launch schedule; no capacity/time admission."""
+"""Count the verified92afea54 RMS GPU schedule; no capacity/time admission."""
 import json
 from pathlib import Path
 import sys
@@ -69,7 +69,7 @@ def native_schedule(padded_cells, intervals, levels, capacity=256):
         raise ValueError('native RMS depths incomplete or out of order')
     return dict(credit=False, gpu_execution=False, canonical_selected=False,
                 complete_capacity=False, complete_work=False, joint_admitted=False,
-                scope='Exact successful cell/index CUDA launch schedule for current bounded runtime; analytic counts, no time or physical admission',
+                scope='Exact successful cell/index CUDA launch schedule verified on92afea54; analytic counts, no time or physical admission',
                 capacity=capacity, tail_pair_capacity=pair_capacity,
                 public_geometry=shape, levels=output,
                 total_cell_launches=sum(r['cell_launches'] for r in output),

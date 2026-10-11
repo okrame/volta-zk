@@ -91,6 +91,10 @@ cudaError_t suffix_eq(cudaStream_t,const Fp3*,unsigned,unsigned,unsigned,unsigne
 cudaError_t consume(cudaStream_t,const uint32_t*,const uint32_t*,const Gate*,unsigned,unsigned,Fp3*,Fp3*,unsigned* attempted) {
     *attempted=3; return fail_launch?cudaErrorInvalidValue:cudaSuccess;
 }
+cudaError_t consume_mixed(cudaStream_t,const uint32_t*,const uint32_t*,const Gate*,const WindowProgram*,
+    unsigned,unsigned,unsigned,unsigned,Fp3*,Fp3*,unsigned* attempted) {
+    *attempted=3;return fail_launch?cudaErrorInvalidValue:cudaSuccess;
+}
 }
 namespace c71_rms_tail {
 cudaError_t prepare(cudaStream_t,Shape,Fp3*,unsigned* attempted) {

@@ -12,11 +12,13 @@ struct Node { uint32_t op, z, x, y; }; // And=0, Xor=1; Copy is an output alias.
 struct Gate { uint32_t op, x, y, reserved; Fp3 weight; }; // And=0, Xor=1, Copy=2.
 static_assert(sizeof(Program)==28 && sizeof(Node)==16 && sizeof(Gate)==40);
 struct GateRange { uint32_t first,count; };
+struct WindowProgram { uint32_t first,count,source,mask; };
 struct Section { uint32_t first,end; };
 struct Shape {
     uint32_t programs,width,capacity,suffix_bits,nodes,boundaries,outputs,gates,masks,sections;
 };
 static_assert(sizeof(GateRange)==8 && sizeof(Section)==8 && sizeof(Shape)==40);
+static_assert(sizeof(WindowProgram)==16);
 // Immutable original compact P/S/Y bytes, with the public dyadic tile lookup.
 struct SourceShape { uint64_t bytes; uint32_t live,padded,norms,tiles,programs,reserved; };
 struct SourceNorm {

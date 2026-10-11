@@ -115,12 +115,21 @@ __global__ void original_eq(const Fp3* point,unsigned bits,unsigned first,unsign
 // A warp owns one gate and eight output columns. Each bit's K-tile counts
 // remain in registers and are immediately reconstructed into canonical limbs.
 // No global u32 count planes, read/modify/write or count-zero launch.
+__device__ Gate window_gate(const Gate* gates,unsigned gate,const WindowProgram* plans,
+    unsigned programs,unsigned first) {
+    if(!plans)return gates[gate];
+    const unsigned index=first+gate;unsigned lo=0,hi=programs;
+    while(lo<hi) {const unsigned mid=(lo+hi)/2;
+        if(plans[mid].first+plans[mid].count<=index)lo=mid+1;else hi=mid;}
+    return gates[plans[lo].source+index-plans[lo].first];
+}
 __global__ void binary_moments(const uint32_t* stage,const uint32_t* eq,const Gate* gates,
-    unsigned gate_count,unsigned tiles,Fp3* chunk) {
+    unsigned gate_count,unsigned tiles,Fp3* chunk,const WindowProgram* plans=nullptr,
+    unsigned programs=0,unsigned first=0) {
     const unsigned lane=threadIdx.x&31,job=(blockIdx.x*blockDim.x+threadIdx.x)/32;
     if(job>=gate_count*2) return;
     const unsigned gate=job/2,half=job&1;
-    const Gate g=gates[gate];
+    const Gate g=window_gate(gates,gate,plans,programs,first);
     Fp3 result[4]{};
     if(g.op!=2) for(unsigned limb=0;limb<3;++limb) {
         uint64_t lo[4]{}; uint32_t hi[4]{};
@@ -158,10 +167,11 @@ __global__ void binary_moments(const uint32_t* stage,const uint32_t* eq,const Ga
 }
 // Copy and XOR margins have sixteen separate ORIGINAL rows, including15.
 __global__ void linear_moments(const uint32_t* stage,const uint32_t* eq,const Gate* gates,
-    unsigned gate_count,unsigned tiles,Fp3* chunk) {
+    unsigned gate_count,unsigned tiles,Fp3* chunk,const WindowProgram* plans=nullptr,
+    unsigned programs=0,unsigned first=0) {
     const unsigned job=blockIdx.x*blockDim.x+threadIdx.x;
     if(job>=gate_count*16) return;
-    const unsigned gate=job/16,row=job%16;const Gate g=gates[gate];
+    const unsigned gate=job/16,row=job%16;const Gate g=window_gate(gates,gate,plans,programs,first);
     Fp3 result{};
     if(g.op!=0) for(unsigned limb=0;limb<3;++limb) {
         uint64_t lo=0;uint32_t hi=0;
@@ -190,6 +200,24 @@ __global__ void late_weight(const Gate* gates,unsigned gate_count,const Fp3* chu
         sum=add(sum,term);
     }
     aggregate[slot]=sum;
+}
+__global__ void mixed_late_weight(const Gate* gates,const WindowProgram* plans,unsigned programs,
+    unsigned first,unsigned count,const Fp3* chunk,Fp3* aggregate) {
+    const unsigned job=blockIdx.x*blockDim.x+threadIdx.x;
+    if(job>=programs*moments)return;
+    const auto plan=plans[job/moments];const unsigned slot=job%moments;
+    const unsigned begin=max(first,plan.first),end=min(first+count,plan.first+plan.count);
+    if(begin>=end)return;
+    // Nonempty original program masks are disjoint, hence destinations unique.
+    auto& destination=aggregate[uint64_t(plan.mask)*moments+slot];Fp3 sum=destination;
+    for(unsigned i=begin;i<end;++i) {
+        const auto g=gates[plan.source+i-plan.first];
+        if((slot<256 && g.op==2) || (slot>=256 && g.op==0))continue;
+        auto term=mul6(chunk[uint64_t(i-first)*moments+slot],g.weight);
+        if(slot<256 && g.op==1)term=sub(Fp3{},add(term,term));
+        sum=add(sum,term);
+    }
+    destination=sum;
 }
 }
 cudaError_t source_frames(cudaStream_t stream,const uint8_t* payload,const SourceNorm* norms,
@@ -256,6 +284,22 @@ cudaError_t consume(cudaStream_t stream,const uint32_t* stage,const uint32_t* eq
     status=cudaGetLastError();if(status!=cudaSuccess) return status;
     late_weight<<<3,128,0,stream>>>(gates,count,chunk,aggregate);
     if(launches) ++*launches;
+    return cudaGetLastError();
+}
+cudaError_t consume_mixed(cudaStream_t stream,const uint32_t* stage,const uint32_t* eq,const Gate* gates,
+    const WindowProgram* plans,unsigned programs,unsigned first,unsigned count,unsigned capacity,
+    Fp3* chunk,Fp3* aggregate,unsigned* launches) {
+    if(launches)*launches=0;
+    if(!programs||programs>421||!count||count>gate_chunk||capacity>4096||capacity%256||!capacity)
+        return cudaErrorInvalidValue;
+    binary_moments<<<(count*64+127)/128,128,0,stream>>>(stage,eq,gates,count,capacity/256,chunk,plans,programs,first);
+    if(launches)++*launches;
+    auto status=cudaGetLastError();if(status!=cudaSuccess)return status;
+    linear_moments<<<(count*16+127)/128,128,0,stream>>>(stage,eq,gates,count,capacity/256,chunk,plans,programs,first);
+    if(launches)++*launches;
+    status=cudaGetLastError();if(status!=cudaSuccess)return status;
+    mixed_late_weight<<<(programs*moments+127)/128,128,0,stream>>>(gates,plans,programs,first,count,chunk,aggregate);
+    if(launches)++*launches;
     return cudaGetLastError();
 }
 }

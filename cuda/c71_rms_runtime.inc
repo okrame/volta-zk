@@ -4,6 +4,8 @@ cudaError_t replay(cudaStream_t,const uint8_t*,const uint16_t*,const Program*,co
     const uint32_t*,const uint32_t*,unsigned,unsigned,unsigned,unsigned,unsigned,uint64_t*,unsigned*,uint64_t*);
 cudaError_t suffix_eq(cudaStream_t,const Fp3*,unsigned,unsigned,unsigned,unsigned,uint32_t*,unsigned*);
 cudaError_t consume(cudaStream_t,const uint32_t*,const uint32_t*,const Gate*,unsigned,unsigned,Fp3*,Fp3*,unsigned*);
+cudaError_t consume_mixed(cudaStream_t,const uint32_t*,const uint32_t*,const Gate*,const WindowProgram*,
+    unsigned,unsigned,unsigned,unsigned,Fp3*,Fp3*,unsigned*);
 }
 namespace {
 namespace rms=c71_rms_prefix;
@@ -29,6 +31,10 @@ uint64_t rms_host_meta_offset(const RmsPrefixTransaction& s) {
     const auto sections=(uint64_t(s.shape.programs)*8+uint64_t(s.shape.masks)*2+3)&~uint64_t{3};
     const auto point=(sections+uint64_t(s.shape.sections)*8+7)&~uint64_t{7};
     return aligned(point+uint64_t(s.shape.suffix_bits)*24);
+}
+rms::WindowProgram* rms_host_window_plan(RmsPrefixTransaction& s) {
+    const auto end=s.offsets[5]+aligned(uint64_t(s.shape.suffix_bits)*24);
+    return reinterpret_cast<rms::WindowProgram*>(s.shadow+rms_host_meta_offset(s)+end);
 }
 bool rms_session(C71RangeContext* c,uint64_t token) {
     if(!token || c->rms.active!=1 || token!=c->rms.meta || !full(buffer(c,token),C71_RMS_PRIVATE)) {
@@ -131,7 +137,7 @@ extern "C" int c71_rms_prefix_begin(C71RangeContext* c,rms::Shape shape,
     const uint64_t section_offset=(lengths[6]+lengths[7]+3)&~uint64_t{3};
     const auto point_offset=(section_offset+lengths[8]+7)&~uint64_t{7};
     const auto host_meta=rms_host_meta_offset(s);
-    const auto shadow_bytes=host_meta+meta_bytes;
+    const auto shadow_bytes=host_meta+meta_bytes+uint64_t(shape.programs)*sizeof(rms::WindowProgram);
     if(c->account && c->account(int64_t(shadow_bytes))) return fail(c,"RMS prefix host metadata budget");
     s.shadow=new(std::nothrow) uint8_t[shadow_bytes]{};
     if(!s.shadow) { if(c->account)c->account(-int64_t(shadow_bytes)); return fail(c,"RMS prefix host metadata allocation"); }
@@ -143,7 +149,7 @@ extern "C" int c71_rms_prefix_begin(C71RangeContext* c,rms::Shape shape,
     if(allocate(c,C71_RMS_PRIVATE,meta_bytes,&s.meta) || allocate(c,C71_RMS_PRIVATE,uint64_t(16)*shape.capacity*12,&s.frames) ||
        allocate(c,C71_RMS_PRIVATE,uint64_t(16)*shape.capacity*2,&s.assignments) ||
        allocate(c,C71_RMS_PRIVATE,uint64_t(shape.width)*shape.capacity*2,&s.stage) ||
-       allocate(c,C71_RMS_PRIVATE,uint64_t(192)*shape.capacity/8,&s.eq) ||
+       allocate(c,C71_RMS_PRIVATE,uint64_t(192)*shape.capacity/8+uint64_t(shape.programs)*sizeof(rms::WindowProgram),&s.eq) ||
        allocate(c,C71_RMS_PRIVATE,uint64_t(rms::gate_chunk)*rms::moments*24,&s.chunk) ||
        allocate(c,C71_RMS_PRIVATE,uint64_t(shape.masks)*rms::moments*24,&s.aggregate)) return -1;
     bool error=false;
@@ -179,6 +185,19 @@ int rms_consume_window(C71RangeContext* c,uint32_t first,uint32_t n,const uint16
     unsigned section,bool error) {
     auto& s=c->rms;const auto shape=s.shape;
     unsigned attempted=0; uint64_t zeroed=0;
+    auto* host_plan=rms_host_window_plan(s);unsigned programs=0,count=0;
+    for(unsigned p=0;p<shape.programs;++p)if(mask_ids[p]!=0xffff) {
+        const auto range=rms_ranges(s)[p];
+        for(unsigned i=0;i<programs;++i)if(host_plan[i].mask==mask_ids[p])
+            return fail(c,"RMS prefix duplicated original program mask");
+        host_plan[programs++]={count,range.count,range.first,mask_ids[p]};count+=range.count;
+    }
+    auto* device_plan=reinterpret_cast<rms::WindowProgram*>(ptr<uint8_t>(c,buffer(c,s.eq))+uint64_t(192)*shape.capacity/8);
+    if(!error) {
+        const auto bytes=uint64_t(programs)*sizeof(rms::WindowProgram);
+        error=checked(c,cudaMemcpyAsync(device_plan,host_plan,bytes,cudaMemcpyHostToDevice,c->stream))!=0;
+        if(!error)c->stats.h2d_bytes+=bytes;
+    }
     if(!error) {
         const auto status=rms::replay(c->stream,ptr<uint8_t>(c,buffer(c,s.frames)),ptr<uint16_t>(c,buffer(c,s.assignments)),
             rms_meta<rms::Program>(c,0),rms_meta<rms::Node>(c,1),rms_meta<uint32_t>(c,2),rms_meta<uint32_t>(c,3),
@@ -190,14 +209,11 @@ int rms_consume_window(C71RangeContext* c,uint32_t first,uint32_t n,const uint16
             ptr<uint32_t>(c,buffer(c,s.eq)),&attempted);
         c->stats.launches+=attempted; error=checked(c,status)!=0;
     }
-    for(unsigned p=0;!error && p<shape.programs;++p) if(mask_ids[p]!=0xffff) {
-        const auto range=rms_ranges(s)[p];
-        for(unsigned k=0;!error && k<range.count;k+=rms::gate_chunk) {
-            const auto status=rms::consume(c->stream,ptr<uint32_t>(c,buffer(c,s.stage)),ptr<uint32_t>(c,buffer(c,s.eq)),
-                rms_meta<rms::Gate>(c,4)+range.first+k,std::min(rms::gate_chunk,range.count-k),shape.capacity,
-                ptr<Fp3>(c,buffer(c,s.chunk)),ptr<Fp3>(c,buffer(c,s.aggregate))+uint64_t(mask_ids[p])*rms::moments,&attempted);
-            c->stats.launches+=attempted; error=checked(c,status)!=0;
-        }
+    for(unsigned k=0;!error && k<count;k+=rms::gate_chunk) {
+        const auto status=rms::consume_mixed(c->stream,ptr<uint32_t>(c,buffer(c,s.stage)),ptr<uint32_t>(c,buffer(c,s.eq)),
+            rms_meta<rms::Gate>(c,4),device_plan,programs,k,std::min(rms::gate_chunk,count-k),shape.capacity,
+            ptr<Fp3>(c,buffer(c,s.chunk)),ptr<Fp3>(c,buffer(c,s.aggregate)),&attempted);
+        c->stats.launches+=attempted;error=checked(c,status)!=0;
     }
     bool drained=false;const int synced=(fence)(c,__func__,__LINE__,&drained);
     if(s.window && drained) {

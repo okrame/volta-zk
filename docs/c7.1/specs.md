@@ -85,6 +85,9 @@ a cap4096;25 riletture tail/profondità,1.328.755.507.200 posizioni padded.
 Screen analitico `credit:false`, senza tempo/capacità completa ammessi.
 Serve ridurre launch/replay; byte/statistica GPU, conto simultaneo e
 raffinamento restano aperti. Pod RUNNING e guard originale attivo.
+È [preparato il batching comune dei gate del prefisso](../c7.1-history/h100-rms-mixed-gate-batch-prepared-2026-10-11.md):
+chunk512 degli stessi gate e maschere, con staging pubblico posseduto;
+parità/capacità e timing da rieseguire sul pod. Il conto sopra resta92afea54.
 
 **Zero certificati canonici**: O=0 incompleto, O=150/300 non iniziati.
 Backend RMS completo, conto simultaneo e premessa di raffinamento aperti.

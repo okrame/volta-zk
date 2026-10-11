@@ -35,7 +35,7 @@ def test_rms_prefix_common_owner_and_failures(tmp_path):
     result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=10)
     assert result.returncode == 0, result.stdout + result.stderr
     assert json.loads(result.stdout.removeprefix("C71_RMS_OWNER ")) == {
-        "success": 1, "terminal_rejections": 22, "publication_after_free": True,
+        "success": 1, "terminal_rejections": 23, "publication_after_free": True,
         "gpu_execution": False, "credit": False,
     }
 

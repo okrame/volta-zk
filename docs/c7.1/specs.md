@@ -8,8 +8,8 @@ La [nuova campagna certificati dell’11 ottobre](../c7.1-history/h100-certifica
 inclusi trenta minuti di conservazione e spegnimento. Avvio provider
 ricostruito conservativamente **07:31:18 UTC**, fine calcolo **15:01:18 UTC**,
 guard indipendente **15:26:18 UTC**, stop entro **15:31:18 UTC**
-(17:31:18 Italia). H100 80 GB verificata; il container nuovo richiede
-ripristino del codice e degli input, senza ricalibrare Γ ammesso.
+(17:31:18 Italia). H100 80 GB verificata; codice e input ripristinati,
+packed ed esponenti originali verificati, Γ ammesso senza ricalibrazione.
 Priorità: risolvere lo stop fisico A con una nuova ipotesi, misurare presto
 RMS/GKR rappresentativo, esportare immediatamente ogni certificato completo
 e registrarne l’accettazione canonica durevole. Obiettivo O=0/150/300
@@ -99,8 +99,8 @@ host, compresa la chiusura del pool con KV differito ancora vivo: owner
 una ricevuta esplicita di parità del lifetime combinato; nessun rimborso
 VMM anticipato. `a-vmm01` è interrotto volontariamente per il ritmo di circa
 61–65 s/gruppo, incompatibile con la finestra residua: non è uno stop fisico.
-GPU idle verificata; il successivo trial combinato richiede prima parità
-H100. Ipotesi: ridurre il costo delle allocazioni legacy durante il replay;
+GPU idle verificata; il trial combinato segue le parità H100 riportate
+sotto. Ipotesi: ridurre il costo delle allocazioni legacy durante il replay;
 la causa del rallentamento non è attribuita. [Dettagli](../c7.1-history/h100-certificates-vmm-pool-2026-10-11.md).
 
 Il [controllo pulito VMM + pool](../../benchmarks/results/c71-certificates-vmm-pool-local-2026-10-11-6ccb54a1.json)
@@ -120,16 +120,16 @@ La [scansione incrementale dei pesi RMS](../c7.1-history/h100-certificates-rms-p
 ricalcola soltanto il suffisso cambiato di Eq, senza divisioni. Passano
 prefissi zero/uno, coefficienti densi e wire/FS/MAC della fixture mista;
 il [record pulito](../../benchmarks/results/c71-certificates-rms-prefix-local-2026-10-11-55d58075.json)
-conserva test, screen e ledger RMS +720 B. Il core da 844.006.203.160.300 prodotti e i callback
-restano invariati. Lo screen dei gate condivisi sulle 159 ricette è solo
+conserva test, screen e ledger RMS +720 B. Questa modifica lasciava il
+core a 844.006.203.160.300 prodotti; i callback restano invariati. Lo screen dei gate condivisi sulle 159 ricette è solo
 un conto pubblico, non una riduzione implementata o un tempo completo.
 Nessun nuovo lemma di raffinamento runtime; l’identità usa il prodotto Eq originale.
 
 Lo [screen RMS con supporto originale](../c7.1-history/h100-certificates-rms-shared-support-2026-10-11.md)
-ricostruisce il core corrente da 844.006.203.160.300 prodotti Fp3 e riduce
+ricostruisce il core precedente da 844.006.203.160.300 prodotti Fp3 e riduce
 il beneficio ipotetico della fusione statica: 559.922.206.698.409 prodotti,
 rapporto 0,663410, rispetto allo screen precedente a supporto completo.
-Conservare i primi due round correnti darebbe 542.419.458.937.257 prodotti.
+Conservare i primi due round di quel checkpoint darebbe 542.419.458.937.257 prodotti.
 Esclusi replay, fold, callback e costruzione; nessuna implementazione o
 selezione, costo RMS completo ancora irrisolto. Controllo esaustivo dei
 residui e tre screen locali bounded passano sulle 99 profondità; il
@@ -1771,7 +1771,9 @@ programmi/celle, padding ed endpoint originali non cambiano. Le
 4,85×10^16 operazioni Booleane sono ora equivalenti del replay letterale,
 non istruzioni della valutazione packed. Il primo round esatto rimuove
 128.288.785.794.560 moltiplicazioni dal core di 972.294.988.954.860
-(13,19443%): residuo 844.006.203.160.300 moltiplicazioni Fp3 CPU.
+(13,19443%): residuo storico 844.006.203.160.300. La successiva
+riscrittura a tre prodotti porta il core corrente a 751.359.028.655.932
+prodotti Fp3 CPU, senza ridurre callback o cambiare transcript.
 La cache privata conserva solo chiavi pubbliche esatte e massimi delle
 width, ricontrolla tutte le guardie originali e riusa il conteggio;
 4.293→1.908 compilazioni è un conto analitico della run canonica.

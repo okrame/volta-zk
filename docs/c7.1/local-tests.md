@@ -136,6 +136,12 @@ residui e tre screen locali bounded passano sulle 99 profondità; il
 [record pulito](../../benchmarks/results/c71-certificates-rms-shared-support-local-2026-10-11-fe5f9d65.json)
 conserva input, log e conti, RSS massimo 517.197.824 B.
 
+Il benchmark RMS ignorato ammette ora tutte le 159 ricette originali e
+512 celle ridotte, con dominio almeno doppio del numero di ricette e
+una cella di padding. È un ampliamento della fixture, senza modifiche al prover;
+serve a misurare tutte le profondità con il mix completo. Esecuzione
+solo sul pod con timeout finito; nessuna extrapolazione a modello intero.
+
 La [campagna precedente](../c7.1-history/h100-followup-close-2026-10-10.md)
 è chiusa con provider EXITED alle 21:24:47 UTC del 10 ottobre e zero
 certificati. Γ originale, pool e fill selezionati, geometria PCS,

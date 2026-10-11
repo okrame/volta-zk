@@ -1949,9 +1949,9 @@ mod tests {
         std::fs::File::open(path).unwrap().take(1_048_577).read_to_end(&mut body).unwrap();
         assert!(body.len() <= 1 << 20);
         let recipes: Vec<Recipe> = serde_json::from_slice(&body).unwrap();
-        assert!((2..=8).contains(&recipes.len()));
+        assert!((2..=159).contains(&recipes.len()));
         let cells: usize = std::env::var("C71_RMS_BENCH_CELLS").unwrap().parse().unwrap();
-        assert!(cells.is_power_of_two() && cells >= 2 * recipes.len() && cells <= 256);
+        assert!(cells.is_power_of_two() && cells >= 2 * recipes.len() && cells <= 512);
         let started = std::time::Instant::now();
         let programs: Vec<_> = recipes.iter().map(|r| {
             let [x, w, y] = r.exponents;

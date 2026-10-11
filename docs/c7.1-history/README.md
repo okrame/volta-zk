@@ -1,5 +1,7 @@
 # C7.1 — archivio e provenienza
 
+[Replay H100 delle159 ricette RMS originali a tre profondità](h100-rms-native-replay-2026-10-11.md).
+
 [Primo prefisso RMS GPU da frame originali e rettifica del traffico](h100-rms-native-prefix-component-2026-10-11.md).
 
 [Parità RMS composta della fixture onesta corretta](h100-rms-moments-rust-parity-2026-10-11.md).

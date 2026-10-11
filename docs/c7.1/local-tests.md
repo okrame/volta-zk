@@ -27,9 +27,13 @@ Il [primo componente GPU](../c7.1-history/h100-rms-native-prefix-component-2026-
 passa18 finestre da12B originali, tre piccoli programmi e chunk512;
 conteggi nei registri, nessun piano u32 globale o riga ausiliaria15.
 Non è il caller completo. Shared massimo40.896B entro232.448B H100;
-export dei159 programmi alle profondità1/48/99 preparato per parità GPU,
-ancora da compilare. Runtime/caller comune, residuo fold/core e conto
-simultaneo restano aperti; prototipo non selezionato nel runner canonico.
+il [replay GPU originale](../c7.1-history/h100-rms-native-replay-2026-10-11.md)
+passa159 programmi alle profondità GKR1/48/99:1.431 casi,258.022.656
+confronti,64 posizioni e tre liveness per programma. Programmi provati
+separatamente; momenti misti dei159 programmi e tutte99 profondità GPU
+ancora da verificare. Build CPU:18 campioni GPU556.793.856B non attribuiti;
+nessuna affermazione di isolamento. Runtime/caller comune, residuo fold/core
+e conto simultaneo restano aperti; nessuna selezione canonica.
 Distributività, selector/mask/wire, ricostruzione/count bounds/modulo,
 determinismo dei frame e lifetime/capacità CUDA sono premesse non scaricate.
 **Zero certificati canonici**: O=0 incompleto, O=150/300 non iniziati.

@@ -32,14 +32,17 @@ byte conserva 30.985.128 letture dei frame, non ridotte dai nuovi callback
 di cella. Le premesse di raffinamento e Seed6 non sono scaricate da questa
 misura; nessuna extrapolazione canonica o attribuzione del target 65 s.
 
-È pronto il [piano del seguito RMS byte](../c7.1-history/h100-rms-byte-followup-plan-2026-10-11.md),
-che richiede nuova autorizzazione di durata sullo stesso pod. Il solo
-binario di test distingue tempi di cella/replay, indici, endpoint byte
-e residuo; nessuna modifica al protocollo in produzione. Il confronto
-proposto usa due coppie AB/BA, 512 celle e tutte le 159 ricette, con
-cache/gate comuni e contrazione byte spenta/accesa. Nessun processo
-hardware avviato; costo canonico, backend RMS CUDA e certificati restano
-aperti. La finestra precedente non viene riaperta né estesa implicitamente.
+Il proprietario ha autorizzato la [nuova campagna RMS byte e certificati](../c7.1-history/h100-rms-byte-start-2026-10-11.md)
+secondo il [piano preparato](../c7.1-history/h100-rms-byte-followup-plan-2026-10-11.md).
+Avvio provider verificato **16:13:00 UTC** dell'11 ottobre, massimo otto
+ore compresi trenta minuti di chiusura. Termine calcolo **23:43:00**,
+stop del nuovo guard **00:03:00**, hard stop **00:13:00 UTC** del 12 ottobre.
+Stessa H100 UUID verificata e idle; disco effimero vuoto. Checkout nuovo
+via Git HTTPS e primo confronto AB/BA con 512 celle e tutte le 159 ricette,
+cache/gate comuni, contrazione byte spenta/accesa. I tempi di test
+separano cella/replay, indici, byte e residuo. Zero certificati canonici;
+costo completo e backend RMS CUDA restano aperti. Non si riusa alcuno
+stato terminale, KV o correlazione AES delle campagne precedenti.
 Il [record pulito `47373d72`](../../benchmarks/results/c71-certificates-rms-phase-local-2026-10-11-47373d72.json)
 conserva build, parità RMS mista e nove controlli documentali passati;
 provider `EXITED` con runtime assente riverificato alle 15:33:09 UTC.
@@ -521,6 +524,10 @@ alle 14:27:28 UTC. L’autorizzazione era di otto ore dall’avvio provider,
 inclusi trenta minuti di chiusura; la deadline originale era 15:31:18 UTC.
 Lo stop anticipato non azzera l’avvio o estende quella finestra.
 Altra durata o hardware richiedono una nuova decisione.
+La risposta `resume autorizzo a proseguire` autorizza ora la nuova
+campagna descritta sopra, con il massimo di otto ore del piano richiesto.
+REST data l'avvio al 11 ottobre16:13:00 UTC: termine calcolo23:43:00,
+stop guard00:03:00 e deadline12 ottobre00:13:00 UTC. Cap e ambito invariati.
 
 L'agent registra deadline e responsabile dello spegnimento dall'avvio
 provider, verifica l'accesso all'arresto API e predispone un guard indipendente.

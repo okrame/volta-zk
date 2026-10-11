@@ -531,7 +531,7 @@ impl Sources {
             let packet=frames.native_packet(&profiles,programs.len())?;
             let source=runtime.rms_source_begin(frames.payload.clone(),&packet)?;
             let result=gkr::prove_native_mapped_sourcewise(&gs,|i|frames.frame(i).unwrap(),fs,&mut rows,
-                runtime,&spans,capacity,&source);
+                runtime,&spans,capacity,&source,true);
             let (proof,point,original,_)=result?;
             runtime.rms_source_retire(source)?;
             (proof,point,original)

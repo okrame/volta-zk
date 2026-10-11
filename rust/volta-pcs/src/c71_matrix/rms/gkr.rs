@@ -1330,7 +1330,8 @@ fn prove_impl_backend(
 ) -> Result<(Proof,Vec<Fp3>,Auth,SourceProverWork),String> {
     use std::cell::{Cell, RefCell};
 
-    if cache_bytes > cell_cache::MAX_BYTES || ((cache_bytes != 0 || shared_gates || byte_contracted) && (!sourcewise || pattern_prefix.is_some())) {
+    if cache_bytes > cell_cache::MAX_BYTES || ((cache_bytes != 0 || shared_gates) && (!sourcewise || pattern_prefix.is_some()))
+        || (byte_contracted && !sourcewise) {
         return Err("RMS folded cache configuration differs".into());
     }
     let widths = s.geometry()?;
@@ -1338,6 +1339,9 @@ fn prove_impl_backend(
         match s.assignments {
             Assignments::Lookup {support:Some(spans),..} => byte_function::contraction::validate(
                 s.assignments.len().ilog2() as usize,16,spans,
+                s.programs.iter().map(|p|(p.ports-2)/8).max().unwrap())?,
+            Assignments::Compiled { .. } => byte_function::contraction::validate(
+                s.assignments.len().ilog2() as usize,16,&s.assignments.support(),
                 s.programs.iter().map(|p|(p.ports-2)/8).max().unwrap())?,
             _ if s.assignments.len()>512 => return Err("RMS byte contraction requires compiled support".into()),
             _ => (),
@@ -1932,6 +1936,7 @@ pub(in super::super) fn prove_native_mapped_sourcewise(
     runtime:&mut crate::c71_matrix::range::windowed::native::Runtime,
     public_spans:&[(u32,u32,u16)],capacity:usize,
     source:&crate::c71_matrix::range::windowed::native::RmsSourceToken,
+    byte_contracted:bool,
 ) -> Result<(Proof,Vec<Fp3>,Auth,SourceProverWork),String> {
     let state=std::cell::RefCell::new((runtime,None));
     let mut builder=|depth,point:&[Fp3],weights:&[Fp3],read:&dyn Fn(usize)->[u8;12],work:&mut patterns::Work| {
@@ -1969,7 +1974,7 @@ pub(in super::super) fn prove_native_mapped_sourcewise(
         if result.1.is_some() {*token=None;}
         Ok(result)
     };
-    prove_impl_backend(s,&get_frame,fs,correlations,true,Some(1),0,false,false,Some(&mut builder),Some(&mut cell),Some(&mut index))
+    prove_impl_backend(s,&get_frame,fs,correlations,true,Some(1),0,false,byte_contracted,Some(&mut builder),Some(&mut cell),Some(&mut index))
 }
 
 pub(in super::super) fn prove_sourcewise(
@@ -2403,10 +2408,39 @@ mod tests {
             Ok("1") => true,
             _ => panic!("invalid RMS byte-contraction benchmark selector"),
         };
+        let native_gpu=match std::env::var("C71_RMS_BENCH_NATIVE_GPU").as_deref() {
+            Err(std::env::VarError::NotPresent)|Ok("0")=>false,Ok("1")=>true,
+            _=>panic!("invalid RMS native benchmark selector"),
+        };
+        let mut native_stats=None;
         let started = std::time::Instant::now();
-        let (proof, point, original, work) = prove_impl_evaluated(&statement, &|i| {
+        let (proof, point, original, work) = if native_gpu {
+            use crate::c71_matrix::range::windowed::native::{Runtime,Config,RmsSourcePacket,RmsSourceShape,RmsSourceNorm,RmsSourceTile};
+            assert_eq!(cache_bytes,0);assert!(!shared && byte_contracted);
+            let library=std::env::var_os("C71_NATIVE_PARITY_LIBRARY").expect("explicit real GPU library required");
+            let config=Config::new(library.into(),0,512<<20,256,256,32);
+            let mut runtime=Runtime::new(&config).unwrap();
+            let mut payload=Vec::new();let mut norms=Vec::new();let mut tiles=Vec::new();let mut spans=Vec::new();
+            for (cell,p) in assignments.iter().enumerate().filter_map(|(i,p)|p.map(|p|(i,p))) {
+                let pbytes=programs[p].product_bits/8;let first=payload.len();
+                payload.extend_from_slice(&frames[cell][..pbytes+8]);
+                norms.push(RmsSourceNorm {product:first as u64,statistic:(first+pbytes) as u64,output:(first+pbytes+6) as u64,
+                    cells:1,pbytes:pbytes as u32,columns:1,rows:1,program:p as u32});
+                tiles.push(RmsSourceTile {first:cell as u32,end:cell as u32+1,norm:tiles.len() as u32,row:0,col:0,cols:1,program:p as u32,reserved:0});
+                spans.push((cell as u32,cell as u32+1,p as u16));
+            }
+            let packet=RmsSourcePacket {shape:RmsSourceShape {bytes:payload.len() as u64,live:tiles.len() as u32,padded:cells as u32,
+                norms:norms.len() as u32,tiles:tiles.len() as u32,programs:programs.len() as u32,reserved:0},norms,tiles};
+            let source=runtime.rms_source_begin(std::sync::Arc::new(payload),&packet).unwrap();
+            let compiled=Statement {assignments:Assignments::compiled(cells,&spans),..statement};
+            let result=prove_native_mapped_sourcewise(&compiled,|i| {assert!(assignments[i].is_some());frames[i]},
+                &mut fs,&mut rows,&mut runtime,&spans,256,&source,true).unwrap();
+            runtime.rms_source_retire(source).unwrap();let stats=runtime.stats().unwrap();
+            assert_eq!(stats.arena_bytes,0);assert_eq!(stats.allocations,stats.releases);assert_eq!(stats.host_owner_bytes,42496);
+            native_stats=Some(stats);runtime.close().unwrap();result
+        } else {prove_impl_evaluated(&statement, &|i| {
             assert!(assignments[i].is_some()); frames[i]
-        }, &mut fs, &mut rows, true, None, cache_bytes, shared,byte_contracted).unwrap();
+        }, &mut fs, &mut rows, true, None, cache_bytes, shared,byte_contracted).unwrap()};
         let prove_ns = started.elapsed().as_nanos();
         let classified_ns = work.phase_ns.iter().sum::<u128>();
         assert!(classified_ns <= prove_ns);
@@ -2430,10 +2464,11 @@ mod tests {
             "work":work,"wire_bytes":wire.len(),"wire_blake3":blake3::hash(&wire).to_hex().as_str(),
             "folded_cache_limit_bytes":cache_bytes,"shared_gates":shared,"correlations":count,
             "byte_contracted":byte_contracted,
+            "native_stats":native_stats,
             "same_FS_original_MAC_endpoint":true,"all_original_layers_executed":true,
             "private_values":"nonzero synthetic rows evaluated with original integer RMS",
             "scope":"selected pinned recipes with reduced cells; excludes statistics caller, PCS, real model, AES setup and full response",
-            "credit":false,"GPU_execution":false}));
+            "credit":false,"GPU_execution":native_gpu}));
     }
 
     #[test]

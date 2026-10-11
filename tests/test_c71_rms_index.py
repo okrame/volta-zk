@@ -18,6 +18,6 @@ def test_index_owner_coverage_history_staging_and_retirement(tmp_path):
     result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=10)
     assert result.returncode == 0, result.stdout + result.stderr
     assert json.loads(result.stdout.removeprefix("C71_RMS_INDEX_OWNER ")) == {
-        "success": 2, "terminal_rejections": 30, "publication_after_free": True,
+        "success": 2, "terminal_rejections": 32, "publication_after_free": True,
         "failed_fence_staging_retained": True, "gpu_execution": False, "credit": False,
     }

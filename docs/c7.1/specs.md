@@ -65,13 +65,16 @@ allocazioni, arena7.693.056 B e owner42.496 B. Negativo header conservato.
 Caller fisico campionato620.478.464 B, zero incompleti; fold con un campione
 incompleto, build GPU556.793.856 B non attribuita; nessun picco completo.
 La [candidata indici e binding/live](../c7.1-history/h100-rms-index-prepared-2026-10-11.md)
-ha un [primo negativo owner](../../benchmarks/results/c71-certificates-rms-index-negative-2026-10-11-7ba70443.json)
-sul checkout pulito `7ba70443`: compilazione passa, primo round respinto
-per coverage initialized assente sul token privato dopo upload/fence.
-Correzione registra la coverage solo dopo il fence riuscito; nuovo trial
-sul pod, parità ancora da verificare. Tre buffer privati, stessi round/FS/MAC
-e stream assignment originale. Byte/statistica GPU,159 programmi/99
-profondità, conto completo e raffinamento restano aperti.
+passa [17 check sulla SHA pulita `7d3ea109`](../c7.1-history/h100-rms-index-parity-2026-10-11.md):
+80 coefficienti/10 terminali sparsi originali GPU,30 rifiuti owner, binding/
+live densi per3/256/421 programmi, stesso wire/FS/MAC e caller originale.
+Per caso1.210 rilasci/allocazioni, arena7.693.056 B, owner42.496 B; fisico
+campionato624.652.288 B, zero incompleti. Negativo owner conservato.
+Il [trial preparato159/99](../c7.1-history/h100-rms-mixed-all-prepared-2026-10-11.md)
+usa gli stessi dati ridotti pinned e byte CPU contracted32 MiB con supporto
+compilato; skip pubblico dei programmi assenti,32 errori owner da verificare.
+Richiede confronto wire320.320 B/hash del record CPU e verificatore originale.
+Byte/statistica GPU, conto completo e raffinamento restano aperti.
 
 **Zero certificati canonici**: O=0 incompleto, O=150/300 non iniziati.
 Backend RMS completo, conto simultaneo e premessa di raffinamento aperti.

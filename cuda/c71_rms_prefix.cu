@@ -47,19 +47,23 @@ __global__ void original_replay(const uint8_t* frames,const uint16_t* assignment
     unsigned n,uint64_t* stage) {
     if(blockIdx.x*4>=n) return;
     extern __shared__ uint64_t values[];
-    __shared__ uint64_t live_words[2];
     for(unsigned wire=threadIdx.x;wire<width;wire+=blockDim.x)
         stage[size_t(wire)*(capacity/4)+blockIdx.x]=0;
     for(unsigned p=0;p<program_count;++p) {
         const Program plan=programs[p];
+        bool live=false;
+        if(threadIdx.x<64) {
+            const unsigned local=blockIdx.x*4+threadIdx.x/16,row=threadIdx.x%16;
+            live=local<n && assignments[size_t(row)*capacity+local]==p;
+        }
+        if(!__syncthreads_or(live))continue;
         if(threadIdx.x<64) {
             const unsigned local=blockIdx.x*4+threadIdx.x/16, row=threadIdx.x%16;
             const unsigned lane=threadIdx.x&31, warp=threadIdx.x/32;
             const size_t index=size_t(row)*capacity+local;
-            const bool live=local<n && assignments[index]==p;
             uint32_t* words=reinterpret_cast<uint32_t*>(values);
             const uint32_t alive=__ballot_sync(0xffffffffu,live);
-            if(lane==0) { live_words[warp]=alive; words[warp]=0; words[2+warp]=alive; }
+            if(lane==0) { words[warp]=0; words[2+warp]=alive; }
             for(unsigned bit=0;bit<plan.ports-2;++bit) {
                 const unsigned value=live?((frames[index*12+bit/8]>>(bit%8))&1):0;
                 const uint32_t bits=__ballot_sync(0xffffffffu,value);
@@ -67,19 +71,17 @@ __global__ void original_replay(const uint8_t* frames,const uint16_t* assignment
             }
         }
         __syncthreads();
-        if(live_words[0] || live_words[1]) {
-            for(unsigned s=0;s<plan.stages;++s) {
-                for(unsigned i=boundaries[plan.boundaries_first+s]+threadIdx.x;
-                    i<boundaries[plan.boundaries_first+s+1];i+=blockDim.x) {
-                    const Node g=nodes[plan.nodes_first+i];
-                    const uint64_t x=values[g.x],y=values[g.y];
-                    values[g.z]=g.op?(x^y):(x&y);
-                }
-                __syncthreads(); // Retired slots are reusable after this barrier.
+        for(unsigned s=0;s<plan.stages;++s) {
+            for(unsigned i=boundaries[plan.boundaries_first+s]+threadIdx.x;
+                i<boundaries[plan.boundaries_first+s+1];i+=blockDim.x) {
+                const Node g=nodes[plan.nodes_first+i];
+                const uint64_t x=values[g.x],y=values[g.y];
+                values[g.z]=g.op?(x^y):(x&y);
             }
-            for(unsigned wire=threadIdx.x;wire<plan.outputs_count;wire+=blockDim.x)
-                stage[size_t(wire)*(capacity/4)+blockIdx.x]|=values[outputs[plan.outputs_first+wire]];
+            __syncthreads(); // Retired slots are reusable after this barrier.
         }
+        for(unsigned wire=threadIdx.x;wire<plan.outputs_count;wire+=blockDim.x)
+            stage[size_t(wire)*(capacity/4)+blockIdx.x]|=values[outputs[plan.outputs_first+wire]];
         __syncthreads(); // Publish all programs' original wire positions.
     }
 }

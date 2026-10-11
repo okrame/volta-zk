@@ -71,3 +71,13 @@ I test locali confrontano le fasi con e senza candidate, la separazione
 dei lifetime e la conservazione degli owner, rifiutano i backend
 incompleti e mantengono visibile il superamento O=300. Il codice di
 protocollo non cambia e non richiede una nuova compilazione Rust/CUDA.
+
+Il [record pulito `bef98394`](../../benchmarks/results/c71-certificates-rms-candidate-ledger-local-2026-10-11-bef98394.json)
+conserva 31 artefatti, 1.566.218 B, tutti verificati per dimensione e SHA256.
+I 18 input copiati coincidono col manifest VMM + pool originale.
+Passano 15 test del ledger (0,412 s, RSS 32.149.504 B) e 9 documentali
+(1,114 s, RSS 59.617.280 B). Lo screen delle 659 fasi richiede 0,025 s,
+RSS 25.137.152 B. Ogni invocazione usa AS 2 GiB, 60 s e un worker.
+I log di sviluppo precedenti sono separati; nessun failure nuovo.
+SHA256 del record:
+`29a96fee45da532862c623b14760e638ab956ecc3fa29a1869e4606f54d79013`.

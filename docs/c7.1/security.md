@@ -43,6 +43,9 @@ margini rispettivi 82.643.566, 41.647.614 e **−29.066.098 B**.
 non risolve costo RMS completo, allowance fisica o superamento O=300.
 Capacità Vec e lifetime Rust restano premesse di raffinamento; nessun
 nuovo lemma Lean, selezione canonica o processo hardware.
+Il [record pulito `bef98394`](../../benchmarks/results/c71-certificates-rms-candidate-ledger-local-2026-10-11-bef98394.json)
+conserva 15 test del ledger, 9 documentali e lo screen bounded, tutti
+passati; 31 artefatti con hash verificati, input storici invariati.
 
 Una [contrazione byte a memoria limitata](../c7.1-history/local-byte-streamed-contraction-2026-10-11.md)
 passa le parità locali di coefficienti e wire. Sostituisce le tabelle

@@ -1,0 +1,26 @@
+[
+  {
+    "check": "test_c71_temporary_ledger",
+    "exit_code": 0,
+    "wall_s": 0.41199397202581167,
+    "rss_bytes": 32149504,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "summary": [
+      "15 passed in 0.27s"
+    ]
+  },
+  {
+    "check": "test_c71_docs",
+    "exit_code": 0,
+    "wall_s": 1.113679681904614,
+    "rss_bytes": 59617280,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "summary": [
+      "9 passed in 0.97s"
+    ]
+  }
+]

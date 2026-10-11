@@ -1,0 +1,7 @@
+
+running 1 test
+test c71_matrix::b12::replay::tests::c71_b12_native_source_geometry_and_resource_envelope ... C71_NATIVE_A_RESOURCE_ENVELOPE {"columns_per_reconstruction":128,"common_device_parts":{"frontier":301989888,"pads":1572864,"salt_band":2097152,"salt_metadata":256,"salt_row_cursors":8388608,"twiddles":8388608,"values":4294967296},"component_plus_device_replay_upper_bytes":5585161864,"cosets_per_reconstruction":4,"credit":false,"cut":4096,"device_accumulation_phase_bytes":4650965536,"device_hash_phase_bytes":4751622656,"device_prescan_phase_bytes":23102720,"geometry_only":true,"gpu_execution":false,"groups":512,"host_salt_band_bytes":0,"named_host_bytes":47749512,"prescan_minimum_chunks":512,"remaining_payload_for_other_host_owners_bytes":320418168,"rows":1048576,"salt_d2h_control_minimum_bytes":20998144,"salt_h2d_bytes":168,"scope":"phase envelope before other host owners; no full pipeline/physical memory claim"}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 567 filtered out; finished in 0.00s
+

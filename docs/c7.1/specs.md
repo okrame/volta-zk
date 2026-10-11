@@ -57,8 +57,12 @@ originali, correlazioni ideali; zero certificati. Fisico campionato618.999.808 B
 build CPU con GPU556.793.856 B non attribuita, nessun isolamento dedotto.
 Un solo checkpoint immutabile; nuovi lifetime e traffico mapped restano
 nel conto da completare. La [candidata fold/core GPU](../c7.1-history/h100-rms-cell-tail-2026-10-11.md)
-è preparata ma non ancora validata: piano trattenuto dopo i quattro round,
-finestre limitate e polinomi originali, owner42.496 B. Binding/live,
+ha un [primo negativo di compilazione](../../benchmarks/results/c71-certificates-rms-cell-tail-negative-2026-10-11-291e2f40.json)
+sul checkout pulito `291e2f40`: tre test owner falliscono prima di Rust/GPU
+per namespace Fp3 e include CUDA dell'header; log immutabile conservato.
+La correzione usa il tipo Fp3 globale e include l'API CUDA prima delle firme.
+Piano trattenuto dopo i quattro round, finestre limitate e polinomi originali,
+owner42.496 B; nuova validazione da eseguire sul pod. Binding/live,
 indici/byte, statistica,159 programmi/99 profondità e conto completo aperti.
 
 **Zero certificati canonici**: O=0 incompleto, O=150/300 non iniziati.

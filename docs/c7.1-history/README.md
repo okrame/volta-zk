@@ -1,5 +1,7 @@
 # C7.1 — archivio e provenienza
 
+[Contrazione byte a memoria limitata, controlli locali](local-byte-streamed-contraction-2026-10-11.md).
+
 [Confronto RMS cache/gate condivisi e chiusura del seguito H100](h100-certificates-rms-shared-cache-2026-10-11.md).
 
 [Fattorizzazione RMS candidata, controlli locali dell’11 ottobre](local-rms-shared-gates-2026-10-11.md).

@@ -43,7 +43,7 @@ impl<'a> Assignments<'a> {
             return spans.to_vec();
         }
         // Only bounded reference callers lack the compiled interval descriptor.
-        assert!(self.len() <= 128);
+        assert!(self.len() <= 512);
         let mut spans: Vec<(u32, u32)> = Vec::new();
         for i in 0..self.len() {
             if self.get(i).is_none() {
@@ -1237,12 +1237,35 @@ fn prove_impl_planned(
     cache_bytes: usize,
     shared_gates: bool,
 ) -> Result<(Proof, Vec<Fp3>, Auth, SourceProverWork), String> {
+    prove_impl_evaluated(s,get_frame,fs,correlations,sourcewise,pattern_prefix,cache_bytes,shared_gates,false)
+}
+
+fn prove_impl_evaluated(
+    s: &Statement<'_>,
+    get_frame: &impl Fn(usize) -> [u8; 12],
+    fs: &mut Fs,
+    correlations: &mut impl ExactSizeIterator<Item = Auth>,
+    sourcewise: bool,
+    pattern_prefix: Option<usize>,
+    cache_bytes: usize,
+    shared_gates: bool,
+    byte_contracted: bool,
+) -> Result<(Proof, Vec<Fp3>, Auth, SourceProverWork), String> {
     use std::cell::{Cell, RefCell};
 
-    if cache_bytes > cell_cache::MAX_BYTES || ((cache_bytes != 0 || shared_gates) && (!sourcewise || pattern_prefix.is_some())) {
+    if cache_bytes > cell_cache::MAX_BYTES || ((cache_bytes != 0 || shared_gates || byte_contracted) && (!sourcewise || pattern_prefix.is_some())) {
         return Err("RMS folded cache configuration differs".into());
     }
     let widths = s.geometry()?;
+    if byte_contracted {
+        match s.assignments {
+            Assignments::Lookup {support:Some(spans),..} => byte_function::contraction::validate(
+                s.assignments.len().ilog2() as usize,16,spans,
+                s.programs.iter().map(|p|(p.ports-2)/8).max().unwrap())?,
+            _ if s.assignments.len()>512 => return Err("RMS byte contraction requires compiled support".into()),
+            _ => (),
+        }
+    }
     let widths_capacity_bytes = widths.capacity() * core::mem::size_of::<usize>();
     let count = s.required()?;
     if correlations.len() < count {
@@ -1622,7 +1645,14 @@ fn prove_impl_planned(
         }
     };
     let (functions, point, original, byte_endpoint) =
-        if pattern_prefix.is_some() && bs.cell_point.len() <= 7 {
+        if byte_contracted {
+            let support=s.assignments.support();
+            let mut result=byte_function::prove_streamed_contracted(
+                &bs,byte_function::Original::Sum(target),get_byte,&support,
+                s.programs.iter().map(|p|(p.ports-2)/8).max().unwrap(),fs,&mut rows)?;
+            result.3.tree_phase_owned_heap_peak_bytes+=support.capacity()*core::mem::size_of::<(u32,u32)>();
+            result
+        } else if pattern_prefix.is_some() && bs.cell_point.len() <= 7 {
             byte_function::prove_contracted(
                 &bs,
                 byte_function::Original::Sum(target),
@@ -2174,10 +2204,15 @@ mod tests {
             Ok("1") => true,
             _ => panic!("invalid RMS shared-gate benchmark selector"),
         };
+        let byte_contracted=match std::env::var("C71_RMS_BENCH_BYTE_CONTRACTED").as_deref() {
+            Err(std::env::VarError::NotPresent) | Ok("0") => false,
+            Ok("1") => true,
+            _ => panic!("invalid RMS byte-contraction benchmark selector"),
+        };
         let started = std::time::Instant::now();
-        let (proof, point, original, work) = prove_impl_planned(&statement, &|i| {
+        let (proof, point, original, work) = prove_impl_evaluated(&statement, &|i| {
             assert!(assignments[i].is_some()); frames[i]
-        }, &mut fs, &mut rows, true, None, cache_bytes, shared).unwrap();
+        }, &mut fs, &mut rows, true, None, cache_bytes, shared,byte_contracted).unwrap();
         let prove_ns = started.elapsed().as_nanos();
         assert_eq!(rows.len(), 0);
         let mut verify_fs = start();
@@ -2195,6 +2230,7 @@ mod tests {
             "compile_ns":compile_ns,"prove_ns":prove_ns,"verify_ns":verify_ns,
             "work":work,"wire_bytes":wire.len(),"wire_blake3":blake3::hash(&wire).to_hex().as_str(),
             "folded_cache_limit_bytes":cache_bytes,"shared_gates":shared,"correlations":count,
+            "byte_contracted":byte_contracted,
             "same_FS_original_MAC_endpoint":true,"all_original_layers_executed":true,
             "private_values":"nonzero synthetic rows evaluated with original integer RMS",
             "scope":"selected pinned recipes with reduced cells; excludes statistics caller, PCS, real model, AES setup and full response",
@@ -2297,6 +2333,20 @@ mod tests {
                 "cell_owned_heap_peak_bytes":shared_work.cell_phase_owned_heap_peak_bytes,
                 "exact_wire_FS_original_MAC":true}));
         }
+        let mut contracted_fs=start();let mut contracted_rows=rows.clone().into_iter();
+        let (contracted,contracted_point,contracted_original,contracted_work)=prove_impl_evaluated(
+            &statement,&read,&mut contracted_fs,&mut contracted_rows,true,None,cell_cache::MAX_BYTES,true,true).unwrap();
+        let mut contracted_wire=Vec::new();crate::c71_matrix::wire::Wire::write(&contracted,&mut contracted_wire);
+        assert_eq!(contracted_wire,dense_wire);assert_eq!(contracted_point,dense_point);
+        assert_eq!((contracted_original.x,contracted_original.m),(dense_original.x,dense_original.m));
+        assert_eq!(contracted_fs.digest(),dense_fs.digest());assert_eq!(contracted_rows.len(),0);
+        let byte_work=contracted_work.byte_endpoint.contraction.unwrap();
+        assert!(contracted_work.original_frame_reads<work.original_frame_reads);
+        assert_eq!(contracted_work.byte_endpoint.tree.custom_terminals,8);
+        println!("C71_RMS_BYTE_CONTRACTION {}",serde_json::json!({"wire_bytes":contracted_wire.len(),
+            "original_frame_reads_baseline":work.original_frame_reads,
+            "original_frame_reads_candidate":contracted_work.original_frame_reads,
+            "byte_work":byte_work,"exact_wire_FS_original_MAC":true}));
         for (sourcewise,pattern) in [(false,None),(true,Some(5))] {
             let mut rejected_fs=start();let before=rejected_fs.digest();let mut unused=rows.clone().into_iter();
             assert!(prove_impl_planned(&statement,&read,&mut rejected_fs,&mut unused,sourcewise,pattern,0,true).is_err());

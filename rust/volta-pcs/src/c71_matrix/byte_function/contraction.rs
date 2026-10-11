@@ -1,6 +1,91 @@
-//! Reduced native evaluator; canonical streaming and hardware rates stay open.
+//! Bounded native evaluator; canonical selection and hardware rates stay open.
 //! Uses the original public ByteTrees LUT. No new transcript or MAC input.
 use super::*;
+use std::cell::Cell;
+
+// Two states <=16 MiB, public feature tables <8 MiB, transform/Eq/support/tails <8 MiB.
+const STATE_BYTES: usize = 8 << 20;
+pub(super) const HEAP_UPPER_BYTES: usize = 32 << 20;
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize)]
+pub(in crate::c71_matrix) struct Work {
+    pub original_byte_reads: u64,
+    pub regenerated_rows: u64,
+    pub retained_rows_peak: usize,
+    pub retained_state_capacity_peak_bytes: usize,
+    pub checkpoint_min: usize,
+    pub checkpoint_max: usize,
+    pub heap_capacity_upper_bytes: usize,
+}
+
+pub(in crate::c71_matrix) fn validate(cells: usize, lanes: usize, support: &[(u32,u32)], live_lanes: usize)
+    -> Result<(), String> {
+    if cells > 29 || !lanes.is_power_of_two() || lanes > 16 || live_lanes > lanes
+        || support.len() > 16384 {
+        return Err("byte contraction bounded geometry differs".into());
+    }
+    let mut previous = 0;
+    for &(start,end) in support {
+        if start < previous || start >= end || end as usize > 1usize << cells {
+            return Err("byte contraction support differs".into());
+        }
+        previous = end;
+    }
+    Ok(())
+}
+
+#[test]
+fn c71_byte_streamed_contraction_budget_support_and_original_coefficients() {
+    assert!(validate(30,2,&[],2).is_err());
+    assert!(validate(3,2,&[(0,3),(2,5)],2).is_err());
+    assert!(validate(3,2,&[(0,9)],2).is_err());
+    assert!(validate(3,2,&[(1,1)],2).is_err());
+    let f=Fp3::new(Fp::new(13),Fp::new(17),Fp::new(19));
+    let coefficients=(0..2).map(|lane|std::array::from_fn(|i| f*signed((i+lane+1) as i64))).collect::<Vec<_>>();
+    let trees=ByteTrees::new(&coefficients);
+    let support=[(0,3),(5,8)];
+    let get=|i:usize| {
+        let cell=i/2;assert!(cell<3 || cell>=5);
+        ((i*29+3)%256) as u8
+    };
+    let literal=|i:usize|if i/2<3 || i/2>=5 {get(i)} else {0};
+    for layer in [0,3,7] {
+        let point=vec![f+signed(2);4+layer];
+        let challenges=(0..point.len()).map(|i|[f,Fp3::ZERO,Fp3::ONE][i%3]).collect::<Vec<_>>();
+        let original=(0..1usize<<point.len()).map(|i|trees.children(layer,i,8,&literal).to_vec()).collect::<Vec<_>>();
+        let mut reads=Vec::new();
+        for budget in [0,1024,STATE_BYTES] {
+            let mut prover=Prover::new(&trees,3,&get,&support,2);prover.state_limit=budget;
+            let lambda=if layer==0 {Fp3::ZERO} else {f};
+            for round in 0..point.len() {
+                let prefix=&challenges[..round];
+                let got=prover.coefficients(layer,&point,lambda,prefix);
+                let rows=fold(original.clone(),prefix);let half=rows.len()/2;
+                let mut want=[Fp3::ZERO;4];
+                for i in 0..half {
+                    let a=&rows[i];let d:[Fp3;4]=std::array::from_fn(|j|rows[i+half][j]-a[j]);
+                    let mut v=[Fp3::ZERO;3];
+                    for (x,y,w) in [(0,3,lambda),(2,1,lambda),(1,3,Fp3::ONE)] {
+                        v[0]+=w*a[x]*a[y];v[1]+=w*(d[x]*a[y]+a[x]*d[y]);v[2]+=w*d[x]*d[y];
+                    }
+                    let e=equality(&point,prefix,i);let de=equality(&point,prefix,i+half)-e;
+                    for j in 0..3 {want[j]+=e*v[j];want[j+1]+=de*v[j];}
+                }
+                assert_eq!(got,want,"layer {layer}, round {round}, budget {budget}");
+            }
+            assert_eq!(prover.terminal(layer,&challenges).as_slice(),fold(original.clone(),&challenges)[0]);
+            assert!(prover.work().retained_state_capacity_peak_bytes<=budget);
+            reads.push(prover.work().original_byte_reads);
+        }
+        assert!(reads[2]<=reads[0]);
+    }
+    // Canonical geometry admission computes a late checkpoint without an N-sized allocation.
+    let mut wide=Prover::new(&trees,29,&|_|panic!("public planning must not read bytes"),&[(0,1<<29)],2);
+    wide.features=(0..2).map(|_|vec![(f,[f;256]);17]).collect();
+    let checkpoint=wide.choose_checkpoint();assert!(checkpoint>7 && checkpoint<29);
+    assert!(wide.state_bytes(1usize<<(29-checkpoint))<=STATE_BYTES);
+    assert!(wide.state_bytes(1usize<<(30-checkpoint))>STATE_BYTES);
+}
 
 fn children(trees: &ByteTrees, lane: usize, layer: usize, byte: usize) -> Vec<Fp3> {
     let start = (lane * 256 + byte) * BYTE_TREE_NODES + (2 << layer) - 1;
@@ -168,6 +253,8 @@ pub(super) struct Prover<'a, G> {
     weighted_features: Vec<Vec<[Fp3; 256]>>,
     values: Vec<Vec<Vec<Fp3>>>,
     recovered: Option<Vec<Vec<Fp3>>>,
+    work: Cell<Work>,
+    state_limit: usize,
 }
 
 impl<'a, G: Fn(usize) -> u8> Prover<'a, G> {
@@ -178,11 +265,12 @@ impl<'a, G: Fn(usize) -> u8> Prover<'a, G> {
         public_support: &[(u32, u32)],
         live_lanes: usize,
     ) -> Self {
+        validate(cells, trees.lanes, public_support, live_lanes).expect("validated byte support");
         Self {
             trees,
             cells,
             live_lanes,
-            checkpoint: 9.min(cells / 2),
+            checkpoint: cells,
             active: project_support(public_support, 1u32 << cells),
             keys: Vec::new(),
             get,
@@ -190,23 +278,42 @@ impl<'a, G: Fn(usize) -> u8> Prover<'a, G> {
             weighted_features: Vec::new(),
             values: Vec::new(),
             recovered: None,
+            work: Cell::new(Work { checkpoint_min: cells, heap_capacity_upper_bytes: HEAP_UPPER_BYTES,
+                ..Work::default() }),
+            state_limit: STATE_BYTES,
         }
     }
 
-    fn scaled(&self, lane: usize, prefix: &[Fp3]) -> Vec<Vec<[Fp3; 256]>> {
-        eq(prefix)
-            .into_iter()
-            .map(|w| {
-                self.features[lane]
-                    .iter()
-                    .enumerate()
-                    .flat_map(|(j, (_, f))| {
-                        [f, &self.weighted_features[lane][j]]
-                            .map(|table| std::array::from_fn(|b| w * (table[b] - table[0])))
-                    })
-                    .collect()
-            })
-            .collect()
+    pub(super) fn work(&self) -> Work { self.work.get() }
+
+    fn read(&self, i: usize) -> u8 {
+        let mut work=self.work.get();work.original_byte_reads+=1;self.work.set(work);
+        (self.get)(i)
+    }
+
+    fn state_bytes(&self, rows: usize) -> usize {
+        self.live_lanes * core::mem::size_of::<Vec<Vec<Fp3>>>()
+            + rows * (core::mem::size_of::<usize>() + self.live_lanes * core::mem::size_of::<Vec<Fp3>>()
+                + self.features[..self.live_lanes].iter().map(|f| 2*f.len()*core::mem::size_of::<Fp3>()).sum::<usize>())
+    }
+
+    fn choose_checkpoint(&self) -> usize {
+        (0..self.cells).find(|&round| {
+            let count: usize=self.projected(1usize << (self.cells-round)).iter()
+                .map(|&(a,b)| (b-a) as usize).sum();
+            self.state_bytes(count) <= self.state_limit
+        }).unwrap_or(self.cells)
+    }
+
+    fn observe_state(&self, keys: &Vec<usize>, values: &Vec<Vec<Vec<Fp3>>>) {
+        let bytes=keys.capacity()*core::mem::size_of::<usize>()
+            + values.capacity()*core::mem::size_of::<Vec<Vec<Fp3>>>()
+            + values.iter().map(|lane| lane.capacity()*core::mem::size_of::<Vec<Fp3>>()
+                + lane.iter().map(|row| row.capacity()*core::mem::size_of::<Fp3>()).sum::<usize>()).sum::<usize>();
+        assert!(bytes <= self.state_limit, "byte contraction state exceeds budget");
+        let mut work=self.work.get();work.retained_rows_peak=work.retained_rows_peak.max(keys.len());
+        work.retained_state_capacity_peak_bytes=work.retained_state_capacity_peak_bytes.max(bytes);
+        self.work.set(work);
     }
 
     fn regenerate(
@@ -215,22 +322,33 @@ impl<'a, G: Fn(usize) -> u8> Prover<'a, G> {
         rounds: usize,
         start: usize,
         count: usize,
-        scaled: &[Vec<[Fp3; 256]>],
+        prefix: &[Fp3],
     ) -> Vec<Vec<Fp3>> {
+        assert_eq!(rounds,prefix.len());
         let current = 1usize << (self.cells - rounds);
         (start..start + count)
             .map(|i| {
                 let mut values: Vec<_> = (0..2 * self.features[lane].len()).map(|j| self.baseline(lane, j)).collect();
-                for (prefix, table) in scaled.iter().enumerate() {
-                    if !self.contains(prefix * current + i) {
+                // Incremental Eq keeps only the completed prefix, including zero/one challenges.
+                let mut path=[Fp3::ONE;30];
+                for (bit,&r) in prefix.iter().enumerate() {path[bit+1]=path[bit]*(Fp3::ONE-r);}
+                for at in 0..1usize << rounds {
+                    if at != 0 {
+                        let start=rounds-1-at.trailing_zeros() as usize;
+                        for bit in start..rounds {
+                            path[bit+1]=path[bit]*if at >> (rounds-1-bit)&1==1 {prefix[bit]} else {Fp3::ONE-prefix[bit]};
+                        }
+                    }
+                    if !self.contains(at * current + i) {
                         continue;
                     }
-                    let b =
-                        usize::from((self.get)((prefix * current + i) * self.trees.lanes + lane));
-                    for (out, f) in values.iter_mut().zip(table) {
-                        *out += f[b];
+                    let b=usize::from(self.read((at * current + i) * self.trees.lanes + lane));
+                    for (j,out) in values.iter_mut().enumerate() {
+                        let f=if j%2==0 {&self.features[lane][j/2].1} else {&self.weighted_features[lane][j/2]};
+                        *out += path[rounds]*(f[b]-f[0]);
                     }
                 }
+                let mut work=self.work.get();work.regenerated_rows+=1;self.work.set(work);
                 values
             })
             .collect()
@@ -246,11 +364,12 @@ impl<'a, G: Fn(usize) -> u8> Prover<'a, G> {
     }
 
     fn projected_keys(&self, period: usize) -> Vec<usize> {
-        self.projected(period)
-            .into_iter()
-            .flat_map(|(start, end)| start..end)
-            .map(|i| i as usize)
-            .collect()
+        let spans=self.projected(period);
+        let count=spans.iter().map(|&(a,b)| (b-a) as usize).sum();
+        assert!(self.state_bytes(count)<=self.state_limit);
+        let mut keys=Vec::with_capacity(count);
+        for (start,end) in spans {keys.extend((start..end).map(|i| i as usize));}
+        keys
     }
 
     fn baseline(&self, lane: usize, j: usize) -> Fp3 {
@@ -289,7 +408,7 @@ impl<'a, G: Fn(usize) -> u8> Prover<'a, G> {
             for cell in self.active.iter().flat_map(|&(start, end)| start..end).map(|i| i as usize)
             {
                 let weight = high[cell >> low_bits] * low[cell & (low.len() - 1)];
-                histogram[usize::from((self.get)(cell * self.trees.lanes + lane))] += weight;
+                histogram[usize::from(self.read(cell * self.trees.lanes + lane))] += weight;
                 mass += weight;
             }
             histogram[0] += Fp3::ONE - mass;
@@ -316,6 +435,8 @@ impl<'a, G: Fn(usize) -> u8> Prover<'a, G> {
         let lane_bits = self.trees.lanes.trailing_zeros() as usize;
         if prefix.is_empty() {
             self.recovered = None;
+            self.values.clear();
+            self.keys.clear();
             let node_eq = eq(&point[self.cells + lane_bits..]);
             self.features = (0..self.trees.lanes)
                 .map(|lane| contract(self.trees, lane, layer, &node_eq, lambda))
@@ -323,7 +444,9 @@ impl<'a, G: Fn(usize) -> u8> Prover<'a, G> {
             self.weighted_features = self.features.iter().map(|lane| {
                 lane.iter().map(|(d, f)| std::array::from_fn(|b| *d * f[b])).collect()
             }).collect();
-            self.values.clear();
+            self.checkpoint=self.choose_checkpoint();
+            let mut work=self.work.get();work.checkpoint_min=work.checkpoint_min.min(self.checkpoint);
+            work.checkpoint_max=work.checkpoint_max.max(self.checkpoint);self.work.set(work);
         }
         let mut c = [Fp3::ZERO; 4];
         if prefix.len() < self.cells {
@@ -333,15 +456,15 @@ impl<'a, G: Fn(usize) -> u8> Prover<'a, G> {
                 self.keys = self.projected_keys(2 * half);
                 self.values = (0..self.live_lanes)
                     .map(|lane| {
-                        let scaled = self.scaled(lane, prefix);
                         self.keys
                             .iter()
                             .map(|&key| {
-                                self.regenerate(lane, prefix.len(), key, 1, &scaled).remove(0)
+                                self.regenerate(lane, prefix.len(), key, 1, prefix).remove(0)
                             })
                             .collect()
                     })
                     .collect();
+                self.observe_state(&self.keys,&self.values);
             } else if prefix.len() > self.checkpoint {
                 let r = *prefix.last().unwrap();
                 let keys = self.projected_keys(2 * half);
@@ -361,6 +484,7 @@ impl<'a, G: Fn(usize) -> u8> Prover<'a, G> {
                     })
                     .collect();
                 // Both allocations stay live until the destination is complete.
+                self.observe_state(&keys,&next);
                 self.values = next;
                 self.keys = keys;
             }
@@ -379,11 +503,6 @@ impl<'a, G: Fn(usize) -> u8> Prover<'a, G> {
                 if lane >= self.live_lanes {
                     continue;
                 }
-                let scaled = if prefix.len() < self.checkpoint {
-                    self.scaled(lane, prefix)
-                } else {
-                    Vec::new()
-                };
                 let mut quadratic = [Fp3::ZERO; 3];
                 let mut indices =
                     pairs.iter().flat_map(|&(start, end)| start..end).map(|i| i as usize);
@@ -398,9 +517,9 @@ impl<'a, G: Fn(usize) -> u8> Prover<'a, G> {
                                 .iter()
                                 .map(|&i| {
                                     (
-                                        self.regenerate(lane, prefix.len(), i, 1, &scaled)
+                                        self.regenerate(lane, prefix.len(), i, 1, prefix)
                                             .remove(0),
-                                        self.regenerate(lane, prefix.len(), i + half, 1, &scaled)
+                                        self.regenerate(lane, prefix.len(), i + half, 1, prefix)
                                             .remove(0),
                                     )
                                 })

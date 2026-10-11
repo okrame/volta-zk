@@ -174,6 +174,7 @@ struct ByteTrees {
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize)]
 pub(super) struct SourceWork {
     pub tree: range::SourceTreeWork,
+    pub contraction: Option<contraction::Work>,
     pub bind_prefix_capacity_bytes: usize,
     pub bind_point_capacity_bytes: usize,
     pub bind_attempt_capacity_bytes: usize,
@@ -306,6 +307,23 @@ pub(super) fn prove_contracted(
     {
         return Err("byte contraction requires a reduced complete frame domain".into());
     }
+    prove_streamed_contracted(s, original, get_byte, public_support, live_lanes, fs, correlations)
+}
+
+/// Same eight original layers and MAC endpoint, with bounded feature regeneration.
+pub(super) fn prove_streamed_contracted(
+    s: &Statement<'_>,
+    original: Original<'_, Auth>,
+    get_byte: impl Fn(usize) -> u8,
+    public_support: &[(u32, u32)],
+    live_lanes: usize,
+    fs: &mut Fs,
+    correlations: &mut impl ExactSizeIterator<Item = Auth>,
+) -> Result<(Proof, Vec<Fp3>, Auth, SourceWork), String> {
+    contraction::validate(s.cell_point.len(), s.tables.len(), public_support, live_lanes)?;
+    if s.live_cells != 1usize << s.cell_point.len() {
+        return Err("byte contraction requires a complete frame domain".into());
+    }
     prove_sourcewise_impl(s, original, get_byte, fs, correlations, true, public_support, live_lanes)
 }
 
@@ -365,6 +383,7 @@ fn prove_sourcewise_impl(
         },
         |layer, point| evaluator.as_ref().map(|e| e.borrow_mut().terminal(layer, point)),
     );
+    let contraction_work=evaluator.as_ref().map(|e|e.borrow().work());
     drop(evaluator); // Last recovered-child consumer precedes leaf/product work.
     let (_, index, leaf_eq_capacity_peak_bytes) = leaf(s, &c, &point);
     let leaf_point_capacity_bytes = point.capacity() * core::mem::size_of::<Fp3>();
@@ -393,12 +412,14 @@ fn prove_sourcewise_impl(
             + proof_capacity_bytes
             + coefficient_capacity_bytes
             + lut_capacity_bytes
+            + contraction_work.map_or(0, |w| w.heap_capacity_upper_bytes)
             + tree_work
                 .owned_regeneration_heap_peak_bytes
                 .max(leaf_point_capacity_bytes + leaf_eq_capacity_peak_bytes),
     );
     let work = SourceWork {
         tree: tree_work,
+        contraction: contraction_work,
         bind_prefix_capacity_bytes: bind_work.prefix_capacity_bytes,
         bind_point_capacity_bytes: bind_work.point_capacity_bytes,
         bind_attempt_capacity_bytes: bind_work.attempt_capacity_bytes,
@@ -551,6 +572,54 @@ mod tests {
     use super::*;
     use linear::Cube;
     use rand_010::RngExt;
+
+    #[test]
+    fn c71_byte_streamed_contraction_full_wire_above_reduced_limit() {
+        let root=C61Commitment::new(vec![[71;32]]);
+        let extension=Fp3::new(Fp::new(3),Fp::new(5),Fp::new(7));
+        let point=(0..8).map(|i|[extension,Fp3::ZERO,Fp3::ONE][i%3]).collect::<Vec<_>>();
+        let tables=[std::array::from_fn(|b|extension*signed((b*b+3*b+1) as i64))];
+        let statement=Statement {root:&root,profile:b"bounded original byte contraction",view:[72;32],
+            attempt:AttemptContext{session:[73;32],capacity:[74;32],slot:0,predecessor:[0;32],nonce:[75;32]},
+            cell_point:&point,live_cells:256,tables:&tables};
+        let support=[(0,99),(128,201),(255,256)];
+        let supported=|i:usize|support.iter().any(|&(a,b)|a as usize<=i && i<(b as usize));
+        let get=|i:usize|{assert!(supported(i));((i*29+17)%256) as u8};
+        let literal=|i:usize|if supported(i){get(i)}else{0};
+        let value=eq(&point).iter().enumerate().fold(Fp3::ZERO,|s,(i,&w)|s+w*tables[0][literal(i) as usize]);
+        let original=Auth::new(value,extension+signed(19));let delta=extension+signed(23);
+        let original_key=Key::new(original.m+delta*original.x);
+        let mut rng=MatrixRng::from_seed([76;32]);
+        let rows=(0..required(8)).map(|_|Auth::new(from_p3(rng.random::<E>()),from_p3(rng.random::<E>()))).collect::<Vec<_>>();
+        let keys=rows.iter().map(|a|Key::new(a.m+delta*a.x)).collect::<Vec<_>>();
+        let start=||Fs::new(b"bounded byte wire",100_000);
+        for bad in [vec![(0,257)],vec![(0,3),(2,4)],vec![(2,3),(0,1)]] {
+            let mut fs=start();let before=fs.digest();let mut unused=rows.clone().into_iter();
+            assert!(prove_streamed_contracted(&statement,Original::Sum(original),|_|panic!("invalid support read"),
+                &bad,1,&mut fs,&mut unused).is_err());
+            assert_eq!(fs.digest(),before);assert_eq!(unused.len(),rows.len());
+        }
+        let mut dense_fs=start();let mut dense_rows=rows.clone().into_iter();
+        let (dense,dense_point,dense_original)=prove_dense(&statement,Original::Sum(original),literal,&mut dense_fs,&mut dense_rows).unwrap();
+        let mut fs=start();let mut prows=rows.clone().into_iter();
+        let (mut proof,point,endpoint,work)=prove_streamed_contracted(&statement,Original::Sum(original),get,
+            &support,1,&mut fs,&mut prows).unwrap();
+        let mut wire=Vec::new();let mut dense_wire=Vec::new();
+        crate::c71_matrix::wire::Wire::write(&proof,&mut wire);crate::c71_matrix::wire::Wire::write(&dense,&mut dense_wire);
+        assert_eq!(wire,dense_wire);assert_eq!(point,dense_point);
+        assert_eq!((endpoint.x,endpoint.m),(dense_original.x,dense_original.m));
+        assert_eq!(fs.digest(),dense_fs.digest());assert_eq!(prows.len(),0);assert_eq!(dense_rows.len(),0);
+        let mut vfs=start();let mut vrows=keys.clone().into_iter();
+        let (verified_point,verified)=verify(&statement,Original::Sum(original_key),&proof,delta,&mut vfs,&mut vrows).unwrap();
+        assert_eq!(verified_point,point);assert_eq!(verified.k,endpoint.m+delta*endpoint.x);
+        assert_eq!(vfs.digest(),fs.digest());assert_eq!(vrows.len(),0);
+        assert_eq!(work.tree.custom_terminals,8);assert_eq!(work.contraction.unwrap().original_byte_reads,2*8*173);
+        proof.leaf_tag+=Fp3::ONE;
+        assert!(verify(&statement,Original::Sum(original_key),&proof,delta,&mut start(),&mut keys.into_iter()).is_err());
+        println!("C71_BYTE_STREAMED_WIRE {}",serde_json::json!({"cells":256,"layers":8,"wire_bytes":wire.len(),
+            "wire_blake3":blake3::hash(&wire).to_hex().as_str(),"work":work.contraction,
+            "exact_wire_FS_original_MAC":true,"tampered_leaf_rejected":true,"correlations":rows.len()}));
+    }
 
     #[test]
     fn c71_b12_byte_functions_close_original_byte_macs_in_one_ranged_pcs() {

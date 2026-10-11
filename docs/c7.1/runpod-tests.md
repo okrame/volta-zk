@@ -32,6 +32,21 @@ byte conserva 30.985.128 letture dei frame, non ridotte dai nuovi callback
 di cella. Le premesse di raffinamento e Seed6 non sono scaricate da questa
 misura; nessuna extrapolazione canonica o attribuzione del target 65 s.
 
+Una [contrazione byte a memoria limitata](../c7.1-history/local-byte-streamed-contraction-2026-10-11.md)
+passa le parità locali di coefficienti e wire. Sostituisce le tabelle
+per tutti i prefissi con pesi
+Eq incrementali e sceglie il checkpoint dal supporto pubblico e dal budget:
+8 MiB per stato, due stati durante il fold, upper dell'evaluator 32 MiB.
+Conserva tutti gli otto livelli e recupera i figli originali da una nuova
+lettura dei byte; non introduce endpoint o correlazioni diversi.
+Dominio fino a 2^29 celle, al più 16 lane e 16.384 intervalli pubblici;
+la selezione è solo nel benchmark RMS, default canonico disabilitato.
+Distributività, somma unitaria di Eq, proiezione MSB del supporto e
+lifetime/capacità Rust restano premesse implementative, insieme al
+raffinamento della contrazione quadratica già esistente. Nessun nuovo
+lemma Lean o credito di tempo/memoria canonici. Il test composto con
+PCS termina al limite locale di 60 s e resta un esito negativo conservato.
+
 La [candidata locale folded-cache RMS](../c7.1-history/local-rms-fold-cache-2026-10-11.md)
 aggiunge al benchmark ignorato il limite `C71_RMS_BENCH_CACHE_BYTES`
 (default 0, massimo 16777216) e l'hash BLAKE3 della wire. Un eventuale

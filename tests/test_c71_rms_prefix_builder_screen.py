@@ -33,6 +33,15 @@ def test_bounded_schedule_keeps_full_prefix_wires_and_charges_each_mask_batch():
     assert not result['credit'] and not result['complete_work'] and not result['joint_admitted']
 
 
+def test_counts_stay_in_registers_across_the_sixteen_tiles_of_each_batch():
+    result = builder_screen(131072, [[(0, 65536)], [(65536, 131072)]], [fixture()])
+    work = result['levels'][0]['work']
+    assert work['source_batches'] == 2  # 8192 suffixes, two full4096 batches.
+    slots = 288 + 16 + 288
+    assert work['count_read_write_logical_bytes'] == 3 * 2 * slots * 192 * 4
+    assert work['count_zero_bytes'] == 2 * slots * 192 * 4
+
+
 def test_builder_requires_original_depth_program_geometry_and_cpu_plan_parity():
     for key, value in [('input_width', 127), ('original_gates_by_program', [[1, 0, 1]]), ('depth', 2)]:
         bad = fixture(); bad[key] = value

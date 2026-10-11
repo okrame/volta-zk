@@ -57,7 +57,9 @@ def builder_screen(padded_cells, intervals, levels):
                     + x * (block * block + block) + c * block)
                 terms['raw_count_shift_add_terms'] += batches * slots * 192
                 terms['count_zero_bytes'] += batches * slots * 192 * 4
-                terms['count_read_write_logical_bytes'] += 2 * tiles * slots * 192 * 4
+                # All K tiles of a batch accumulate in registers: one global
+                # read and write per counter, then one read by reconstruction.
+                terms['count_read_write_logical_bytes'] += 3 * batches * slots * 192 * 4
         assert terms['source_frames'] == shape['live_cells']
         suffix_bits = (padded_cells // block).bit_length() - 1
         high, low = suffix_bits // 2, suffix_bits - suffix_bits // 2

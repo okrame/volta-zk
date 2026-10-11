@@ -14,16 +14,20 @@ Tre test F97 del prefisso misto e nove documentali passano sul checkout
 pulito `f25452bf`; primo negativo documentale per fonti assenti conservato.
 Il [censimento pubblico RMS](../c7.1-history/h100-rms-moments-census-2026-10-11.md)
 passa replay parallel contro Booleano originale per159 programmi/99 profondità.
-I due test wire composti restano **negativi**: sei celle del caso etichettato
-onesto hanno predicato zero. La prima diagnosi del caso negativo era errata;
-record originali immutati e rettifica collegata. Factor12→4 e assertion
-sul replay letterale preparati, ancora da riverificare. Coefficienti
-Goldilocks, EXP30/decoder e check produzione passano; percorso `cfg(test)`,
-max512 celle/pesatura per sorgente. Screen chunk32/batch4096: massimo nuovo
-payload nominato130.378.444B, ma24.443.818.538.631.168B di traffico logico
-contatori; nessuna misura HBM o capacità completa. Esaminare riduzione fusa.
-Shared massimo40.896B entro232.448B H100; parità CUDA, caller nativo,
-residuo fold/core e conto simultaneo restano aperti.
+La [fixture onesta corretta](../c7.1-history/h100-rms-moments-rust-parity-2026-10-11.md)
+passa parità composta wire/FS/MAC, acceptance RMS/PCS e alterazioni respinte.
+Factor12→4 e assertion sul replay letterale risolvono sei celle invalide;
+i due negativi e la diagnosi errata iniziale rimangono conservati.
+Coefficienti Goldilocks, EXP30/decoder e check produzione passano;
+prefisso Rust `cfg(test)`, max512 celle/pesatura per sorgente, correlazioni
+ideali. Screen chunk32/batch4096: massimo nuovo payload130.378.444B;
+conto traffico per tile superseduto dalla rettifica per batch preparata.
+Prototipo CUDA con conteggi nei registri e chunk512 preparato, compilazione
+H100 pendente; nessun piano contatori u32 globale o riga ausiliaria15.
+Shared massimo40.896B entro232.448B H100; parità CUDA dei159 programmi,
+runtime/caller comune, residuo fold/core e conto simultaneo restano aperti.
+Distributività, selector/mask/wire, ricostruzione/count bounds/modulo,
+determinismo dei frame e lifetime/capacità CUDA sono premesse non scaricate.
 **Zero certificati canonici**: O=0 incompleto, O=150/300 non iniziati.
 Backend RMS completo, conto simultaneo e premessa di raffinamento aperti.
 

@@ -1,0 +1,679 @@
+{
+  "command": [
+    "cargo",
+    "rustc",
+    "--offline",
+    "--locked",
+    "-j",
+    "1",
+    "-p",
+    "volta-pcs",
+    "--features",
+    "c71-seed6-reference",
+    "--lib",
+    "--profile",
+    "test",
+    "--config",
+    "profile.dev.package.volta-pcs.opt-level=0",
+    "--config",
+    "profile.dev.package.volta-pcs.codegen-units=64",
+    "--",
+    "-Clink-arg=-fuse-ld=lld",
+    "-Clink-arg=-B/home/okrame/.rustup/toolchains/stable-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/bin/gcc-ld",
+    "-Clink-arg=-Wl,--threads=1"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk/rust",
+  "exit_code": 124,
+  "wall_s": 120.07199208904058,
+  "max_rss_bytes": 479109120,
+  "sampled_aggregate_live_rss_peak_bytes": 1087553536,
+  "sampled_processes": {
+    "2": {
+      "name": "bash",
+      "max_rss_bytes": 3022848,
+      "cpu_ticks": 0,
+      "first_seen_s": 0.0009139589965343475,
+      "last_seen_s": 120.07165408926085
+    },
+    "3": {
+      "name": "python3",
+      "max_rss_bytes": 11096064,
+      "cpu_ticks": 2,
+      "first_seen_s": 0.0009862091392278671,
+      "last_seen_s": 120.0717008812353
+    },
+    "5": {
+      "name": "timeout",
+      "max_rss_bytes": 1576960,
+      "cpu_ticks": 0,
+      "first_seen_s": 0.0010939589701592922,
+      "last_seen_s": 120.07176725612953
+    },
+    "6": {
+      "name": "cargo",
+      "max_rss_bytes": 55062528,
+      "cpu_ticks": 32,
+      "first_seen_s": 0.10218947799876332,
+      "last_seen_s": 119.97079106140882
+    },
+    "17": {
+      "name": "rustc",
+      "max_rss_bytes": 11190272,
+      "cpu_ticks": 0,
+      "first_seen_s": 0.2032640390098095,
+      "last_seen_s": 0.20326499827206135
+    },
+    "21": {
+      "name": "rustc",
+      "max_rss_bytes": 239816704,
+      "cpu_ticks": 56,
+      "first_seen_s": 0.304052600171417,
+      "last_seen_s": 0.8147703232243657
+    },
+    "49": {
+      "name": "rustc",
+      "max_rss_bytes": 341778432,
+      "cpu_ticks": 127,
+      "first_seen_s": 0.9156085504218936,
+      "last_seen_s": 2.1409749099984765
+    },
+    "87": {
+      "name": "rustc",
+      "max_rss_bytes": 130822144,
+      "cpu_ticks": 5,
+      "first_seen_s": 2.241738929413259,
+      "last_seen_s": 2.241740138269961
+    },
+    "97": {
+      "name": "rustc",
+      "max_rss_bytes": 221634560,
+      "cpu_ticks": 38,
+      "first_seen_s": 2.3424815740436316,
+      "last_seen_s": 2.64584150724113
+    },
+    "121": {
+      "name": "rustc",
+      "max_rss_bytes": 0,
+      "cpu_ticks": 5,
+      "first_seen_s": 2.7466625263914466,
+      "last_seen_s": 2.746663943398744
+    },
+    "131": {
+      "name": "rustc",
+      "max_rss_bytes": 226934784,
+      "cpu_ticks": 29,
+      "first_seen_s": 2.847547588404268,
+      "last_seen_s": 3.0511886682361364
+    },
+    "145": {
+      "name": "rustc",
+      "max_rss_bytes": 157126656,
+      "cpu_ticks": 20,
+      "first_seen_s": 3.1518597709946334,
+      "last_seen_s": 3.354156810324639
+    },
+    "155": {
+      "name": "rustc",
+      "max_rss_bytes": 162779136,
+      "cpu_ticks": 11,
+      "first_seen_s": 3.455536913126707,
+      "last_seen_s": 3.556310974061489
+    },
+    "179": {
+      "name": "rustc",
+      "max_rss_bytes": 160555008,
+      "cpu_ticks": 7,
+      "first_seen_s": 3.657350827008486,
+      "last_seen_s": 3.657351952046156
+    },
+    "207": {
+      "name": "rustc",
+      "max_rss_bytes": 28721152,
+      "cpu_ticks": 0,
+      "first_seen_s": 3.758116930257529,
+      "last_seen_s": 3.758118097204715
+    },
+    "217": {
+      "name": "rustc",
+      "max_rss_bytes": 205824000,
+      "cpu_ticks": 48,
+      "first_seen_s": 3.8589193243533373,
+      "last_seen_s": 4.262890986166894
+    },
+    "263": {
+      "name": "rustc",
+      "max_rss_bytes": 162738176,
+      "cpu_ticks": 12,
+      "first_seen_s": 4.363674339372665,
+      "last_seen_s": 4.464649650268257
+    },
+    "285": {
+      "name": "rustc",
+      "max_rss_bytes": 220135424,
+      "cpu_ticks": 58,
+      "first_seen_s": 4.568157212343067,
+      "last_seen_s": 5.074245144147426
+    },
+    "295": {
+      "name": "rustc",
+      "max_rss_bytes": 256327680,
+      "cpu_ticks": 49,
+      "first_seen_s": 5.175042913295329,
+      "last_seen_s": 5.581456826068461
+    },
+    "345": {
+      "name": "rustc",
+      "max_rss_bytes": 279175168,
+      "cpu_ticks": 321,
+      "first_seen_s": 5.682256428990513,
+      "last_seen_s": 8.814086876343936
+    },
+    "413": {
+      "name": "rustc",
+      "max_rss_bytes": 288632832,
+      "cpu_ticks": 89,
+      "first_seen_s": 8.914815646130592,
+      "last_seen_s": 9.726004224270582
+    },
+    "437": {
+      "name": "rustc",
+      "max_rss_bytes": 242561024,
+      "cpu_ticks": 58,
+      "first_seen_s": 9.8269447023049,
+      "last_seen_s": 10.336370886303484
+    },
+    "449": {
+      "name": "rustc",
+      "max_rss_bytes": 120389632,
+      "cpu_ticks": 1,
+      "first_seen_s": 10.437325115315616,
+      "last_seen_s": 10.43732628133148
+    },
+    "471": {
+      "name": "rustc",
+      "max_rss_bytes": 199045120,
+      "cpu_ticks": 22,
+      "first_seen_s": 10.539530218113214,
+      "last_seen_s": 10.74319025920704
+    },
+    "487": {
+      "name": "rustc",
+      "max_rss_bytes": 199417856,
+      "cpu_ticks": 30,
+      "first_seen_s": 10.844012987334281,
+      "last_seen_s": 11.14695463096723
+    },
+    "499": {
+      "name": "rustc",
+      "max_rss_bytes": 169623552,
+      "cpu_ticks": 25,
+      "first_seen_s": 11.249406818300486,
+      "last_seen_s": 11.451800775248557
+    },
+    "511": {
+      "name": "rustc",
+      "max_rss_bytes": 200826880,
+      "cpu_ticks": 5,
+      "first_seen_s": 11.552548254374415,
+      "last_seen_s": 11.552549337036908
+    },
+    "539": {
+      "name": "rustc",
+      "max_rss_bytes": 160325632,
+      "cpu_ticks": 11,
+      "first_seen_s": 11.653982315212488,
+      "last_seen_s": 11.75486946105957
+    },
+    "573": {
+      "name": "rustc",
+      "max_rss_bytes": 123502592,
+      "cpu_ticks": 3,
+      "first_seen_s": 11.855954105965793,
+      "last_seen_s": 11.855955189093947
+    },
+    "585": {
+      "name": "rustc",
+      "max_rss_bytes": 126504960,
+      "cpu_ticks": 2,
+      "first_seen_s": 11.95712250098586,
+      "last_seen_s": 11.957123751286417
+    },
+    "595": {
+      "name": "rustc",
+      "max_rss_bytes": 154046464,
+      "cpu_ticks": 4,
+      "first_seen_s": 12.05971202114597,
+      "last_seen_s": 12.059713021386415
+    },
+    "605": {
+      "name": "rustc",
+      "max_rss_bytes": 133365760,
+      "cpu_ticks": 3,
+      "first_seen_s": 12.16097370814532,
+      "last_seen_s": 12.160974667407572
+    },
+    "615": {
+      "name": "rustc",
+      "max_rss_bytes": 440406016,
+      "cpu_ticks": 190,
+      "first_seen_s": 12.261721062008291,
+      "last_seen_s": 14.092751888092607
+    },
+    "625": {
+      "name": "rustc",
+      "max_rss_bytes": 209428480,
+      "cpu_ticks": 34,
+      "first_seen_s": 14.19349065842107,
+      "last_seen_s": 14.500882012303919
+    },
+    "639": {
+      "name": "rustc",
+      "max_rss_bytes": 143081472,
+      "cpu_ticks": 7,
+      "first_seen_s": 14.602141074370593,
+      "last_seen_s": 14.60214249137789
+    },
+    "649": {
+      "name": "rustc",
+      "max_rss_bytes": 231444480,
+      "cpu_ticks": 37,
+      "first_seen_s": 14.704834012314677,
+      "last_seen_s": 15.00857561500743
+    },
+    "697": {
+      "name": "rustc",
+      "max_rss_bytes": 156037120,
+      "cpu_ticks": 14,
+      "first_seen_s": 15.109497802332044,
+      "last_seen_s": 15.210241697262973
+    },
+    "723": {
+      "name": "rustc",
+      "max_rss_bytes": 225673216,
+      "cpu_ticks": 118,
+      "first_seen_s": 15.31096917623654,
+      "last_seen_s": 16.425091402139515
+    },
+    "799": {
+      "name": "rustc",
+      "max_rss_bytes": 206524416,
+      "cpu_ticks": 24,
+      "first_seen_s": 16.526018631178886,
+      "last_seen_s": 16.727728797122836
+    },
+    "829": {
+      "name": "rustc",
+      "max_rss_bytes": 211779584,
+      "cpu_ticks": 82,
+      "first_seen_s": 16.82858919305727,
+      "last_seen_s": 17.649444485083222
+    },
+    "865": {
+      "name": "rustc",
+      "max_rss_bytes": 148242432,
+      "cpu_ticks": 2,
+      "first_seen_s": 17.750946298241615,
+      "last_seen_s": 17.75094738136977
+    },
+    "875": {
+      "name": "rustc",
+      "max_rss_bytes": 196120576,
+      "cpu_ticks": 28,
+      "first_seen_s": 17.853523360099643,
+      "last_seen_s": 18.0555251929909
+    },
+    "885": {
+      "name": "rustc",
+      "max_rss_bytes": 132825088,
+      "cpu_ticks": 2,
+      "first_seen_s": 18.156778089236468,
+      "last_seen_s": 18.15679754735902
+    },
+    "905": {
+      "name": "rustc",
+      "max_rss_bytes": 185376768,
+      "cpu_ticks": 42,
+      "first_seen_s": 18.258178818039596,
+      "last_seen_s": 18.662037026137114
+    },
+    "959": {
+      "name": "rustc",
+      "max_rss_bytes": 177860608,
+      "cpu_ticks": 11,
+      "first_seen_s": 18.764197214040905,
+      "last_seen_s": 18.866160192992538
+    },
+    "979": {
+      "name": "rustc",
+      "max_rss_bytes": 263135232,
+      "cpu_ticks": 64,
+      "first_seen_s": 18.96806042222306,
+      "last_seen_s": 19.575039005372673
+    },
+    "1025": {
+      "name": "rustc",
+      "max_rss_bytes": 146444288,
+      "cpu_ticks": 3,
+      "first_seen_s": 19.67580698430538,
+      "last_seen_s": 19.67580831842497
+    },
+    "1045": {
+      "name": "rustc",
+      "max_rss_bytes": 280141824,
+      "cpu_ticks": 103,
+      "first_seen_s": 19.776531838346273,
+      "last_seen_s": 20.80154517525807
+    },
+    "1073": {
+      "name": "rustc",
+      "max_rss_bytes": 108396544,
+      "cpu_ticks": 1,
+      "first_seen_s": 20.902651112992316,
+      "last_seen_s": 20.90265219612047
+    },
+    "1083": {
+      "name": "rustc",
+      "max_rss_bytes": 154116096,
+      "cpu_ticks": 8,
+      "first_seen_s": 21.003368549980223,
+      "last_seen_s": 21.003369675017893
+    },
+    "1103": {
+      "name": "rustc",
+      "max_rss_bytes": 189739008,
+      "cpu_ticks": 6,
+      "first_seen_s": 21.104394488036633,
+      "last_seen_s": 21.104395613074303
+    },
+    "1123": {
+      "name": "rustc",
+      "max_rss_bytes": 205164544,
+      "cpu_ticks": 42,
+      "first_seen_s": 21.206422467250377,
+      "last_seen_s": 21.613287093117833
+    },
+    "1159": {
+      "name": "rustc",
+      "max_rss_bytes": 168710144,
+      "cpu_ticks": 12,
+      "first_seen_s": 21.71451769815758,
+      "last_seen_s": 21.815899052191526
+    },
+    "1169": {
+      "name": "rustc",
+      "max_rss_bytes": 235569152,
+      "cpu_ticks": 118,
+      "first_seen_s": 21.916590865235776,
+      "last_seen_s": 23.027316846419126
+    },
+    "1259": {
+      "name": "rustc",
+      "max_rss_bytes": 207159296,
+      "cpu_ticks": 30,
+      "first_seen_s": 23.128059033304453,
+      "last_seen_s": 23.43183547211811
+    },
+    "1293": {
+      "name": "rustc",
+      "max_rss_bytes": 127774720,
+      "cpu_ticks": 2,
+      "first_seen_s": 23.532601535320282,
+      "last_seen_s": 23.53260257607326
+    },
+    "1303": {
+      "name": "rustc",
+      "max_rss_bytes": 151986176,
+      "cpu_ticks": 7,
+      "first_seen_s": 23.633664639201015,
+      "last_seen_s": 23.6336658061482
+    },
+    "1313": {
+      "name": "rustc",
+      "max_rss_bytes": 157753344,
+      "cpu_ticks": 8,
+      "first_seen_s": 23.73510074429214,
+      "last_seen_s": 23.735101744066924
+    },
+    "1325": {
+      "name": "rustc",
+      "max_rss_bytes": 366784512,
+      "cpu_ticks": 130,
+      "first_seen_s": 23.835868848022074,
+      "last_seen_s": 25.056504021398723
+    },
+    "1363": {
+      "name": "rustc",
+      "max_rss_bytes": 147943424,
+      "cpu_ticks": 8,
+      "first_seen_s": 25.164065252058208,
+      "last_seen_s": 25.164066335186362
+    },
+    "1373": {
+      "name": "rustc",
+      "max_rss_bytes": 155250688,
+      "cpu_ticks": 5,
+      "first_seen_s": 25.264775273390114,
+      "last_seen_s": 25.264776398427784
+    },
+    "1385": {
+      "name": "rustc",
+      "max_rss_bytes": 130875392,
+      "cpu_ticks": 1,
+      "first_seen_s": 25.3655240861699,
+      "last_seen_s": 25.365525169298053
+    },
+    "1395": {
+      "name": "rustc",
+      "max_rss_bytes": 188624896,
+      "cpu_ticks": 15,
+      "first_seen_s": 25.466263940092176,
+      "last_seen_s": 25.57241454627365
+    },
+    "1409": {
+      "name": "rustc",
+      "max_rss_bytes": 188084224,
+      "cpu_ticks": 27,
+      "first_seen_s": 25.67314244201407,
+      "last_seen_s": 25.87455202639103
+    },
+    "1433": {
+      "name": "rustc",
+      "max_rss_bytes": 279498752,
+      "cpu_ticks": 213,
+      "first_seen_s": 25.97922513121739,
+      "last_seen_s": 28.013254687190056
+    },
+    "1471": {
+      "name": "rustc",
+      "max_rss_bytes": 226586624,
+      "cpu_ticks": 146,
+      "first_seen_s": 28.115680042188615,
+      "last_seen_s": 29.536417220253497
+    },
+    "1535": {
+      "name": "rustc",
+      "max_rss_bytes": 201232384,
+      "cpu_ticks": 36,
+      "first_seen_s": 29.637133033014834,
+      "last_seen_s": 29.94304130738601
+    },
+    "1557": {
+      "name": "rustc",
+      "max_rss_bytes": 251781120,
+      "cpu_ticks": 143,
+      "first_seen_s": 30.044189078267664,
+      "last_seen_s": 31.461021716240793
+    },
+    "1693": {
+      "name": "rustc",
+      "max_rss_bytes": 83111936,
+      "cpu_ticks": 1,
+      "first_seen_s": 31.562123279087245,
+      "last_seen_s": 31.562124946154654
+    },
+    "1703": {
+      "name": "rustc",
+      "max_rss_bytes": 242249728,
+      "cpu_ticks": 50,
+      "first_seen_s": 31.66305542597547,
+      "last_seen_s": 32.17252145241946
+    },
+    "1725": {
+      "name": "rustc",
+      "max_rss_bytes": 165007360,
+      "cpu_ticks": 15,
+      "first_seen_s": 32.273556682281196,
+      "last_seen_s": 32.375218329019845
+    },
+    "1739": {
+      "name": "rustc",
+      "max_rss_bytes": 169807872,
+      "cpu_ticks": 6,
+      "first_seen_s": 32.47623360110447,
+      "last_seen_s": 32.476234768051654
+    },
+    "1763": {
+      "name": "rustc",
+      "max_rss_bytes": 196214784,
+      "cpu_ticks": 32,
+      "first_seen_s": 32.577961831353605,
+      "last_seen_s": 32.88284727232531
+    },
+    "1777": {
+      "name": "rustc",
+      "max_rss_bytes": 215277568,
+      "cpu_ticks": 25,
+      "first_seen_s": 32.9843390439637,
+      "last_seen_s": 33.187872796319425
+    },
+    "1813": {
+      "name": "rustc",
+      "max_rss_bytes": 461160448,
+      "cpu_ticks": 1222,
+      "first_seen_s": 33.289022527169436,
+      "last_seen_s": 45.4553037150763
+    },
+    "1949": {
+      "name": "rustc",
+      "max_rss_bytes": 268886016,
+      "cpu_ticks": 217,
+      "first_seen_s": 45.55674328003079,
+      "last_seen_s": 47.69921230711043
+    },
+    "2009": {
+      "name": "rustc",
+      "max_rss_bytes": 296099840,
+      "cpu_ticks": 611,
+      "first_seen_s": 47.80042758025229,
+      "last_seen_s": 53.89365835301578
+    },
+    "2145": {
+      "name": "rustc",
+      "max_rss_bytes": 317431808,
+      "cpu_ticks": 448,
+      "first_seen_s": 53.99511716840789,
+      "last_seen_s": 58.46374783618376
+    },
+    "2247": {
+      "name": "rustc",
+      "max_rss_bytes": 160382976,
+      "cpu_ticks": 18,
+      "first_seen_s": 58.56480611022562,
+      "last_seen_s": 58.66640480142087
+    },
+    "2271": {
+      "name": "rustc",
+      "max_rss_bytes": 104087552,
+      "cpu_ticks": 0,
+      "first_seen_s": 58.76786340819672,
+      "last_seen_s": 58.76786445034668
+    },
+    "2281": {
+      "name": "rustc",
+      "max_rss_bytes": 311246848,
+      "cpu_ticks": 144,
+      "first_seen_s": 58.868587932083756,
+      "last_seen_s": 60.29187001707032
+    },
+    "2357": {
+      "name": "rustc",
+      "max_rss_bytes": 307159040,
+      "cpu_ticks": 137,
+      "first_seen_s": 60.393602416384965,
+      "last_seen_s": 61.71672502113506
+    },
+    "2433": {
+      "name": "rustc",
+      "max_rss_bytes": 214913024,
+      "cpu_ticks": 32,
+      "first_seen_s": 61.81747083738446,
+      "last_seen_s": 62.12428120197728
+    },
+    "2453": {
+      "name": "rustc",
+      "max_rss_bytes": 207220736,
+      "cpu_ticks": 35,
+      "first_seen_s": 62.22499401727691,
+      "last_seen_s": 62.52919142320752
+    },
+    "2473": {
+      "name": "rustc",
+      "max_rss_bytes": 226934784,
+      "cpu_ticks": 47,
+      "first_seen_s": 62.62997403042391,
+      "last_seen_s": 63.03586875228211
+    },
+    "2493": {
+      "name": "rustc",
+      "max_rss_bytes": 174325760,
+      "cpu_ticks": 5,
+      "first_seen_s": 63.13726235926151,
+      "last_seen_s": 63.13726515136659
+    },
+    "2505": {
+      "name": "rustc",
+      "max_rss_bytes": 271355904,
+      "cpu_ticks": 187,
+      "first_seen_s": 63.239595217164606,
+      "last_seen_s": 65.07007186301053
+    },
+    "2571": {
+      "name": "rustc",
+      "max_rss_bytes": 300953600,
+      "cpu_ticks": 96,
+      "first_seen_s": 65.17101322114468,
+      "last_seen_s": 66.09890277730301
+    },
+    "2621": {
+      "name": "rustc",
+      "max_rss_bytes": 311304192,
+      "cpu_ticks": 104,
+      "first_seen_s": 66.1997575093992,
+      "last_seen_s": 67.21394179528579
+    },
+    "2671": {
+      "name": "rustc",
+      "max_rss_bytes": 303632384,
+      "cpu_ticks": 442,
+      "first_seen_s": 67.31469823606312,
+      "last_seen_s": 71.68000375526026
+    },
+    "2753": {
+      "name": "rustc",
+      "max_rss_bytes": 1016795136,
+      "cpu_ticks": 4827,
+      "first_seen_s": 71.78115128027275,
+      "last_seen_s": 119.97083610342816
+    }
+  },
+  "sample_interval_s": 0.1,
+  "clock_ticks_per_s": 100,
+  "deadline_s": 120,
+  "workers": 1,
+  "as_limit_mib": null,
+  "sampled_aggregate_rss_stop_bytes": 3221225472,
+  "memory_stop": false,
+  "user_s": 67.706226,
+  "system_s": 4.275216,
+  "log": "/tmp/c71-byte-streamed-build01-20261011.log"
+}

@@ -1,0 +1,48 @@
+[
+  {
+    "check": "test_c71_gkr_screen",
+    "exit_code": 0,
+    "wall_s": 11.825926064047962,
+    "rss_bytes": 146231296,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "summary": [
+      "11 passed in 11.67s"
+    ]
+  },
+  {
+    "check": "test_c71_byte_tree_contraction",
+    "exit_code": 0,
+    "wall_s": 14.75878657400608,
+    "rss_bytes": 144814080,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "summary": [
+      "3 passed in 14.61s"
+    ]
+  },
+  {
+    "check": "test_c71_docs",
+    "exit_code": 0,
+    "wall_s": 1.0603047399781644,
+    "rss_bytes": 59691008,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "summary": [
+      "9 passed in 0.92s"
+    ]
+  },
+  {
+    "check": "public-plan",
+    "exit_code": 0,
+    "wall_s": 0.04712239094078541,
+    "rss_bytes": 20656128,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "summary": []
+  }
+]

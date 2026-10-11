@@ -1,0 +1,48 @@
+[
+  {
+    "check": "c71_byte_streamed_contraction_budget_support_and_original_coefficients",
+    "exit_code": 0,
+    "wall_s": 0.8839814341627061,
+    "rss_bytes": 31551488,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "summary": [
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 619 filtered out; finished in 0.88s"
+    ]
+  },
+  {
+    "check": "c71_byte_streamed_contraction_full_wire_above_reduced_limit",
+    "exit_code": 0,
+    "wall_s": 0.8267448251135647,
+    "rss_bytes": 28745728,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "summary": [
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 619 filtered out; finished in 0.82s"
+    ]
+  },
+  {
+    "check": "c71_byte_node_contraction_matches_native_lut_cubics_and_terminal_children",
+    "exit_code": 0,
+    "wall_s": 0.6031069755554199,
+    "rss_bytes": 28463104,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "summary": [
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 619 filtered out; finished in 0.60s"
+    ]
+  },
+  {
+    "check": "c71_b12_byte_functions_close_original_byte_macs_in_one_ranged_pcs",
+    "exit_code": 124,
+    "wall_s": 60.007806721143425,
+    "rss_bytes": 90390528,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "summary": []
+  }
+]

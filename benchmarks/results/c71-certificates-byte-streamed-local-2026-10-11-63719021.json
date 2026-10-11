@@ -1,0 +1,453 @@
+{
+  "schema": "volta-c71-byte-streamed-local-v1",
+  "source_git_sha": "63719021eb74d285fe1eede933b20670d498a1eb",
+  "git_dirty": false,
+  "credit": false,
+  "canonical_selected": false,
+  "gpu_execution": false,
+  "certificates_generated": 0,
+  "certificates_verified": 0,
+  "contexts_completed": [],
+  "checks": [
+    {
+      "check": "c71_byte_streamed_contraction_budget_support_and_original_coefficients",
+      "exit_code": 0,
+      "wall_s": 0.8845690567977726,
+      "rss_bytes": 31551488,
+      "as_bytes": 2147483648,
+      "deadline_s": 60,
+      "workers": 1,
+      "summary": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 619 filtered out; finished in 0.88s"
+      ]
+    },
+    {
+      "check": "c71_byte_streamed_contraction_full_wire_above_reduced_limit",
+      "exit_code": 0,
+      "wall_s": 0.8167984369210899,
+      "rss_bytes": 28827648,
+      "as_bytes": 2147483648,
+      "deadline_s": 60,
+      "workers": 1,
+      "summary": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 619 filtered out; finished in 0.81s"
+      ]
+    },
+    {
+      "check": "c71_byte_node_contraction_matches_native_lut_cubics_and_terminal_children",
+      "exit_code": 0,
+      "wall_s": 0.5906958999112248,
+      "rss_bytes": 28467200,
+      "as_bytes": 2147483648,
+      "deadline_s": 60,
+      "workers": 1,
+      "summary": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 619 filtered out; finished in 0.59s"
+      ]
+    },
+    {
+      "check": "c71_b12_packed_mixed_gkr_complete_wire_mac_and_endpoint",
+      "exit_code": 0,
+      "wall_s": 13.148356676101685,
+      "rss_bytes": 129359872,
+      "as_bytes": 2147483648,
+      "deadline_s": 60,
+      "workers": 1,
+      "summary": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 619 filtered out; finished in 13.14s"
+      ]
+    },
+    {
+      "check": "test_c71_gkr_screen",
+      "exit_code": 0,
+      "wall_s": 11.825926064047962,
+      "rss_bytes": 146231296,
+      "as_bytes": 2147483648,
+      "deadline_s": 60,
+      "workers": 1,
+      "summary": [
+        "11 passed in 11.67s"
+      ]
+    },
+    {
+      "check": "test_c71_byte_tree_contraction",
+      "exit_code": 0,
+      "wall_s": 14.75878657400608,
+      "rss_bytes": 144814080,
+      "as_bytes": 2147483648,
+      "deadline_s": 60,
+      "workers": 1,
+      "summary": [
+        "3 passed in 14.61s"
+      ]
+    },
+    {
+      "check": "test_c71_docs",
+      "exit_code": 0,
+      "wall_s": 1.0603047399781644,
+      "rss_bytes": 59691008,
+      "as_bytes": 2147483648,
+      "deadline_s": 60,
+      "workers": 1,
+      "summary": [
+        "9 passed in 0.92s"
+      ]
+    },
+    {
+      "check": "public-plan",
+      "exit_code": 0,
+      "wall_s": 0.04712239094078541,
+      "rss_bytes": 20656128,
+      "as_bytes": 2147483648,
+      "deadline_s": 60,
+      "workers": 1,
+      "summary": []
+    }
+  ],
+  "source_provenance": {
+    "git_sha": "63719021eb74d285fe1eede933b20670d498a1eb",
+    "git_dirty": false,
+    "binary_path": "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+    "binary_sha256": "4c87074f1591bb810d8dee749220a20412916435c2dc49c03e265aa10eb96054",
+    "source_files": {
+      "rust/volta-pcs/src/c71_matrix/byte_function.rs": "90031a0c9c7a365be10f6881a4797113c983c21c8c1a5b7e1cf06494f5a3b95c",
+      "rust/volta-pcs/src/c71_matrix/byte_function/contraction.rs": "35887bdcf40a6b535f2b42c92b03600d3b2e43461de22154f642f0910cc6d56e",
+      "rust/volta-pcs/src/c71_matrix/rms/gkr.rs": "27e0b41a7b94955716fbdca4df2d8c711535c7a112fb1659e93788b4af460912"
+    },
+    "scope": "Bounded local parity; no canonical certificate or hardware result",
+    "build_before_source_commit": true,
+    "final_build": "builds/c71-byte-streamed-build04-20261011.json",
+    "build_source_files_identical_to_clean_commit": true,
+    "profile": {
+      "dependency_opt_level": 2,
+      "volta_pcs_opt_level": 0,
+      "volta_pcs_codegen_units": 64,
+      "global_codegen_units_override": false,
+      "jobs": 1
+    }
+  },
+  "byte_wire_parity": {
+    "cells": 256,
+    "correlations": 425,
+    "exact_wire_FS_original_MAC": true,
+    "layers": 8,
+    "tampered_leaf_rejected": true,
+    "wire_blake3": "8e2e23677c2184276225be7e3f32dacf67a199d49c06552992978269320cfc7e",
+    "wire_bytes": 12684,
+    "work": {
+      "checkpoint_max": 0,
+      "checkpoint_min": 0,
+      "heap_capacity_upper_bytes": 33554432,
+      "original_byte_reads": 2768,
+      "regenerated_rows": 1384,
+      "retained_rows_peak": 173,
+      "retained_state_capacity_peak_bytes": 146728
+    }
+  },
+  "rms_wire_parity": {
+    "byte_work": {
+      "checkpoint_max": 0,
+      "checkpoint_min": 0,
+      "heap_capacity_upper_bytes": 33554432,
+      "original_byte_reads": 1152,
+      "regenerated_rows": 576,
+      "retained_rows_peak": 6,
+      "retained_state_capacity_peak_bytes": 60816
+    },
+    "exact_wire_FS_original_MAC": true,
+    "original_frame_reads_baseline": 243340,
+    "original_frame_reads_candidate": 1100,
+    "wire_bytes": 14320
+  },
+  "public_plan": {
+    "schema": "volta-c71-byte-streamed-public-plan-v1",
+    "credit": false,
+    "input": "benchmarks/results/c71-certificates-rms-shared-support-local-2026-10-11-fe5f9d65/c71-rms-shared-support-20261011.json",
+    "input_sha256": "f0bfa90edb48e12963d5078b4a8aa1e9257a8f5e9736ee38a8b9f45f56067473",
+    "padded_cells": 536870912,
+    "live_cells": 347937024,
+    "merged_support_intervals": 1,
+    "live_lanes_upper": 12,
+    "state_budget_bytes": 8388608,
+    "evaluator_heap_upper_bytes": 33554432,
+    "layers": [
+      {
+        "layer": 0,
+        "rank_upper_per_lane": 4,
+        "checkpoint_upper": 18,
+        "retained_rows_at_upper_checkpoint": 2048,
+        "one_state_bytes_upper_at_checkpoint": 5325088,
+        "original_byte_getter_calls_upper": 83504885760,
+        "original_source_passes_per_lane_upper": 20
+      },
+      {
+        "layer": 1,
+        "rank_upper_per_lane": 8,
+        "checkpoint_upper": 19,
+        "retained_rows_at_upper_checkpoint": 1024,
+        "one_state_bytes_upper_at_checkpoint": 5021984,
+        "original_byte_getter_calls_upper": 87680130048,
+        "original_source_passes_per_lane_upper": 21
+      },
+      {
+        "layer": 2,
+        "rank_upper_per_lane": 16,
+        "checkpoint_upper": 20,
+        "retained_rows_at_upper_checkpoint": 512,
+        "one_state_bytes_upper_at_checkpoint": 4870432,
+        "original_byte_getter_calls_upper": 91855374336,
+        "original_source_passes_per_lane_upper": 22
+      },
+      {
+        "layer": 3,
+        "rank_upper_per_lane": 17,
+        "checkpoint_upper": 20,
+        "retained_rows_at_upper_checkpoint": 512,
+        "one_state_bytes_upper_at_checkpoint": 5165344,
+        "original_byte_getter_calls_upper": 91855374336,
+        "original_source_passes_per_lane_upper": 22
+      },
+      {
+        "layer": 4,
+        "rank_upper_per_lane": 9,
+        "checkpoint_upper": 19,
+        "retained_rows_at_upper_checkpoint": 1024,
+        "one_state_bytes_upper_at_checkpoint": 5611808,
+        "original_byte_getter_calls_upper": 87680130048,
+        "original_source_passes_per_lane_upper": 21
+      },
+      {
+        "layer": 5,
+        "rank_upper_per_lane": 5,
+        "checkpoint_upper": 18,
+        "retained_rows_at_upper_checkpoint": 2048,
+        "one_state_bytes_upper_at_checkpoint": 6504736,
+        "original_byte_getter_calls_upper": 83504885760,
+        "original_source_passes_per_lane_upper": 20
+      },
+      {
+        "layer": 6,
+        "rank_upper_per_lane": 3,
+        "checkpoint_upper": 17,
+        "retained_rows_at_upper_checkpoint": 4096,
+        "one_state_bytes_upper_at_checkpoint": 8290592,
+        "original_byte_getter_calls_upper": 79329641472,
+        "original_source_passes_per_lane_upper": 19
+      },
+      {
+        "layer": 7,
+        "rank_upper_per_lane": 2,
+        "checkpoint_upper": 17,
+        "retained_rows_at_upper_checkpoint": 4096,
+        "one_state_bytes_upper_at_checkpoint": 5931296,
+        "original_byte_getter_calls_upper": 79329641472,
+        "original_source_passes_per_lane_upper": 19
+      }
+    ],
+    "original_byte_getter_calls_upper": 684740063232,
+    "selected_literal_tree_getter_calls": 87686052315136,
+    "scope": "Public rank and support upper for bounded contraction. Literal four-child getters and original byte getters have different units; no speed ratio inferred. Excludes feature arithmetic/transforms, Eq, MAC/FS, source caller, PCS, AES and model execution. Not a complete canonical resource or runtime bound."
+  },
+  "development_failures": [
+    {
+      "kind": "build_timeout",
+      "file": "builds/c71-byte-streamed-build01-20261011.json",
+      "cause": "Global codegen-units override rebuilt dependencies; corrected to prior package-only profile with unchanged limits."
+    },
+    {
+      "kind": "compile_error",
+      "file": "builds/c71-byte-streamed-build02-20261011.json",
+      "cause": "New Work type was not visible to sibling RMS test; visibility corrected."
+    },
+    {
+      "kind": "compound_PCS_test_timeout",
+      "file": "development/c71_b12_byte_functions_close_original_byte_macs_in_one_ranged_pcs.log",
+      "result": {
+        "check": "c71_b12_byte_functions_close_original_byte_macs_in_one_ranged_pcs",
+        "exit_code": 124,
+        "wall_s": 60.007806721143425,
+        "rss_bytes": 90390528,
+        "as_bytes": 2147483648,
+        "deadline_s": 60,
+        "workers": 1,
+        "summary": []
+      },
+      "limitation": "Partial positive output is not a complete PCS test pass. No timeout extension or hardware claim."
+    }
+  ],
+  "development_build_provenance": "Final build 04 is identified by matching source files and binary digest. Intermediate build sources/binaries are not separately frozen; their logs are development evidence, not clean runs of record.",
+  "artifact_directory": "benchmarks/results/c71-certificates-byte-streamed-local-2026-10-11-63719021",
+  "artifacts": [
+    {
+      "path": "clean-rust/c71_b12_packed_mixed_gkr_complete_wire_mac_and_endpoint.log",
+      "bytes": 9742,
+      "sha256": "f581d62a045d8c2477040475a42635167e0cab92bf7ac7707b13af7ded6ff314"
+    },
+    {
+      "path": "clean-rust/c71_byte_node_contraction_matches_native_lut_cubics_and_terminal_children.log",
+      "bytes": 375,
+      "sha256": "9df42080081a1c8b291141b3051b32d21c51ac3e390a033c9baba98b42825119"
+    },
+    {
+      "path": "clean-rust/c71_byte_streamed_contraction_budget_support_and_original_coefficients.log",
+      "bytes": 237,
+      "sha256": "bd9ebc0b842e2fc482f5c1dba97bcdfaae4a0ac0e1b202f95f48ca06785889e5"
+    },
+    {
+      "path": "clean-rust/c71_byte_streamed_contraction_full_wire_above_reduced_limit.log",
+      "bytes": 655,
+      "sha256": "d47ec76b0a1d82f47a0ae550fd047748d2b4d8e351c33868ff491da203bb63e2"
+    },
+    {
+      "path": "clean-rust/checks.json",
+      "bytes": 1470,
+      "sha256": "f5dd73ef28e911f55b185e5f9cdd5af5b1da639b6092ddee1a08cc1d19594ab1"
+    },
+    {
+      "path": "clean-rust/source.json",
+      "bytes": 746,
+      "sha256": "63061f4a39ea5954d5975d233dc80f3ec114ce1f7b52497e704b21f2fa5b2ace"
+    },
+    {
+      "path": "clean-python/checks.json",
+      "bytes": 946,
+      "sha256": "2ad13410e10c62c8a5e918caeb544fb9c22d70badf8e5461dcfdab79ff3b41ff"
+    },
+    {
+      "path": "clean-python/public-plan.json",
+      "bytes": 3336,
+      "sha256": "48b27e15938d7b698847270bbea590fd3b0822c99fec68da404851692fc9e7da"
+    },
+    {
+      "path": "clean-python/public-plan.log",
+      "bytes": 2886,
+      "sha256": "6dc656910a355014b2bfd398f2f290254b8ed5b46835866810ab3227ae44135b"
+    },
+    {
+      "path": "clean-python/source.json",
+      "bytes": 76,
+      "sha256": "00d8d24ba61f0e02251875b89f9abbfda810dd75525a898961c93136b5c799e9"
+    },
+    {
+      "path": "clean-python/test_c71_byte_tree_contraction.log",
+      "bytes": 99,
+      "sha256": "8c51f3293c2341d87694c102431f33e539eaa6640cde5d04cf43acfa5f63fac9"
+    },
+    {
+      "path": "clean-python/test_c71_docs.log",
+      "bytes": 98,
+      "sha256": "dfa60bd85afdc3d7e5c52d064f1c3029d4f412f72b83f2ea150b2ee7c11082e3"
+    },
+    {
+      "path": "clean-python/test_c71_gkr_screen.log",
+      "bytes": 100,
+      "sha256": "43bf0a3c2b051e823861f6b85fc1bfafe9be002e1eec7a69b34b5a1e5113f25b"
+    },
+    {
+      "path": "development/c71_b12_byte_functions_close_original_byte_macs_in_one_ranged_pcs.log",
+      "bytes": 2469,
+      "sha256": "15873f48e3d7928c318572de7b85acc251553363a9eda05d539d8446378c2836"
+    },
+    {
+      "path": "development/c71_byte_node_contraction_matches_native_lut_cubics_and_terminal_children.log",
+      "bytes": 375,
+      "sha256": "dc29f48da13ae4d2f231343df7bfb34c24a8190099c1a04100d29bcf27e720ec"
+    },
+    {
+      "path": "development/c71_byte_streamed_contraction_budget_support_and_original_coefficients.log",
+      "bytes": 237,
+      "sha256": "bd9ebc0b842e2fc482f5c1dba97bcdfaae4a0ac0e1b202f95f48ca06785889e5"
+    },
+    {
+      "path": "development/c71_byte_streamed_contraction_full_wire_above_reduced_limit.log",
+      "bytes": 655,
+      "sha256": "ad9ad5bfde1445a10b64620a2bbbf74df81643d31efe60a6cce5131588ffbee8"
+    },
+    {
+      "path": "development/checks.json",
+      "bytes": 1371,
+      "sha256": "d5288d170e65b2c6e8ec525c3d857c7efbc8a2fdd983f20b9a75e333f27b1409"
+    },
+    {
+      "path": "development/source.json",
+      "bytes": 745,
+      "sha256": "ae463f5ad1d24c23124da3e047c515583fb5fc96a462b7c1e8ad370aceafb626"
+    },
+    {
+      "path": "development-rest/c71_b12_packed_mixed_gkr_complete_wire_mac_and_endpoint.log",
+      "bytes": 9742,
+      "sha256": "0836b510a87f782dfaa0835554a3d7e6081af2ed30aa09fd7cd8759d81963bbb"
+    },
+    {
+      "path": "development-rest/checks.json",
+      "bytes": 362,
+      "sha256": "0242050337735c358af974c7992b35a02c8f792acc81744f8aed83a6122aa75a"
+    },
+    {
+      "path": "development-rest/source.json",
+      "bytes": 745,
+      "sha256": "ae463f5ad1d24c23124da3e047c515583fb5fc96a462b7c1e8ad370aceafb626"
+    },
+    {
+      "path": "builds/c71-byte-streamed-build01-20261011.json",
+      "bytes": 17549,
+      "sha256": "a4be0f3d13f4e688dc9145bf01c3febb5c35f076f624547f6f46b81abc8c6f06"
+    },
+    {
+      "path": "builds/c71-byte-streamed-build01-20261011.log",
+      "bytes": 10908,
+      "sha256": "5176a924216ca3165be447a93491826b52675054b123f0cc68994ef15237042c"
+    },
+    {
+      "path": "builds/c71-byte-streamed-build02-20261011.json",
+      "bytes": 1976,
+      "sha256": "5c6a0ffc4d765d3aeecbd0607fc828c4227299c6983af39258a6f534b50843bd"
+    },
+    {
+      "path": "builds/c71-byte-streamed-build02-20261011.log",
+      "bytes": 15827,
+      "sha256": "f3c36c4996719318e5160b6d0d5c540e1088c85a4ebf1e97715005d09d4f582e"
+    },
+    {
+      "path": "builds/c71-byte-streamed-build03-20261011.json",
+      "bytes": 2502,
+      "sha256": "9226cf8a8e9c3551b4856eaccaf5be2dee6d81ed00ee5a4567817591da89b600"
+    },
+    {
+      "path": "builds/c71-byte-streamed-build03-20261011.log",
+      "bytes": 14061,
+      "sha256": "a8339d58e86413584a26ae49f12bf2ead64be4612cff292362d181a1b734de30"
+    },
+    {
+      "path": "builds/c71-byte-streamed-build04-20261011.json",
+      "bytes": 2507,
+      "sha256": "4fa53006d46bf753f2ad5324ef70e4a2ea20eb031ead898c62bdbac4ca0f4c95"
+    },
+    {
+      "path": "builds/c71-byte-streamed-build04-20261011.log",
+      "bytes": 14061,
+      "sha256": "224c96cc4e82b10a30f9584c25680d28b04ea2af01accf757759fc8b3f95303e"
+    },
+    {
+      "path": "runners/c71-byte-streamed-tests-20261011.py",
+      "bytes": 2672,
+      "sha256": "236bfcb64831461232e4390637f2b7d2566c1e7376025fa9e4be7660d806ff77"
+    },
+    {
+      "path": "runners/c71-byte-streamed-python-20261011.py",
+      "bytes": 1681,
+      "sha256": "59ed29d9f45b809d4f1da4848d480c397a24664e1c3057d43c3b489e9a147f23"
+    },
+    {
+      "path": "runners/c71-byte-streamed-plan-20261011.py",
+      "bytes": 2380,
+      "sha256": "c00ba7b524c714864fe296b73e2f599c3ab208c4dc5501342e1ace0790b36341"
+    },
+    {
+      "path": "runners/c71-byte-streamed-record-20261011.py",
+      "bytes": 4781,
+      "sha256": "c2d90989f557441543f5951e3cb0b8688e3f67bb0da1ce609c0386ae0a1e5697"
+    }
+  ],
+  "scope": "Local original-field/dense-wire/FS/MAC parity and public bounded-state plan only. Complete canonical work, simultaneous physical peak, native/H100 timing, AES and canonical certificates remain unproved. The original compound PCS test timed out."
+}

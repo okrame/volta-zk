@@ -1,0 +1,89 @@
+{
+  "schema": "volta-c71-byte-streamed-public-plan-v1",
+  "credit": false,
+  "input": "benchmarks/results/c71-certificates-rms-shared-support-local-2026-10-11-fe5f9d65/c71-rms-shared-support-20261011.json",
+  "input_sha256": "f0bfa90edb48e12963d5078b4a8aa1e9257a8f5e9736ee38a8b9f45f56067473",
+  "padded_cells": 536870912,
+  "live_cells": 347937024,
+  "merged_support_intervals": 1,
+  "live_lanes_upper": 12,
+  "state_budget_bytes": 8388608,
+  "evaluator_heap_upper_bytes": 33554432,
+  "layers": [
+    {
+      "layer": 0,
+      "rank_upper_per_lane": 4,
+      "checkpoint_upper": 18,
+      "retained_rows_at_upper_checkpoint": 2048,
+      "one_state_bytes_upper_at_checkpoint": 5325088,
+      "original_byte_getter_calls_upper": 83504885760,
+      "original_source_passes_per_lane_upper": 20
+    },
+    {
+      "layer": 1,
+      "rank_upper_per_lane": 8,
+      "checkpoint_upper": 19,
+      "retained_rows_at_upper_checkpoint": 1024,
+      "one_state_bytes_upper_at_checkpoint": 5021984,
+      "original_byte_getter_calls_upper": 87680130048,
+      "original_source_passes_per_lane_upper": 21
+    },
+    {
+      "layer": 2,
+      "rank_upper_per_lane": 16,
+      "checkpoint_upper": 20,
+      "retained_rows_at_upper_checkpoint": 512,
+      "one_state_bytes_upper_at_checkpoint": 4870432,
+      "original_byte_getter_calls_upper": 91855374336,
+      "original_source_passes_per_lane_upper": 22
+    },
+    {
+      "layer": 3,
+      "rank_upper_per_lane": 17,
+      "checkpoint_upper": 20,
+      "retained_rows_at_upper_checkpoint": 512,
+      "one_state_bytes_upper_at_checkpoint": 5165344,
+      "original_byte_getter_calls_upper": 91855374336,
+      "original_source_passes_per_lane_upper": 22
+    },
+    {
+      "layer": 4,
+      "rank_upper_per_lane": 9,
+      "checkpoint_upper": 19,
+      "retained_rows_at_upper_checkpoint": 1024,
+      "one_state_bytes_upper_at_checkpoint": 5611808,
+      "original_byte_getter_calls_upper": 87680130048,
+      "original_source_passes_per_lane_upper": 21
+    },
+    {
+      "layer": 5,
+      "rank_upper_per_lane": 5,
+      "checkpoint_upper": 18,
+      "retained_rows_at_upper_checkpoint": 2048,
+      "one_state_bytes_upper_at_checkpoint": 6504736,
+      "original_byte_getter_calls_upper": 83504885760,
+      "original_source_passes_per_lane_upper": 20
+    },
+    {
+      "layer": 6,
+      "rank_upper_per_lane": 3,
+      "checkpoint_upper": 17,
+      "retained_rows_at_upper_checkpoint": 4096,
+      "one_state_bytes_upper_at_checkpoint": 8290592,
+      "original_byte_getter_calls_upper": 79329641472,
+      "original_source_passes_per_lane_upper": 19
+    },
+    {
+      "layer": 7,
+      "rank_upper_per_lane": 2,
+      "checkpoint_upper": 17,
+      "retained_rows_at_upper_checkpoint": 4096,
+      "one_state_bytes_upper_at_checkpoint": 5931296,
+      "original_byte_getter_calls_upper": 79329641472,
+      "original_source_passes_per_lane_upper": 19
+    }
+  ],
+  "original_byte_getter_calls_upper": 684740063232,
+  "selected_literal_tree_getter_calls": 87686052315136,
+  "scope": "Public rank and support upper for bounded contraction. Literal four-child getters and original byte getters have different units; no speed ratio inferred. Excludes feature arithmetic/transforms, Eq, MAC/FS, source caller, PCS, AES and model execution. Not a complete canonical resource or runtime bound."
+}

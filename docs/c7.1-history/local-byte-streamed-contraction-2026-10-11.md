@@ -111,3 +111,22 @@ Servono misura rappresentativa e conto completo prima della selezione.
 Il benchmark nuovo non è stato eseguito sulla H100. La campagna resta
 conclusa con provider EXITED/runtime assente alle 14:27:28 UTC e zero
 certificati canonici; questa modifica è lavoro locale autorizzato.
+
+
+## Record pulito
+
+Il [record `63719021`](../../benchmarks/results/c71-certificates-byte-streamed-local-2026-10-11-63719021.json)
+ha SHA-256 `322ea3b885e4b288a87cb17e581ec5a3ad6d35bbddf07847cac81eb8b64c58ca`.
+Quattro filtri Rust, 23 test Python e un piano pubblico passano sul
+checkout pulito, sempre un worker/AS 2 GiB/60 s. Massimo RSS della
+ripetizione Rust 129.359.872 B; Python 146.231.296 B. La parità RMS
+completa ridotta passa in 13,148 s; questo è tempo del test locale,
+non del modello o della candidata isolata sulla H100.
+
+Il binario è compilato prima del commit con gli stessi tre file sorgente,
+verificati tramite digest prima e dopo i controlli. SHA-256
+`4c87074f1591bb810d8dee749220a20412916435c2dc49c03e265aa10eb96054`.
+I 34 artefatti, 128.372 B, comprendono log, comandi, provenienza, piano,
+quattro build e il timeout PCS. Gli intermedi delle build di sviluppo
+non sono snapshot sorgente/binario separatamente congelati; la build
+finale 04 è quella legata ai digest e alla ripetizione pulita.

@@ -47,6 +47,12 @@ raffinamento della contrazione quadratica già esistente. Nessun nuovo
 lemma Lean o credito di tempo/memoria canonici. Il test composto con
 PCS termina al limite locale di 60 s e resta un esito negativo conservato.
 
+Il [record pulito `63719021`](../../benchmarks/results/c71-certificates-byte-streamed-local-2026-10-11-63719021.json)
+conserva quattro parità Rust, 23 controlli Python e il piano pubblico
+bounded; 34 artefatti con hash verificati. Wire byte a 256 celle e wire
+RMS mista coincidono con i riferimenti densi. Il timeout PCS non diventa
+un pass; nessuna nuova misura H100 o selezione canonica.
+
 La [candidata locale folded-cache RMS](../c7.1-history/local-rms-fold-cache-2026-10-11.md)
 aggiunge al benchmark ignorato il limite `C71_RMS_BENCH_CACHE_BYTES`
 (default 0, massimo 16777216) e l'hash BLAKE3 della wire. Un eventuale

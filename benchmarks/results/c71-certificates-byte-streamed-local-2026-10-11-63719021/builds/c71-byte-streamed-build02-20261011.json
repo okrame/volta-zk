@@ -1,0 +1,77 @@
+{
+  "command": [
+    "cargo",
+    "rustc",
+    "--offline",
+    "--locked",
+    "-j",
+    "1",
+    "-p",
+    "volta-pcs",
+    "--features",
+    "c71-seed6-reference",
+    "--lib",
+    "--profile",
+    "test",
+    "--config",
+    "profile.dev.package.volta-pcs.opt-level=0",
+    "--config",
+    "profile.dev.package.volta-pcs.codegen-units=64",
+    "--",
+    "-Clink-arg=-fuse-ld=lld",
+    "-Clink-arg=-B/home/okrame/.rustup/toolchains/stable-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/bin/gcc-ld",
+    "-Clink-arg=-Wl,--threads=1"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk/rust",
+  "exit_code": 101,
+  "wall_s": 14.580660043284297,
+  "max_rss_bytes": 1588776960,
+  "sampled_aggregate_live_rss_peak_bytes": 1656369152,
+  "sampled_processes": {
+    "2": {
+      "name": "bash",
+      "max_rss_bytes": 3010560,
+      "cpu_ticks": 0,
+      "first_seen_s": 0.0008681672625243664,
+      "last_seen_s": 14.580433835275471
+    },
+    "3": {
+      "name": "python3",
+      "max_rss_bytes": 11079680,
+      "cpu_ticks": 2,
+      "first_seen_s": 0.0009564170613884926,
+      "last_seen_s": 14.580476168077439
+    },
+    "5": {
+      "name": "timeout",
+      "max_rss_bytes": 1576960,
+      "cpu_ticks": 0,
+      "first_seen_s": 0.0010798340663313866,
+      "last_seen_s": 14.580537293106318
+    },
+    "6": {
+      "name": "cargo",
+      "max_rss_bytes": 53080064,
+      "cpu_ticks": 19,
+      "first_seen_s": 0.10322007210925221,
+      "last_seen_s": 14.478063804097474
+    },
+    "17": {
+      "name": "rustc",
+      "max_rss_bytes": 1587621888,
+      "cpu_ticks": 1420,
+      "first_seen_s": 0.30773279815912247,
+      "last_seen_s": 14.478159971069545
+    }
+  },
+  "sample_interval_s": 0.1,
+  "clock_ticks_per_s": 100,
+  "deadline_s": 120,
+  "workers": 1,
+  "as_limit_mib": null,
+  "sampled_aggregate_rss_stop_bytes": 3221225472,
+  "memory_stop": false,
+  "user_s": 13.437812,
+  "system_s": 1.087985,
+  "log": "/tmp/c71-byte-streamed-build02-20261011.log"
+}

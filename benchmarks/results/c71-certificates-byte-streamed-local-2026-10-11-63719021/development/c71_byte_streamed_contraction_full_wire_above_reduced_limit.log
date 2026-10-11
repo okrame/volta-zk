@@ -1,0 +1,7 @@
+
+running 1 test
+test c71_matrix::byte_function::tests::c71_byte_streamed_contraction_full_wire_above_reduced_limit ... C71_BYTE_STREAMED_WIRE {"cells":256,"correlations":425,"exact_wire_FS_original_MAC":true,"layers":8,"tampered_leaf_rejected":true,"wire_blake3":"8e2e23677c2184276225be7e3f32dacf67a199d49c06552992978269320cfc7e","wire_bytes":12684,"work":{"checkpoint_max":0,"checkpoint_min":0,"heap_capacity_upper_bytes":33554432,"original_byte_reads":2768,"regenerated_rows":1384,"retained_rows_peak":173,"retained_state_capacity_peak_bytes":146728}}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 619 filtered out; finished in 0.82s
+

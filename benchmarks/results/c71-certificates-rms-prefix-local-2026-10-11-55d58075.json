@@ -1,0 +1,155 @@
+{
+  "artifact_directory": "benchmarks/results/c71-certificates-rms-prefix-local-2026-10-11-55d58075",
+  "artifacts": [
+    {
+      "bytes": 2487,
+      "path": "checks.json",
+      "sha256": "e2ae45de85197539ce2734e7286c76a92dc0ed9af060058b00d1fc5077c076a3"
+    },
+    {
+      "bytes": 1435346,
+      "path": "ledger.json",
+      "sha256": "aaf2eebd77e92bf06bbff77f8514b8e3999e1d43963ea8056983b1f127421d6c"
+    },
+    {
+      "bytes": 10291,
+      "path": "recipes.json",
+      "sha256": "b0c69fdb2395a1014f877725b119948af038a48baaebcbb4b336551f87f35853"
+    },
+    {
+      "bytes": 238,
+      "path": "test-0.log",
+      "sha256": "dd63604594fdb088764b9b713b67a1a941ee9b059109d1de521042b64620b57a"
+    },
+    {
+      "bytes": 227,
+      "path": "test-1.log",
+      "sha256": "cedf7d97cd44c4c6db28cedae74cc131e2d680ef7cbb32ea006f094ff4076d8c"
+    },
+    {
+      "bytes": 232,
+      "path": "test-2.log",
+      "sha256": "6838a52b35ed706352567bd8d177ee9fe9cd92ccc2264c986368970803cb64b1"
+    },
+    {
+      "bytes": 8618,
+      "path": "test-3.log",
+      "sha256": "a2c4458c13e666d82f5a5bc7b759f836df2844bd7a2aa085edcd7b5429c59814"
+    },
+    {
+      "bytes": 58453,
+      "path": "test-4.log",
+      "sha256": "32ea4ad9d42efa5d0f479e083c9b7d2032bf33d690d1c858729233c477b9f859"
+    }
+  ],
+  "canonical_contexts_completed": [],
+  "certificates_generated": 0,
+  "certificates_verified": 0,
+  "checks": {
+    "as_bytes": 2147483648,
+    "binary_build": "precommit identical source; build receipt /tmp/c71-rms-prefix-build-20261011/lib.json",
+    "credit": false,
+    "deadline_s": 60,
+    "git_dirty": false,
+    "gpu_execution": false,
+    "runs": [
+      {
+        "command": [
+          "rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+          "c71_rms_incremental_prefix_weights_match_original_at_zero_one_and_extension_points",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "exit_code": 0,
+        "log": "test-0.log",
+        "max_rss_bytes": 15990784,
+        "sha256": "dd63604594fdb088764b9b713b67a1a941ee9b059109d1de521042b64620b57a",
+        "wall_s": 0.005462015978991985
+      },
+      {
+        "command": [
+          "rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+          "sourcewise_cell_coefficients_match_dense_folds_without_cell_wire_matrix",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "exit_code": 0,
+        "log": "test-1.log",
+        "max_rss_bytes": 15990784,
+        "sha256": "cedf7d97cd44c4c6db28cedae74cc131e2d680ef7cbb32ea006f094ff4076d8c",
+        "wall_s": 0.0025464235804975033
+      },
+      {
+        "command": [
+          "rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+          "sourcewise_real_boolean_replay_matches_dense_coefficients_at_selected_depths",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "exit_code": 0,
+        "log": "test-2.log",
+        "max_rss_bytes": 31088640,
+        "sha256": "6838a52b35ed706352567bd8d177ee9fe9cd92ccc2264c986368970803cb64b1",
+        "wall_s": 0.3240580130368471
+      },
+      {
+        "command": [
+          "rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+          "c71_b12_packed_mixed_gkr_complete_wire_mac_and_endpoint",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "exit_code": 0,
+        "log": "test-3.log",
+        "max_rss_bytes": 123015168,
+        "sha256": "a2c4458c13e666d82f5a5bc7b759f836df2844bd7a2aa085edcd7b5429c59814",
+        "wall_s": 2.496387692168355
+      },
+      {
+        "command": [
+          "rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+          "c71_rms_pinned_shared_gate_screen",
+          "--nocapture",
+          "--test-threads=1",
+          "--ignored"
+        ],
+        "exit_code": 0,
+        "log": "test-4.log",
+        "max_rss_bytes": 504307712,
+        "sha256": "32ea4ad9d42efa5d0f479e083c9b7d2032bf33d690d1c858729233c477b9f859",
+        "wall_s": 35.85638997890055
+      }
+    ],
+    "source_git_sha": "55d580756c0816cdf3865f888e03cb4b5b2ef9ad",
+    "workers": 1
+  },
+  "credit": false,
+  "git_dirty": false,
+  "gpu_execution": false,
+  "ledger": {
+    "RMS_additional_named_bytes": 720,
+    "input_provenance": "benchmarks/results/c71-certificates-pool-phase-local-2026-10-11-25a6d958/input-provenance.json",
+    "joint_admitted": false,
+    "path": "benchmarks/results/c71-certificates-rms-prefix-local-2026-10-11-55d58075/ledger.json",
+    "physical_allowance_verified": false
+  },
+  "public_shared_gate_screen": {
+    "canonical_count": false,
+    "depths": 99,
+    "implemented": false,
+    "merged_full_support_products_per_pair": 13139543,
+    "original_full_support_products_per_pair": 59434260,
+    "programs": 159,
+    "ratio": 0.2210769175892827
+  },
+  "recipe_source": {
+    "norms": 421,
+    "old_tokens": 0,
+    "path": "artifact/c7.1-pod/h100-components-20261009T194100Z/gamma-inputs/oracle-plan-original.json",
+    "recipe_sha256": "b0c69fdb2395a1014f877725b119948af038a48baaebcbb4b336551f87f35853",
+    "sha256": "a26a68972307e17b85086791a1c4870ae66b90a905922472a391267574a8fdf5"
+  },
+  "schema": "volta-c71-RMS-prefix-local-v1",
+  "scope": "Exact incremental prefix weights only. Core gate products and original frame callbacks unchanged; shared gate census is unimplemented analysis, not canonical work or runtime.",
+  "source_git_sha": "55d580756c0816cdf3865f888e03cb4b5b2ef9ad"
+}

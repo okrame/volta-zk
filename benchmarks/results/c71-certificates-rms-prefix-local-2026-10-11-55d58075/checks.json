@@ -1,0 +1,78 @@
+{
+  "source_git_sha": "55d580756c0816cdf3865f888e03cb4b5b2ef9ad",
+  "git_dirty": false,
+  "as_bytes": 2147483648,
+  "deadline_s": 60,
+  "workers": 1,
+  "credit": false,
+  "gpu_execution": false,
+  "runs": [
+    {
+      "command": [
+        "rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+        "c71_rms_incremental_prefix_weights_match_original_at_zero_one_and_extension_points",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "wall_s": 0.005462015978991985,
+      "max_rss_bytes": 15990784,
+      "log": "test-0.log",
+      "sha256": "dd63604594fdb088764b9b713b67a1a941ee9b059109d1de521042b64620b57a"
+    },
+    {
+      "command": [
+        "rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+        "sourcewise_cell_coefficients_match_dense_folds_without_cell_wire_matrix",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "wall_s": 0.0025464235804975033,
+      "max_rss_bytes": 15990784,
+      "log": "test-1.log",
+      "sha256": "cedf7d97cd44c4c6db28cedae74cc131e2d680ef7cbb32ea006f094ff4076d8c"
+    },
+    {
+      "command": [
+        "rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+        "sourcewise_real_boolean_replay_matches_dense_coefficients_at_selected_depths",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "wall_s": 0.3240580130368471,
+      "max_rss_bytes": 31088640,
+      "log": "test-2.log",
+      "sha256": "6838a52b35ed706352567bd8d177ee9fe9cd92ccc2264c986368970803cb64b1"
+    },
+    {
+      "command": [
+        "rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+        "c71_b12_packed_mixed_gkr_complete_wire_mac_and_endpoint",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "wall_s": 2.496387692168355,
+      "max_rss_bytes": 123015168,
+      "log": "test-3.log",
+      "sha256": "a2c4458c13e666d82f5a5bc7b759f836df2844bd7a2aa085edcd7b5429c59814"
+    },
+    {
+      "command": [
+        "rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+        "c71_rms_pinned_shared_gate_screen",
+        "--nocapture",
+        "--test-threads=1",
+        "--ignored"
+      ],
+      "exit_code": 0,
+      "wall_s": 35.85638997890055,
+      "max_rss_bytes": 504307712,
+      "log": "test-4.log",
+      "sha256": "32ea4ad9d42efa5d0f479e083c9b7d2032bf33d690d1c858729233c477b9f859"
+    }
+  ],
+  "binary_build": "precommit identical source; build receipt /tmp/c71-rms-prefix-build-20261011/lib.json"
+}

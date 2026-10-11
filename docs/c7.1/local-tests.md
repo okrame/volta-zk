@@ -66,7 +66,8 @@ Si valuta il backing differito delle colonne A di padding pubblico.
 La [scansione incrementale dei pesi RMS](../c7.1-history/h100-certificates-rms-prefix-2026-10-11.md)
 ricalcola soltanto il suffisso cambiato di Eq, senza divisioni. Passano
 prefissi zero/uno, coefficienti densi e wire/FS/MAC della fixture mista;
-ledger RMS +720 B. Il core da 844.006.203.160.300 prodotti e i callback
+il [record pulito](../../benchmarks/results/c71-certificates-rms-prefix-local-2026-10-11-55d58075.json)
+conserva test, screen e ledger RMS +720 B. Il core da 844.006.203.160.300 prodotti e i callback
 restano invariati. Lo screen dei gate condivisi sulle 159 ricette è solo
 un conto pubblico, non una riduzione implementata o un tempo completo.
 Nessun nuovo lemma di raffinamento runtime; l’identità usa il prodotto Eq originale.

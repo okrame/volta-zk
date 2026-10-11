@@ -15,6 +15,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 import c71_campaign_measure as monitor
 
 
+@pytest.mark.parametrize('soft', [monitor.resource.RLIM_INFINITY, 128 << 30, 64 << 30, 2 << 30])
+def test_monitor_caps_CPU_AS_without_raising_tighter_limits_or_changing_hard_limit(monkeypatch, soft):
+    limits = [soft, monitor.resource.RLIM_INFINITY]
+    monkeypatch.setattr(monitor.resource, 'getrlimit', lambda kind: tuple(limits))
+    def set_limit(kind, value):
+        assert kind == monitor.resource.RLIMIT_AS
+        assert value[1] == monitor.resource.RLIM_INFINITY
+        limits[:] = value
+    monkeypatch.setattr(monitor.resource, 'setrlimit', set_limit)
+    expected = min(soft, monitor.CPU_AS_LIMIT) if soft != monitor.resource.RLIM_INFINITY else monitor.CPU_AS_LIMIT
+    assert monitor.bound_cpu_address_space() == expected
+
+
 def record(sequence, event=None, **overrides):
     census = dict(payload_limit_bytes=monitor.PAYLOAD_LIMIT,
                   runtime_allowance_bytes=monitor.RUNTIME_ALLOWANCE,

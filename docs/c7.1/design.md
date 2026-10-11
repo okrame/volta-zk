@@ -56,7 +56,12 @@ conserva i controlli e il ledger aggiornato:
 O=0 5.890.193.534 B, margine 15.386.498 B; O=150/300 superano il
 payload di 23.935.070/63.256.638 B. Variante ancora diagnostica,
 nessuna selezione canonica o verifica H100 del nuovo lifetime.
-Il trial `a-async04` prosegue sulla SHA precedente senza modifiche.
+Il [trial `a-async04`](../c7.1-history/h100-certificates-pool-physical-2026-10-11.md)
+è terminato a 82/512 gruppi per stop fisico: 6.416.604.672 B. Pool backing
+e RSS invariati nello spike, trace 458.216 B; GPU idle, zero root/certificati.
+Il pool non risolve la crescita esterna. Il launcher CPU a 128 GiB è una
+deviazione conservata; il monitor ora impone autonomamente AS ≤64 GiB.
+Si valuta il backing differito delle colonne A di padding pubblico.
 
 La [campagna precedente](../c7.1-history/h100-followup-close-2026-10-10.md)
 è chiusa con provider EXITED alle 21:24:47 UTC del 10 ottobre e zero

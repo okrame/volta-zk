@@ -7,6 +7,7 @@ import math
 import os
 from pathlib import Path
 import re
+import resource
 import signal
 import stat
 import subprocess
@@ -22,6 +23,7 @@ GPU_LIMIT = 80_000_000_000
 GPU_MARGIN = 1 << 30
 DISK_MARGIN = 20_000_000_000
 SAMPLE_SECONDS = 0.2
+CPU_AS_LIMIT = 64 << 30
 MAX_RECORD_BYTES = 1 << 20
 MAX_SMAPS_FAILURES = 64
 CGROUP = Path('/sys/fs/cgroup')
@@ -382,7 +384,15 @@ def interrupted(signum, _frame):
     raise KeyboardInterrupt(f'monitor interrupted by signal {signum}')
 
 
+def bound_cpu_address_space():
+    soft, hard = resource.getrlimit(resource.RLIMIT_AS)
+    if soft == resource.RLIM_INFINITY or soft > CPU_AS_LIMIT:
+        resource.setrlimit(resource.RLIMIT_AS, (CPU_AS_LIMIT, hard))
+    return resource.getrlimit(resource.RLIMIT_AS)[0]
+
+
 def run(args):
+    cpu_as_limit = bound_cpu_address_space()
     start = time.time()
     diagnostic_cache = getattr(args, 'diagnostic_cache_bytes', 0)
     if diagnostic_cache not in (0, 16 << 20) or (diagnostic_cache and args.mode == 'calibration'):
@@ -537,6 +547,7 @@ def run(args):
             'label': args.label, 'mode': args.mode, 'gpu_uuid': gpu_uuid,
             'authorized_end_epoch': deadline, 'close_reserve_seconds': reserve,
             'compute_end_epoch': end, 'command': args.command, 'exit_code': code,
+            'monitor_cpu_AS_limit_bytes': cpu_as_limit,
             'start_unix_seconds': start, 'wall_seconds': time.monotonic() - started,
             'samples': samples, 'incomplete_samples': incomplete,
             'tracked_descendant_identities': len(remembered),

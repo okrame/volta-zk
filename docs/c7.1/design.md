@@ -21,11 +21,15 @@ i due negativi e la diagnosi errata iniziale rimangono conservati.
 Coefficienti Goldilocks, EXP30/decoder e check produzione passano;
 prefisso Rust `cfg(test)`, max512 celle/pesatura per sorgente, correlazioni
 ideali. Screen chunk32/batch4096: massimo nuovo payload130.378.444B;
-conto traffico per tile superseduto dalla rettifica per batch preparata.
-Prototipo CUDA con conteggi nei registri e chunk512 preparato, compilazione
-H100 pendente; nessun piano contatori u32 globale o riga ausiliaria15.
-Shared massimo40.896B entro232.448B H100; parità CUDA dei159 programmi,
-runtime/caller comune, residuo fold/core e conto simultaneo restano aperti.
+conto traffico per tile rettificato a2.442.164.939.108.352B per batch,
+zero distinti esclusi; vecchio record immutato, nessuna misura HBM.
+Il [primo componente GPU](../c7.1-history/h100-rms-native-prefix-component-2026-10-11.md)
+passa18 finestre da12B originali, tre piccoli programmi e chunk512;
+conteggi nei registri, nessun piano u32 globale o riga ausiliaria15.
+Non è il caller completo. Shared massimo40.896B entro232.448B H100;
+export dei159 programmi alle profondità1/48/99 preparato per parità GPU,
+ancora da compilare. Runtime/caller comune, residuo fold/core e conto
+simultaneo restano aperti; prototipo non selezionato nel runner canonico.
 Distributività, selector/mask/wire, ricostruzione/count bounds/modulo,
 determinismo dei frame e lifetime/capacità CUDA sono premesse non scaricate.
 **Zero certificati canonici**: O=0 incompleto, O=150/300 non iniziati.

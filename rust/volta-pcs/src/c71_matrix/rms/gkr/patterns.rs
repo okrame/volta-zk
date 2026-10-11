@@ -329,6 +329,41 @@ impl<'a> PackedReplay<'a> {
             "scope":"Public plan geometry and CPU parallel scheduling parity only; no CUDA launch, source transfer, fold/core or complete resource credit"})
     }
 
+    #[cfg(test)]
+    pub(super) fn write_native_replay_fixture(&self, selected_depth: usize, path: &std::path::Path) {
+        use std::io::Write;
+        let mut file = std::io::BufWriter::new(std::fs::OpenOptions::new().write(true).create_new(true)
+            .open(path).unwrap());
+        file.write_all(b"C71RMD01").unwrap();
+        for n in [self.programs.len(), self.planes.len(), selected_depth] {
+            file.write_all(&(n as u32).to_le_bytes()).unwrap();
+        }
+        for (p, (program, plan)) in self.programs.iter().zip(&self.plans).enumerate() {
+            let parallel = plan.parallel(program.ports);
+            for n in [p, program.ports, parallel.slots, parallel.boundaries.len()-1,
+                parallel.ops.len(), parallel.outputs.len()] {
+                file.write_all(&(n as u32).to_le_bytes()).unwrap();
+            }
+            for n in parallel.boundaries.iter().chain(parallel.ops.iter().flatten()).chain(parallel.outputs.iter()) {
+                file.write_all(&n.to_le_bytes()).unwrap();
+            }
+            for live in [u64::MAX, 0x8421_137f_aab9_7654, 0] {
+                let mut input = (0..program.ports).map(|i|
+                    (i as u64 + 7).wrapping_mul(0x9e37_79b9_7f4a_7c15).rotate_left(i as u32 % 64) & live)
+                    .collect::<Vec<_>>();
+                input[0] = 0; input[1] = live;
+                let (expected, _) = program.replay_layer(&input, live,
+                    selected_depth.min(program.levels.len())).unwrap();
+                assert_eq!(parallel.replay(&input), expected, "native fixture program {p}");
+                assert_eq!(expected.len(), parallel.outputs.len());
+                file.write_all(&live.to_le_bytes()).unwrap();
+                for n in input.iter().chain(&expected) { file.write_all(&n.to_le_bytes()).unwrap(); }
+            }
+        }
+        file.flush().unwrap();file.get_ref().sync_all().unwrap();
+        assert!(file.get_ref().metadata().unwrap().len() <= 256 << 20);
+    }
+
     /// Compatibility seam for the original scalar coefficient callback.
     /// A batch coefficient loop can read planes directly to avoid Fp3 rows.
     pub(super) fn row(&self, lane: usize, out: &mut [Fp3]) -> Result<(), String> {

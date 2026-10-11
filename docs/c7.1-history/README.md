@@ -1,5 +1,7 @@
 # C7.1 — archivio e provenienza
 
+[Primo prefisso RMS GPU da frame originali e rettifica del traffico](h100-rms-native-prefix-component-2026-10-11.md).
+
 [Parità RMS composta della fixture onesta corretta](h100-rms-moments-rust-parity-2026-10-11.md).
 
 [Censimento RMS pubblico e correzione della diagnosi della fixture](h100-rms-moments-census-2026-10-11.md).

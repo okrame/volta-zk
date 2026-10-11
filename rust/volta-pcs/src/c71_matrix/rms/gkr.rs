@@ -2059,6 +2059,10 @@ mod tests {
         for depth in first..=last {
             if std::env::var("C71_RMS_SCREEN_NATIVE_REPLAY").as_deref()==Ok("1") {
                 let replay=patterns::PackedReplay::new_validated(&programs,depth-1,geometry[depth-1]).unwrap();
+                if let Some(path)=std::env::var_os("C71_RMS_NATIVE_REPLAY_FIXTURE") {
+                    assert_eq!(first,last,"one original depth per exclusive native fixture");
+                    replay.write_native_replay_fixture(depth-1,std::path::Path::new(&path));
+                }
                 let counts=programs.iter().map(|p| {
                     let mut ops=[0usize;3];
                     for g in gates(p,depth) {ops[match g.op {Op::And=>0,Op::Xor=>1,Op::Copy=>2}]+=1;}

@@ -18,7 +18,8 @@ La fixture ha tre piccoli programmi e correlazioni ideali. Il builder
 Rust misto resta `cfg(test)`, max512 celle, con pesi per sorgente;
 non è un caller CUDA o una prova canonica. Nessun credito per AES,
 modello, PCS canonico, tempo completo, conto simultaneo o raffinamento.
-I [due negativi precedenti e la rettifica](h100-rms-moments-census-2026-10-11.md)+rimangono conservati con i loro hash, senza trasformarli in pass.
+I [due negativi precedenti e la rettifica](h100-rms-moments-census-2026-10-11.md)
+rimangono conservati con i loro hash, senza trasformarli in pass.
 
 Bundle privato `artifact/c7.1-pod/certificates-rms-moments04-rust03-20261011`:
 47file/37.255.100B, manifest SHA256

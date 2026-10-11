@@ -30,8 +30,7 @@ Non è il caller completo. Shared massimo40.896B entro232.448B H100;
 il [replay GPU originale](../c7.1-history/h100-rms-native-replay-2026-10-11.md)
 passa159 programmi alle profondità GKR1/48/99:1.431 casi,258.022.656
 confronti,64 posizioni e tre liveness per programma. Programmi provati
-separatamente; momenti misti dei159 programmi e tutte99 profondità GPU
-ancora da verificare. Build CPU:18 campioni GPU556.793.856B non attribuiti;
+separatamente su quella SHA; la parità mista159/99 successiva è sotto. Build CPU:18 campioni GPU556.793.856B non attribuiti;
 nessuna affermazione di isolamento. Validazione canonica, residuo fold/core
 e conto simultaneo restano aperti; nessuna selezione canonica.
 Distributività, selector/mask/wire, ricostruzione/count bounds/modulo,
@@ -45,8 +44,8 @@ sette buffer privati per profondità,651 allocazioni/rilasci per prova;
 arena massima7.053.056 B e fisico campionato613.847.040 B, senza credito
 al picco istantaneo o al conto simultaneo canonico. GPU idle dopo cleanup.
 Passano anche owner/trace/pool, simboli/capability Rust e check produzione;
-i tre negativi iniziali restano conservati. Fold/core residuo, indici/byte,
-momenti misti159/99 profondità e conto completo restano aperti;
+i tre negativi iniziali restano conservati. Su quella SHA fold/core e indici erano CPU; le parità GPU successive
+sono sotto. Byte GPU e conto completo restano aperti;
 nessuna selezione canonica.
 
 La [sorgente originale mapped](../c7.1-history/h100-rms-mapped-source-parity-2026-10-11.md)
@@ -70,14 +69,22 @@ passa [17 check sulla SHA pulita `7d3ea109`](../c7.1-history/h100-rms-index-pari
 live densi per3/256/421 programmi, stesso wire/FS/MAC e caller originale.
 Per caso1.210 rilasci/allocazioni, arena7.693.056 B, owner42.496 B; fisico
 campionato624.652.288 B, zero incompleti. Negativo owner conservato.
-Il [trial preparato159/99](../c7.1-history/h100-rms-mixed-all-prepared-2026-10-11.md)
-usa gli stessi dati ridotti pinned e byte CPU contracted32 MiB con supporto
-compilato; skip pubblico dei programmi assenti,32 errori owner da verificare.
-Richiede confronto wire320.320 B/hash del record CPU e verificatore originale.
-Byte/statistica GPU, conto completo e raffinamento restano aperti.
-Il [conto del calendario GPU preparato](../c7.1-history/h100-rms-native-schedule-prepared-2026-10-11.md)
-usa le launch del runtime attuale, incluse tutte le riletture del tail;
-confronto con contatori conservati e screen canonico da eseguire sul pod.
+Il [trial misto159/99 verificato](../c7.1-history/h100-rms-mixed-all-parity-2026-10-11.md)
+passa18 check sulla SHA pulita `92afea54`, inclusi32 rifiuti owner:512 celle,
+511 vive, tutte159 ricette/99 profondità, verificatore GKR/FS/MAC originale.
+Wire320.320 B/hash e9.919 correlazioni ideali coincidono coi quattro CPU;
+byte CPU contracted32 MiB. Prover124,478 s: cella122,265, indici0,434,
+byte0,892; nessuna coppia temporale controllata o extrapolazione canonica.
+Arena111.058.432 B,1.288 allocazioni/rilasci, owner42.496 B e arena finale0;
+fisico campionato1.276.010.496 B, zero incompleti. Build GPU556.793.856 B
+non attribuita, nessun isolamento/picco completo dedotto.
+Il [calendario GPU verificato](../c7.1-history/h100-rms-native-schedule-parity-2026-10-11.md)
+passa7 controlli e9 documentali, riproduce le787.599 launch effettive.
+In dominio canonico conta182.626.739.937 launch a cap256,11.418.407.370
+a cap4096;25 riletture tail/profondità,1.328.755.507.200 posizioni padded.
+Screen analitico `credit:false`, senza tempo/capacità completa ammessi.
+Serve ridurre launch/replay; byte/statistica GPU, conto simultaneo e
+raffinamento restano aperti. Pod RUNNING e guard originale attivo.
 
 **Zero certificati canonici**: O=0 incompleto, O=150/300 non iniziati.
 Backend RMS completo, conto simultaneo e premessa di raffinamento aperti.

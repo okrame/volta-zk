@@ -1,0 +1,53 @@
+F........                                                                [100%]
+=================================== FAILURES ===================================
+___________ test_current_handoff_structure_links_and_code_references ___________
+
+    def test_current_handoff_structure_links_and_code_references():
+        assert {p.name for p in CURRENT.iterdir()} == {
+            "design.md", "specs.md", "security.md", "local-tests.md", "runpod-tests.md"}
+        assert not list((ROOT / "docs").glob("c7.1-*.md"))
+        assert not (ROOT / "docs/procedures/c71-calibration.md").exists()
+        failures = []
+        frozen = {"c7.1-gemma31b-design.md", "prototype-status-history-2026-09-07.md",
+                  "prototype-status-history-2026-09-10.md"}
+        files = [*CURRENT.glob("*.md"),
+                 *(p for p in HISTORY.glob("*.md") if p.name not in frozen), ROOT / "AGENTS.md",
+                 ROOT / "README.md", ROOT / "docs/README.md"]
+        for path in files:
+            body = path.read_text()
+            for target in LINK.findall(body):
+                url = urlsplit(target)
+                if url.scheme or url.netloc:
+                    continue
+                dest = (path.parent / unquote(url.path)).resolve() if url.path else path
+                if not dest.exists():
+                    failures.append(f"{path.relative_to(ROOT)}: missing {target}")
+                elif url.fragment and dest.suffix == ".md" and unquote(url.fragment) not in anchors(dest.read_text()):
+                    failures.append(f"{path.relative_to(ROOT)}: missing anchor {target}")
+>       assert not failures, "\n".join(failures)
+E       AssertionError: docs/c7.1-history/c7.1-committed-mac-opening.md: missing ../../sota/2025-1214-hobbit.md
+E         docs/c7.1-history/c7.1-cut-witness.md: missing ../../sota/2025-717-gkr-boolean-circuits-sublinear-ram.md
+E         docs/c7.1-history/c7.1-feasibility.md: missing ../../sota/2025-1214-hobbit.md
+E         docs/c7.1-history/c7.1-feasibility.md: missing ../../sota/2025-1473-time-space-tradeoffs-sumcheck.md
+E         docs/c7.1-history/c7.1-paired-rs-opening.md: missing ../../sota/2025-1187-ligerito.md
+E         docs/c7.1-history/c7.1-recursive-rs-opening.md: missing ../../sota/2025-1187-ligerito.md
+E         docs/c7.1-history/c7.1-requantization.md: missing ../../sota/2025-717-gkr-boolean-circuits-sublinear-ram.md
+E         docs/c7.1-history/c7.1-requantization.md: missing ../../sota/2025-1473-time-space-tradeoffs-sumcheck.md
+E         docs/c7.1-history/c7.1-requantization.md: missing ../../sota/2025-1473-time-space-tradeoffs-sumcheck.md
+E         docs/c7.1-history/c7.1-rne-indicators.md: missing ../../sota/2025-717-gkr-boolean-circuits-sublinear-ram.md
+E         docs/c7.1-history/c7.1-rne-indicators.md: missing ../../sota/2025-1473-time-space-tradeoffs-sumcheck.md
+E         docs/c7.1-history/construction-screen.md: missing ../../sota/2025-1473-time-space-tradeoffs-sumcheck.md
+E         docs/c7.1-history/construction-screen.md: missing ../../sota/2025-1660-dory-streaming-vole.md
+E         docs/c7.1-history/construction-screen.md: missing ../../sota/2025-1660-dory-streaming-vole.md
+E         docs/c7.1-history/construction-screen.md: missing ../../sota/2026-1561-liftwhir.md
+E         docs/c7.1-history/construction-screen.md: missing ../../sota/2021-1043-brakedown.md
+E         docs/c7.1-history/construction-screen.md: missing ../../sota/2025-917-jagged-pcs.md
+E         docs/c7.1-history/construction-screen.md: missing ../../sota/2024-1970-scribe.md
+E         docs/c7.1-history/preflight.md: missing ../../sota/2025-1660-dory-streaming-vole.md
+E         docs/c7.1-history/preflight.md: missing ../../sota/2025-717-gkr-boolean-circuits-sublinear-ram.md
+E       assert not ['docs/c7.1-history/c7.1-committed-mac-opening.md: missing ../../sota/2025-1214-hobbit.md', 'docs/c7.1-history/c7.1-cu...025-1187-ligerito.md', 'docs/c7.1-history/c7.1-recursive-rs-opening.md: missing ../../sota/2025-1187-ligerito.md', ...]
+
+tests/test_c71_docs.py:61: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_c71_docs.py::test_current_handoff_structure_links_and_code_references
+1 failed, 8 passed in 1.07s

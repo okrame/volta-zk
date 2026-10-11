@@ -1,0 +1,32 @@
+{
+  "support": {
+    "path": "benchmarks/results/c71-certificates-rms-shared-support-local-2026-10-11-fe5f9d65/c71-rms-shared-support-20261011.json",
+    "sha256": "f0bfa90edb48e12963d5078b4a8aa1e9257a8f5e9736ee38a8b9f45f56067473"
+  },
+  "census": [
+    {
+      "path": "benchmarks/results/c71-certificates-rms-moments-census-2026-10-11-dc0064d7/depths-1-17.log",
+      "sha256": "621e250f07a9ed12e4d01519d2884328b7b2e680f8e121f8a5ca13b2afe4fbab"
+    },
+    {
+      "path": "benchmarks/results/c71-certificates-rms-moments-census-2026-10-11-dc0064d7/depths-18-34.log",
+      "sha256": "8b4bc7adedba748cafc67d0c82c17fa3c39a82afd154349ab5e345bd6eda2707"
+    },
+    {
+      "path": "benchmarks/results/c71-certificates-rms-moments-census-2026-10-11-dc0064d7/depths-35-51.log",
+      "sha256": "ca065e22f8bc27114c088c10ef07741fa4877be3991c77e57d187086ab9ef64f"
+    },
+    {
+      "path": "benchmarks/results/c71-certificates-rms-moments-census-2026-10-11-dc0064d7/depths-52-68.log",
+      "sha256": "9ab3fb14c7d287992f8f25362236e67d0ea336c4475a35f69701a4f0061882d4"
+    },
+    {
+      "path": "benchmarks/results/c71-certificates-rms-moments-census-2026-10-11-dc0064d7/depths-69-85.log",
+      "sha256": "ceae7b96434f0b2e316bf2a1fa710c0acda8800c3ae0d0b2cafa2b5bada17165"
+    },
+    {
+      "path": "benchmarks/results/c71-certificates-rms-moments-census-2026-10-11-dc0064d7/depths-86-99.log",
+      "sha256": "79778fc3ea3c856742cbc1011af66e7e47bc256d472a3577f2b4354bde58e962"
+    }
+  ]
+}

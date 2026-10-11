@@ -1,0 +1,111 @@
+{
+  "schema": "volta-c71-rms-native-schedule-negative-v1",
+  "source_git_sha": "4f0ec2c25a25f2b1ec5b01ca473857bae4a9a057",
+  "git_dirty": false,
+  "credit": false,
+  "canonical_certificates": 0,
+  "checks": {
+    "schedule-tests": {
+      "authorized_end_epoch": 1791763980.494,
+      "close_reserve_seconds": 1800,
+      "command": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_c71_rms_native_schedule.py"
+      ],
+      "compute_end_epoch": 1791762180.494,
+      "diagnostic_file_cache_reserve_bytes": 0,
+      "exit_code": 0,
+      "gpu_uuid": "GPU-e05e977b-758d-f3f4-cbe8-5720b83d1ae1",
+      "incomplete_samples": 0,
+      "label": "schedule-tests",
+      "mode": "component",
+      "monitor_cpu_AS_limit_bytes": 68719476736,
+      "observed_payload_peak_bytes": null,
+      "payload_limit_bytes": null,
+      "physical_complete_peak": false,
+      "physical_temporary_limit_bytes": 6174015488,
+      "resource_failure": null,
+      "sample_interval_clock": "Linux CLOCK_MONOTONIC, absolute nanoseconds on this host boot",
+      "sample_interval_scope": "Start/end bracket collection of the resource sample; no GPU synchronization or instantaneous peak. External profiler clock alignment requires a matching clock or explicit anchor.",
+      "sampled_host_rss_peak_bytes": 62386176,
+      "sampled_stable_temporary_peak_bytes": 62386176,
+      "sampled_whole_gpu_peak_bytes": 0,
+      "samples": 2,
+      "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+      "sampling_target_seconds": 0.2,
+      "smaps_read_failures": 0,
+      "stable_samples": 2,
+      "start_unix_seconds": 1791757541.3416774,
+      "tracked_descendant_identities": 2,
+      "wall_seconds": 0.4012505728751421
+    },
+    "docs": {
+      "authorized_end_epoch": 1791763980.494,
+      "close_reserve_seconds": 1800,
+      "command": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_c71_docs.py"
+      ],
+      "compute_end_epoch": 1791762180.494,
+      "diagnostic_file_cache_reserve_bytes": 0,
+      "exit_code": 1,
+      "gpu_uuid": "GPU-e05e977b-758d-f3f4-cbe8-5720b83d1ae1",
+      "incomplete_samples": 0,
+      "label": "docs",
+      "mode": "component",
+      "monitor_cpu_AS_limit_bytes": 68719476736,
+      "observed_payload_peak_bytes": null,
+      "payload_limit_bytes": null,
+      "physical_complete_peak": false,
+      "physical_temporary_limit_bytes": 6174015488,
+      "resource_failure": null,
+      "sample_interval_clock": "Linux CLOCK_MONOTONIC, absolute nanoseconds on this host boot",
+      "sample_interval_scope": "Start/end bracket collection of the resource sample; no GPU synchronization or instantaneous peak. External profiler clock alignment requires a matching clock or explicit anchor.",
+      "sampled_host_rss_peak_bytes": 79941632,
+      "sampled_stable_temporary_peak_bytes": 79941632,
+      "sampled_whole_gpu_peak_bytes": 0,
+      "samples": 7,
+      "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+      "sampling_target_seconds": 0.2,
+      "smaps_read_failures": 0,
+      "stable_samples": 7,
+      "start_unix_seconds": 1791757541.7937424,
+      "tracked_descendant_identities": 4,
+      "wall_seconds": 1.4036397449672222
+    }
+  },
+  "failure": {
+    "epoch": 1791757543.2178407,
+    "error_type": "AssertionError",
+    "message": "('docs', 1)",
+    "credit": false
+  },
+  "status": "Seven launch schedule checks pass including exact7830 original GPU counter; documentation check fails because ignored research inputs were not made available in the fresh worktree. Eight other documentation tests pass. No canonical schedule generated.",
+  "private_bundle": "artifact/c7.1-pod/certificates-rms-native-schedule01-negative-20261011",
+  "raw_members": 22,
+  "archive_bytes": 5410,
+  "archive_sha256": "9045df5d9f11af5fc943806d47242f4e710d0b08b906cc4fd4eda766c3cefe95",
+  "manifest_sha256": "d1fa7cf73a306229bd2def557d2f82b923f7531621a1718abac3498f74522069",
+  "public_artifacts": [
+    {
+      "path": "benchmarks/results/c71-certificates-rms-native-schedule-negative-2026-10-11-4f0ec2c2/docs.log",
+      "sha256": "12e488f1e7a474dc96f68df4fdcea2ce4e1d767b23cbd266c14fa98ebe59202a",
+      "bytes": 4242
+    },
+    {
+      "path": "benchmarks/results/c71-certificates-rms-native-schedule-negative-2026-10-11-4f0ec2c2/schedule-tests.log",
+      "sha256": "c16e476727b44651fa5f7dfdcafb51f1ac3060244911f7766ff0b1b89f467249",
+      "bytes": 98
+    }
+  ]
+}

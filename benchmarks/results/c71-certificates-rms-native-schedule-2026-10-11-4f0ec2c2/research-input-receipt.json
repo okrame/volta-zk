@@ -1,0 +1,59 @@
+{
+  "status": "Existing immutable ignored research Markdown inputs exposed via symlinks in fresh worktree; originals unchanged, no download/conversion",
+  "files": [
+    {
+      "path": "sota/2021-1043-brakedown.md",
+      "target": "/workspace/volta-zk/sota/2021-1043-brakedown.md",
+      "bytes": 189554,
+      "sha256": "242717d9bfbc0f833efc7c8610d5ce415cea5753f8118c88a11f1118c05bac6b"
+    },
+    {
+      "path": "sota/2024-1970-scribe.md",
+      "target": "/workspace/volta-zk/sota/2024-1970-scribe.md",
+      "bytes": 110530,
+      "sha256": "a717afc1eb793fec2b9914d9949de4bf469b3953d29133d0c57d5b3445050e2f"
+    },
+    {
+      "path": "sota/2025-1187-ligerito.md",
+      "target": "/workspace/volta-zk/sota/2025-1187-ligerito.md",
+      "bytes": 59869,
+      "sha256": "b4062ac884356911ffd7a367553d58062e95cac47faa9c3eace82c0b94c12c3a"
+    },
+    {
+      "path": "sota/2025-1214-hobbit.md",
+      "target": "/workspace/volta-zk/sota/2025-1214-hobbit.md",
+      "bytes": 189393,
+      "sha256": "f5754080284f8a5311a195954f9e4f973add4d27663e596460258febfa66870e"
+    },
+    {
+      "path": "sota/2025-1473-time-space-tradeoffs-sumcheck.md",
+      "target": "/workspace/volta-zk/sota/2025-1473-time-space-tradeoffs-sumcheck.md",
+      "bytes": 169508,
+      "sha256": "c107dc57fbcf4dd6aded870090000e1ca1c73a60c283a28ff77ee953a48bfeb8"
+    },
+    {
+      "path": "sota/2025-1660-dory-streaming-vole.md",
+      "target": "/workspace/volta-zk/sota/2025-1660-dory-streaming-vole.md",
+      "bytes": 151384,
+      "sha256": "d5c3d1e1943d1b6f1f4cf3990c2a1765c013e94693a547822d98e36b5bed0548"
+    },
+    {
+      "path": "sota/2025-717-gkr-boolean-circuits-sublinear-ram.md",
+      "target": "/workspace/volta-zk/sota/2025-717-gkr-boolean-circuits-sublinear-ram.md",
+      "bytes": 104094,
+      "sha256": "73ca21771d9075d8f8e1cab047f587c6db7b859a112a88404d352567ad6e945b"
+    },
+    {
+      "path": "sota/2025-917-jagged-pcs.md",
+      "target": "/workspace/volta-zk/sota/2025-917-jagged-pcs.md",
+      "bytes": 82407,
+      "sha256": "2c06de7e165b49b4d22fcbf7e6918fba8af3359de7e1114c480237f7be8c738e"
+    },
+    {
+      "path": "sota/2026-1561-liftwhir.md",
+      "target": "/workspace/volta-zk/sota/2026-1561-liftwhir.md",
+      "bytes": 92189,
+      "sha256": "d64c94d1ca0176b90b9ed85a8b6958ce29c9ca3e32fdace91aa5f36d6b2f1328"
+    }
+  ]
+}

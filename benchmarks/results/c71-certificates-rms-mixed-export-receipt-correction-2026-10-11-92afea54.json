@@ -1,0 +1,64 @@
+{
+  "schema": "volta-c71-export-receipt-correction-v1",
+  "source_git_sha": "92afea54a21b09ccf40b2b8056665bbbfd297fe6",
+  "git_dirty": false,
+  "credit": false,
+  "rerun": false,
+  "original_receipt": {
+    "path": "artifact/c7.1-pod/certificates-rms-mixed-all01-export02-20261011/export-receipt.json",
+    "sha256": "0595cd659138a52e313e0f562df99018d037c6d4f97ac4a63404f62f859ea1c2"
+  },
+  "original_record": {
+    "path": "benchmarks/results/c71-certificates-rms-mixed-all-2026-10-11-92afea54.json",
+    "sha256": "5613d34e308d2a9a3bdf17a62d121abf78633f633f86f78e3da559ef4dc09d54"
+  },
+  "correction": "The export receipt prose says167 raw files; actual verified manifest and original public record contain168. Only that prose count is corrected; all raw files, hashes, original manifests and trial results remain unchanged.",
+  "actual_raw_members": 168,
+  "first_export_partial_public_files": [
+    {
+      "path": "benchmarks/results/c71-certificates-rms-mixed-all-2026-10-11-92afea54/cell-tail-owner.log",
+      "bytes": 99,
+      "sha256": "05e2571b05d0f4c21ea39a85a3488158a683c00761beee6ca0a64d394a5c5240"
+    },
+    {
+      "path": "benchmarks/results/c71-certificates-rms-mixed-all-2026-10-11-92afea54/compiled-bind-live.log",
+      "bytes": 217,
+      "sha256": "cc771277de058b6fddfa329a02fef7d70b9b92a66646d17505a428e0ddc07093"
+    },
+    {
+      "path": "benchmarks/results/c71-certificates-rms-mixed-all-2026-10-11-92afea54/gpu-cell-tail-coefficients.log",
+      "bytes": 1015,
+      "sha256": "5c8b6e5355b52417cb0fe2b08beecfbfc378733ea1b6dc808ec8a59efa953f85"
+    },
+    {
+      "path": "benchmarks/results/c71-certificates-rms-mixed-all-2026-10-11-92afea54/gpu-index-coefficients.log",
+      "bytes": 765,
+      "sha256": "773b21764d77f34f9515daeefd246b34828a16f7a9b2f22a6d84e74e10de9210"
+    },
+    {
+      "path": "benchmarks/results/c71-certificates-rms-mixed-all-2026-10-11-92afea54/gpu-mixed-all.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "benchmarks/results/c71-certificates-rms-mixed-all-2026-10-11-92afea54/gpu-original-caller.log",
+      "bytes": 1814,
+      "sha256": "9e1243b560a90659dbd4636d3500086c35a70a7e3eaf944f4dd7a738093f2eeb"
+    },
+    {
+      "path": "benchmarks/results/c71-certificates-rms-mixed-all-2026-10-11-92afea54/index-owner.log",
+      "bytes": 99,
+      "sha256": "d43977d92875d99c82d88477f74f5fa6d73f314b66fe181b3487c5d755ef0a37"
+    },
+    {
+      "path": "benchmarks/results/c71-certificates-rms-mixed-all-2026-10-11-92afea54/native-rms-regression.log",
+      "bytes": 915,
+      "sha256": "066c887e18e9fa836faf7a19b7611bb38bd3f52f7d9c5e930ad4da2d57bae734"
+    },
+    {
+      "path": "benchmarks/results/c71-certificates-rms-mixed-all-2026-10-11-92afea54/owner-tests.log",
+      "bytes": 99,
+      "sha256": "1ac9667e7eec41d8af6ada87e97ae61764932c899168ebc4d33a17da969ff1fb"
+    }
+  ]
+}

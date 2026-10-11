@@ -1,0 +1,264 @@
+{
+  "schema": "volta-c71-rms-native-schedule-v1",
+  "source_git_sha": "4f0ec2c25a25f2b1ec5b01ca473857bae4a9a057",
+  "git_dirty": false,
+  "credit": false,
+  "gpu_execution": false,
+  "canonical_selected": false,
+  "canonical_certificates": 0,
+  "status": "Seven schedule and nine documentation checks pass; both canonical analytic schedules finish; exact launch total matches frozen original GPU coefficient oracle7830 and all159/99 runtime787599",
+  "checks": {
+    "schedule-tests": {
+      "authorized_end_epoch": 1791763980.494,
+      "close_reserve_seconds": 1800,
+      "command": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_c71_rms_native_schedule.py"
+      ],
+      "compute_end_epoch": 1791762180.494,
+      "diagnostic_file_cache_reserve_bytes": 0,
+      "exit_code": 0,
+      "gpu_uuid": "GPU-e05e977b-758d-f3f4-cbe8-5720b83d1ae1",
+      "incomplete_samples": 0,
+      "label": "schedule-tests",
+      "mode": "component",
+      "monitor_cpu_AS_limit_bytes": 68719476736,
+      "observed_payload_peak_bytes": null,
+      "payload_limit_bytes": null,
+      "physical_complete_peak": false,
+      "physical_temporary_limit_bytes": 6174015488,
+      "resource_failure": null,
+      "sample_interval_clock": "Linux CLOCK_MONOTONIC, absolute nanoseconds on this host boot",
+      "sample_interval_scope": "Start/end bracket collection of the resource sample; no GPU synchronization or instantaneous peak. External profiler clock alignment requires a matching clock or explicit anchor.",
+      "sampled_host_rss_peak_bytes": 61857792,
+      "sampled_stable_temporary_peak_bytes": 61857792,
+      "sampled_whole_gpu_peak_bytes": 0,
+      "samples": 2,
+      "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+      "sampling_target_seconds": 0.2,
+      "smaps_read_failures": 0,
+      "stable_samples": 2,
+      "start_unix_seconds": 1791757692.896804,
+      "tracked_descendant_identities": 2,
+      "wall_seconds": 0.40101585909724236
+    },
+    "docs": {
+      "authorized_end_epoch": 1791763980.494,
+      "close_reserve_seconds": 1800,
+      "command": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_c71_docs.py"
+      ],
+      "compute_end_epoch": 1791762180.494,
+      "diagnostic_file_cache_reserve_bytes": 0,
+      "exit_code": 0,
+      "gpu_uuid": "GPU-e05e977b-758d-f3f4-cbe8-5720b83d1ae1",
+      "incomplete_samples": 0,
+      "label": "docs",
+      "mode": "component",
+      "monitor_cpu_AS_limit_bytes": 68719476736,
+      "observed_payload_peak_bytes": null,
+      "payload_limit_bytes": null,
+      "physical_complete_peak": false,
+      "physical_temporary_limit_bytes": 6174015488,
+      "resource_failure": null,
+      "sample_interval_clock": "Linux CLOCK_MONOTONIC, absolute nanoseconds on this host boot",
+      "sample_interval_scope": "Start/end bracket collection of the resource sample; no GPU synchronization or instantaneous peak. External profiler clock alignment requires a matching clock or explicit anchor.",
+      "sampled_host_rss_peak_bytes": 61362176,
+      "sampled_stable_temporary_peak_bytes": 61362176,
+      "sampled_whole_gpu_peak_bytes": 0,
+      "samples": 7,
+      "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+      "sampling_target_seconds": 0.2,
+      "smaps_read_failures": 0,
+      "stable_samples": 7,
+      "start_unix_seconds": 1791757693.3442447,
+      "tracked_descendant_identities": 3,
+      "wall_seconds": 1.4037177450954914
+    },
+    "canonical-schedule-256": {
+      "authorized_end_epoch": 1791763980.494,
+      "close_reserve_seconds": 1800,
+      "command": [
+        "python3",
+        "scripts/c71_rms_native_schedule.py",
+        "/workspace/volta-zk-schedule-20261011/benchmarks/results/c71-certificates-rms-shared-support-local-2026-10-11-fe5f9d65/c71-rms-shared-support-20261011.json",
+        "/workspace/volta-zk-schedule-20261011/benchmarks/results/c71-certificates-rms-moments-census-2026-10-11-dc0064d7",
+        "256"
+      ],
+      "compute_end_epoch": 1791762180.494,
+      "diagnostic_file_cache_reserve_bytes": 0,
+      "exit_code": 0,
+      "gpu_uuid": "GPU-e05e977b-758d-f3f4-cbe8-5720b83d1ae1",
+      "incomplete_samples": 1,
+      "label": "canonical-schedule-256",
+      "mode": "component",
+      "monitor_cpu_AS_limit_bytes": 68719476736,
+      "observed_payload_peak_bytes": null,
+      "payload_limit_bytes": null,
+      "physical_complete_peak": false,
+      "physical_temporary_limit_bytes": 6174015488,
+      "resource_failure": null,
+      "sample_interval_clock": "Linux CLOCK_MONOTONIC, absolute nanoseconds on this host boot",
+      "sample_interval_scope": "Start/end bracket collection of the resource sample; no GPU synchronization or instantaneous peak. External profiler clock alignment requires a matching clock or explicit anchor.",
+      "sampled_host_rss_peak_bytes": 75862016,
+      "sampled_stable_temporary_peak_bytes": 75862016,
+      "sampled_whole_gpu_peak_bytes": 0,
+      "samples": 3,
+      "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+      "sampling_target_seconds": 0.2,
+      "smaps_read_failures": 0,
+      "stable_samples": 2,
+      "start_unix_seconds": 1791757694.8204443,
+      "tracked_descendant_identities": 2,
+      "wall_seconds": 0.6033017206937075
+    },
+    "canonical-schedule-4096": {
+      "authorized_end_epoch": 1791763980.494,
+      "close_reserve_seconds": 1800,
+      "command": [
+        "python3",
+        "scripts/c71_rms_native_schedule.py",
+        "/workspace/volta-zk-schedule-20261011/benchmarks/results/c71-certificates-rms-shared-support-local-2026-10-11-fe5f9d65/c71-rms-shared-support-20261011.json",
+        "/workspace/volta-zk-schedule-20261011/benchmarks/results/c71-certificates-rms-moments-census-2026-10-11-dc0064d7",
+        "4096"
+      ],
+      "compute_end_epoch": 1791762180.494,
+      "diagnostic_file_cache_reserve_bytes": 0,
+      "exit_code": 0,
+      "gpu_uuid": "GPU-e05e977b-758d-f3f4-cbe8-5720b83d1ae1",
+      "incomplete_samples": 1,
+      "label": "canonical-schedule-4096",
+      "mode": "component",
+      "monitor_cpu_AS_limit_bytes": 68719476736,
+      "observed_payload_peak_bytes": null,
+      "payload_limit_bytes": null,
+      "physical_complete_peak": false,
+      "physical_temporary_limit_bytes": 6174015488,
+      "resource_failure": null,
+      "sample_interval_clock": "Linux CLOCK_MONOTONIC, absolute nanoseconds on this host boot",
+      "sample_interval_scope": "Start/end bracket collection of the resource sample; no GPU synchronization or instantaneous peak. External profiler clock alignment requires a matching clock or explicit anchor.",
+      "sampled_host_rss_peak_bytes": 75587584,
+      "sampled_stable_temporary_peak_bytes": 75587584,
+      "sampled_whole_gpu_peak_bytes": 0,
+      "samples": 3,
+      "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+      "sampling_target_seconds": 0.2,
+      "smaps_read_failures": 0,
+      "stable_samples": 2,
+      "start_unix_seconds": 1791757695.5429845,
+      "tracked_descendant_identities": 2,
+      "wall_seconds": 0.6030145082622766
+    }
+  },
+  "occupancy": {
+    "canonical-schedule-256.memory.csv": {
+      "samples": 3,
+      "nonzero_samples": 0,
+      "max_bytes": 0
+    },
+    "canonical-schedule-4096.memory.csv": {
+      "samples": 3,
+      "nonzero_samples": 0,
+      "max_bytes": 0
+    },
+    "docs.memory.csv": {
+      "samples": 7,
+      "nonzero_samples": 0,
+      "max_bytes": 0
+    },
+    "schedule-tests.memory.csv": {
+      "samples": 2,
+      "nonzero_samples": 0,
+      "max_bytes": 0
+    }
+  },
+  "mixed_all_counter_comparison": {
+    "actual_gpu_source_sha": "92afea54a21b09ccf40b2b8056665bbbfd297fe6",
+    "launches": 787599,
+    "matches_actual_native_stats": true,
+    "raw_log_sha256": "b3d11115d2b55bc2819d8d0f4bba55ed81174db64b79e4db5d726c7342093bf2",
+    "credit": false
+  },
+  "canonical_counts": {
+    "256": {
+      "capacity": 256,
+      "tail_pair_capacity": 16,
+      "total_cell_launches": 182626734069,
+      "total_cell_index_launches": 182626739937,
+      "total_tail_padded_source_positions": 1328755507200
+    },
+    "4096": {
+      "capacity": 4096,
+      "tail_pair_capacity": 256,
+      "total_cell_launches": 11418401502,
+      "total_cell_index_launches": 11418407370,
+      "total_tail_padded_source_positions": 1328755507200
+    }
+  },
+  "previous_negative": "benchmarks/results/c71-certificates-rms-native-schedule-negative-2026-10-11-4f0ec2c2.json",
+  "actual_gpu_record": "benchmarks/results/c71-certificates-rms-mixed-all-2026-10-11-92afea54.json",
+  "exclusions": [
+    "actual canonical runtime/traffic/instantaneous peak",
+    "complete simultaneous capacity",
+    "byte/statistic/caller/PCS/AES/FS/MAC work"
+  ],
+  "note": "CPU AS64 GiB, one worker, physical/arena/deadline stops. Canonical screen256 has one incomplete sample and receives no stable peak credit. Existing immutable ignored research Markdown inputs exposed via symlinks after first worktree negative; originals unchanged. VM performed only editing/control and streaming artifact verification.",
+  "private_bundle": "artifact/c7.1-pod/certificates-rms-native-schedule02-20261011",
+  "raw_members": 40,
+  "archive_bytes": 127557,
+  "archive_sha256": "b29f18d02d45861200380bb4ab374897437bbac81e96d795343a6f5e1ebf18bc",
+  "manifest_sha256": "9b7215c001a2f18bdb393cbc136536bd063917f0987f57f5507ffe67488eb69c",
+  "public_artifacts": [
+    {
+      "path": "benchmarks/results/c71-certificates-rms-native-schedule-2026-10-11-4f0ec2c2/canonical-schedule-256.json",
+      "bytes": 587614,
+      "sha256": "3ca3358a9bcf079642af1ec5464640b005ac153674d0d1e0d3b9e34eb7952e6e"
+    },
+    {
+      "path": "benchmarks/results/c71-certificates-rms-native-schedule-2026-10-11-4f0ec2c2/canonical-schedule-4096.json",
+      "bytes": 577012,
+      "sha256": "a122069ab606b21ffa6786107babbd7118e089803d90335bf42cb2e8e609984b"
+    },
+    {
+      "path": "benchmarks/results/c71-certificates-rms-native-schedule-2026-10-11-4f0ec2c2/docs.log",
+      "bytes": 98,
+      "sha256": "cf4a86beda174ef3aa5e60990bd6952cd514a613d1dc54b6e29a1d56445cb646"
+    },
+    {
+      "path": "benchmarks/results/c71-certificates-rms-native-schedule-2026-10-11-4f0ec2c2/input-provenance.json",
+      "bytes": 1484,
+      "sha256": "8b1840f9ad1f2b5c2d73e4f741ba24f8a6fc9d4f8f9e653cb37e3c4f91da21ec"
+    },
+    {
+      "path": "benchmarks/results/c71-certificates-rms-native-schedule-2026-10-11-4f0ec2c2/mixed-all-counter-comparison.json",
+      "bytes": 242,
+      "sha256": "995340d674676a537ef3c77919683d0e2c59a9c71135a11eca475586d6786015"
+    },
+    {
+      "path": "benchmarks/results/c71-certificates-rms-native-schedule-2026-10-11-4f0ec2c2/mixed-all-schedule.json",
+      "bytes": 138103,
+      "sha256": "db024d26abc4de4e1b1145edb3957abb1a4c312648e7806736b68632049a592b"
+    },
+    {
+      "path": "benchmarks/results/c71-certificates-rms-native-schedule-2026-10-11-4f0ec2c2/research-input-receipt.json",
+      "bytes": 2339,
+      "sha256": "19f1b13d6576f7269df349c4f6d3d219299ab7b5bf196a02e040bed22d78e498"
+    },
+    {
+      "path": "benchmarks/results/c71-certificates-rms-native-schedule-2026-10-11-4f0ec2c2/schedule-tests.log",
+      "bytes": 98,
+      "sha256": "c16e476727b44651fa5f7dfdcafb51f1ac3060244911f7766ff0b1b89f467249"
+    }
+  ]
+}

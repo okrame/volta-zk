@@ -1,0 +1,12 @@
+
+running 7 tests
+test c71_matrix::range::windowed::native::tests::c71_b12_native_rms_index_lengths_history_and_owner_fail_closed ... ok
+test c71_matrix::range::windowed::native::tests::c71_b12_native_rms_packet_lengths_and_owner_identity_fail_closed ... ok
+test c71_matrix::range::windowed::native::tests::c71_b12_native_rms_source_failure_keeps_uncertain_checkpoint ... ok
+test c71_matrix::range::windowed::native::tests::c71_b12_native_rms_source_lengths_and_foreign_owner_fail_closed ... ok
+test c71_matrix::range::windowed::native::tests::c71_b12_native_rms_source_owner_and_immutable_lifetime ... ok
+test c71_matrix::range::windowed::native::tests::c71_b12_native_rms_symbols_are_required ... ok
+test c71_matrix::range::windowed::native::tests::c71_b12_native_rms_tail_point_round_and_owner_fail_closed ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 627 filtered out; finished in 218.49s
+

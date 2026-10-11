@@ -1,0 +1,262 @@
+{
+  "schema": "volta-c71-rms-fold-cache-local-v1",
+  "source_git_sha": "886b493d91a22b39c343e587d5810aba4fb4172a",
+  "git_dirty": false,
+  "credit": false,
+  "canonical_selected": false,
+  "gpu_execution": false,
+  "certificates_generated": 0,
+  "certificates_verified": 0,
+  "contexts_completed": [],
+  "source_provenance": {
+    "base_sha": "7a61adc703a5deb5e9392b6506685ec31b04f5a4",
+    "binary_build_git_dirty": true,
+    "binary_source_identical": true,
+    "source_files": {
+      "rust/volta-pcs/src/c71_matrix/rms/gkr.rs": "eb64ab36eb9ea93454b4c3a570eebc09f2144d0c76044b3862dba13529ef0d04",
+      "rust/volta-pcs/src/c71_matrix/rms/gkr/cell_cache.rs": "88d6236c74c708f2ad86b7031ac681dd92c73f04d8a5012624c76ea499b71cd2"
+    },
+    "binary_path": "rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+    "binary_bytes": 97223904,
+    "binary_sha256": "b72cb8840e1324dff79ae74ba0be9472f30bc54fdc6ec4888f404dd9df8e6d85",
+    "source_git_sha": "886b493d91a22b39c343e587d5810aba4fb4172a",
+    "git_dirty": false,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1
+  },
+  "checks": [
+    {
+      "filter": "c71_rms_folded_cache_",
+      "exit_code": 0,
+      "wall_s": 0.01431400515139103,
+      "max_rss_bytes": 11964416,
+      "as_bytes": 2147483648,
+      "deadline_s": 60,
+      "workers": 1,
+      "test_summary": [
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 613 filtered out; finished in 0.01s"
+      ]
+    },
+    {
+      "filter": "c71_b12_packed_mixed_gkr_complete_wire_mac_and_endpoint",
+      "exit_code": 0,
+      "wall_s": 6.143952952232212,
+      "max_rss_bytes": 123617280,
+      "as_bytes": 2147483648,
+      "deadline_s": 60,
+      "workers": 1,
+      "test_summary": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 615 filtered out; finished in 6.14s"
+      ]
+    },
+    {
+      "filter": "sourcewise_cell_coefficients_match_dense_folds_without_cell_wire_matrix",
+      "exit_code": 0,
+      "wall_s": 0.004409459885209799,
+      "max_rss_bytes": 14561280,
+      "as_bytes": 2147483648,
+      "deadline_s": 60,
+      "workers": 1,
+      "test_summary": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 615 filtered out; finished in 0.00s"
+      ]
+    },
+    {
+      "filter": "c71_b12_boolean_first_cell_round_exact_all_gate_patterns",
+      "exit_code": 0,
+      "wall_s": 0.0037642098031938076,
+      "max_rss_bytes": 9936896,
+      "as_bytes": 2147483648,
+      "deadline_s": 60,
+      "workers": 1,
+      "test_summary": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 615 filtered out; finished in 0.00s"
+      ]
+    },
+    {
+      "filter": "documents",
+      "exit_code": 0,
+      "wall_s": 1.150676011107862,
+      "max_rss_bytes": 59650048,
+      "as_bytes": 2147483648,
+      "deadline_s": 60,
+      "workers": 1,
+      "test_summary": [
+        "9 passed in 1.01s"
+      ]
+    },
+    {
+      "filter": "public-screen",
+      "exit_code": 0,
+      "wall_s": 0.09691703272983432,
+      "max_rss_bytes": 16150528,
+      "as_bytes": 2147483648,
+      "deadline_s": 60,
+      "workers": 1,
+      "test_summary": []
+    }
+  ],
+  "development_provenance": {
+    "initial_build_source_snapshot_preserved": false,
+    "initial_build_is_intermediate": true,
+    "final_build_sources_identical_to_record": true,
+    "initial_document_command_failed": "system python3 has no pytest; venv retry passed"
+  },
+  "wire_parity": {
+    "GPU_execution": false,
+    "PCS_composition_excluded": true,
+    "cells": 8,
+    "correlations": 472,
+    "credit": false,
+    "dense_prove_ns": 1212381775,
+    "exact_wire_FS_RNG_original_MAC": true,
+    "folded_cache_candidates": [
+      {
+        "budget_bytes": 1,
+        "cell_original_frames": 36,
+        "cell_owned_heap_peak_bytes": 20083,
+        "exact_wire_FS_original_MAC": true
+      },
+      {
+        "budget_bytes": 4096,
+        "cell_original_frames": 24,
+        "cell_owned_heap_peak_bytes": 20083,
+        "exact_wire_FS_original_MAC": true
+      },
+      {
+        "budget_bytes": 16777216,
+        "cell_original_frames": 12,
+        "cell_owned_heap_peak_bytes": 45379,
+        "exact_wire_FS_original_MAC": true
+      }
+    ],
+    "packed_prove_ns": 1213117482,
+    "programs": 3,
+    "wire_bytes": 14320
+  },
+  "cache_limit_bytes": 16777216,
+  "baseline_original_row_callbacks": 998927195904,
+  "candidate_original_row_callbacks": 718142017536,
+  "core_coefficient_Fp3_products_unchanged": 751359028655932,
+  "scope": "exact reduced parity and public cell-fold accounting; excludes complete representative cache benchmark, byte endpoint acceleration, caller statistics, PCS, real model, AES and full certificate",
+  "provider_state": "remained stopped; no provider action in this local follow-up",
+  "artifact_directory": "benchmarks/results/c71-certificates-rms-fold-cache-local-2026-10-11-886b493d",
+  "artifacts": [
+    {
+      "path": "c71_b12_boolean_first_cell_round_exact_all_gate_patterns.log",
+      "bytes": 212,
+      "sha256": "c3c45c98d99794071220b82733e301e5be6c3099568429699e3709e7cc17e8f8"
+    },
+    {
+      "path": "c71_b12_packed_mixed_gkr_complete_wire_mac_and_endpoint.log",
+      "bytes": 8998,
+      "sha256": "5e031d372586858483a53b696bd4a06d3a0d4f5e1acbe7a052c454bed6a6c9c1"
+    },
+    {
+      "path": "c71_rms_folded_cache_.log",
+      "bytes": 424,
+      "sha256": "4a27315737164d664e344039bdf962729875770b07696fd28f00d91e734fdd28"
+    },
+    {
+      "path": "checks.json",
+      "bytes": 1918,
+      "sha256": "8211dae468bf126e561dbdbe4b6bbea87bbfe1062b8f9528b8233ca289deb2cf"
+    },
+    {
+      "path": "development-c71-rms-fold-cache-build-20261011.json",
+      "bytes": 2148,
+      "sha256": "26fed4623aa1fb83d11ce6a19d824533873c88089eb7b4c349542aef7d34feb8"
+    },
+    {
+      "path": "development-c71-rms-fold-cache-build-20261011.log",
+      "bytes": 14061,
+      "sha256": "224c96cc4e82b10a30f9584c25680d28b04ea2af01accf757759fc8b3f95303e"
+    },
+    {
+      "path": "development-c71-rms-fold-cache-build-final-20261011.json",
+      "bytes": 2151,
+      "sha256": "f5b5ff843af90e3da93e1e763b12b36315df500f206aa2c5ee01f55dfd9d0639"
+    },
+    {
+      "path": "development-c71-rms-fold-cache-build-final-20261011.log",
+      "bytes": 14061,
+      "sha256": "84f8e69625d493cc86d89823677249f33e3e438ad39539c8560c7efa9043db31"
+    },
+    {
+      "path": "development-c71-rms-fold-cache-docs-20261011.log",
+      "bytes": 41,
+      "sha256": "b72695fcb3e2889d64484497e2ea8079822f1532c2505f226cde970957bedf7d"
+    },
+    {
+      "path": "development-c71-rms-fold-cache-docs-venv-20261011.log",
+      "bytes": 98,
+      "sha256": "b6c0dc4a99248cfd9e5fd675fc5706f2fcb5706cc9b7546944b1873378fe5ae0"
+    },
+    {
+      "path": "development-c71-rms-fold-cache-provenance-20261011.json",
+      "bytes": 582,
+      "sha256": "f49a6bfee30c141dd903f3a57e9db6b3eac2d6d72593636406e72395092616ea"
+    },
+    {
+      "path": "development-c71-rms-fold-cache-screen-20261011.py",
+      "bytes": 3414,
+      "sha256": "ab7b0cee3538ecbc4152e8b75981cc36c3d9ecee6b66a5f8a3e0f0d52ae35932"
+    },
+    {
+      "path": "development-c71-rms-fold-cache-unit-20261011.log",
+      "bytes": 326,
+      "sha256": "93f45255009da6d2a52aa17b992c5c904bef1f5530781fc5c162e53a46a47efb"
+    },
+    {
+      "path": "development-c71-rms-fold-cache-wire-20261011.log",
+      "bytes": 8618,
+      "sha256": "a54de18435e8a347917a7f7d82acbb4a1ac007a232d6bb916b051ff675eee244"
+    },
+    {
+      "path": "development-final-tests/0.log",
+      "bytes": 424,
+      "sha256": "6f4361576ab38a73abd62f9073462a5dda745b5d73c4dcac0ddd1ccfa64ed83f"
+    },
+    {
+      "path": "development-final-tests/1.log",
+      "bytes": 8998,
+      "sha256": "4065273bdf0fb9c95c0b6d83531a8adb5efacbb40524bf6e3bb4b8eaf93e1785"
+    },
+    {
+      "path": "development-final-tests/2.log",
+      "bytes": 227,
+      "sha256": "0912e4248467003f014cde6e00fe4c4c5eae051e068d02428b9e23ff07253bc1"
+    },
+    {
+      "path": "development-final-tests/3.log",
+      "bytes": 212,
+      "sha256": "c3c45c98d99794071220b82733e301e5be6c3099568429699e3709e7cc17e8f8"
+    },
+    {
+      "path": "development-final-tests/results.json",
+      "bytes": 1044,
+      "sha256": "2e5fd3ae2384da2af0454240b45784ce5c2d5cb00c4ce53070c34aabf4e659f1"
+    },
+    {
+      "path": "documents.log",
+      "bytes": 98,
+      "sha256": "b70ba6eae386aa2016a6ad73bb42d027729039603b9d0aad6d8f6886ddff166c"
+    },
+    {
+      "path": "public-screen.log",
+      "bytes": 33951,
+      "sha256": "b143baa678e536e7ba66084354c781e58b89287c0bad6c3fb802bb680720f530"
+    },
+    {
+      "path": "source.json",
+      "bytes": 730,
+      "sha256": "67838994d0a67aaf2d331290601d809bcbbf1f20a97c50e9b3730207bc86835a"
+    },
+    {
+      "path": "sourcewise_cell_coefficients_match_dense_folds_without_cell_wire_matrix.log",
+      "bytes": 227,
+      "sha256": "0912e4248467003f014cde6e00fe4c4c5eae051e068d02428b9e23ff07253bc1"
+    }
+  ]
+}

@@ -1,0 +1,84 @@
+{
+  "command": [
+    "cargo",
+    "rustc",
+    "--offline",
+    "--locked",
+    "-j",
+    "1",
+    "-p",
+    "volta-pcs",
+    "--features",
+    "c71-seed6-reference",
+    "--lib",
+    "--profile",
+    "test",
+    "--config",
+    "profile.dev.package.volta-pcs.opt-level=0",
+    "--config",
+    "profile.dev.package.volta-pcs.codegen-units=64",
+    "--",
+    "-Clink-arg=-fuse-ld=lld",
+    "-Clink-arg=-B/home/okrame/.rustup/toolchains/stable-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/bin/gcc-ld",
+    "-Clink-arg=-Wl,--threads=1"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk/rust",
+  "exit_code": 0,
+  "wall_s": 57.039608222898096,
+  "max_rss_bytes": 2570043392,
+  "sampled_aggregate_live_rss_peak_bytes": 2604650496,
+  "sampled_processes": {
+    "20": {
+      "name": "timeout",
+      "max_rss_bytes": 1576960,
+      "cpu_ticks": 0,
+      "first_seen_s": 0.0011610849760472775,
+      "last_seen_s": 57.03937563998625
+    },
+    "21": {
+      "name": "cargo",
+      "max_rss_bytes": 53063680,
+      "cpu_ticks": 16,
+      "first_seen_s": 0.10376652516424656,
+      "last_seen_s": 56.93830186780542
+    },
+    "28": {
+      "name": "rustc",
+      "max_rss_bytes": 2550009856,
+      "cpu_ticks": 5564,
+      "first_seen_s": 0.20444713020697236,
+      "last_seen_s": 56.83652005298063
+    },
+    "98": {
+      "name": "cc",
+      "max_rss_bytes": 2117632,
+      "cpu_ticks": 1,
+      "first_seen_s": 55.81091265100986,
+      "last_seen_s": 56.83658180292696
+    },
+    "99": {
+      "name": "collect2",
+      "max_rss_bytes": 1507328,
+      "cpu_ticks": 0,
+      "first_seen_s": 55.81098119309172,
+      "last_seen_s": 56.83662713691592
+    },
+    "100": {
+      "name": "rust-lld",
+      "max_rss_bytes": 605491200,
+      "cpu_ticks": 103,
+      "first_seen_s": 55.81109398510307,
+      "last_seen_s": 56.83666884480044
+    }
+  },
+  "sample_interval_s": 0.1,
+  "clock_ticks_per_s": 100,
+  "deadline_s": 120,
+  "workers": 1,
+  "as_limit_mib": null,
+  "sampled_aggregate_rss_stop_bytes": 3221225472,
+  "memory_stop": false,
+  "user_s": 50.70679,
+  "system_s": 6.333878,
+  "log": "/tmp/c71-rms-fold-cache-build-final-20261011.log"
+}

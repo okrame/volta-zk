@@ -26,6 +26,15 @@ cap globale o un'ammissione del picco fisico. Il controllo Option/Box sullo
 stack e l'overhead allocatore restano nel conto completo da verificare
 prima della selezione.
 
+Il [record pulito `886b493d`](../../benchmarks/results/c71-certificates-rms-fold-cache-local-2026-10-11-886b493d.json)
+conserva i sei test Rust, nove controlli documentali e lo screen pubblico
+con self-check. Picco RSS dei test Rust 123.617.280 B; fixture wire 6,144 s.
+Il binario era compilato prima del commit con sorgenti identici, provenienza
+distinta nel record. I 23 artefatti, 102.963 B complessivi, hanno hash
+individuali; sono inclusi i log di sviluppo e il primo comando documentale
+fallito perché il Python di sistema non aveva pytest, poi passato nella
+venv. Nessun record precedente è stato sovrascritto.
+
 Sulle 99 shape pubbliche originali e 159 ricette, la cattura avviene ai
 round 17–22 (indice da zero). Con un bound metadata conservativo di 256 B,
 la capacità massima è 16.675.072 B; le soglie sono identiche per ogni

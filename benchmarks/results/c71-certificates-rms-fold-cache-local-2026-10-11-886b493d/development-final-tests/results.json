@@ -1,0 +1,34 @@
+[
+  {
+    "filter": "c71_rms_folded_cache_",
+    "exit_code": 0,
+    "wall_s": 0.021653289906680584,
+    "summary": [
+      "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 613 filtered out; finished in 0.02s"
+    ]
+  },
+  {
+    "filter": "c71_b12_packed_mixed_gkr_complete_wire_mac_and_endpoint",
+    "exit_code": 0,
+    "wall_s": 6.148120385129005,
+    "summary": [
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 615 filtered out; finished in 6.14s"
+    ]
+  },
+  {
+    "filter": "sourcewise_cell_coefficients_match_dense_folds_without_cell_wire_matrix",
+    "exit_code": 0,
+    "wall_s": 0.004214125219732523,
+    "summary": [
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 615 filtered out; finished in 0.00s"
+    ]
+  },
+  {
+    "filter": "c71_b12_boolean_first_cell_round_exact_all_gate_patterns",
+    "exit_code": 0,
+    "wall_s": 0.0035652080550789833,
+    "summary": [
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 615 filtered out; finished in 0.00s"
+    ]
+  }
+]

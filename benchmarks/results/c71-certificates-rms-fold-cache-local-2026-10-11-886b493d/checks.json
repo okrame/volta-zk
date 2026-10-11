@@ -1,0 +1,72 @@
+[
+  {
+    "filter": "c71_rms_folded_cache_",
+    "exit_code": 0,
+    "wall_s": 0.01431400515139103,
+    "max_rss_bytes": 11964416,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "test_summary": [
+      "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 613 filtered out; finished in 0.01s"
+    ]
+  },
+  {
+    "filter": "c71_b12_packed_mixed_gkr_complete_wire_mac_and_endpoint",
+    "exit_code": 0,
+    "wall_s": 6.143952952232212,
+    "max_rss_bytes": 123617280,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "test_summary": [
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 615 filtered out; finished in 6.14s"
+    ]
+  },
+  {
+    "filter": "sourcewise_cell_coefficients_match_dense_folds_without_cell_wire_matrix",
+    "exit_code": 0,
+    "wall_s": 0.004409459885209799,
+    "max_rss_bytes": 14561280,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "test_summary": [
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 615 filtered out; finished in 0.00s"
+    ]
+  },
+  {
+    "filter": "c71_b12_boolean_first_cell_round_exact_all_gate_patterns",
+    "exit_code": 0,
+    "wall_s": 0.0037642098031938076,
+    "max_rss_bytes": 9936896,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "test_summary": [
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 615 filtered out; finished in 0.00s"
+    ]
+  },
+  {
+    "filter": "documents",
+    "exit_code": 0,
+    "wall_s": 1.150676011107862,
+    "max_rss_bytes": 59650048,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "test_summary": [
+      "9 passed in 1.01s"
+    ]
+  },
+  {
+    "filter": "public-screen",
+    "exit_code": 0,
+    "wall_s": 0.09691703272983432,
+    "max_rss_bytes": 16150528,
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "workers": 1,
+    "test_summary": []
+  }
+]

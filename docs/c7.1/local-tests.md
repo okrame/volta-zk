@@ -161,7 +161,9 @@ Nessun tempo completo dedotto. [Evidenza e limiti](../c7.1-history/h100-certific
 
 Il [record RMS pulito](../../benchmarks/results/c71-certificates-rms-endpoint-local-2026-10-11-04137d0c.json)
 conserva tre parità Rust, 11 controlli Python/documenti e il census entro
-AS 2 GiB/60 s. Binario compilato prima del commit con sorgenti identici,
+AS 2 GiB/60 s. Gli screen dei nuovi census riconoscono la schedule
+a sei o sette prodotti dai contatori di tutti i livelli e rifiutano
+census misti; i record congelati mantengono la propria aritmetica. Binario compilato prima del commit con sorgenti identici,
 provenienza distinta. La misura H100 con tutte le ricette resta pendente.
 
 La [campagna precedente](../c7.1-history/h100-followup-close-2026-10-10.md)

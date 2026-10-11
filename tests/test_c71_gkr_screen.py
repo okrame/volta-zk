@@ -13,6 +13,21 @@ def test_endpoint_products_keep_historical_census_and_count_current_schedule():
         'Fp3_mul': 20, 'Fp3_add': 19, 'Fp3_sub': 12, 'Fp3_neg': 1}
 
 
+def test_native_schedule_is_derived_and_mixed_counters_are_rejected():
+    field = 'cell_Fp3_mul_source_level_upper_before_structural_support_pruning'
+    layer = {'and': 1, 'xor': 1, 'copy': 1, field: 20}
+    native = {'padded_cells': 2, 'programs': 1, 'layers': [layer]}
+    assert gkr.native_endpoint_products(native)
+    layer[field] = 22
+    assert not gkr.native_endpoint_products(native)
+    native['layers'].append(dict(layer, **{field: 20}))
+    with pytest.raises(ValueError, match='arithmetic schedule'):
+        gkr.native_endpoint_products(native)
+    native['layers'] = [dict(layer, **{field: 21})]
+    with pytest.raises(ValueError, match='arithmetic schedule'):
+        gkr.native_endpoint_products(native)
+
+
 def test_selected_endpoint_census_preserves_boolean_first_round(monkeypatch):
     import c71_residual_profile as residual
     body = (residual.ROOT / residual.PCS / 'rms/gkr.rs').read_text()

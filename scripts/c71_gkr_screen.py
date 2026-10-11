@@ -112,7 +112,23 @@ def factored_arithmetic(ops, program_pairs, *, endpoint_products=False):
     }
 
 
+def native_endpoint_products(native):
+    """Identify the measured source schedule without relabelling frozen records."""
+    pairs = native['padded_cells'] - 1
+    matches = []
+    for endpoint in (False, True):
+        if all(layer['cell_Fp3_mul_source_level_upper_before_structural_support_pruning']
+               == pairs * factored_arithmetic(layer, native['programs'],
+                                               endpoint_products=endpoint)['Fp3_mul']
+               for layer in native['layers']):
+            matches.append(endpoint)
+    if not matches:
+        raise ValueError('GKR coefficient arithmetic schedule differs')
+    return matches[0]  # No binary gates/cell rounds makes both schedules identical.
+
+
 def canonical(native):
+    endpoint_products = native_endpoint_products(native)
     cohorts = plan.gemma_weight_cohorts(plan.pinned_private_tensors())
     norms = plan.rms_statistic_cohorts(cohorts)
     shapes = [(norm['statistic_rows'], norm['columns']) for norm in norms]
@@ -187,6 +203,7 @@ def canonical(native):
             unpruned_ops[op] += counter[op] * (n - 1)
     result = {
         'credit': False,
+        'coefficient_endpoint_products': endpoint_products,
         'scope': 'exact public structural support; fixed support-bool schedule; no runtime credit',
         'padded_cells': n,
         'live_cells': cells,
@@ -203,9 +220,11 @@ def canonical(native):
         'maximum_support_spans_one_round_profile': max(
             profile['support_span_count'] for round_ in rounds for profile in round_['profiles']),
         'supported_gate_iterations_all_rounds': dict(totals),
-        'factored_arithmetic_before_support_pruning': factored_arithmetic(unpruned_ops,depth*len(profile_keys)*(n-1)),
+        'factored_arithmetic_before_support_pruning': factored_arithmetic(unpruned_ops,depth*len(profile_keys)*(n-1),
+            endpoint_products=endpoint_products),
         'factored_arithmetic_after_structural_support_pruning': factored_arithmetic(totals,
-            depth*sum(p['supported_pairs'] for r in rounds for p in r['profiles'])),
+            depth*sum(p['supported_pairs'] for r in rounds for p in r['profiles']),
+            endpoint_products=endpoint_products),
         'logical_unpruned_gate_iterations': sum(
             sum(counter.values()) * (n - 1) for counter in op_by_profile),
         'schedule': ('For each public profile and cell-round, execute its gates exactly on the '
@@ -266,7 +285,8 @@ def ratio_factored_arithmetic(native, old):
     pairs = ratio_supported_pair_total(old)
     ops = {op:sum(layer[op] for layer in native['layers'])*pairs
            for op in ('and', 'xor', 'copy')}
-    return factored_arithmetic(ops, native['depth']*pairs)
+    return factored_arithmetic(ops, native['depth']*pairs,
+                              endpoint_products=native_endpoint_products(native))
 
 
 def source_tree_trace(view_bits, bits):

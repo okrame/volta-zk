@@ -1,5 +1,7 @@
 # C7.1 — archivio e provenienza
 
+[Momenti dei cubici RMS misti e proiezione del supporto pubblico](local-rms-prefix-moments-2026-10-11.md).
+
 [Confronto H100 RMS byte AB/BA e chiusura confermata](h100-rms-byte-paired-2026-10-11.md).
 
 [Avvio autorizzato della nuova campagna RMS byte e certificati](h100-rms-byte-start-2026-10-11.md).

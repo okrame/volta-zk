@@ -58,6 +58,15 @@ immutati dallo stop anticipato; nessun nuovo setup/sessione AES avviato.
 Le [ricevute di avvio](../../benchmarks/results/c71-certificates-rms-byte-start-2026-10-11-30867b9b.json)
 e il [piano pretrial](../c7.1-history/h100-rms-byte-followup-plan-2026-10-11.md)
 restano conservati separatamente.
+Un [oracolo locale RMS misto](../c7.1-history/local-rms-prefix-moments-2026-10-11.md)
+verifica i primi cubici contro fold densi indipendenti, includendo wire
+di altri programmi e selector originali. Tre test Python passano;
+F97[u]/(u³−2), senza validazione Goldilocks/Rust, wire o nuovo lemma Lean.
+La proiezione pubblica a4 bit dà64 maschere e417.792 B di momenti dopo
+pesi/fusione; non è capacità completa o ammissione del builder.
+Un layout BMMA non compresso con tutti i gate richiederebbe almeno
+65.872.330.752 B di contatori a quella geometria: servono blocchi limitati,
+conto di replay/pesatura/traffico e caller nativo prima di un nuovo trial.
 Il [record pulito `47373d72`](../../benchmarks/results/c71-certificates-rms-phase-local-2026-10-11-47373d72.json)
 conserva build, parità RMS mista e nove controlli documentali passati;
 provider `EXITED` con runtime assente riverificato alle 15:33:09 UTC.

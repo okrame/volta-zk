@@ -1,0 +1,15 @@
+{
+  "source_git_sha": "39aef3bcdedfbd24d68666278f03b38c6ac9b7b7",
+  "git_dirty": false,
+  "credit": false,
+  "canonical_certificates": 0,
+  "predicted_launches": 280299,
+  "actual_launches": 280299,
+  "matches": true,
+  "predictive_record": "benchmarks/results/c71-certificates-rms-batched-schedule-2026-10-11-b13ccaa2.json",
+  "predictive_record_sha256": "87535cc926bd3b628b4f963ce9d66f0cd958b0e328f4e2f98d39a9c5f8eda5b9",
+  "actual_record": "benchmarks/results/c71-certificates-rms-tail-reduce-2026-10-11-c0e0448d.json",
+  "actual_record_sha256": "345af777c7e105708d5dd1cc9e64fbc2b31ed6dd9b7ac667513397ad0bdbc69f",
+  "original_records_unchanged": true,
+  "scope": "New linked confirmation of the prior immutable prediction; full launch arithmetic tested on pod, no complete resource/time admission"
+}

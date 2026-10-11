@@ -10,6 +10,9 @@ riverificata, idle all'accesso; nuovo guard indipendente prima del resume.
 Finestra invariata: calcolo fino a23:43:00, guard00:03:00 e hard stop
 12 ottobre00:13:00 UTC. La VM ha poche risorse: solo editing e controllo;
 preparazione computazionale, test e build si svolgono sul pod.
+La [richiesta di altre8 ore](../c7.1-history/rms-duration-request-2026-10-11.md)
+per il consumer byte è in attesa di risposta: nessuna estensione concessa,
+guard e scadenze originali invariati.
 Tre test F97 del prefisso misto e nove documentali passano sul checkout
 pulito `f25452bf`; primo negativo documentale per fonti assenti conservato.
 Il [censimento pubblico RMS](../c7.1-history/h100-rms-moments-census-2026-10-11.md)
@@ -109,11 +112,16 @@ con9 documentali; record predittivo immutato.
 Conto cell/index canonico3.307.175.412 launch a cap256 e209.567.637
 cap4096, sempre1.328.755.507.200 posizioni padded del tail: solo screen
 `credit:false`, senza conto simultaneo, tempo o capacità completa ammessi.
-La [fixture GPU ragged iniziale è rifiutata](../c7.1-history/h100-rms-tail-ragged-negative-2026-10-11.md)
-prima del Runtime: manca il terminale singleton richiesto dal validatore.
-Regressione densa passata; negativo/provenienza conservati. Una nuova
-fixture aggiunge quel terminale, conserva i gate oltre128/512 e corregge
-il marker della capacità coppie; nuovo commit/trial sul pod da verificare.
+La [fixture GPU ragged corretta passa](../c7.1-history/h100-rms-tail-ragged-parity-2026-10-11.md)
+su `39aef3bc`:63 coefficienti/36 terminali densi originali, gate oltre128/512,
+selector/challenge zero/uno, stesso validatore e CUDA c0e0448d. Passano
+regressione densa84/24,12 test calendario,9 documentali e produzione.
+Fixture125/128 celle, tre profondità,91 allocazioni/rilasci, arena5.307.392 B
+ed owner42.496 B dopo cleanup; fisico campionato496.975.872 B, zero
+incompleti nel ragged. Denso/produzione hanno un incompleto; build registra
+GPU556.793.856 B non attribuita. Negativo/provenienza conservati, nuovo
+record collega previsione/contatore280.299 senza modificare gli originali.
+Resta fixture di gate, senza predicato RMS/certificato o picco completo.
 
 **Zero certificati canonici**: O=0 incompleto, O=150/300 non iniziati.
 Backend RMS completo, conto simultaneo e premessa di raffinamento aperti.

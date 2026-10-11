@@ -1,5 +1,9 @@
 # C7.1 — archivio e provenienza
 
+[Gate ragged:63 coefficienti/36 terminali densi originali verificati](h100-rms-tail-ragged-parity-2026-10-11.md).
+
+[Richiesta di durata aggiuntiva, autorizzazione ancora assente](rms-duration-request-2026-10-11.md).
+
 [Fixture ragged rifiutata e nuova geometria con terminale singleton](h100-rms-tail-ragged-negative-2026-10-11.md).
 
 [Prossimo consumer byte GPU e lifetime del checkpoint](rms-native-byte-next-step-2026-10-11.md).

@@ -1,0 +1,7 @@
+
+running 1 test
+test c71_matrix::rms::gkr::tests::c71_b12_mixed_mapped_gpu_tail_ragged_gate_chunks_dense_coefficients ... C71_RMS_TAIL_RAGGED_GPU {"canonical_certificates":0,"cases":3,"cell_bits":7,"coefficients_checked":63,"credit":false,"depths":3,"gate_counts_by_program":[[129,513,1],[257,1025,1],[513,769,1]],"gpu_execution":true,"host_source_frame_callbacks":0,"last_round_group_batches":1,"last_round_prefix_groups":4,"live_cells":125,"original_dense_coefficients_and_terminal":true,"padded_cells":128,"source_capacity":256,"stats":{"allocations":91,"arena_bytes":0,"cleanup_failed":0,"d2d_bytes":0,"d2h_bytes":993456,"fences":92,"h2d_bytes":551812,"host_owner_bytes":42496,"launches":846,"live_capacity_bytes":0,"logical_bytes":0,"peak_capacity_bytes":5307392,"peak_reserved_bytes":5307392,"releases":91,"stopped":0,"weights_bytes":0,"weights_loaded_bytes":0,"weights_sealed":0,"zeroed_bytes":57833232},"tail_pair_capacity":4,"terminal_vectors_checked":36}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 634 filtered out; finished in 0.84s
+

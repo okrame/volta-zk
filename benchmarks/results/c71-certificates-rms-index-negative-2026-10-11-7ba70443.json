@@ -1,0 +1,63 @@
+{
+  "schema": "volta-c71-rms-index-negative-v1",
+  "source": {
+    "source_git_sha": "7ba70443a48dbe732eaccf2832b6cbd78a392e94",
+    "git_dirty": false,
+    "epoch": 1791754995.079501,
+    "cpu_as_bytes": 68719476736,
+    "original_start_epoch": 1791735180.494,
+    "compute_end_epoch": 1791762180.494,
+    "hard_end_epoch": 1791763980.494,
+    "credit": false
+  },
+  "failure": {
+    "epoch": 1791755009.3719935,
+    "error_type": "AssertionError",
+    "message": "('index-owner', 1)",
+    "credit": false
+  },
+  "owner_tests": {
+    "authorized_end_epoch": 1791763980.494,
+    "close_reserve_seconds": 1800,
+    "command": [
+      "python3",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_c71_rms_index.py"
+    ],
+    "compute_end_epoch": 1791762180.494,
+    "diagnostic_file_cache_reserve_bytes": 0,
+    "exit_code": 1,
+    "gpu_uuid": "GPU-e05e977b-758d-f3f4-cbe8-5720b83d1ae1",
+    "incomplete_samples": 0,
+    "label": "index-owner",
+    "mode": "component",
+    "monitor_cpu_AS_limit_bytes": 68719476736,
+    "observed_payload_peak_bytes": null,
+    "payload_limit_bytes": null,
+    "physical_complete_peak": false,
+    "physical_temporary_limit_bytes": 6174015488,
+    "resource_failure": null,
+    "sample_interval_clock": "Linux CLOCK_MONOTONIC, absolute nanoseconds on this host boot",
+    "sample_interval_scope": "Start/end bracket collection of the resource sample; no GPU synchronization or instantaneous peak. External profiler clock alignment requires a matching clock or explicit anchor.",
+    "sampled_host_rss_peak_bytes": 391712768,
+    "sampled_stable_temporary_peak_bytes": 391712768,
+    "sampled_whole_gpu_peak_bytes": 0,
+    "samples": 71,
+    "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+    "sampling_target_seconds": 0.2,
+    "smaps_read_failures": 0,
+    "stable_samples": 71,
+    "start_unix_seconds": 1791754995.1413474,
+    "tracked_descendant_identities": 7,
+    "wall_seconds": 14.209927022457123
+  },
+  "canonical_certificates": 0,
+  "credit": false,
+  "private_bundle": "artifact/c7.1-pod/certificates-rms-index01-negative-20261011",
+  "private_manifest_sha256": "31d0f747b5a19b7a62c4feda5e3df41800f47c86b651aea3818367a24ba1c2e9",
+  "reason": "C++ index owner compiles but first successful round rejects its private gate token because initialized coverage was not recorded after begin upload and fence; no Rust build or real GPU proof executed"
+}

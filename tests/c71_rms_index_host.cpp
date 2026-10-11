@@ -38,6 +38,7 @@ int main() {
             joint_limit=16ULL<<20;download_fail_after=-1;fail_launch=false;
             if(fault>=15 && fault!=17 && fault!=18 && fault!=19 && fault!=23 && fault!=24)assert(status);
             else {
+                if(status)std::fprintf(stderr,"index fault=%u: %s\n",fault,c71_range_error(c));
                 assert(!status);untouched();
                 if(fault==24)status=c71_rms_index_step(c,token,nullptr,0,output);
                 else {

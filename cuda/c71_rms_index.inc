@@ -74,6 +74,7 @@ extern "C" int c71_rms_index_begin(C71RangeContext* c,uint32_t width,uint32_t pr
     if(!error && launched(c,index_rms::start(c->stream,count,programs,reinterpret_cast<rms::Gate*>(device),
         reinterpret_cast<rms::GateRange*>(device+s.offsets[0]),reinterpret_cast<Fp3*>(device+s.offsets[1]))))error=true;
     const int synced=fence(c);if(error || synced)return -1;
+    for(auto id:{t.gate_values,t.fold,t.tables})buffer(c,id)->initialized=buffer(c,id)->count;
     rms_index_publication_release(c);*token=t.gate_values;return 0;
 }
 extern "C" int c71_rms_index_step(C71RangeContext* c,uint64_t token,const Fp3* prefix,uint32_t round,Fp3* output) {

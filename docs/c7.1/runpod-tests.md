@@ -65,9 +65,13 @@ allocazioni, arena7.693.056 B e owner42.496 B. Negativo header conservato.
 Caller fisico campionato620.478.464 B, zero incompleti; fold con un campione
 incompleto, build GPU556.793.856 B non attribuita; nessun picco completo.
 La [candidata indici e binding/live](../c7.1-history/h100-rms-index-prepared-2026-10-11.md)
-è preparata, non validata; tre buffer privati e stessi round/FS/MAC, stream
-assignment originale e massa Eq sui range. Byte/statistica GPU,159
-programmi/99 profondità, conto completo e raffinamento restano aperti.
+ha un [primo negativo owner](../../benchmarks/results/c71-certificates-rms-index-negative-2026-10-11-7ba70443.json)
+sul checkout pulito `7ba70443`: compilazione passa, primo round respinto
+per coverage initialized assente sul token privato dopo upload/fence.
+Correzione registra la coverage solo dopo il fence riuscito; nuovo trial
+sul pod, parità ancora da verificare. Tre buffer privati, stessi round/FS/MAC
+e stream assignment originale. Byte/statistica GPU,159 programmi/99
+profondità, conto completo e raffinamento restano aperti.
 
 **Zero certificati canonici**: O=0 incompleto, O=150/300 non iniziati.
 Backend RMS completo, conto simultaneo e premessa di raffinamento aperti.

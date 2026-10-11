@@ -38,7 +38,7 @@ int main() {
         if((fault>=1 && fault<=17) || fault==24 || fault==25)assert(status && !source);
         else {
             assert(!status && source && stats(c).allocations==1);
-            assert(stats(c).host_owner_bytes==42384+slack+288 && stats(c).h2d_bytes==288);
+            assert(stats(c).host_owner_bytes==42496+slack+288 && stats(c).h2d_bytes==288);
             if(fault>=19 && fault<=22) {
                 Shape prefix_shape{1,8,256,1,1,2,1,1,1,1};
                 Program program{4,5,1,0,0,0,1};Node node{0,4,2,3};
@@ -59,7 +59,7 @@ int main() {
                 if(fault)assert(status);
                 else {
                     assert(!status && !stats(c).arena_bytes && !rms_registered);
-                    assert(stats(c).host_owner_bytes==42384 && !stats(c).d2h_bytes);
+                    assert(stats(c).host_owner_bytes==42496 && !stats(c).d2h_bytes);
                 }
             }
         }

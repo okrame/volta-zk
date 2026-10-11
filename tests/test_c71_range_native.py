@@ -35,7 +35,7 @@ def test_rms_prefix_common_owner_and_failures(tmp_path):
     result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=10)
     assert result.returncode == 0, result.stdout + result.stderr
     assert json.loads(result.stdout.removeprefix("C71_RMS_OWNER ")) == {
-        "success": 1, "terminal_rejections": 19, "publication_after_free": True,
+        "success": 1, "terminal_rejections": 22, "publication_after_free": True,
         "gpu_execution": False, "credit": False,
     }
 
@@ -76,7 +76,7 @@ def test_native_range_owner_with_deferred_fake_driver(tmp_path):
                       "gpu_execution": False, "credit": False}
 
     reuse = reports.pop("C71_SYNC_ERROR_FLAG_REUSE")
-    assert reuse.pop("host_owner_bytes") == 42384
+    assert reuse.pop("host_owner_bytes") == 42496
     assert reuse == {
         "retained_device_capacity_bytes": 256, "flag_count": 1,
         "sync_flag_reuse": True, "numeric_operations": 32,

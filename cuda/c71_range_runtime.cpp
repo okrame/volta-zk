@@ -160,8 +160,12 @@ struct RmsPrefixTransaction {
     uint32_t active=0,slots=0;
     uint8_t* shadow=nullptr;
     uint64_t shadow_bytes=0;
+    Fp3* publication=nullptr;
+    uint64_t publication_bytes=0;
+    uint8_t* window=nullptr;
+    uint64_t window_bytes=0;
 };
-static_assert(sizeof(RmsPrefixTransaction)==184);
+static_assert(sizeof(RmsPrefixTransaction)==216);
 struct RmsMappedSource {
     c71_rms_prefix::SourceShape shape{};
     uint64_t meta=0,offsets[2]{};
@@ -172,6 +176,15 @@ struct RmsMappedSource {
     uint32_t registered=0,unregister_failed=0;
 };
 static_assert(sizeof(RmsMappedSource)==104);
+struct RmsCellTail {
+    uint64_t source=0,fold=0,tables=0,gate_values=0;
+    Fp3* shadow=nullptr;
+    uint64_t shadow_bytes=0;
+    Fp3* publication=nullptr;
+    uint64_t publication_bytes=0;
+    uint32_t bits=0,round=0,capacity=0,active=0;
+};
+static_assert(sizeof(RmsCellTail)==80);
 struct C71RangeContext {
 #ifdef C71_SOURCE_VMM_EXPERIMENT
     C71SourceTail source_tails[121];
@@ -216,10 +229,13 @@ struct C71RangeContext {
     ResidualQueryTransaction residual_query{};
     RmsPrefixTransaction rms{};
     RmsMappedSource rms_source{};
+    RmsCellTail rms_tail{};
 };
 namespace {
 int rms_source_unpin(C71RangeContext*);
 void rms_source_shadow_release(C71RangeContext*);
+void rms_tail_shadow_release(C71RangeContext*);
+int rms_tail_start(C71RangeContext*,uint64_t,const Fp3*,uint32_t);
 constexpr uint64_t sizes[]={1,2,48,96,24,96,8,1,8,8,32,32,32,40,8,8,8,1,1,8,1};
 constexpr uint64_t caps[]={uint64_t{1}<<31,uint64_t{1}<<27,uint64_t{1}<<24,
                           uint64_t{1}<<24,256*32*32,65536,uint64_t(c71_dense::max_m)*c71_dense::max_n,uint64_t{1}<<31,65535,
@@ -551,14 +567,22 @@ extern "C" int c71_range_close(C71RangeContext* c,C71RangeStats* out) {
 #else
     (void)diagnostic_error;
 #endif
-    if(c->rms.shadow) {
+    if(c->rms.shadow && drained) {
         delete[] c->rms.shadow;
         c->stats.host_owner_bytes-=c->rms.shadow_bytes;
         if(c->account) c->account(-int64_t(c->rms.shadow_bytes));
     }
+    if(c->rms.publication && drained) {
+        delete[] c->rms.publication;c->stats.host_owner_bytes-=c->rms.publication_bytes;
+        if(c->account)c->account(-int64_t(c->rms.publication_bytes));
+    }
+    if(c->rms.window && drained) {
+        delete[] c->rms.window;c->stats.host_owner_bytes-=c->rms.window_bytes;
+        if(c->account)c->account(-int64_t(c->rms.window_bytes));
+    }
     // A failed fence may leave the immutable metadata upload in flight.
     // Its charge and allocation survive the failed owner until process exit.
-    if(drained) rms_source_shadow_release(c);
+    if(drained) {rms_source_shadow_release(c);rms_tail_shadow_release(c);}
     c->stats.cleanup_failed=error;
     *out=c->stats;
     if(c->account) c->account(-int64_t(sizeof(*c)));
@@ -2672,3 +2696,4 @@ extern "C" int c71_pcs_residual_query_finish(C71RangeContext* c,uint64_t token,c
 
 #include "c71_rms_runtime.inc"
 #include "c71_rms_source.inc"
+#include "c71_rms_tail.inc"

@@ -9,7 +9,8 @@ fn assignment(spans:&[(u32,u32,u16)],cell:usize)->Option<usize> {
 
 pub(in super::super) fn build(s:&Statement<'_>,depth:usize,point:&[Fp3],weights:&[Fp3],
     read:&dyn Fn(usize)->[u8;12],work:&mut Work,runtime:&mut Runtime,
-    public_spans:&[(u32,u32,u16)],capacity:usize,source:Option<&native::RmsSourceToken>)->Result<Option<Prefix>,String> {
+    public_spans:&[(u32,u32,u16)],capacity:usize,source:Option<&native::RmsSourceToken>,
+    tail:Option<&mut Option<native::RmsTailToken>>)->Result<Option<Prefix>,String> {
     if point.len()<=4 {return Ok(None);}
     if point.len()>29 || !(256..=4096).contains(&capacity) || !capacity.is_power_of_two() ||
         s.programs.is_empty() || s.programs.len()>421 || depth==0 {
@@ -114,7 +115,12 @@ pub(in super::super) fn build(s:&Statement<'_>,depth:usize,point:&[Fp3],weights:
             first+=n;
         }
     }
-    let values=runtime.rms_prefix_finish(token)?;
+    let values=if let Some(tail)=tail {
+        if tail.is_some() {return runtime.abort("native RMS previous cell tail is still active");}
+        let source=source.ok_or("native RMS retained tail needs original mapped source")?;
+        let (values,token)=runtime.rms_prefix_finish_tail(token,source,point)?;
+        *tail=Some(token);values
+    } else {runtime.rms_prefix_finish(token)?};
     work.histogram_payload_peak=work.histogram_payload_peak.max(values.capacity()*core::mem::size_of::<Fp3>());
     Prefix::from_native_moments(point,&packet.masks,values).map(Some)
 }

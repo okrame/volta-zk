@@ -5,12 +5,14 @@ namespace c71_rms_prefix {
 namespace {
 __global__ void gather_original_frames(const uint8_t* payload,const SourceNorm* norms,
     const SourceTile* tiles,unsigned tile_count,unsigned suffix,unsigned first,
-    unsigned capacity,unsigned n,uint8_t* frames,uint16_t* assignments) {
+    unsigned capacity,unsigned n,unsigned side,unsigned group_first,unsigned groups,
+    uint8_t* frames,uint16_t* assignments) {
     const unsigned i=blockIdx.x*blockDim.x+threadIdx.x;
     if(i>=16*capacity)return;
-    const unsigned row=i/capacity,k=i%capacity,cell=row*suffix+first+k;
+    const unsigned row=i/capacity,k=i%capacity;
     uint16_t program=0xffff; uint8_t frame[12]{};
-    if(k<n) {
+    if(k<groups*n) {
+        const unsigned cell=((group_first+k/n)*16+row)*suffix+side*(suffix/2)+first+k%n;
         unsigned lo=0,hi=tile_count;
         while(lo<hi) {const unsigned mid=(lo+hi)/2;if(tiles[mid].end<=cell)lo=mid+1;else hi=mid;}
         if(lo<tile_count && tiles[lo].first<=cell) {
@@ -193,10 +195,18 @@ cudaError_t source_frames(cudaStream_t stream,const uint8_t* payload,const Sourc
     unsigned n,uint8_t* frames,uint16_t* assignments,unsigned* launches) {
     if(launches)*launches=1;
     gather_original_frames<<<(16*capacity+255)/256,256,0,stream>>>(payload,norms,tiles,tile_count,
-        suffix,first,capacity,n,frames,assignments);
+        suffix,first,capacity,n,0,0,1,frames,assignments);
     return cudaGetLastError();
 }
-cudaError_t replay(cudaStream_t stream,const uint8_t* frames,const uint16_t* assignments,
+cudaError_t source_frames_fold(cudaStream_t stream,const uint8_t* payload,const SourceNorm* norms,
+    const SourceTile* tiles,unsigned tile_count,unsigned active,unsigned first,unsigned capacity,
+    unsigned n,unsigned side,unsigned group_first,unsigned groups,uint8_t* frames,uint16_t* assignments,unsigned* launches) {
+    if(launches)*launches=1;
+    gather_original_frames<<<(16*capacity+255)/256,256,0,stream>>>(payload,norms,tiles,tile_count,
+        active,first,capacity,n,side,group_first,groups,frames,assignments);
+    return cudaGetLastError();
+}
+cudaError_t replay_raw(cudaStream_t stream,const uint8_t* frames,const uint16_t* assignments,
     const Program* programs,const Node* nodes,const uint32_t* boundaries,const uint32_t* outputs,
     unsigned count,unsigned width,unsigned capacity,unsigned n,unsigned shared_slots,uint64_t* stage,unsigned* launches,uint64_t* zeroed) {
     if(launches) *launches=0;
@@ -211,6 +221,14 @@ cudaError_t replay(cudaStream_t stream,const uint8_t* frames,const uint16_t* ass
     original_replay<<<(n+3)/4,128,shared_slots*8,stream>>>(frames,assignments,programs,nodes,boundaries,outputs,count,width,capacity,n,stage);
     if(launches) ++*launches;
     status=cudaGetLastError();if(status!=cudaSuccess) return status;
+    return cudaSuccess;
+}
+cudaError_t replay(cudaStream_t stream,const uint8_t* frames,const uint16_t* assignments,
+    const Program* programs,const Node* nodes,const uint32_t* boundaries,const uint32_t* outputs,
+    unsigned count,unsigned width,unsigned capacity,unsigned n,unsigned shared_slots,uint64_t* stage,unsigned* launches,uint64_t* zeroed) {
+    const auto status=replay_raw(stream,frames,assignments,programs,nodes,boundaries,outputs,
+        count,width,capacity,n,shared_slots,stage,launches,zeroed);
+    if(status!=cudaSuccess)return status;
     transpose<<<width*(capacity/256),128,0,stream>>>(stage,width,capacity);
     if(launches) ++*launches;
     return cudaGetLastError();

@@ -20,8 +20,18 @@ const rms::Section* rms_sections(const RmsPrefixTransaction& s) {
     const auto offset=(uint64_t(s.shape.programs)*8+uint64_t(s.shape.masks)*2+3)&~uint64_t{3};
     return reinterpret_cast<const rms::Section*>(s.shadow+offset);
 }
+const Fp3* rms_original_suffix(const RmsPrefixTransaction& s) {
+    const auto sections=(uint64_t(s.shape.programs)*8+uint64_t(s.shape.masks)*2+3)&~uint64_t{3};
+    const auto offset=(sections+uint64_t(s.shape.sections)*8+7)&~uint64_t{7};
+    return reinterpret_cast<const Fp3*>(s.shadow+offset);
+}
+uint64_t rms_host_meta_offset(const RmsPrefixTransaction& s) {
+    const auto sections=(uint64_t(s.shape.programs)*8+uint64_t(s.shape.masks)*2+3)&~uint64_t{3};
+    const auto point=(sections+uint64_t(s.shape.sections)*8+7)&~uint64_t{7};
+    return aligned(point+uint64_t(s.shape.suffix_bits)*24);
+}
 bool rms_session(C71RangeContext* c,uint64_t token) {
-    if(!token || !c->rms.active || token!=c->rms.meta || !full(buffer(c,token),C71_RMS_PRIVATE)) {
+    if(!token || c->rms.active!=1 || token!=c->rms.meta || !full(buffer(c,token),C71_RMS_PRIVATE)) {
         fail(c,"RMS prefix capability differs"); return false;
     }
     return true;
@@ -116,16 +126,20 @@ extern "C" int c71_rms_prefix_begin(C71RangeContext* c,rms::Shape shape,
         gates[i].y>=shape.width || (gates[i].op==2 && gates[i].x!=gates[i].y) || !canonical(gates[i].weight))
             return fail(c,"RMS prefix weighted gate");
     auto& s=c->rms; s.active=1; s.shape=shape; s.slots=slots; s.cursor=sections[0].first;
+    uint64_t meta_bytes=0;
+    for(unsigned i=0;i<6;++i) {s.offsets[i]=meta_bytes;meta_bytes+=aligned(lengths[i]);}
     const uint64_t section_offset=(lengths[6]+lengths[7]+3)&~uint64_t{3};
-    const auto shadow_bytes=section_offset+lengths[8];
+    const auto point_offset=(section_offset+lengths[8]+7)&~uint64_t{7};
+    const auto host_meta=rms_host_meta_offset(s);
+    const auto shadow_bytes=host_meta+meta_bytes;
     if(c->account && c->account(int64_t(shadow_bytes))) return fail(c,"RMS prefix host metadata budget");
-    s.shadow=new(std::nothrow) uint8_t[shadow_bytes];
+    s.shadow=new(std::nothrow) uint8_t[shadow_bytes]{};
     if(!s.shadow) { if(c->account)c->account(-int64_t(shadow_bytes)); return fail(c,"RMS prefix host metadata allocation"); }
     s.shadow_bytes=shadow_bytes; c->stats.host_owner_bytes+=shadow_bytes;
     std::memcpy(s.shadow,ranges,lengths[6]); std::memcpy(s.shadow+lengths[6],masks,lengths[7]);
     std::memcpy(s.shadow+section_offset,sections,lengths[8]);
-    uint64_t meta_bytes=0;
-    for(unsigned i=0;i<6;++i) { s.offsets[i]=meta_bytes; meta_bytes+=aligned(lengths[i]); }
+    std::memcpy(s.shadow+point_offset,point,lengths[5]);
+    for(unsigned i=0;i<6;++i)std::memcpy(s.shadow+host_meta+s.offsets[i],inputs[i],lengths[i]);
     if(allocate(c,C71_RMS_PRIVATE,meta_bytes,&s.meta) || allocate(c,C71_RMS_PRIVATE,uint64_t(16)*shape.capacity*12,&s.frames) ||
        allocate(c,C71_RMS_PRIVATE,uint64_t(16)*shape.capacity*2,&s.assignments) ||
        allocate(c,C71_RMS_PRIVATE,uint64_t(shape.width)*shape.capacity*2,&s.stage) ||
@@ -134,7 +148,7 @@ extern "C" int c71_rms_prefix_begin(C71RangeContext* c,rms::Shape shape,
        allocate(c,C71_RMS_PRIVATE,uint64_t(shape.masks)*rms::moments*24,&s.aggregate)) return -1;
     bool error=false;
     for(unsigned i=0;i<6;++i) {
-        if(checked(c,cudaMemcpyAsync(rms_meta<uint8_t>(c,i),inputs[i],lengths[i],cudaMemcpyHostToDevice,c->stream))) { error=true;break; }
+        if(checked(c,cudaMemcpyAsync(rms_meta<uint8_t>(c,i),s.shadow+host_meta+s.offsets[i],lengths[i],cudaMemcpyHostToDevice,c->stream))) { error=true;break; }
         c->stats.h2d_bytes+=lengths[i];
     }
     if(!error) {
@@ -142,7 +156,7 @@ extern "C" int c71_rms_prefix_begin(C71RangeContext* c,rms::Shape shape,
         if(checked(c,cudaMemsetAsync(ptr<void>(c,buffer(c,s.aggregate)),0,bytes,c->stream))) error=true;
         else c->stats.zeroed_bytes+=bytes;
     }
-    const int synced=fence(c); // Borrowed packet survives every submitted copy.
+    const int synced=fence(c); // Owned metadata survives failed fences and close.
     if(error || synced) return -1;
     buffer(c,s.meta)->initialized=buffer(c,s.meta)->count;
     buffer(c,s.aggregate)->initialized=buffer(c,s.aggregate)->count;
@@ -185,7 +199,12 @@ int rms_consume_window(C71RangeContext* c,uint32_t first,uint32_t n,const uint16
             c->stats.launches+=attempted; error=checked(c,status)!=0;
         }
     }
-    const int synced=fence(c); // Host windows may be refilled even after submit errors.
+    bool drained=false;const int synced=(fence)(c,__func__,__LINE__,&drained);
+    if(s.window && drained) {
+        delete[] s.window;s.window=nullptr;c->stats.host_owner_bytes-=s.window_bytes;
+        if(c->account)c->account(-int64_t(s.window_bytes));
+        s.window_bytes=0;
+    }
     if(error || synced) return -1;
     s.cursor=first+n;
     if(s.cursor==rms_sections(s)[section].end) s.cursor=section+1<shape.sections?rms_sections(s)[section+1].first:(1u<<shape.suffix_bits);
@@ -219,15 +238,23 @@ extern "C" int c71_rms_prefix_window(C71RangeContext* c,uint64_t token,uint32_t 
         live|=mask!=0;
     }
     if(!live) return fail(c,"RMS prefix empty support window");
+    const auto window_bytes=lengths[0]+lengths[1];
+    if(c->account && c->account(int64_t(window_bytes)))return fail(c,"RMS prefix owned window budget");
+    s.window=new(std::nothrow) uint8_t[window_bytes];
+    if(!s.window) {if(c->account)c->account(-int64_t(window_bytes));return fail(c,"RMS prefix owned window allocation");}
+    s.window_bytes=window_bytes;c->stats.host_owner_bytes+=window_bytes;
+    std::memcpy(s.window,frames,lengths[0]);std::memcpy(s.window+lengths[0],assignments,lengths[1]);
     bool error=false;
     for(unsigned i=0;i<2;++i) {
         const auto id=i?s.assignments:s.frames;
-        if(checked(c,cudaMemcpyAsync(ptr<void>(c,buffer(c,id)),inputs[i],lengths[i],cudaMemcpyHostToDevice,c->stream))) { error=true; break; }
+        if(checked(c,cudaMemcpyAsync(ptr<void>(c,buffer(c,id)),s.window+(i?lengths[0]:0),lengths[i],cudaMemcpyHostToDevice,c->stream))) { error=true; break; }
         c->stats.h2d_bytes+=lengths[i];
     }
     return rms_consume_window(c,first,n,mask_ids,section,error);
 }
-extern "C" int c71_rms_prefix_finish(C71RangeContext* c,uint64_t token,Fp3* output,uint32_t count) {
+namespace {
+int rms_prefix_finish_impl(C71RangeContext* c,uint64_t token,Fp3* output,uint32_t count,
+    uint64_t source,const Fp3* point,uint32_t bits) {
     if(!ready(c) || !rms_session(c,token)) return -1;
     auto& s=c->rms; uintptr_t end=0;
     if(!s.windows || s.cursor!=(1u<<s.shape.suffix_bits) || count!=uint64_t(s.shape.masks)*rms::moments ||
@@ -238,18 +265,34 @@ extern "C" int c71_rms_prefix_finish(C71RangeContext* c,uint64_t token,Fp3* outp
     auto* staged=new(std::nothrow) Fp3[count];
     if(!staged) {if(c->account)c->account(-int64_t(bytes));return fail(c,"RMS prefix publication allocation");}
     c->stats.host_owner_bytes+=bytes;
+    bool drained=true;
     const auto cleanup=[&](int status) {
+        if(!drained) {s.publication=staged;s.publication_bytes=bytes;return status;}
         delete[] staged; c->stats.host_owner_bytes-=bytes;
         if(c->account)c->account(-int64_t(bytes));
         return status;
     };
     const bool error=checked(c,cudaMemcpyAsync(staged,ptr<void>(c,buffer(c,s.aggregate)),bytes,cudaMemcpyDeviceToHost,c->stream))!=0;
     if(!error)c->stats.d2h_bytes+=bytes;
-    const int synced=fence(c);
+    const int synced=(fence)(c,__func__,__LINE__,&drained);
     if(error || synced)return cleanup(-1);
     for(unsigned i=0;i<count;++i)if(!canonical(staged[i]))return cleanup(fail(c,"RMS prefix noncanonical moments"));
-    for(auto* id:{&s.aggregate,&s.chunk,&s.eq,&s.stage,&s.assignments,&s.frames,&s.meta})if(rms_retire(c,*id))return cleanup(-1);
-    delete[] s.shadow; c->stats.host_owner_bytes-=s.shadow_bytes;
-    if(c->account)c->account(-int64_t(s.shadow_bytes));
-    s={}; std::memcpy(output,staged,bytes);return cleanup(0);
+    if(source) {
+        if(rms_tail_start(c,source,point,bits))return cleanup(-1);
+    } else {
+        for(auto* id:{&s.aggregate,&s.chunk,&s.eq,&s.stage,&s.assignments,&s.frames,&s.meta})if(rms_retire(c,*id))return cleanup(-1);
+        delete[] s.shadow;c->stats.host_owner_bytes-=s.shadow_bytes;
+        if(c->account)c->account(-int64_t(s.shadow_bytes));
+        s={};
+    }
+    std::memcpy(output,staged,bytes);return cleanup(0);
+}
+}
+extern "C" int c71_rms_prefix_finish(C71RangeContext* c,uint64_t token,Fp3* output,uint32_t count) {
+    return rms_prefix_finish_impl(c,token,output,count,0,nullptr,0);
+}
+extern "C" int c71_rms_prefix_finish_tail(C71RangeContext* c,uint64_t token,uint64_t source,
+    const Fp3* point,uint32_t bits,Fp3* output,uint32_t count) {
+    if(!source)return fail(c,"RMS tail needs the original source capability");
+    return rms_prefix_finish_impl(c,token,output,count,source,point,bits);
 }

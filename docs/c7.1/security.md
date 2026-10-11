@@ -49,14 +49,17 @@ i tre negativi iniziali restano conservati. Fold/core residuo, indici/byte,
 momenti misti159/99 profondità e conto completo restano aperti;
 nessuna selezione canonica.
 
-La [sorgente originale mapped candidata](../c7.1-history/h100-rms-mapped-source-2026-10-11.md)
-usa un solo CompactFrames immutabile e gli stessi tile pubblici. Supporti
-register/mapped/read-only e lifecycle passano sul pod con zero kernel;
-negativo NVCC/PATH conservato. Backend preparato, build/parità ancora
-non validate in questo snapshot. Owner42.384 B, shadow/metadati e slack
-pagine addebitati; Arc trattenuto fino a retire/close riuscito o processo
-terminato se ownership incerta. Nuovi lifetime e traffico mapped ancora
-nel conto da completare; fold/core, indici/byte e raffinamento aperti.
+La [sorgente originale mapped](../c7.1-history/h100-rms-mapped-source-parity-2026-10-11.md)
+passa12 check sul checkout pulito `df8c613e`, inclusa parità del caller
+originale:28 celle/93 profondità,652 allocazioni/rilasci, arena7.053.568 B
+ed owner42.384 B dopo cleanup. Wire/FS/MAC e verificatori RMS/PCS/P0/RNE/W/A
+originali, correlazioni ideali; zero certificati. Fisico campionato618.999.808 B;
+build CPU con GPU556.793.856 B non attribuita, nessun isolamento dedotto.
+Un solo checkpoint immutabile; nuovi lifetime e traffico mapped restano
+nel conto da completare. La [candidata fold/core GPU](../c7.1-history/h100-rms-cell-tail-2026-10-11.md)
+è preparata ma non ancora validata: piano trattenuto dopo i quattro round,
+finestre limitate e polinomi originali, owner42.496 B. Binding/live,
+indici/byte, statistica,159 programmi/99 profondità e conto completo aperti.
 
 **Zero certificati canonici**: O=0 incompleto, O=150/300 non iniziati.
 Backend RMS completo, conto simultaneo e premessa di raffinamento aperti.

@@ -42,6 +42,10 @@ cudaError_t cudaHostUnregister(void* p) {
 }
 namespace c71_rms_prefix {
 // Ownership model only. These stubs deliberately supply no GPU moment math.
+cudaError_t source_frames_fold(cudaStream_t,const uint8_t*,const SourceNorm*,const SourceTile*,
+    unsigned,unsigned,unsigned,unsigned,unsigned,unsigned,unsigned,unsigned,uint8_t*,uint16_t*,unsigned* attempted) {
+    *attempted=1;return fail_launch?cudaErrorInvalidValue:cudaSuccess;
+}
 cudaError_t source_frames(cudaStream_t stream,const uint8_t* payload,const SourceNorm* norms,
     const SourceTile* tiles,unsigned count,unsigned suffix,unsigned first,unsigned capacity,
     unsigned n,uint8_t* frames,uint16_t* ids,unsigned* attempted) {
@@ -72,12 +76,38 @@ cudaError_t replay(cudaStream_t stream,const uint8_t*,const uint16_t*,const Prog
     *zeroed=uint64_t(width)*capacity*2; *attempted=2;
     return fail_launch?cudaErrorInvalidValue:cudaSuccess;
 }
+cudaError_t replay_raw(cudaStream_t stream,const uint8_t*,const uint16_t*,const Program*,const Node*,
+    const uint32_t*,const uint32_t*,unsigned,unsigned width,unsigned capacity,unsigned,unsigned,
+    uint64_t* stage,unsigned* attempted,uint64_t* zeroed) {
+    *attempted=0;*zeroed=0;
+    const auto status=cudaMemsetAsync(stage,0,uint64_t(width)*capacity*2,stream);
+    if(status)return status;
+    *zeroed=uint64_t(width)*capacity*2;*attempted=1;
+    return fail_launch?cudaErrorInvalidValue:cudaSuccess;
+}
 cudaError_t suffix_eq(cudaStream_t,const Fp3*,unsigned,unsigned,unsigned,unsigned,uint32_t*,unsigned* attempted) {
     *attempted=1; return fail_launch?cudaErrorInvalidValue:cudaSuccess;
 }
 cudaError_t consume(cudaStream_t,const uint32_t*,const uint32_t*,const Gate*,unsigned,unsigned,Fp3*,Fp3*,unsigned* attempted) {
     *attempted=3; return fail_launch?cudaErrorInvalidValue:cudaSuccess;
 }
+}
+namespace c71_rms_tail {
+cudaError_t prepare(cudaStream_t,Shape,Fp3*,unsigned* attempted) {
+    *attempted=fail_launch?1:2;return fail_launch?cudaErrorInvalidValue:cudaSuccess;
+}
+cudaError_t suffix_weights(cudaStream_t,Shape,unsigned,Fp3*) {return fail_launch?cudaErrorInvalidValue:cudaSuccess;}
+cudaError_t fold(cudaStream_t,Shape,unsigned,unsigned,unsigned,const uint64_t*,const uint16_t*,const Fp3*,Fp3*) {
+    return fail_launch?cudaErrorInvalidValue:cudaSuccess;
+}
+cudaError_t gates(cudaStream_t,Shape,unsigned,const c71_rms_prefix::Gate*,unsigned,const Fp3*,Fp3*) {
+    return fail_launch?cudaErrorInvalidValue:cudaSuccess;
+}
+cudaError_t sum_gates(cudaStream_t,unsigned,unsigned,const Fp3*,Fp3*) {return fail_launch?cudaErrorInvalidValue:cudaSuccess;}
+cudaError_t selector(cudaStream_t,Shape,unsigned,const Fp3*,const Fp3*,const Fp3*,Fp3*) {
+    return fail_launch?cudaErrorInvalidValue:cudaSuccess;
+}
+cudaError_t terminal_selectors(cudaStream_t,Shape,const Fp3*,Fp3*) {return fail_launch?cudaErrorInvalidValue:cudaSuccess;}
 }
 static bool fail_dense=false;
 static bool fail_memset=false;

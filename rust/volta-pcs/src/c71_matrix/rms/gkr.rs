@@ -1254,16 +1254,18 @@ fn prove_impl_evaluated(
     shared_gates: bool,
     byte_contracted: bool,
 ) -> Result<(Proof, Vec<Fp3>, Auth, SourceProverWork), String> {
-    prove_impl_backend(s,get_frame,fs,correlations,sourcewise,pattern_prefix,cache_bytes,shared_gates,byte_contracted,None)
+    prove_impl_backend(s,get_frame,fs,correlations,sourcewise,pattern_prefix,cache_bytes,shared_gates,byte_contracted,None,None)
 }
 
 type NativePrefixBuilder<'a> = dyn FnMut(usize,&[Fp3],&[Fp3],&dyn Fn(usize)->[u8;12],&mut patterns::Work)
     -> Result<Option<patterns::Prefix>,String> + 'a;
+type NativeCellBuilder<'a> = dyn FnMut(&[Fp3],&[Fp3])->Result<Option<SourceCellRound>,String> + 'a;
 
 fn prove_impl_backend(
     s:&Statement<'_>,get_frame:&impl Fn(usize)->[u8;12],fs:&mut Fs,
     correlations:&mut impl ExactSizeIterator<Item=Auth>,sourcewise:bool,pattern_prefix:Option<usize>,
     cache_bytes:usize,shared_gates:bool,byte_contracted:bool,mut native:Option<&mut NativePrefixBuilder<'_>>,
+    mut native_cell:Option<&mut NativeCellBuilder<'_>>,
 ) -> Result<(Proof,Vec<Fp3>,Auth,SourceProverWork),String> {
     use std::cell::{Cell, RefCell};
 
@@ -1473,7 +1475,8 @@ fn prove_impl_backend(
                 replay_prefix.set(prefix.len());
                 replay_group.set(None); // prefix changes the public traversal
                 let mut work = SourceCellWork::default();
-                let result = source_cell_round_planned::<true>(
+                let gpu=if let Some(builder)=native_cell.as_mut() {builder(&point,&prefix)?}else {None};
+                let result = if let Some(result)=gpu {result}else {source_cell_round_planned::<true>(
                     s.programs,
                     depth,
                     width,
@@ -1486,7 +1489,7 @@ fn prove_impl_backend(
                     &mut cell_cache,
                     cache_bytes,
                     shared.as_deref(),
-                )?;
+                )?};
                 if prefix.is_empty() {
                     work.coefficient_additions += shared.as_ref().map_or(0, |p| p.weight_additions());
                 }
@@ -1830,8 +1833,8 @@ pub(in super::super) fn prove_native_sourcewise(
     public_spans:&[(u32,u32,u16)],capacity:usize,
 ) -> Result<(Proof,Vec<Fp3>,Auth,SourceProverWork),String> {
     let mut builder=|depth,point:&[Fp3],weights:&[Fp3],read:&dyn Fn(usize)->[u8;12],work:&mut patterns::Work|
-        patterns::build_native(s,depth,point,weights,read,work,runtime,public_spans,capacity,None);
-    prove_impl_backend(s,&get_frame,fs,correlations,true,Some(1),0,false,false,Some(&mut builder))
+        patterns::build_native(s,depth,point,weights,read,work,runtime,public_spans,capacity,None,None);
+    prove_impl_backend(s,&get_frame,fs,correlations,true,Some(1),0,false,false,Some(&mut builder),None)
 }
 
 pub(in super::super) fn prove_native_mapped_sourcewise(
@@ -1841,9 +1844,20 @@ pub(in super::super) fn prove_native_mapped_sourcewise(
     public_spans:&[(u32,u32,u16)],capacity:usize,
     source:&crate::c71_matrix::range::windowed::native::RmsSourceToken,
 ) -> Result<(Proof,Vec<Fp3>,Auth,SourceProverWork),String> {
-    let mut builder=|depth,point:&[Fp3],weights:&[Fp3],read:&dyn Fn(usize)->[u8;12],work:&mut patterns::Work|
-        patterns::build_native(s,depth,point,weights,read,work,runtime,public_spans,capacity,Some(source));
-    prove_impl_backend(s,&get_frame,fs,correlations,true,Some(1),0,false,false,Some(&mut builder))
+    let state=std::cell::RefCell::new((runtime,None));
+    let mut builder=|depth,point:&[Fp3],weights:&[Fp3],read:&dyn Fn(usize)->[u8;12],work:&mut patterns::Work| {
+        let mut state=state.borrow_mut();let (runtime,tail)=&mut *state;
+        patterns::build_native(s,depth,point,weights,read,work,runtime,public_spans,capacity,Some(source),Some(tail))
+    };
+    let mut cell=|point:&[Fp3],prefix:&[Fp3]| {
+        if point.len()<=4 {return Ok(None);}
+        let mut state=state.borrow_mut();let (runtime,tail)=&mut *state;
+        let Some(token)=tail.as_ref() else {return runtime.abort("native RMS retained cell tail missing");};
+        let (coefficients,terminal)=runtime.rms_tail_round(token,prefix)?;
+        if terminal.is_some() {*tail=None;}
+        Ok(Some(SourceCellRound {coefficients,terminal:terminal.map(|[lo,hi,sel_lo,sel_hi]|(lo,hi,sel_lo,sel_hi))}))
+    };
+    prove_impl_backend(s,&get_frame,fs,correlations,true,Some(1),0,false,false,Some(&mut builder),Some(&mut cell))
 }
 
 pub(in super::super) fn prove_sourcewise(
@@ -3078,6 +3092,108 @@ mod tests {
         })).collect::<Vec<_>>();
         check_cells_backend(&programs,&assignments,&honest,
             (0,frame(3,1,0,true)),(0,frame(64,1,0,true)),false,true);
+    }
+
+    #[test]
+    #[ignore="explicit real CUDA library and authorized hardware required"]
+    fn c71_b12_mixed_mapped_gpu_cell_tail_all_rounds_original_dense_coefficients() {
+        use crate::c71_matrix::range::windowed::native;
+        let programs=mixed_moment_programs();let cells=16384usize;
+        let counts=[8193usize,4877,3307];
+        let mut tiles=Vec::new();
+        for (p,&count) in counts.iter().enumerate() {
+            let mut col=0usize;
+            while col<count {
+                let size=1usize<<(count-col).ilog2();
+                tiles.push(native::RmsSourceTile {first:0,end:size as u32,norm:p as u32,row:0,
+                    col:col as u32,cols:size as u32,program:p as u32,reserved:0});col+=size;
+            }
+        }
+        tiles.sort_by_key(|t|(std::cmp::Reverse(t.end),t.norm,t.row,t.col));
+        let mut live=0usize;let mut assignments=vec![None;cells];let mut frames=vec![[0;12];cells];
+        let mut original_cells=counts.map(|n|vec![0usize;n]);
+        for t in &mut tiles {
+            let size=t.end as usize;t.first=live as u32;t.end=(live+size) as u32;
+            for k in 0..size {
+                let p=t.norm as usize;let col=t.col as usize+k;
+                let product=match p {0=>(col%2)*48+(col%4)*64,1=>(col%2)*4+(col%4)*64,_=>col*7};
+                frames[live+k]=frame(product as i64,1,0,true);assignments[live+k]=Some(p);
+                original_cells[p][col]=live+k;
+            }
+            live+=size;
+        }
+        assert_eq!(live,16377);
+        let spans=tiles.iter().map(|t|(t.first,t.end,t.program as u16)).collect::<Vec<_>>();
+        let mut payload=Vec::new();let mut norms=Vec::new();
+        for (p,&count) in counts.iter().enumerate() {
+            let product=payload.len();
+            for &cell in &original_cells[p] {payload.extend_from_slice(&frames[cell][..4]);}
+            let statistic=payload.len();payload.extend_from_slice(&frames[original_cells[p][0]][4..10]);
+            let output=payload.len();
+            for &cell in &original_cells[p] {payload.extend_from_slice(&frames[cell][10..]);}
+            norms.push(native::RmsSourceNorm {product:product as u64,statistic:statistic as u64,output:output as u64,
+                cells:count as u64,pbytes:4,columns:count as u32,rows:1,program:p as u32});
+        }
+        let payload=std::sync::Arc::new(payload);
+        let packet=native::RmsSourcePacket {shape:native::RmsSourceShape {bytes:payload.len() as u64,
+            live:live as u32,padded:cells as u32,norms:3,tiles:tiles.len() as u32,programs:3,reserved:0},norms,tiles};
+        let model=Model::new(32,vec![0;1024]).unwrap();
+        let statement=Statement {root:&model.root,profile:b"original dense mapped tail coefficient oracle",
+            view:[42;32],attempt:AttemptContext {session:[1;32],capacity:[2;32],slot:0,predecessor:[0;32],nonce:[3;32]},
+            programs:&programs,assignments:Assignments::dense(&assignments)};
+        let widths=statement.geometry().unwrap();
+        let weights_owner=std::sync::Arc::new(Vec::new());
+        let _budget=crate::c71_matrix::census::Budget::new(&weights_owner).unwrap();
+        let config=native::tests::hardware_config(512,64<<20);let mut runtime=native::Runtime::new(&config).unwrap();
+        let source=runtime.rms_source_begin(payload,&packet).unwrap();let baseline=runtime.stats().unwrap();
+        let mut coefficients_checked=0;let mut terminal_vectors_checked=0;
+        for case in 0..2 {
+            let point=(0..14).map(|i|Fp3::new(Fp::new(13+i*3),Fp::new(17+i*5),Fp::new(19+i*7))).collect::<Vec<_>>();
+            let challenges=(0..14).map(|i|if case==1 && i%3==0 {Fp3::ZERO}else if case==1 && i%3==1 {Fp3::ONE}
+                else {Fp3::new(Fp::new(23+i*7),Fp::new(29+i*11),Fp::new(31+i*13))}).collect::<Vec<_>>();
+            for depth in 1..widths.len() {
+                let width=widths[depth-1];
+                let weights=(0..widths[depth]).map(|i|Fp3::new(Fp::new(37+i as u64),Fp::new(41+i as u64*2),Fp::new(43))).collect::<Vec<_>>();
+                let mut previous=vec![Fp3::ZERO;cells*width];
+                for (cell,&p) in assignments.iter().enumerate() {if let Some(p)=p {
+                    let program=&programs[p];let mut input=vec![0u64;program.ports];input[1]=1;
+                    for bit in 0..program.ports-2 {input[bit+2]=u64::from(frames[cell][bit/8]>>(bit%8)&1);}
+                    let trace=program.replay(&input,1).unwrap();let row=&trace[(depth-1).min(trace.len()-1)];
+                    for (out,&value) in previous[cell*width..(cell+1)*width].iter_mut().zip(row) {*out=Fp3::ONE.mul_bool(value==1);}
+                }}
+                let mut selectors=statement.selectors(&point);let mut tail=None;
+                let prefix=patterns::build_native(&statement,depth,&point,&weights,
+                    &|_|panic!("mapped native builder invoked a host frame callback"),&mut patterns::Work::default(),
+                    &mut runtime,&spans,256,Some(&source),Some(&mut tail)).unwrap().unwrap();
+                for round in 0..14 {
+                    let expected=cell_coefficients(&statement,depth,width,&previous,&selectors,&weights);
+                    if round<4 {assert_eq!(prefix.coefficients(&challenges[..round]),expected);}
+                    else {
+                        let (actual,terminal)=runtime.rms_tail_round(tail.as_ref().unwrap(),&challenges[..round]).unwrap();
+                        assert_eq!(actual,expected,"mapped tail case{case}/depth{depth}/round{round}");
+                        if round==13 {
+                            let [lo,hi,sel_lo,sel_hi]=terminal.unwrap();
+                            assert_eq!(lo,previous[..width]);assert_eq!(hi,previous[width..]);
+                            assert_eq!(sel_lo,selectors.iter().map(|v|v[0]).collect::<Vec<_>>());
+                            assert_eq!(sel_hi,selectors.iter().map(|v|v[1]).collect::<Vec<_>>());
+                            drop(tail.take().unwrap());terminal_vectors_checked+=4;
+                        }else {assert!(terminal.is_none());}
+                    }
+                    fold(&mut previous,challenges[round]);for selector in &mut selectors {fold(selector,challenges[round]);}
+                    coefficients_checked+=1;
+                }
+                let stats=runtime.stats().unwrap();assert_eq!(stats.arena_bytes,baseline.arena_bytes);
+                assert_eq!(stats.host_owner_bytes,baseline.host_owner_bytes);assert_eq!(stats.allocations-stats.releases,1);
+            }
+        }
+        runtime.rms_source_retire(source).unwrap();let stats=runtime.stats().unwrap();
+        assert_eq!(stats.arena_bytes,0);assert_eq!(stats.allocations,stats.releases);
+        println!("C71_RMS_CELL_TAIL_GPU {}",serde_json::json!({"cases":2,"depths":3,"cell_bits":14,
+            "live_cells":live,"padded_cells":cells,"coefficients_checked":coefficients_checked,
+            "terminal_vectors_checked":terminal_vectors_checked,"source_capacity":256,"tail_pair_capacity":16,
+            "last_round_prefix_groups":512,"last_round_group_batches":2,"host_source_frame_callbacks":0,
+            "stats":stats,"original_dense_coefficients_and_terminal":true,"gpu_execution":true,
+            "canonical_certificates":0,"credit":false}));runtime.close().unwrap();
     }
 
     fn check(

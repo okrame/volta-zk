@@ -35,6 +35,11 @@ static_assert(sizeof(SourceShape)==32 && sizeof(SourceNorm)==48 && sizeof(Source
 cudaError_t source_frames(cudaStream_t,const uint8_t*,const SourceNorm*,const SourceTile*,
     unsigned tiles,unsigned suffix,unsigned first,unsigned capacity,unsigned n,
     uint8_t* frames,uint16_t* assignments,unsigned* launches=nullptr);
+cudaError_t source_frames_fold(cudaStream_t,const uint8_t*,const SourceNorm*,const SourceTile*,
+    unsigned tiles,unsigned active,unsigned first,unsigned capacity,unsigned n,unsigned side,
+    unsigned group_first,unsigned groups,uint8_t* frames,uint16_t* assignments,unsigned* launches=nullptr);
+cudaError_t replay_raw(cudaStream_t,const uint8_t*,const uint16_t*,const Program*,const Node*,
+    const uint32_t*,const uint32_t*,unsigned,unsigned,unsigned,unsigned,unsigned,uint64_t*,unsigned*,uint64_t*);
 cudaError_t replay(cudaStream_t, const uint8_t*, const uint16_t*, const Program*,
     const Node*, const uint32_t*, const uint32_t*, unsigned programs, unsigned width,
     unsigned capacity, unsigned n, unsigned shared_slots, uint64_t* stage,

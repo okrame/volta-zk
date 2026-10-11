@@ -10,8 +10,8 @@
 #endif
 #ifdef C71_SOURCE_VMM_EXPERIMENT
 #include "c71_source_tail.h"
-#if !defined(C71_OWNER_TRACE_PHYSICAL) || !defined(C71_OWNER_TRACE) || defined(C71_ASYNC_ALLOCATOR_EXPERIMENT)
-#error "source VMM requires physical diagnostics and excludes the pool experiment"
+#if !defined(C71_OWNER_TRACE_PHYSICAL) || !defined(C71_OWNER_TRACE)
+#error "source VMM requires physical diagnostics"
 #endif
 #endif
 #if defined(C71_ASYNC_ALLOCATOR_EXPERIMENT) && (!defined(C71_OWNER_TRACE_PHYSICAL) || !defined(C71_OWNER_TRACE))

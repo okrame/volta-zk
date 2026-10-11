@@ -90,8 +90,18 @@ Il [preflight H100 VMM](../c7.1-history/h100-certificates-vmm-preflight-2026-10-
 passa quattro parità: KV condiviso/duplicato, trasformazioni, A completa
 ridotta e wire lineare FS/MAC originali. Granularità 2 MiB osservata,
 CPU AS 64 GiB verificato, GPU idle dopo cleanup. Il distinto `a-vmm01`
-è avviato da O=0 con 5.400 s e cap invariati; risultato pendente.
+è partito da O=0 con 5.400 s e cap invariati; interrotto per ritmo insufficiente.
 Nessuna root del modello o certificato, RMS completo ancora aperto.
+
+La combinazione diagnostica VMM + pool limitato ad A supera 45 scenari
+host, compresa la chiusura del pool con KV differito ancora vivo: owner
+50.880 B, riserva pool 128 MiB separata dal backing VMM. Il ledger richiede
+una ricevuta esplicita di parità del lifetime combinato; nessun rimborso
+VMM anticipato. `a-vmm01` è interrotto volontariamente per il ritmo di circa
+61–65 s/gruppo, incompatibile con la finestra residua: non è uno stop fisico.
+GPU idle verificata; il successivo trial combinato richiede prima parità
+H100. Ipotesi: ridurre il costo delle allocazioni legacy durante il replay;
+la causa del rallentamento non è attribuita. [Dettagli](../c7.1-history/h100-certificates-vmm-pool-2026-10-11.md).
 
 La [scansione incrementale dei pesi RMS](../c7.1-history/h100-certificates-rms-prefix-2026-10-11.md)
 ricalcola soltanto il suffisso cambiato di Eq, senza divisioni. Passano

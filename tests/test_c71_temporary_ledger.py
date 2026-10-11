@@ -135,3 +135,26 @@ def test_source_vmm_accounts_rounding_and_only_public_lifetimes(tmp_path, granul
         assert new['named_allocation_subtotal_bytes']-old['named_allocation_subtotal_bytes'] == delta
     assert changed == [f'native_initial_A{i}_accumulate' for i in (1, 2, 3)]
     assert after['credit'] is False and after['allowance_physically_verified'] is False
+
+
+def test_source_vmm_pool_requires_combined_lifetime_receipt(tmp_path):
+    prepare_inputs(tmp_path)
+    marker = dict(host_owner_bytes=50880, granularity_bytes=2097152,
+                  kv_columns=[2048]*20+[4096]*100, live_columns=[99, 107, 116],
+                  preserves_shared_handles=True)
+    pool = dict(reserve_bytes=128 << 20, host_owner_bytes=50880,
+                initial_commitment_only=True, end_requires_empty_pool=True)
+    (tmp_path / "pool.log").write_text("C71_SOURCE_POOL_PHASE " + json.dumps(pool) + "\n")
+    (tmp_path / "vmm.log").write_text("C71_SOURCE_VMM " + json.dumps(marker) + "\n")
+    with pytest.raises(ValueError, match="deferred source backing"):
+        compute(tmp_path)
+    marker['pool_lifetime_parity'] = True
+    (tmp_path / "vmm.log").write_text("C71_SOURCE_VMM " + json.dumps(marker) + "\n")
+    after = compute(tmp_path)
+    phases = {r['phase']: r for r in after['named_phase_crosschecks']}
+    for caches in (1, 2, 3):
+        for suffix in ('accumulate', 'hash'):
+            row = phases[f'native_initial_A{caches}_{suffix}']
+            assert row['parts']['initial_A_stream_ordered_pool_reserve'] == 128 << 20
+            assert not row['named_subtotal_exceeds_payload']
+    assert 'initial_A_stream_ordered_pool_reserve' not in phases['proof_A1_RMS_GKR_steady']['parts']

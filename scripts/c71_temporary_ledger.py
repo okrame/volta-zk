@@ -380,7 +380,8 @@ def ledger_native(directory, query_record, linear_record, proposed_s1=False, lif
         owner_observations.append({'marker': 'C71_SOURCE_POOL_PHASE', 'bytes': owner})
     source_vmm = records(directory, 'C71_SOURCE_VMM')
     if source_vmm:
-        if (len(source_vmm) != 1 or not proposed_s1 or source_pool
+        if (len(source_vmm) != 1 or not proposed_s1
+                or (source_pool and source_vmm[0].get('pool_lifetime_parity') is not True)
                 or source_vmm[0].get('host_owner_bytes', 0) < owner
                 or source_vmm[0].get('granularity_bytes') not in [1 << k for k in range(12, 22)]
                 or source_vmm[0].get('kv_columns') != [2048]*20+[4096]*100

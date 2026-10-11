@@ -83,10 +83,27 @@ static void source_parity(C71RangeContext* c) {
         assert(!c71_pcs_source_finish(c,out[0],out[1],0,pads,tw));
     }
     for(unsigned half=0;half<2;++half) assert(!c71_pcs_compare_words(c,outputs[0][half],outputs[1][half]));
+    for(auto& pass:outputs) for(auto id:pass) assert(!c71_range_release(c,id));
+    for(auto id:{lo,hi,tw,pads,in}) assert(!c71_range_release(c,id));
 }
 int main(int argc,char** argv) {
     assert(argc==2); const std::string scenario=argv[1]; joint_limit=16ULL<<20;
     uint64_t owner=0;
+#ifdef C71_ASYNC_ALLOCATOR_EXPERIMENT
+    if(scenario=="combined") {
+        joint_limit=(128ULL<<20)+(16ULL<<20); model_pool_physical=true;
+        C71RangeContext* c=nullptr; assert(!c71_range_create(0,8ULL<<20,256,joint_account,&c));
+        owner=stats(c).host_owner_bytes;
+        uint64_t retained=0; assert(!c71_dense_kv_capacity(c,1024,&retained));
+        const auto legacy=joint_live;
+        assert(!c71_range_source_pool_begin(c)); assert(joint_live==legacy+(128ULL<<20));
+        source_parity(c);
+        assert(stats(c).arena_bytes==327680 && physical==327680);
+        assert(!c71_range_source_pool_end(c)); assert(joint_live==legacy);
+        assert(!c71_range_release(c,retained)); assert(joint_live==owner);
+        close(c); assert(!joint_live && !physical);
+    } else
+#endif
     if(scenario=="source" || scenario.rfind("kv",0)==0) {
         C71RangeContext* c=nullptr; assert(!c71_range_create(0,8ULL<<20,256,joint_account,&c)); owner=stats(c).host_owner_bytes;
         if(scenario=="source") source_parity(c);

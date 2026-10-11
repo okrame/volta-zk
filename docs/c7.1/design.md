@@ -3,15 +3,24 @@
 [Specifiche](specs.md) · [Sicurezza](security.md) · [Test locali](local-tests.md) ·
 [Test su RunPod](runpod-tests.md) · [Archivio](../c7.1-history/README.md)
 
-La [campagna H100 autorizzata del 10 ottobre](../c7.1-history/h100-followup-start-2026-10-10.md)
-è [chiusa](../c7.1-history/h100-followup-close-2026-10-10.md): solo
-`z6wx2kkn69eoc0`, provider **EXITED con runtime assente alle 21:24:47 UTC**
-(23:24:47 Italia del 10 ottobre), guard ritirato tramite pidfd dopo
-la conferma provider. Avvio conservativo 16:27:24 UTC, durata 4 h 57 min 23 s;
-stop oltre un’ora prima della deadline 22:27:24 UTC, senza estensioni.
-L’autorizzazione ha coperto correzioni e trial entro lo stesso pod,
-ambito e termine. Γ ammesso, W verificata, NoPeek, MAC originali,
-AES reale e correlazioni monouso restano il riferimento.
+La [nuova campagna certificati dell’11 ottobre](../c7.1-history/h100-certificates-start-2026-10-11.md)
+è autorizzata sul solo pod `z6wx2kkn69eoc0` per **otto ore complessive**,
+inclusi trenta minuti di conservazione e spegnimento. Avvio provider
+ricostruito conservativamente **07:31:18 UTC**, fine calcolo **15:01:18 UTC**,
+guard indipendente **15:26:18 UTC**, stop entro **15:31:18 UTC**
+(17:31:18 Italia). H100 80 GB verificata; il container nuovo richiede
+ripristino del codice e degli input, senza ricalibrare Γ ammesso.
+Priorità: risolvere lo stop fisico A con una nuova ipotesi, misurare presto
+RMS/GKR rappresentativo, esportare immediatamente ogni certificato completo
+e registrarne l’accettazione canonica durevole. Obiettivo O=0/150/300
+nella stessa nuova sessione, minimo O=0 completo e verificato.
+
+La [campagna precedente](../c7.1-history/h100-followup-close-2026-10-10.md)
+è chiusa con provider EXITED alle 21:24:47 UTC del 10 ottobre e zero
+certificati. Γ originale, pool e fill selezionati, geometria PCS,
+NoPeek, MAC originali, PCG AES e correlazioni fresche monouso restano
+invariati; RMS coarser resta respinto. I negativi seguenti ne conservano
+lo stato di partenza e non sono risultati della nuova campagna.
 
 **Zero certificati canonici.** Il [default](../c7.1-history/h100-followup-default-2026-10-10.md)
 completa W/setup e 116/512 gruppi A, poi supera il cap fisico:

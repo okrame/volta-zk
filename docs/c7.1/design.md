@@ -32,19 +32,22 @@ passa159 programmi alle profondità GKR1/48/99:1.431 casi,258.022.656
 confronti,64 posizioni e tre liveness per programma. Programmi provati
 separatamente; momenti misti dei159 programmi e tutte99 profondità GPU
 ancora da verificare. Build CPU:18 campioni GPU556.793.856B non attribuiti;
-nessuna affermazione di isolamento. Runtime/caller comune, residuo fold/core
+nessuna affermazione di isolamento. Validazione canonica, residuo fold/core
 e conto simultaneo restano aperti; nessuna selezione canonica.
 Distributività, selector/mask/wire, ricostruzione/count bounds/modulo,
 determinismo dei frame e lifetime/capacità CUDA sono premesse non scaricate.
-Il collegamento candidato usa il runtime comune: owner default42.280 B
-(+184 B), sette buffer privati nell’arena e staging host addebitato.
-Sezioni originali, fence e free precedono la pubblicazione; il caller
-esplicito deriva il supporto dalle tile originali. Su `88a08c6d` passano
-owner3/3, trace4/4, pool1/1, documenti9/9 e build CUDA completa.
-La [build Rust negativa](../../benchmarks/results/c71-certificates-rms-common-prefix-negative-2026-10-11-88a08c6d.json)
-rileva un nome duplicato e due import mancanti nei test: corretti prima
-del nuovo trial. Tre negativi conservati; prove GPU/wire/caller e conto
-simultaneo ancora aperti, nessuna selezione canonica.
+Il [caller GPU comune ridotto](../c7.1-history/h100-rms-common-prefix-2026-10-11.md)
+passa sul checkout pulito `c67db510`: wire/FS/MAC uguali, caso onesto
+accettato e due alterazioni respinte dai verificatori originali RMS/PCS
+e P0/V/RNE/W/A. Fixture28 celle vive/32 padded,93 profondità native;
+correlazioni ideali, nessun modello o setup AES canonico. Owner42.280 B,
+sette buffer privati per profondità,651 allocazioni/rilasci per prova;
+arena massima7.053.056 B e fisico campionato613.847.040 B, senza credito
+al picco istantaneo o al conto simultaneo canonico. GPU idle dopo cleanup.
+Passano anche owner/trace/pool, simboli/capability Rust e check produzione;
+i tre negativi iniziali restano conservati. Fold/core residuo, indici/byte,
+momenti misti159/99 profondità e conto completo restano aperti;
+nessuna selezione canonica.
 **Zero certificati canonici**: O=0 incompleto, O=150/300 non iniziati.
 Backend RMS completo, conto simultaneo e premessa di raffinamento aperti.
 

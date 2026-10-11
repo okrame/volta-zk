@@ -1,0 +1,7 @@
+
+running 2 tests
+test c71_matrix::range::windowed::native::tests::c71_b12_native_rms_packet_lengths_and_owner_identity_fail_closed ... ok
+test c71_matrix::range::windowed::native::tests::c71_b12_native_rms_symbols_are_required ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 624 filtered out; finished in 39.12s
+

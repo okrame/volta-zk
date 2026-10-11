@@ -1,5 +1,7 @@
 # C7.1 — archivio e provenienza
 
+[Caller RMS GPU comune ridotto: parità e verificatori originali](h100-rms-common-prefix-2026-10-11.md).
+
 [Preparazione RMS nel runtime comune e primo negativo](h100-rms-common-owner-preparation-2026-10-11.md).
 
 [Replay H100 delle159 ricette RMS originali a tre profondità](h100-rms-native-replay-2026-10-11.md).

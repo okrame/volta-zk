@@ -1,0 +1,4 @@
+
+thread 'c71_matrix::rms::gkr::tests::c71_b12_mixed_mapped_gpu_tail_ragged_gate_chunks_dense_coefficients' (105913) panicked at volta-pcs/src/c71_matrix/rms/gkr.rs:3413:41:
+called `Result::unwrap()` on an `Err` value: "B12 RMS public program differs"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

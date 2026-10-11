@@ -104,16 +104,24 @@ fisico campionato1.272.451.072 B, zero incompleti nel159/99. I componenti
 coefficienti/owner includono campioni incompleti; nessun picco completo.
 Il [conto delle candidate batch eseguito](../c7.1-history/h100-rms-batched-schedule-parity-2026-10-11.md)
 passa10 test e9 documentali, predice280.299 launch poi osservate nel tail;
-confronto strutturato nuovo da eseguire, record predittivo immutato.
+confronto strutturato nuovo passato su8d1471f1,12 test del calendario
+con9 documentali; record predittivo immutato.
 Conto cell/index canonico3.307.175.412 launch a cap256 e209.567.637
 cap4096, sempre1.328.755.507.200 posizioni padded del tail: solo screen
 `credit:false`, senza conto simultaneo, tempo o capacità completa ammessi.
-È [preparata una fixture GPU con gate ragged](../c7.1-history/h100-rms-tail-ragged-prepared-2026-10-11.md)
-oltre128/512 gate per programma e selector/challenge zero/uno; da verificare
-sul pod dopo AB/BA, senza build concorrente al confronto temporale.
+La [fixture GPU ragged iniziale è rifiutata](../c7.1-history/h100-rms-tail-ragged-negative-2026-10-11.md)
+prima del Runtime: manca il terminale singleton richiesto dal validatore.
+Regressione densa passata; negativo/provenienza conservati. Una nuova
+fixture aggiunge quel terminale, conserva i gate oltre128/512 e corregge
+il marker della capacità coppie; nuovo commit/trial sul pod da verificare.
 
 **Zero certificati canonici**: O=0 incompleto, O=150/300 non iniziati.
 Backend RMS completo, conto simultaneo e premessa di raffinamento aperti.
+Il [prossimo consumer byte](../c7.1-history/rms-native-byte-next-step-2026-10-11.md)
+riuserà il sorgente mapped ancora vivo nella fase byte, conservando tutti
+gli8 livelli/16 lane e i terminali originali. Capability/ownership, parità,
+conto simultaneo e fail-closed GPU vanno implementati prima della selezione;
+questa preparazione non estende la finestra o avvia un trial canonico.
 
 La [prima fase della campagna certificati](../c7.1-history/h100-certificates-close-2026-10-11.md)
 e il [seguito RMS](../c7.1-history/h100-certificates-rms-shared-cache-2026-10-11.md)

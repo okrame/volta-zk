@@ -1,0 +1,14 @@
+{
+  "schema": "volta-c71-rms-tail-ragged-negative-provenance-correction-v1",
+  "source_git_sha": "8d1471f1a8bb73fdce4f6c8edace0c1691cca4de",
+  "git_dirty": false,
+  "credit": false,
+  "canonical_certificates": 0,
+  "primary_record": "benchmarks/results/c71-certificates-rms-tail-ragged-negative-2026-10-11-8d1471f1.json",
+  "primary_record_sha256": "a8a3bbc1c1e8ef5c34703d6396c6e50690b1705b5ed29eb1696411fcbefaa074",
+  "declared_source_git_sha": "8d1471f15a25f2b1ec5b01ca473857bae4a9a057",
+  "correct_source_git_sha": "8d1471f1a8bb73fdce4f6c8edace0c1691cca4de",
+  "authoritative_source_receipt": "artifact/c7.1-pod/certificates-rms-tail-ragged01-negative-20261011/metadata/source.json",
+  "authoritative_source_receipt_sha256": "cb8ef67ba5b3c83d406d593c761ccef4d2188077d397ccdfb68b79aeab9e95e0",
+  "reason": "VM exporter replaced short SHA before full SHA while adapting a prior receipt; primary declared source is wrong. Raw clean source receipt preserved unchanged and correct. No rerun, record overwrite or alteration of trial outcome."
+}

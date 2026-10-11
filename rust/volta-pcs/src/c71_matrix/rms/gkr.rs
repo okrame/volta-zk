@@ -3359,7 +3359,8 @@ mod tests {
                 Gate {op,x,y:if op==Op::Copy{x}else{(13*i+3)%width}}
             }).collect();
             Circuit {ports:98,product_bits:32,valid:0,coefficients:[0;3],arithmetic_bits:1,
-                raw_gates:first+second,levels:vec![layer(first,98),layer(second,first)]}
+                raw_gates:first+second+1,levels:vec![layer(first,98),layer(second,first),
+                    vec![Gate {op:Op::Copy,x:0,y:0}]]}
         }).collect();
         check_mapped_gpu_tail_dense(programs, 128, [65,37,23], 3,
             "C71_RMS_TAIL_RAGGED_GPU");
@@ -3461,7 +3462,8 @@ mod tests {
         let groups=cells/32;
         println!("{marker} {}",serde_json::json!({"cases":cases,"depths":widths.len()-1,"cell_bits":bits,
             "live_cells":live,"padded_cells":cells,"coefficients_checked":coefficients_checked,
-            "terminal_vectors_checked":terminal_vectors_checked,"source_capacity":256,"tail_pair_capacity":16,
+            "terminal_vectors_checked":terminal_vectors_checked,"source_capacity":256,
+            "tail_pair_capacity":16usize.min(cells/32),
             "last_round_prefix_groups":groups,"last_round_group_batches":groups.div_ceil(256),"host_source_frame_callbacks":0,
             "gate_counts_by_program":programs.iter().map(|p|p.levels.iter().map(Vec::len).collect::<Vec<_>>()).collect::<Vec<_>>(),
             "stats":stats,"original_dense_coefficients_and_terminal":true,"gpu_execution":true,

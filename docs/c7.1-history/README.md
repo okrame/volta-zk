@@ -1,5 +1,9 @@
 # C7.1 — archivio e provenienza
 
+[Fixture ragged rifiutata e nuova geometria con terminale singleton](h100-rms-tail-ragged-negative-2026-10-11.md).
+
+[Prossimo consumer byte GPU e lifetime del checkpoint](rms-native-byte-next-step-2026-10-11.md).
+
 [Confronto GPU RMS AB/BA: wire uguale e tempi del tail](h100-rms-native-paired-2026-10-11.md).
 
 [Riduzione tail per programma: coefficienti e wire159/99 verificati](h100-rms-tail-program-reduction-parity-2026-10-11.md).

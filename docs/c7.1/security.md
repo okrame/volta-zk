@@ -45,6 +45,10 @@ ammissione del conto simultaneo da questa preparazione.
 Il primo controllo C++ si ferma per `-Werror=misleading-indentation`
 nel cleanup; [negativo conservato](../../benchmarks/results/c71-certificates-rms-common-prefix-negative-2026-10-11-369636be.json),
 istruzione corretta prima del nuovo trial.
+I tre controlli dell’owner comune passano su `a324ebf3`; due dei quattro
+controlli di traccia falliscono per attese obsolete sulle dimensioni
+42136/42128 rispetto a42320/42312 B. Il [secondo negativo](../../benchmarks/results/c71-certificates-rms-common-prefix-negative-2026-10-11-a324ebf3.json)
+è conservato; attese default/trace/pool aggiornate prima del nuovo trial.
 **Zero certificati canonici**: O=0 incompleto, O=150/300 non iniziati.
 Backend RMS completo, conto simultaneo e premessa di raffinamento aperti.
 

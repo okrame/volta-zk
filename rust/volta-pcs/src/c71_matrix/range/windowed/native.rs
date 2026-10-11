@@ -2744,6 +2744,39 @@ pub(in crate::c71_matrix) mod tests {
             assert!(Runtime::new(&fixture.config).is_err(),"missing linear symbol {symbol}");
         }
     }
+    fn rms_fixture_packet()->RmsPacket {
+        RmsPacket {shape:RmsShape {programs:1,width:8,capacity:256,suffix_bits:1,nodes:1,boundaries:2,
+            outputs:1,gates:1,masks:1,sections:1},programs:vec![RmsProgram {ports:4,slots:5,stages:1,
+            nodes_first:0,boundaries_first:0,outputs_first:0,outputs_count:1}],nodes:vec![[0,4,2,3]],
+            boundaries:vec![0,1],outputs:vec![4],gates:vec![RmsGate {op:0,x:0,y:0,reserved:0,weight:Fp3::ONE.into()}],
+            point:vec![Fp3::ONE.into()],ranges:vec![RmsRange {first:0,count:1}],masks:vec![u16::MAX],
+            sections:vec![RmsSection {first:0,end:2}]}
+    }
+    #[test]
+    fn c71_b12_native_rms_packet_lengths_and_owner_identity_fail_closed() {
+        let mut fixture=fixture(512);fixture.config.arena_bytes=16<<20;
+        for fault in 0..4 {
+            let mut runtime=Runtime::new(&fixture.config).unwrap();let mut packet=rms_fixture_packet();
+            let result:Result<(),String>=if fault==0 {
+                packet.nodes.clear();runtime.rms_prefix_begin(&packet).map(|_|())
+            } else {
+                let token=runtime.rms_prefix_begin(&packet).unwrap();
+                if fault==1 {
+                    let mut other=Runtime::new(&fixture.config).unwrap();
+                    assert!(other.rms_prefix_finish(token).is_err());assert_eq!(other.stats().unwrap().stopped,1);
+                    other.close().unwrap();runtime.abort("test owner mismatch completed")
+                } else if fault==2 {runtime.rms_prefix_window(&token,0,2,&[],&[],&[])}
+                else {runtime.rms_prefix_finish(token).map(|_|())}
+            };
+            assert!(result.is_err());assert_eq!(runtime.stats().unwrap().stopped,1);runtime.close().unwrap();
+        }
+    }
+    #[test]
+    fn c71_b12_native_rms_symbols_are_required() {
+        for symbol in ["c71_rms_prefix_begin","c71_rms_prefix_window","c71_rms_prefix_finish"] {
+            let fixture=fixture_library(512,Some(symbol));assert!(Runtime::new(&fixture.config).is_err());
+        }
+    }
     #[test]
     fn c71_b12_native_transform_natural_forward_inverse_and_work() {
         let mut fixture = fixture(512);

@@ -72,7 +72,7 @@ def test_owner_trace_physical_changes_and_query_write_failures(tmp_path):
     for scenario in ("physical", "physicalquery", "physicalwrite", "physicalstack"):
         path = tmp_path / f"{scenario}.jsonl"
         report = run_fixture(binary, scenario, path)
-        assert report["host_owner_bytes"] == 42136
+        assert report["host_owner_bytes"] == 42320
         assert report["native_allocations"] == report["native_frees"]
         assert report["joint_debt_bytes"] == 0
         assert report["cleanup_failed"] == (scenario != "physical")
@@ -150,7 +150,7 @@ def test_owner_trace_runtime_bookkeeping_survives_logger_faults(tmp_path):
         if scenario == "existing":
             path.write_text("preserved\n")
         report = run_fixture(binary, scenario, path)
-        assert report["host_owner_bytes"] == 42128
+        assert report["host_owner_bytes"] == 42312
         debt = 256 if scenario in {"free_failure", "free_failure_trace"} else 0
         assert report["final_arena_bytes"] == report["joint_debt_bytes"] == debt
         assert report["allocations"] == report["releases"] + (1 if debt else 0)

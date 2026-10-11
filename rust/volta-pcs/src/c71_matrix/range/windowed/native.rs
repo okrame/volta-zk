@@ -159,7 +159,7 @@ const _: () = assert!(size_of::<Field>() == 24 && size_of::<LinearShape>() == 32
     && size_of::<LinearInterval>() == 64 && size_of::<[Field; 5]>() == 120);
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
-pub(in crate::c71_matrix) struct RmsShape {
+pub(in crate::c71_matrix) struct RmsPrefixShape {
     pub programs:u32, pub width:u32, pub capacity:u32, pub suffix_bits:u32,
     pub nodes:u32, pub boundaries:u32, pub outputs:u32, pub gates:u32, pub masks:u32, pub sections:u32,
 }
@@ -179,12 +179,12 @@ pub(in crate::c71_matrix) struct RmsRange {pub first:u32, pub count:u32}
 #[derive(Clone, Copy)]
 pub(in crate::c71_matrix) struct RmsSection {pub first:u32, pub end:u32}
 pub(in crate::c71_matrix) struct RmsPacket {
-    pub shape:RmsShape, pub programs:Vec<RmsProgram>, pub nodes:Vec<[u32;4]>,
+    pub shape:RmsPrefixShape, pub programs:Vec<RmsProgram>, pub nodes:Vec<[u32;4]>,
     pub boundaries:Vec<u32>, pub outputs:Vec<u32>, pub gates:Vec<RmsGate>,
     pub point:Vec<Field>, pub ranges:Vec<RmsRange>, pub masks:Vec<u16>, pub sections:Vec<RmsSection>,
 }
 pub(in crate::c71_matrix) struct RmsToken {id:u64, owner:Arc<()>, capacity:usize, programs:usize, masks:usize}
-const _: () = assert!(size_of::<RmsShape>()==40 && size_of::<RmsProgram>()==28 && size_of::<RmsGate>()==40
+const _: () = assert!(size_of::<RmsPrefixShape>()==40 && size_of::<RmsProgram>()==28 && size_of::<RmsGate>()==40
     && size_of::<RmsRange>()==8 && size_of::<RmsSection>()==8);
 // PCS v^3=v+1 basis. MAC Field is deliberately a different Rust type.
 #[repr(C)]
@@ -561,7 +561,7 @@ api! {
     salts_complete: unsafe extern "C" fn(Raw,u64,*mut u64,u64,*mut u64)->i32 => "c71_pcs_salts_complete",
     linear_begin: unsafe extern "C" fn(Raw,LinearShape,*const LinearChunk,*const Field,u32,
         *const LinearGroup,*const LinearInterval,*const Field,*mut u64)->i32 => "c71_linear_begin",
-    rms_prefix_begin: unsafe extern "C" fn(Raw,RmsShape,*const RmsProgram,*const [u32;4],*const u32,*const u32,
+    rms_prefix_begin: unsafe extern "C" fn(Raw,RmsPrefixShape,*const RmsProgram,*const [u32;4],*const u32,*const u32,
         *const RmsGate,*const Field,*const RmsRange,*const u16,*const RmsSection,*mut u64)->i32 => "c71_rms_prefix_begin",
     rms_prefix_window: unsafe extern "C" fn(Raw,u64,u32,u32,*const u8,*const u16,*const u16)->i32 => "c71_rms_prefix_window",
     rms_prefix_finish: unsafe extern "C" fn(Raw,u64,*mut Field,u32)->i32 => "c71_rms_prefix_finish",
@@ -2745,7 +2745,7 @@ pub(in crate::c71_matrix) mod tests {
         }
     }
     fn rms_fixture_packet()->RmsPacket {
-        RmsPacket {shape:RmsShape {programs:1,width:8,capacity:256,suffix_bits:1,nodes:1,boundaries:2,
+        RmsPacket {shape:RmsPrefixShape {programs:1,width:8,capacity:256,suffix_bits:1,nodes:1,boundaries:2,
             outputs:1,gates:1,masks:1,sections:1},programs:vec![RmsProgram {ports:4,slots:5,stages:1,
             nodes_first:0,boundaries_first:0,outputs_first:0,outputs_count:1}],nodes:vec![[0,4,2,3]],
             boundaries:vec![0,1],outputs:vec![4],gates:vec![RmsGate {op:0,x:0,y:0,reserved:0,weight:Fp3::ONE.into()}],

@@ -3224,7 +3224,7 @@ mod tests {
             if gpu {
                 use crate::c71_matrix::range::windowed::native;
                 let config=native::tests::hardware_config(512,16<<20);
-                let weights=Arc::new(Vec::new());
+                let weights=std::sync::Arc::new(Vec::new());
                 let _budget=crate::c71_matrix::census::Budget::new(&weights).unwrap();
                 let mut runtime=native::Runtime::new(&config).unwrap();
                 let before=runtime.stats().unwrap();

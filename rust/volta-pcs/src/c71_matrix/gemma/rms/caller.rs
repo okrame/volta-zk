@@ -1138,7 +1138,7 @@ mod tests {
             if let Some((mut native_fs,mut native_rows))=native_start {
                 use crate::c71_matrix::range::windowed::native;
                 let config=native::tests::hardware_config(512,64<<20);
-                let weights=Arc::new(Vec::new());
+                let weights=std::sync::Arc::new(Vec::new());
                 let _budget=crate::c71_matrix::census::Budget::new(&weights).unwrap();
                 let mut runtime=native::Runtime::new(&config).unwrap();
                 let (candidate,pending)=sources.prove_rms_native(&statement,&parameters,read,&mut native_fs,

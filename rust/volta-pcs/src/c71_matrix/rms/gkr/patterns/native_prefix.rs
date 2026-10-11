@@ -53,7 +53,7 @@ pub(in super::super) fn build(s:&Statement<'_>,depth:usize,point:&[Fp3],weights:
     let masks=mask_set.into_iter().collect::<Vec<_>>();
     let width=super::super::widths(s.programs)?[depth-1];
     let mut packet=native::RmsPacket {
-        shape:native::RmsShape::default(),programs:Vec::new(),nodes:Vec::new(),boundaries:Vec::new(),
+        shape:native::RmsPrefixShape::default(),programs:Vec::new(),nodes:Vec::new(),boundaries:Vec::new(),
         outputs:Vec::new(),gates:Vec::new(),point:point[4..].iter().copied().map(Into::into).collect(),
         ranges:Vec::new(),masks,sections,
     };
@@ -75,7 +75,7 @@ pub(in super::super) fn build(s:&Statement<'_>,depth:usize,point:&[Fp3],weights:
     }
     // Programs containing only aliases still have a nonempty public node span.
     if packet.nodes.is_empty() {packet.nodes.push([0;4]);}
-    packet.shape=native::RmsShape {
+    packet.shape=native::RmsPrefixShape {
         programs:packet.programs.len() as u32,width:width as u32,capacity:capacity as u32,suffix_bits:(point.len()-4) as u32,
         nodes:packet.nodes.len() as u32,boundaries:packet.boundaries.len() as u32,outputs:packet.outputs.len() as u32,
         gates:packet.gates.len() as u32,masks:packet.masks.len() as u32,sections:packet.sections.len() as u32,

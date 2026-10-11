@@ -36,19 +36,15 @@ nessuna affermazione di isolamento. Runtime/caller comune, residuo fold/core
 e conto simultaneo restano aperti; nessuna selezione canonica.
 Distributività, selector/mask/wire, ricostruzione/count bounds/modulo,
 determinismo dei frame e lifetime/capacità CUDA sono premesse non scaricate.
-Il collegamento candidato al runtime comune è in verifica: owner default
-42.280 B (+184 B), piani pubblici trattenuti sul device e sette buffer
-privati nell’arena, con staging host addebitato e copertura delle sezioni
-prima della pubblicazione. Il caller esplicito usa gli intervalli delle
-tile originali; build e prove sul pod, nessuna selezione canonica o
-ammissione del conto simultaneo da questa preparazione.
-Il primo controllo C++ si ferma per `-Werror=misleading-indentation`
-nel cleanup; [negativo conservato](../../benchmarks/results/c71-certificates-rms-common-prefix-negative-2026-10-11-369636be.json),
-istruzione corretta prima del nuovo trial.
-I tre controlli dell’owner comune passano su `a324ebf3`; due dei quattro
-controlli di traccia falliscono per attese obsolete sulle dimensioni
-42136/42128 rispetto a42320/42312 B. Il [secondo negativo](../../benchmarks/results/c71-certificates-rms-common-prefix-negative-2026-10-11-a324ebf3.json)
-è conservato; attese default/trace/pool aggiornate prima del nuovo trial.
+Il collegamento candidato usa il runtime comune: owner default42.280 B
+(+184 B), sette buffer privati nell’arena e staging host addebitato.
+Sezioni originali, fence e free precedono la pubblicazione; il caller
+esplicito deriva il supporto dalle tile originali. Su `88a08c6d` passano
+owner3/3, trace4/4, pool1/1, documenti9/9 e build CUDA completa.
+La [build Rust negativa](../../benchmarks/results/c71-certificates-rms-common-prefix-negative-2026-10-11-88a08c6d.json)
+rileva un nome duplicato e due import mancanti nei test: corretti prima
+del nuovo trial. Tre negativi conservati; prove GPU/wire/caller e conto
+simultaneo ancora aperti, nessuna selezione canonica.
 **Zero certificati canonici**: O=0 incompleto, O=150/300 non iniziati.
 Backend RMS completo, conto simultaneo e premessa di raffinamento aperti.
 

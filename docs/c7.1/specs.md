@@ -26,6 +26,16 @@ canonico o target 65 s dedotto. Zero certificati canonici; lo spike A e
 il costo RMS completo restano aperti. Il ledger con export ha massimo
 nominato 5.878.767.874 B e 26.812.158 B residui, senza ammissione fisica.
 
+Il [nuovo componente A diagnostico](../c7.1-history/h100-certificates-a-physical01-2026-10-11.md)
+si ferma a **41/512 gruppi** in 473,380 s: campione fisico 6.530.682.368 B,
+compresa la riserva cache di 16 MiB. Lo spike compare dopo una fence CUDA,
+con payload massimo invariato; chiamante, stack e causa restano da distinguere.
+GPU idle dopo teardown, zero certificati. Il default passa 16 filtri H100;
+la diagnostica passa la trasformazione a owner singolo, mentre il filtro
+con due owner conserva il rifiuto di riapertura del file esclusivo.
+La nuova traccia aggiunge chiamante/riga e limite stack CUDA, record 768 B,
+owner sempre 42.136 B e stesso cap file/fisico. Nessuna selezione definitiva.
+
 La [campagna precedente](../c7.1-history/h100-followup-close-2026-10-10.md)
 è chiusa con provider EXITED alle 21:24:47 UTC del 10 ottobre e zero
 certificati. Γ originale, pool e fill selezionati, geometria PCS,
@@ -88,7 +98,7 @@ seguito hardware sopra misura componenti, senza ammettere candidate Γ.
 Il diagnostico `C71_OWNER_TRACE_PHYSICAL` estende la traccia owner con
 `cuda_used_bytes` e `cuda_total_bytes`; registra variazioni di overhead
 da 16 MiB e snapshot. Aggiunge 8 B alla traccia owner (40 B totali, owner
-42.136 B), con record da 512 B e cap invariato 16 MiB. Una query o scrittura
+42.136 B), con record da 768 B e cap invariato 16 MiB. Una query o scrittura
 fallita ferma il caller e conserva il cleanup native. Il default non include
 query o stato diagnostico. Le query non forniscono un limite ai picchi transitori.
 

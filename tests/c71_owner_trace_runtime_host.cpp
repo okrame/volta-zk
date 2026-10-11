@@ -52,7 +52,7 @@ extern "C" ssize_t __wrap_write(int descriptor,const void* input,size_t count) {
     return __real_write(descriptor,input,count);
 }
 
-enum class Fault { none, post_alloc, post_free, post_fence };
+enum class Fault { none, post_alloc, post_free, post_fence, physical_growth };
 static Fault armed=Fault::none;
 static unsigned set_device_calls=0, native_fences=0;
 static void* failed_free_pointer=nullptr;
@@ -73,6 +73,7 @@ cudaError_t cudaStreamSynchronize(cudaStream_t stream) {
     ++native_fences;
     const auto status=underlying_cudaStreamSynchronize(stream);
     if(armed==Fault::post_fence) { armed=Fault::none; poison_trace_descriptor(); }
+    if(armed==Fault::physical_growth) { armed=Fault::none; fake_free-=32ULL<<20; }
     return status;
 }
 static void assert_no_publication(C71RangeContext* context,uint64_t output) {
@@ -95,16 +96,17 @@ int main(int argc,char** argv) {
     assert(initial.host_owner_bytes==42096+sizeof(c71_owner_trace::Trace) && joint_live==initial.host_owner_bytes);
     if(init_failure) {
         assert(initial.stopped && !set_device_calls && !allocations && !frees && !launches);
-    } else if(scenario=="physical" || scenario=="physicalquery" || scenario=="physicalwrite") {
+    } else if(scenario=="physical" || scenario=="physicalquery" || scenario=="physicalwrite" || scenario=="physicalstack") {
         const auto first=alloc(context,C71_I64,3);
         fake_free-=32ULL<<20;
         uint64_t second=0;
         if(scenario=="physicalquery") fake_free=80000000001ULL;
+        if(scenario=="physicalstack") stack_fault=2;
         if(scenario=="physicalwrite") poison_trace_descriptor();
         const int result=c71_range_alloc(context,C71_I64,3,&second);
         assert((result!=0)==(scenario!="physical"));
         if(scenario=="physical") {
-            fake_free-=32ULL<<20;
+            armed=Fault::physical_growth;
             assert(!c71_dense_pointwise(context,0,0,0,0,{0,0,0},first));
             assert(!c71_range_release(context,first) && !c71_range_release(context,second));
         } else assert(stats(context).stopped && allocations==1);

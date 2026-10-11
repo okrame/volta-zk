@@ -22,7 +22,7 @@ namespace c71_owner_trace {
 
 struct Trace {
     // Account sizeof(Trace) in the diagnostic owner's existing host charge.
-    // No heap or stdio buffer. Record storage is 512 B; conservatively allow
+    // No heap or stdio buffer. Record storage is 512 B (768 B physical); allow
     // another 1 KiB stack for emit and 8 KiB for open (4 KiB parent path plus
     // scalars/system-call frames). These are additional diagnostic upper terms.
     // This ceiling is for components/short windows. A selected first group
@@ -30,7 +30,11 @@ struct Trace {
     // it never extends the cap or provides a whole-replay/physical-peak credit.
     static constexpr uint64_t max_records = 131072;
     static constexpr uint64_t max_bytes = 16ULL << 20;
+#ifdef C71_OWNER_TRACE_PHYSICAL
+    static constexpr size_t record_bytes = 768;
+#else
     static constexpr size_t record_bytes = 512;
+#endif
     static constexpr size_t max_path_bytes = 4096;
 
     int fd = -1;
@@ -107,7 +111,9 @@ struct Trace {
     bool emit(const char* op, const char* edge, int slot, uint32_t kind,
               uint64_t logical, uint64_t capacity, uint64_t arena,
               uint64_t weights, int status, unsigned line,
-              uint64_t physical_used = 0, uint64_t physical_total = 0) noexcept {
+              uint64_t physical_used = 0, uint64_t physical_total = 0,
+              const char* caller = nullptr, unsigned caller_line = 0,
+              uint64_t stack_bytes = 0) noexcept {
         if (failed || fd < 0) return reject();
         if (!armed) return true;
         if (seq >= max_records || slot < -1 || slot >= 512) return reject();
@@ -135,10 +141,15 @@ struct Trace {
         record.text(",\"arena_bytes\":"); record.number(arena);
         record.text(",\"weights_bytes\":"); record.number(weights);
 #ifdef C71_OWNER_TRACE_PHYSICAL
+        if(caller && !public_name_length(caller)) return reject();
         record.text(",\"cuda_used_bytes\":"); record.number(physical_used);
         record.text(",\"cuda_total_bytes\":"); record.number(physical_total);
+        record.text(",\"caller\":\""); record.text(caller?caller:op); record.text("\"");
+        record.text(",\"caller_line\":"); record.number(caller_line?caller_line:line);
+        record.text(",\"cuda_stack_limit_bytes\":"); record.number(stack_bytes);
 #else
         (void)physical_used; (void)physical_total;
+        (void)caller; (void)caller_line; (void)stack_bytes;
 #endif
         record.text(",\"status\":"); record.signed_number(status);
         record.text(",\"line\":"); record.number(line); record.text("}\n");

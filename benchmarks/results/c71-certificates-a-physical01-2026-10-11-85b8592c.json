@@ -1,0 +1,292 @@
+{
+  "attribution": "First large sampled CUDA growth is visible after a native stream fence. Nearby records are releases of 180224-byte I64 buffers. Query reduction omits intervening changes below 16 MiB; caller/kernel and stack state are not recorded in this version. No specific CUDA allocator or kernel cause is established.",
+  "certificates_generated": 0,
+  "certificates_verified": 0,
+  "complete_A_roots": 0,
+  "completed_A_groups": 41,
+  "credit": false,
+  "first_overhead_above_600000000_bytes": {
+    "bytes": 984687616,
+    "index": 649,
+    "neighbor_events": [
+      {
+        "a_first": 0,
+        "a_group": 41,
+        "arena_bytes": 5255417344,
+        "capacity_bytes": 0,
+        "credit": false,
+        "cuda_total_bytes": 85017493504,
+        "cuda_used_bytes": 67104866304,
+        "edge": "after",
+        "kind": 0,
+        "line": 268,
+        "logical_bytes": 0,
+        "monotonic_ns": 14732899043717410,
+        "op": "fence",
+        "schema": "volta-c71-owner-trace-v1",
+        "seq": 646,
+        "slot": -1,
+        "status": 0,
+        "weights_bytes": 61394690560
+      },
+      {
+        "a_first": 0,
+        "a_group": 41,
+        "arena_bytes": 5246141184,
+        "capacity_bytes": 180224,
+        "credit": false,
+        "cuda_total_bytes": 85017493504,
+        "cuda_used_bytes": 67112468480,
+        "edge": "after",
+        "kind": 6,
+        "line": 422,
+        "logical_bytes": 180000,
+        "monotonic_ns": 14732899178802929,
+        "op": "c71_range_release",
+        "schema": "volta-c71-owner-trace-v1",
+        "seq": 647,
+        "slot": 349,
+        "status": 0,
+        "weights_bytes": 61394690560
+      },
+      {
+        "a_first": 0,
+        "a_group": 41,
+        "arena_bytes": 5246576640,
+        "capacity_bytes": 180224,
+        "credit": false,
+        "cuda_total_bytes": 85017493504,
+        "cuda_used_bytes": 67190063104,
+        "edge": "after",
+        "kind": 6,
+        "line": 422,
+        "logical_bytes": 180000,
+        "monotonic_ns": 14732899189564984,
+        "op": "c71_range_release",
+        "schema": "volta-c71-owner-trace-v1",
+        "seq": 648,
+        "slot": 323,
+        "status": 0,
+        "weights_bytes": 61394690560
+      },
+      {
+        "a_first": 0,
+        "a_group": 41,
+        "arena_bytes": 5246892544,
+        "capacity_bytes": 0,
+        "credit": false,
+        "cuda_total_bytes": 85017493504,
+        "cuda_used_bytes": 67626270720,
+        "edge": "after",
+        "kind": 0,
+        "line": 268,
+        "logical_bytes": 0,
+        "monotonic_ns": 14732899193622301,
+        "op": "fence",
+        "schema": "volta-c71-owner-trace-v1",
+        "seq": 649,
+        "slot": -1,
+        "status": 0,
+        "weights_bytes": 61394690560
+      }
+    ]
+  },
+  "gamma": "original admitted unchanged",
+  "git_dirty": false,
+  "gpu_idle_after_stop": {
+    "compute_apps": "",
+    "epoch": 1791707500.709916,
+    "gpu": "GPU-e05e977b-758d-f3f4-cbe8-5720b83d1ae1, 0"
+  },
+  "measurement": {
+    "authorized_end_epoch": 1791732678.0,
+    "close_reserve_seconds": 1800,
+    "command": [
+      "bash",
+      "-c",
+      "ulimit -S -v unlimited; exec \"$CARGO_TARGET_DIR/debug/examples/c71_canonical_reference\" commitment-a-cuda \"$CANDIDATE\" \"$TABLES\" \"$PACKED\" \"$C71_CAMPAIGN/a-physical01/journals\" 2147483648 \"$C71_CAMPAIGN/libc71-physical.so\" 0"
+    ],
+    "compute_end_epoch": 1791730878.0,
+    "diagnostic_file_cache_reserve_bytes": 16777216,
+    "exit_code": -9,
+    "gpu_uuid": "GPU-e05e977b-758d-f3f4-cbe8-5720b83d1ae1",
+    "incomplete_samples": 0,
+    "label": "a",
+    "mode": "canonical",
+    "observed_payload_peak_bytes": 5554384869,
+    "payload_limit_bytes": 5905580032,
+    "physical_complete_peak": false,
+    "physical_temporary_limit_bytes": 6174015488,
+    "resource_failure": "RuntimeError: resource stop: canonical simultaneous physical temporaries exceed allowance",
+    "sample_interval_clock": "Linux CLOCK_MONOTONIC, absolute nanoseconds on this host boot",
+    "sample_interval_scope": "Start/end bracket collection of the resource sample; no GPU synchronization or instantaneous peak. External profiler clock alignment requires a matching clock or explicit anchor.",
+    "sampled_host_rss_peak_bytes": 61611409408,
+    "sampled_stable_temporary_peak_bytes": 6530682368,
+    "sampled_whole_gpu_peak_bytes": 67691872256,
+    "samples": 2363,
+    "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+    "sampling_target_seconds": 0.2,
+    "smaps_read_failures": 0,
+    "stable_samples": 2363,
+    "start_unix_seconds": 1791706932.3436894,
+    "tracked_descendant_identities": 2,
+    "wall_seconds": 473.3799663875252
+  },
+  "next_changed_diagnostic": "Record native caller of the fence and CUDA stack limit at emitted physical boundaries, with the same 16 MiB file cap and resource stops.",
+  "parity": {
+    "parity01/current": [
+      {
+        "exit_code": 0,
+        "label": "case-7",
+        "resource_failure": null,
+        "wall_seconds": 2.634471820667386
+      },
+      {
+        "exit_code": 0,
+        "label": "case-6",
+        "resource_failure": null,
+        "wall_seconds": 0.6452748384326696
+      },
+      {
+        "exit_code": 0,
+        "label": "case-11",
+        "resource_failure": null,
+        "wall_seconds": 2.404301578179002
+      },
+      {
+        "exit_code": 0,
+        "label": "case-8",
+        "resource_failure": null,
+        "wall_seconds": 0.8327690847218037
+      },
+      {
+        "exit_code": 0,
+        "label": "case-12",
+        "resource_failure": null,
+        "wall_seconds": 2.404397701844573
+      },
+      {
+        "exit_code": 0,
+        "label": "case-14",
+        "resource_failure": null,
+        "wall_seconds": 2.2027424722909927
+      },
+      {
+        "exit_code": 0,
+        "label": "case-10",
+        "resource_failure": null,
+        "wall_seconds": 0.6238856874406338
+      },
+      {
+        "exit_code": 0,
+        "label": "case-9",
+        "resource_failure": null,
+        "wall_seconds": 0.8400919456034899
+      },
+      {
+        "exit_code": 0,
+        "label": "case-13",
+        "resource_failure": null,
+        "wall_seconds": 0.6354094091802835
+      },
+      {
+        "exit_code": 0,
+        "label": "case-0",
+        "resource_failure": null,
+        "wall_seconds": 3.204342568293214
+      },
+      {
+        "exit_code": 0,
+        "label": "case-3",
+        "resource_failure": null,
+        "wall_seconds": 1.4322163462638855
+      },
+      {
+        "exit_code": 0,
+        "label": "case-1",
+        "resource_failure": null,
+        "wall_seconds": 0.6323859635740519
+      },
+      {
+        "exit_code": 0,
+        "label": "case-4",
+        "resource_failure": null,
+        "wall_seconds": 1.4036267921328545
+      },
+      {
+        "exit_code": 0,
+        "label": "case-5",
+        "resource_failure": null,
+        "wall_seconds": 1.4038148932158947
+      },
+      {
+        "exit_code": 0,
+        "label": "case-2",
+        "resource_failure": null,
+        "wall_seconds": 0.8034560400992632
+      },
+      {
+        "exit_code": 0,
+        "label": "case-15",
+        "resource_failure": null,
+        "wall_seconds": 0.45035947300493717
+      }
+    ],
+    "parity01/physical": [
+      {
+        "exit_code": 101,
+        "label": "case-0",
+        "resource_failure": null,
+        "wall_seconds": 2.030146509408951
+      }
+    ],
+    "parity02": [
+      {
+        "exit_code": 0,
+        "label": "transform",
+        "resource_failure": null,
+        "wall_seconds": 0.8027538228780031
+      },
+      {
+        "exit_code": 0,
+        "label": "nonlinear",
+        "resource_failure": null,
+        "wall_seconds": 0.42551206797361374
+      }
+    ]
+  },
+  "parity_failure_interpretation": "Physical library case-0 completed its first owner then failed exclusive trace creation at the second owner in the same Rust test. Failure preserved; single-owner transform and standalone nonlinear parity pass separately. Default current library passes all 16 filters.",
+  "pod_id": "z6wx2kkn69eoc0",
+  "private_bundle": {
+    "manifest_sha256": "02d88b54a2bafa9f6e075b142e0f7de82def710ec592688c4c7fe3ab3afcd02f",
+    "path": "artifact/c7.1-pod/certificates-a-physical01-20261011T083100Z"
+  },
+  "provenance": {
+    "binaries": [
+      {
+        "path": "/workspace/c71-certificates-20261011/libc71-physical.so",
+        "sha256": "82b7d0c2a92ad5f0a8e5ecfae963143378c8c28ea8711e0b6cf8247ae36b061b"
+      },
+      {
+        "path": "/workspace/volta-zk/rust/target/debug/examples/c71_canonical_reference",
+        "sha256": "d534d24eef25bb988f25ce53ca3c2d1947737e12d864ea435fb1d1bd24b59b01"
+      }
+    ],
+    "complete_certificate_expected": false,
+    "diagnostic": "physical owner boundaries",
+    "diagnostic_file_cache_reserve_bytes": 16777216,
+    "diagnostic_owner_bytes": 42136,
+    "diagnostic_stack_upper_bytes": 9728,
+    "epoch": 1791706932.2797203,
+    "git_dirty": false,
+    "mode": "commitment-a-cuda",
+    "old_tokens": 0,
+    "source_git_sha": "85b8592c68a1a8790cbd4a319576df942e5be4f5"
+  },
+  "schema": "volta-c71-physical-attribution-v1",
+  "source_git_sha": "85b8592c68a1a8790cbd4a319576df942e5be4f5",
+  "total_A_groups": 512,
+  "trace_bytes": 233753,
+  "trace_records": 650,
+  "trace_sha256": "74fe88ae82050d61b3e23095bf5f388037a0dfff7fa0cb8132076cfe93410b92"
+}

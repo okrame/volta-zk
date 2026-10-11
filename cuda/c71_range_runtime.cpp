@@ -211,7 +211,7 @@ TraceAllocation trace_buffer(C71RangeContext* c,const Buffer* b) {
     return {int(b-c->buffers),b->kind,b->count*sizes[b->kind],b->capacity};
 }
 int trace_event(C71RangeContext* c,const char* op,const char* edge,
-    TraceAllocation a,int status,unsigned line) {
+    TraceAllocation a,int status,unsigned line,const char* caller=nullptr,unsigned caller_line=0) {
 #ifdef C71_OWNER_TRACE_PHYSICAL
     // Query every observed lifecycle/fence, retain only >=16 MiB overhead
     // changes and owner snapshots. This is diagnostic timing, not a peak bound.
@@ -230,12 +230,18 @@ int trace_event(C71RangeContext* c,const char* op,const char* edge,
     const bool lifecycle=!std::strcmp(op,"allocate") || !std::strcmp(op,"c71_range_release") ||
         !std::strcmp(op,"fence");
     if(!status && lifecycle && difference<(16ULL<<20)) return 0;
+    size_t stack=0;
+    if(cudaDeviceGetLimit(&stack,cudaLimitStackSize)!=cudaSuccess) {
+        c->diagnostic.failed=true;
+        return fail(c,"physical owner stack query failed");
+    }
     if(!c->diagnostic.emit(op,edge,a.slot,a.kind,a.logical,a.capacity,
-        c->stats.arena_bytes,c->stats.weights_bytes,status,line,used,total))
+        c->stats.arena_bytes,c->stats.weights_bytes,status,line,used,total,caller,caller_line,stack))
         return fail(c,"bounded physical owner trace failed");
     c->diagnostic.last_overhead=overhead;
     return 0;
 #else
+    (void)caller; (void)caller_line;
 #ifdef C71_OWNER_TRACE_LARGE_ONLY
     // A real scan exhausted 16 MiB in 2.47 s. Keep snapshots and large
     // lifecycles; the external CUDA profiler supplies the omitted API events.
@@ -258,16 +264,28 @@ int trace_event(C71RangeContext* c,const char* op,const char* edge,
 #define C71_TRACE_EVENT(c,edge,status) 0
 #define C71_TRACE_RECOUNT(c)
 #endif
-int fence(C71RangeContext* c) {
+int fence(C71RangeContext* c,const char* caller=nullptr,unsigned caller_line=0) {
     C71_TRACE_VALUE(-1,0,0,0);
+#ifdef C71_OWNER_TRACE_PHYSICAL
+    const bool trace_failed=trace_event(c,"fence","before",diagnostic_allocation,0,__LINE__,caller,caller_line)!=0;
+#else
+    (void)caller; (void)caller_line;
     const bool trace_failed=C71_TRACE_EVENT(c,"before",0)!=0;
+#endif
     ++c->stats.fences;
     // Drain accepted work even when a diagnostic write failed during cleanup.
     const auto status=cudaStreamSynchronize(c->stream);
     const int result=checked(c,status);
+#ifdef C71_OWNER_TRACE_PHYSICAL
+    const bool after_failed=trace_event(c,"fence","after",diagnostic_allocation,status,__LINE__,caller,caller_line)!=0;
+#else
     const bool after_failed=C71_TRACE_EVENT(c,"after",status)!=0;
+#endif
     return result || trace_failed || after_failed ? -1 : 0;
 }
+#ifdef C71_OWNER_TRACE_PHYSICAL
+#define fence(c) fence(c,__func__,__LINE__)
+#endif
 int launched(C71RangeContext* c,cudaError_t e) { ++c->stats.launches; return checked(c,e); }
 void recount(C71RangeContext* c) {
     c->stats.live_capacity_bytes=0; c->stats.logical_bytes=0;

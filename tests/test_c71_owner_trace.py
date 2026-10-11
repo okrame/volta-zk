@@ -52,7 +52,8 @@ def read_records(path, *, physical=False):
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
     records = [json.loads(line) for line in path.read_text().splitlines()]
     for index, record in enumerate(records):
-        assert set(record) == FIELDS | ({"cuda_used_bytes", "cuda_total_bytes"} if physical else set())
+        assert set(record) == FIELDS | ({"cuda_used_bytes", "cuda_total_bytes", "caller",
+                                        "caller_line", "cuda_stack_limit_bytes"} if physical else set())
         assert record["schema"] == "volta-c71-owner-trace-v1" and record["credit"] is False
         assert record["seq"] == index and -1 <= record["slot"] < 512
         assert -1 <= record["a_first"] <= 511 and -1 <= record["a_group"] <= 511
@@ -68,7 +69,7 @@ def read_records(path, *, physical=False):
 def test_owner_trace_physical_changes_and_query_write_failures(tmp_path):
     binary = tmp_path / "physical"
     compile_fixture(binary, physical=True)
-    for scenario in ("physical", "physicalquery", "physicalwrite"):
+    for scenario in ("physical", "physicalquery", "physicalwrite", "physicalstack"):
         path = tmp_path / f"{scenario}.jsonl"
         report = run_fixture(binary, scenario, path)
         assert report["host_owner_bytes"] == 42136
@@ -77,10 +78,13 @@ def test_owner_trace_physical_changes_and_query_write_failures(tmp_path):
         assert report["cleanup_failed"] == (scenario != "physical")
         records = read_records(path, physical=True)
         assert all(r["cuda_used_bytes"] <= r["cuda_total_bytes"] == 80_000_000_000 for r in records)
+        assert all(r["cuda_stack_limit_bytes"] == 256 and r["caller_line"] > 0 for r in records)
+        assert all(r["caller"].replace("_", "").isalnum() for r in records)
         if scenario == "physical":
             changes = [r for r in records if r["op"] in {"allocate", "fence"}]
             assert [(r["op"], r["edge"], r["cuda_used_bytes"]) for r in changes] == [
-                ("allocate", "before", 32 << 20), ("allocate", "before", 64 << 20)]
+                ("allocate", "before", 32 << 20), ("fence", "after", 64 << 20)]
+            assert changes[1]["caller"] == "dense_complete"
         else:
             assert not any(r["op"] == "allocate" for r in records)
 

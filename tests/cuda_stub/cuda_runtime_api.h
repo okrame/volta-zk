@@ -23,6 +23,7 @@ cudaError_t cudaMemPoolSetAttribute(cudaMemPool_t,cudaMemPoolAttr,void*);
 cudaError_t cudaMemPoolGetAttribute(cudaMemPool_t,cudaMemPoolAttr,void*);
 cudaError_t cudaMemPoolTrimTo(cudaMemPool_t,size_t);
 cudaError_t cudaMallocFromPoolAsync(void**,size_t,cudaMemPool_t,cudaStream_t);
+cudaError_t cudaFreeAsync(void*,cudaStream_t);
 cudaError_t cudaMemGetInfo(size_t*,size_t*);
 cudaError_t cudaFree(void*);
 cudaError_t cudaMemcpyAsync(void*,const void*,size_t,cudaMemcpyKind,cudaStream_t);

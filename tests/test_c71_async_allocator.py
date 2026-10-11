@@ -16,7 +16,7 @@ def test_async_pool_reserve_and_cleanup_failures(tmp_path):
         str(ROOT / "cuda/c71_range_runtime.cpp"), str(ROOT / "tests/c71_async_allocator_host.cpp"),
         "-o", str(binary)], check=True, timeout=30)
     for scenario in ("normal", "reserve_failure", "allocation_failure", "query_failure",
-                     "trim_failure", "fence_failure", "cache_limit"):
+                     "trim_failure", "fence_failure", "cache_limit", "free_failure", "free_fence_failure"):
         environment = os.environ.copy()
         environment.pop("C71_OWNER_TRACE_A_FIRST", None)
         trace = tmp_path / f"{scenario}.jsonl"

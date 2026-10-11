@@ -200,11 +200,17 @@ int checked(C71RangeContext* c,cudaError_t status) {
     return status==cudaSuccess ? 0 : fail(c,cudaGetErrorString(status));
 }
 cudaError_t release_allocation(C71RangeContext* c,void* allocation) {
-    const auto status=cudaFree(allocation);
 #ifdef C71_ASYNC_ALLOCATOR_EXPERIMENT
+    // Drain the pool's free itself before reading its capacity counters.
+    auto status=allocation==c->weights?cudaFree(allocation):cudaFreeAsync(allocation,c->stream);
+    if(status==cudaSuccess && allocation!=c->weights) {
+        ++c->stats.fences;
+        status=cudaStreamSynchronize(c->stream);
+    }
     if(status==cudaSuccess && c->async_pool) return cudaMemPoolTrimTo(c->async_pool,0);
 #else
     (void)c;
+    const auto status=cudaFree(allocation);
 #endif
     return status;
 }

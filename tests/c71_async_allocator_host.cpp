@@ -30,8 +30,15 @@ int main(int argc,char** argv) {
                 assert(!c71_dense_pointwise(context,0,0,0,0,{0,0,0},id));
                 int64_t word=-1;
                 assert(!c71_original_read(context,id,C71_I64,0,1,&word) && !word);
+                const auto before=stats(context);
                 assert(!c71_range_release(context,id));
+                assert(stats(context).fences==before.fences+2);
             } else if(scenario=="query_failure") fail_pool_query=true;
+            else if(scenario=="free_failure" || scenario=="free_fence_failure") {
+                fail_pool_free=scenario=="free_failure";
+                fail_pool_free_fence=scenario=="free_fence_failure";
+                assert(c71_range_release(context,id));
+            }
             else if(scenario=="trim_failure") {
                 fail_pool_trim=true;
                 assert(c71_range_release(context,id));
@@ -42,14 +49,18 @@ int main(int argc,char** argv) {
     C71RangeStats final{};
     const int closed=c71_range_close(context,&final);
     const bool cleanup_error=scenario=="query_failure" || scenario=="trim_failure" ||
-        scenario=="fence_failure" || scenario=="cache_limit";
+        scenario=="fence_failure" || scenario=="cache_limit" ||
+        scenario=="free_failure" || scenario=="free_fence_failure";
     assert((closed!=0)==cleanup_error);
-    const uint64_t buffer_debt=(scenario=="trim_failure" || scenario=="fence_failure")?capacity:0;
+    const uint64_t buffer_debt=(scenario=="trim_failure" || scenario=="fence_failure" ||
+        scenario=="free_failure" || scenario=="free_fence_failure")?capacity:0;
     const uint64_t cache_debt=(buffer_debt || scenario=="query_failure")?reserve:0;
     assert(final.arena_bytes==buffer_debt && joint_live==buffer_debt+cache_debt);
     if(scenario=="trim_failure") assert(frees==1);
     if(scenario=="fence_failure") assert(frees==0);
     if(scenario=="query_failure") assert(frees==1);
+    if(scenario=="free_failure") assert(frees==0);
+    if(scenario=="free_fence_failure") assert(frees==1);
     std::printf("C71_ASYNC_ALLOCATOR_HOST {\"scenario\":\"%s\",\"owner_bytes\":%llu,\"fixed_cache_reserve_bytes\":%llu,\"final_joint_debt_bytes\":%llu,\"allocations\":%u,\"frees\":%u,\"gpu_execution\":false,\"credit\":false}\n",
         scenario.c_str(),(unsigned long long)initial.host_owner_bytes,(unsigned long long)reserve,
         (unsigned long long)joint_live,allocations,frees);

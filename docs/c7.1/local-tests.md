@@ -40,6 +40,12 @@ Owner 42.160 B e cap invariati. È **solo un diagnostico A**: la riserva
 permanente supera il margine del ledger generale e blocca la selezione
 canonica finché non viene ridotta o motivata con lifetime distinto.
 
+Il [preflight del pool](../c7.1-history/h100-certificates-async-release-2026-10-11.md)
+si arresta dopo i primi quattro free: reserved 0 B, used 1.024 B, arena
+0 B. Nessuna parità hardware o trial A del pool completato. La revisione
+accoda il free sullo stream owner e ne conta la sincronizzazione prima
+del trim; nove scenari simulati coprono anche free/fence falliti.
+
 La [campagna precedente](../c7.1-history/h100-followup-close-2026-10-10.md)
 è chiusa con provider EXITED alle 21:24:47 UTC del 10 ottobre e zero
 certificati. Γ originale, pool e fill selezionati, geometria PCS,
@@ -143,7 +149,7 @@ bound; nessuna esenzione o estensione del limite. La modalità è esclusa
 dalla calibrazione e accetta solo zero o il cap completo di 16 MiB.
 
 `tests/test_c71_async_allocator.py` compila solo la variante sperimentale:
-sette scenari su driver simulato, inclusi debito conservato e free dopo
+nove scenari su driver simulato, inclusi debito conservato e free dopo
 fence. Eseguire separatamente con AS 2 GiB/60 s e un worker. Non confondere
 la riserva cache del pool (payload addebitato) con i 16 MiB del file di traccia
 (riserva aggiunta dal monitor al campione fisico).

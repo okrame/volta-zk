@@ -16,6 +16,7 @@ struct FakeStream { std::vector<std::function<void()>> pending; };
 struct FakePool { std::vector<std::pair<void*,size_t>> allocations; uint64_t threshold=0; };
 static FakePool fake_pool;
 static bool fail_pool_query=false, fail_pool_trim=false, fail_pool_alloc=false;
+static bool fail_pool_free=false, fail_pool_free_fence=false;
 static uint64_t fake_pool_reserved_extra=0;
 static bool fail_launch=false, fail_fence=false, fail_free=false, corrupt=false;
 static bool fail_dense=false;
@@ -76,6 +77,14 @@ cudaError_t cudaFree(void* p) {
     for(auto it=fake_pool.allocations.begin();it!=fake_pool.allocations.end();++it)
         if(it->first==p) { fake_pool.allocations.erase(it); break; }
     ++frees; delete[] static_cast<unsigned char*>(p); return fail_free?1:0;
+}
+cudaError_t cudaFreeAsync(void* p,cudaStream_t stream) {
+    if(fail_pool_free) return 1;
+    stream->pending.push_back([=] {
+        assert(cudaFree(p)==cudaSuccess);
+        if(fail_pool_free_fence) fail_fence=true;
+    });
+    return 0;
 }
 cudaError_t cudaMemcpyAsync(void* d,const void* s,size_t n,cudaMemcpyKind kind,cudaStream_t stream) {
     if(kind==cudaMemcpyHostToDevice) {

@@ -1,0 +1,18 @@
+{
+  "source_git_sha": "25a6d958b7be38f1de214db2686d1a8f5c4c364c",
+  "git_dirty": false,
+  "command": [
+    "rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+    "c71_canonical_public_metadata_capacity_pinned_no_private_inputs",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "exit_code": 0,
+  "wall_s": 6.037523542065173,
+  "max_rss_bytes": 141684736,
+  "as_bytes": 2147483648,
+  "deadline_s": 60,
+  "workers": 1,
+  "sha256": "82b4a2f01a301d8a7e462014b2a90b04f6366dc933aae9687eb4c2f84d985bf1",
+  "binary_build": "precommit source identical to 25a6d958; build receipt retained separately"
+}

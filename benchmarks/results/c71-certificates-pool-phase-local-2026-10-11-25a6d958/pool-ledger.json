@@ -1,0 +1,20 @@
+{
+  "source_git_sha": "25a6d958b7be38f1de214db2686d1a8f5c4c364c",
+  "git_dirty": false,
+  "command": [
+    ".venv/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "-s",
+    "tests/test_c71_async_allocator.py",
+    "tests/test_c71_temporary_ledger.py"
+  ],
+  "exit_code": 0,
+  "wall_s": 13.92539478186518,
+  "max_rss_bytes": 334860288,
+  "as_bytes": 2147483648,
+  "deadline_s": 60,
+  "workers": 1,
+  "sha256": "61ee0c1f8e65a03ea6c00ac67660b8b437d99dde88694289a1d372264ae3f3ae"
+}

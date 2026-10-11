@@ -51,7 +51,8 @@ Nessuna selezione canonica o root A completa; nove scenari simulati passano.
 La [variante con lifetime limitato](../c7.1-history/h100-certificates-pool-phase-2026-10-11.md)
 addebita il pool soltanto durante il commitment iniziale A e rimborsa dopo
 fence e pool vuoto verificato. Owner 42.168 B, metadati Rust +16 B;
-14 scenari simulati e parità locale A passano. Ledger aggiornato:
+14 scenari simulati e parità locale A passano. Il [record locale pulito](../../benchmarks/results/c71-certificates-pool-phase-local-2026-10-11-25a6d958.json)
+conserva i controlli e il ledger aggiornato:
 O=0 5.890.193.534 B, margine 15.386.498 B; O=150/300 superano il
 payload di 23.935.070/63.256.638 B. Variante ancora diagnostica,
 nessuna selezione canonica o verifica H100 del nuovo lifetime.

@@ -1,5 +1,11 @@
 # C7.1 — archivio e provenienza
 
+[Riduzione tail per programma: coefficienti e wire159/99 verificati](h100-rms-tail-program-reduction-parity-2026-10-11.md).
+
+[Calendario analitico dei batching: screen e confronti GPU](h100-rms-batched-schedule-parity-2026-10-11.md).
+
+[Fixture ragged128/512 gate preparata per il pod](h100-rms-tail-ragged-prepared-2026-10-11.md).
+
 [Caller RMS GPU comune ridotto: parità e verificatori originali](h100-rms-common-prefix-2026-10-11.md).
 
 [Preparazione RMS nel runtime comune e primo negativo](h100-rms-common-owner-preparation-2026-10-11.md).

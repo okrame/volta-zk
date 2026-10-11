@@ -90,10 +90,23 @@ passa18 check su `f868468e`, inclusi23 rifiuti owner e stesso wire159/99:
 launch707.364, prover126,808 s; la singola misura non migliora il tempo
 rispetto a124,478 s precedente. Fisico campionato1.272.659.968 B, un
 incompleto, nessun credito al picco stabile. Il conto sopra resta92afea54;
-nuovo conto delle candidate batch preparato, da verificare sul pod.
-È [preparata anche la riduzione per programma del tail](../c7.1-history/h100-rms-tail-program-reduction-prepared-2026-10-11.md):
-due kernel per finestra, stessi coefficienti/selector; nuovo staging/range
-posseduto e23 rifiuti owner da verificare. Nessun esito o conto canonico dedotto.
+il confronto temporale AB/BA fra i due binari congelati è in corso.
+La [riduzione per programma del tail verificata](../c7.1-history/h100-rms-tail-program-reduction-parity-2026-10-11.md)
+passa18 check su `c0e0448d`:23 rifiuti owner,84 coefficienti/24 terminali
+densi originali e80/10 indici, caller RMS/PCS e stesso wire159/99.
+Launch280.299, prover113,559 s nella singola misura; nessuna extrapolazione.
+Arena110.714.112 B,1.288 allocazioni/rilasci, owner42.496 B dopo cleanup;
+fisico campionato1.272.451.072 B, zero incompleti nel159/99. I componenti
+coefficienti/owner includono campioni incompleti; nessun picco completo.
+Il [conto delle candidate batch eseguito](../c7.1-history/h100-rms-batched-schedule-parity-2026-10-11.md)
+passa10 test e9 documentali, predice280.299 launch poi osservate nel tail;
+confronto strutturato nuovo da eseguire, record predittivo immutato.
+Conto cell/index canonico3.307.175.412 launch a cap256 e209.567.637
+cap4096, sempre1.328.755.507.200 posizioni padded del tail: solo screen
+`credit:false`, senza conto simultaneo, tempo o capacità completa ammessi.
+È [preparata una fixture GPU con gate ragged](../c7.1-history/h100-rms-tail-ragged-prepared-2026-10-11.md)
+oltre128/512 gate per programma e selector/challenge zero/uno; da verificare
+sul pod dopo AB/BA, senza build concorrente al confronto temporale.
 
 **Zero certificati canonici**: O=0 incompleto, O=150/300 non iniziati.
 Backend RMS completo, conto simultaneo e premessa di raffinamento aperti.

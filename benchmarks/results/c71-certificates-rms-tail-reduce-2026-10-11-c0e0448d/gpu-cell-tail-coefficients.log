@@ -1,0 +1,7 @@
+
+running 1 test
+test c71_matrix::rms::gkr::tests::c71_b12_mixed_mapped_gpu_cell_tail_all_rounds_original_dense_coefficients ... C71_RMS_CELL_TAIL_GPU {"canonical_certificates":0,"cases":2,"cell_bits":14,"coefficients_checked":84,"credit":false,"depths":3,"gpu_execution":true,"host_source_frame_callbacks":0,"last_round_group_batches":2,"last_round_prefix_groups":512,"live_cells":16377,"original_dense_coefficients_and_terminal":true,"padded_cells":16384,"source_capacity":256,"stats":{"allocations":61,"arena_bytes":0,"cleanup_failed":0,"d2d_bytes":0,"d2h_bytes":254496,"fences":158,"h2d_bytes":94528,"host_owner_bytes":42496,"launches":4512,"live_capacity_bytes":0,"logical_bytes":0,"peak_capacity_bytes":4005632,"peak_reserved_bytes":4005632,"releases":61,"stopped":0,"weights_bytes":0,"weights_loaded_bytes":0,"weights_sealed":0,"zeroed_bytes":35964640},"tail_pair_capacity":16,"terminal_vectors_checked":24}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 633 filtered out; finished in 0.97s
+

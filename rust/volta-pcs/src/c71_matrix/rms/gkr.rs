@@ -3344,9 +3344,31 @@ mod tests {
     #[test]
     #[ignore="explicit real CUDA library and authorized hardware required"]
     fn c71_b12_mixed_mapped_gpu_cell_tail_all_rounds_original_dense_coefficients() {
+        check_mapped_gpu_tail_dense(mixed_moment_programs(), 16384, [8193,4877,3307], 2,
+            "C71_RMS_CELL_TAIL_GPU");
+    }
+
+    #[test]
+    #[ignore="explicit real CUDA library and authorized hardware required"]
+    fn c71_b12_mixed_mapped_gpu_tail_ragged_gate_chunks_dense_coefficients() {
+        // Cross both the 128-thread tail stride and the 512-gate prefix chunk.
+        // These public circuits test the original gate semantics, not an RMS predicate.
+        let programs=[(129,513),(257,1025),(513,769)].into_iter().map(|(first,second)| {
+            let layer=|count, width| (0..count).map(|i| {
+                let op=[Op::And,Op::Xor,Op::Copy][i%3];let x=(7*i+1)%width;
+                Gate {op,x,y:if op==Op::Copy{x}else{(13*i+3)%width}}
+            }).collect();
+            Circuit {ports:98,product_bits:32,valid:0,coefficients:[0;3],arithmetic_bits:1,
+                raw_gates:first+second,levels:vec![layer(first,98),layer(second,first)]}
+        }).collect();
+        check_mapped_gpu_tail_dense(programs, 128, [65,37,23], 3,
+            "C71_RMS_TAIL_RAGGED_GPU");
+    }
+
+    fn check_mapped_gpu_tail_dense(programs: Vec<Circuit>, cells: usize,
+        counts: [usize;3], cases: usize, marker: &str) {
         use crate::c71_matrix::range::windowed::native;
-        let programs=mixed_moment_programs();let cells=16384usize;
-        let counts=[8193usize,4877,3307];
+        assert!(cells.is_power_of_two());let bits=cells.ilog2() as usize;
         let mut tiles=Vec::new();
         for (p,&count) in counts.iter().enumerate() {
             let mut col=0usize;
@@ -3369,7 +3391,7 @@ mod tests {
             }
             live+=size;
         }
-        assert_eq!(live,16377);
+        assert_eq!(live,counts.iter().sum::<usize>());assert!(live<cells);
         let spans=tiles.iter().map(|t|(t.first,t.end,t.program as u16)).collect::<Vec<_>>();
         let mut payload=Vec::new();let mut norms=Vec::new();
         for (p,&count) in counts.iter().enumerate() {
@@ -3394,10 +3416,11 @@ mod tests {
         let config=native::tests::hardware_config(512,64<<20);let mut runtime=native::Runtime::new(&config).unwrap();
         let source=runtime.rms_source_begin(payload,&packet).unwrap();let baseline=runtime.stats().unwrap();
         let mut coefficients_checked=0;let mut terminal_vectors_checked=0;
-        for case in 0..2 {
-            let point=(0..14).map(|i|Fp3::new(Fp::new(13+i*3),Fp::new(17+i*5),Fp::new(19+i*7))).collect::<Vec<_>>();
-            let challenges=(0..14).map(|i|if case==1 && i%3==0 {Fp3::ZERO}else if case==1 && i%3==1 {Fp3::ONE}
-                else {Fp3::new(Fp::new(23+i*7),Fp::new(29+i*11),Fp::new(31+i*13))}).collect::<Vec<_>>();
+        for case in 0..cases {
+            let point=(0..bits).map(|i|if case==2 {if i%2==0 {Fp3::ZERO}else{Fp3::ONE}}
+                else {Fp3::new(Fp::new(13+i as u64*3),Fp::new(17+i as u64*5),Fp::new(19+i as u64*7))}).collect::<Vec<_>>();
+            let challenges=(0..bits).map(|i|if case!=0 && i%3==0 {Fp3::ZERO}else if case!=0 && i%3==1 {Fp3::ONE}
+                else {Fp3::new(Fp::new(23+i as u64*7),Fp::new(29+i as u64*11),Fp::new(31+i as u64*13))}).collect::<Vec<_>>();
             for depth in 1..widths.len() {
                 let width=widths[depth-1];
                 let weights=(0..widths[depth]).map(|i|Fp3::new(Fp::new(37+i as u64),Fp::new(41+i as u64*2),Fp::new(43))).collect::<Vec<_>>();
@@ -3412,13 +3435,13 @@ mod tests {
                 let prefix=patterns::build_native(&statement,depth,&point,&weights,
                     &|_|panic!("mapped native builder invoked a host frame callback"),&mut patterns::Work::default(),
                     &mut runtime,&spans,256,Some(&source),Some(&mut tail)).unwrap().unwrap();
-                for round in 0..14 {
+                for round in 0..bits {
                     let expected=cell_coefficients(&statement,depth,width,&previous,&selectors,&weights);
                     if round<4 {assert_eq!(prefix.coefficients(&challenges[..round]),expected);}
                     else {
                         let (actual,terminal)=runtime.rms_tail_round(tail.as_ref().unwrap(),&challenges[..round]).unwrap();
                         assert_eq!(actual,expected,"mapped tail case{case}/depth{depth}/round{round}");
-                        if round==13 {
+                        if round+1==bits {
                             let [lo,hi,sel_lo,sel_hi]=terminal.unwrap();
                             assert_eq!(lo,previous[..width]);assert_eq!(hi,previous[width..]);
                             assert_eq!(sel_lo,selectors.iter().map(|v|v[0]).collect::<Vec<_>>());
@@ -3435,10 +3458,12 @@ mod tests {
         }
         runtime.rms_source_retire(source).unwrap();let stats=runtime.stats().unwrap();
         assert_eq!(stats.arena_bytes,0);assert_eq!(stats.allocations,stats.releases);
-        println!("C71_RMS_CELL_TAIL_GPU {}",serde_json::json!({"cases":2,"depths":3,"cell_bits":14,
+        let groups=cells/32;
+        println!("{marker} {}",serde_json::json!({"cases":cases,"depths":widths.len()-1,"cell_bits":bits,
             "live_cells":live,"padded_cells":cells,"coefficients_checked":coefficients_checked,
             "terminal_vectors_checked":terminal_vectors_checked,"source_capacity":256,"tail_pair_capacity":16,
-            "last_round_prefix_groups":512,"last_round_group_batches":2,"host_source_frame_callbacks":0,
+            "last_round_prefix_groups":groups,"last_round_group_batches":groups.div_ceil(256),"host_source_frame_callbacks":0,
+            "gate_counts_by_program":programs.iter().map(|p|p.levels.iter().map(Vec::len).collect::<Vec<_>>()).collect::<Vec<_>>(),
             "stats":stats,"original_dense_coefficients_and_terminal":true,"gpu_execution":true,
             "canonical_certificates":0,"credit":false}));runtime.close().unwrap();
     }

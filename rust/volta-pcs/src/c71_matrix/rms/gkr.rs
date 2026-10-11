@@ -2906,6 +2906,101 @@ mod tests {
         );
     }
 
+    fn mixed_moment_programs() -> Vec<Circuit> {
+        (0..3).map(|p| Circuit {
+            ports: 98, product_bits: 32, valid: 0, coefficients: [0; 3],
+            arithmetic_bits: 1, raw_gates: 6,
+            levels: if p == 2 { vec![vec![Gate { op: Op::Copy, x: 1, y: 1 }]] }
+            else { vec![
+                vec![
+                    Gate { op: if p == 0 { Op::And } else { Op::Xor }, x: 2, y: 3 },
+                    Gate { op: if p == 0 { Op::Xor } else { Op::And }, x: 4, y: 5 },
+                    Gate { op: Op::Copy, x: 1, y: 1 },
+                ],
+                vec![Gate { op: Op::Xor, x: 0, y: 1 }, Gate { op: Op::Copy, x: 2, y: 2 }],
+                vec![Gate { op: Op::Xor, x: 0, y: 1 }],
+            ] },
+        }).collect()
+    }
+
+    #[test]
+    fn c71_b12_mixed_prefix_goldilocks_coefficients_keep_other_program_wires() {
+        let programs = mixed_moment_programs();
+        let assignments = (0..64).map(|i|
+            (i % 11 != 7).then_some((i * 5 + i / 3) % programs.len())).collect::<Vec<_>>();
+        let model = Model::new(32, vec![0; 1024]).unwrap();
+        let statement = Statement {
+            root: &model.root, profile: b"mixed moment arithmetic oracle", view: [42; 32],
+            attempt: AttemptContext { session: [1; 32], capacity: [2; 32], slot: 0,
+                predecessor: [0; 32], nonce: [3; 32] },
+            programs: &programs, assignments: Assignments::dense(&assignments),
+        };
+        let read = |i: usize| [(i * 13 + 7) as u8; 12];
+        let geometry = widths(&programs).unwrap();
+        for depth in 1..geometry.len() {
+            let width = geometry[depth - 1];
+            let weights = (0..geometry[depth]).map(|i|
+                Fp3::new(Fp::new(volta_field::P - 1 - i as u64), Fp::new(7), Fp::new(11)))
+                .collect::<Vec<_>>();
+            for point in [
+                (0..6).map(|i| Fp3::new(Fp::new(i + 3), Fp::new(2), Fp::new(5))).collect::<Vec<_>>(),
+                (0..6).map(|i| if i % 2 == 0 { Fp3::ZERO } else { Fp3::ONE }).collect(),
+            ] {
+                let mut work = patterns::Work::default();
+                let table = patterns::build(&statement, depth, &point, &weights, &read, &mut work, 1)
+                    .unwrap().unwrap();
+                let mut unfurled = vec![Fp3::ZERO; 64 * width];
+                for (cell, assignment) in assignments.iter().enumerate() {
+                    if let Some(p) = assignment {
+                        let program = &programs[*p];
+                        let frame = read(cell);
+                        let mut input = vec![0u64; program.ports]; input[1] = 1;
+                        for b in 0..program.ports - 2 {
+                            input[b + 2] = u64::from(frame[b / 8] >> (b % 8) & 1);
+                        }
+                        let (row, _) = program.replay_layer(&input, 1, (depth - 1).min(program.levels.len())).unwrap();
+                        for (out, bit) in unfurled[cell * width..(cell + 1) * width].iter_mut().zip(row) {
+                            *out = Fp3::ONE.mul_bool(bit != 0);
+                        }
+                    }
+                }
+                for challenges in [vec![Fp3::ZERO; 4], vec![Fp3::ONE; 4],
+                    vec![Fp3::new(Fp::new(13), Fp::new(17), Fp::new(19)); 4]] {
+                    let mut previous = unfurled.clone();
+                    let mut selectors = statement.selectors(&point);
+                    for round in 0..4 {
+                        assert_eq!(table.coefficients(&challenges[..round]),
+                            cell_coefficients(&statement, depth, width, &previous, &selectors, &weights),
+                            "mixed prefix depth {depth}, round {round}");
+                        fold(&mut previous, challenges[round]);
+                        for selector in &mut selectors { fold(selector, challenges[round]); }
+                    }
+                }
+                assert!(work.source_weight_products > 0);
+            }
+        }
+        let too_many = vec![Some(0); 1024];
+        let large = Statement { assignments: Assignments::dense(&too_many), ..statement };
+        assert!(patterns::build(&large, 1, &[Fp3::ONE; 10], &[Fp3::ONE; 4],
+            &read, &mut patterns::Work::default(), 1).is_err());
+    }
+
+    #[test]
+    fn c71_b12_mixed_prefix_four_rounds_original_wire_and_mac() {
+        let programs = mixed_moment_programs();
+        let assignments = (0..32).map(|i|
+            (i % 7 != 5).then_some((i * 5 + i / 3) % programs.len())).collect::<Vec<_>>();
+        let honest = assignments.iter().enumerate().map(|(i, p)| {
+            p.map_or([0; 12], |p| {
+                let product = match p { 0 => (i % 2) * 48 + (i % 4) * 64, 1 => (i % 2) * 12 + (i % 4) * 64, _ => i * 7 };
+                frame(product as i64, 1, 0, true)
+            })
+        }).collect::<Vec<_>>();
+        let changed = assignments.iter().position(|p| *p == Some(0)).unwrap();
+        check_cells_with_mixed_prefix(&programs, &assignments, &honest,
+            (changed, frame(3, 1, 0, true)), (changed, frame(4, 1, 0, true)), true);
+    }
+
     fn check(
         programs: &[Circuit],
         honest: [[u8; 12]; 4],
@@ -2961,6 +3056,14 @@ mod tests {
         honest: &[[u8; 12]],
         wrong_output: (usize, [u8; 12]),
         changed_input: (usize, [u8; 12]),
+    ) -> (usize, usize) {
+        check_cells_with_mixed_prefix(programs, assignments, honest, wrong_output, changed_input, false)
+    }
+
+    fn check_cells_with_mixed_prefix(
+        programs: &[Circuit], assignments: &[Option<usize>], honest: &[[u8; 12]],
+        wrong_output: (usize, [u8; 12]), changed_input: (usize, [u8; 12]),
+        mixed_prefix: bool,
     ) -> (usize, usize) {
         let c = assignments.len().ilog2() as usize;
         let packed_replay = programs.len() > 1;
@@ -3174,7 +3277,7 @@ mod tests {
                 // This checks the MOMENT representation through the original
                 // wire, FS, MAC and PCS continuation, not the CUDA adapter.
                 for tile_bits in [5, 1] {
-                    if programs.len() != 1 {
+                    if programs.len() != 1 && !(mixed_prefix && tile_bits == 1) {
                         continue;
                     }
                     let mut pattern_fs = start();

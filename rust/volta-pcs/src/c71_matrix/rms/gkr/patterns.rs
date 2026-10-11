@@ -11,6 +11,8 @@ pub(super) struct Work {
     pub histogram_updates: u64,
     pub deferred_base_reductions: u64,
     pub late_weight_products: u64,
+    #[cfg(test)]
+    pub source_weight_products: u64,
     pub position_weight_products: u64,
     pub histogram_payload_peak: usize,
     pub packed_replay_capacity_peak: usize,
@@ -570,6 +572,10 @@ pub(super) fn build(
         return Ok(None);
     }
     if s.programs.len() != 1 {
+        #[cfg(test)]
+        if tile_bits == 1 {
+            return build_mixed_reference(s, depth, point, weights, read, work);
+        }
         return Err("pattern prefix requires one public program".into());
     }
     let block = 1usize << bits;
@@ -675,6 +681,89 @@ pub(super) fn build(
         return Prefix::from_bmma_bytes(point, &bytes).map(Some);
     }
     Ok(Some(Prefix { bits, selector: eq(&point[..bits]), histograms }))
+}
+
+// Bounded Goldilocks/wire oracle only. Per-source gate weighting is not the
+// late-weight native builder and is deliberately unavailable in production.
+#[cfg(test)]
+fn build_mixed_reference(
+    s: &Statement<'_>, depth: usize, point: &[Fp3], weights: &[Fp3],
+    read: &impl Fn(usize) -> [u8; 12], work: &mut Work,
+) -> Result<Option<Prefix>, String> {
+    if point.len() > 9 || s.assignments.len() > 512 || s.assignments.len() != 1usize << point.len() {
+        return Err("mixed moment reference exceeds bounded fixture".into());
+    }
+    let bits = 4.min(point.len().saturating_sub(1));
+    if bits == 0 { return Ok(None); }
+    let width = widths(s.programs)?[depth - 1];
+    if s.programs.iter().any(|p| gates(p, depth).len() > weights.len()) {
+        return Err("mixed moment reference gate weights differ".into());
+    }
+    let block = 1usize << bits;
+    let suffix = s.assignments.len() / block;
+    let mut replay = PackedReplay::new_validated(s.programs, depth - 1, width)?;
+    let position_weights = eq(&point[bits..]);
+    let mut histograms = std::collections::BTreeMap::<u64, Histogram>::new();
+    for (k, &position_weight) in position_weights.iter().enumerate() {
+        let cells = (0..block).map(|j| {
+            let cell = j * suffix + k;
+            (cell, s.assignments.get(cell))
+        }).collect::<Vec<_>>();
+        replay.load(&cells, read)?;
+        let planes = replay.planes();
+        for (p, program) in s.programs.iter().enumerate() {
+            let mask = cells.iter().enumerate().fold(0u64, |m, (j, &(_, a))|
+                m | (u64::from(a == Some(p)) << j));
+            if mask == 0 { continue; }
+            let h = histograms.entry(mask).or_insert_with(|| Histogram {
+                mask, moments: true, tiles: vec![], offsets: vec![], size: block,
+                gate_offsets: vec![], raw: vec![], carries: vec![],
+                quadratic: vec![Fp3::ZERO; block * block], linear: vec![Fp3::ZERO; block],
+            });
+            for (g, &gate_weight) in gates(program, depth).iter().zip(weights) {
+                let weight = position_weight * gate_weight;
+                work.source_weight_products += 1;
+                let quadratic_weight = if g.op == Op::Xor { -(weight + weight) } else { weight };
+                // The mask restricts the selector only. Other programs' wire
+                // positions must survive in the original folded polynomial.
+                for i in 0..block {
+                    let x = planes[g.x] >> i & 1 != 0;
+                    let y = planes[g.y] >> i & 1 != 0;
+                    if g.op != Op::And {
+                        h.linear[i] += weight.mul_bool(x);
+                        work.histogram_updates += 1;
+                        if g.op == Op::Xor {
+                            h.linear[i] += weight.mul_bool(y);
+                            work.histogram_updates += 1;
+                        }
+                    }
+                    if g.op != Op::Copy {
+                        for j in 0..block {
+                            h.quadratic[i * block + j] += quadratic_weight.mul_bool(
+                                x && planes[g.y] >> j & 1 != 0);
+                            work.histogram_updates += 1;
+                        }
+                    }
+                }
+            }
+        }
+        let named_payload = histograms.len() * (std::mem::size_of::<Histogram>()
+            + (block * block + block) * std::mem::size_of::<Fp3>())
+            + position_weights.capacity() * std::mem::size_of::<Fp3>()
+            + cells.capacity() * std::mem::size_of::<(usize, Option<usize>)>();
+        work.histogram_payload_peak = work.histogram_payload_peak.max(named_payload);
+    }
+    let replay_work = replay.work();
+    work.original_frames += replay_work.original_frames;
+    work.packed_replays += replay_work.program_replays;
+    work.packed_boolean_gates += replay_work.dag_word_operations;
+    work.packed_replay_capacity_peak = work.packed_replay_capacity_peak.max(
+        replay_work.plan_build_capacity_upper_bytes.max(replay_work.plan_capacity_bytes
+            + replay_work.scratch_moving_capacity_upper_bytes));
+    work.position_weight_products += (2 * suffix - 2) as u64;
+    work.prefix_rounds += bits as u64;
+    Ok(Some(Prefix { bits, selector: eq(&point[..bits]),
+        histograms: histograms.into_values().collect() }))
 }
 
 #[cfg(test)]
@@ -810,7 +899,7 @@ impl Prefix {
             for h in &self.histograms {
                 let mut values = vec![[Fp3::ZERO; 2]; h.size];
                 if h.moments {
-                    for j in 0..15 { values[j] = [lo[j], hi[j]]; }
+                    for j in 0..h.size { values[j] = [lo[j], hi[j]]; }
                 } else {
                     for (tile, &offset) in h.tiles.iter().zip(&h.offsets) {
                         for pattern in 1usize..1 << tile.len() {

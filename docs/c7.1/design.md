@@ -3,6 +3,21 @@
 [Specifiche](specs.md) · [Sicurezza](security.md) · [Test locali](local-tests.md) ·
 [Test su RunPod](runpod-tests.md) · [Archivio](../c7.1-history/README.md)
 
+Il [seguito RMS misto sul pod](../c7.1-history/h100-rms-moments-restart-2026-10-11.md)
+è **attivo**: il proprietario autorizza il riavvio dello stesso
+`z6wx2kkn69eoc0` alle **17:05:42 UTC** dell'11 ottobre. H100 originale
+riverificata, idle all'accesso; nuovo guard indipendente prima del resume.
+Finestra invariata: calcolo fino a23:43:00, guard00:03:00 e hard stop
+12 ottobre00:13:00 UTC. La VM ha poche risorse: solo editing e controllo;
+preparazione computazionale, test e build si svolgono sul pod.
+Tre test F97 del prefisso misto e nove documentali passano sul checkout
+pulito `f25452bf`; primo negativo documentale per fonti assenti conservato.
+L'oracolo Rust dei momenti misti è preparato per parità Goldilocks/wire,
+**ancora da compilare e verificare**. È solo `cfg(test)`, massimo512 celle,
+pesatura per sorgente; non è il builder nativo a pesatura tardiva.
+**Zero certificati canonici**: O=0 incompleto, O=150/300 non iniziati.
+Backend RMS completo, conto simultaneo e premessa di raffinamento aperti.
+
 La [prima fase della campagna certificati](../c7.1-history/h100-certificates-close-2026-10-11.md)
 e il [seguito RMS](../c7.1-history/h100-certificates-rms-shared-cache-2026-10-11.md)
 sono conclusi con **zero certificati canonici generati e verificati**.
@@ -51,8 +66,8 @@ Modello, statistiche, PCS, AES e risposta completa rimangono esclusi;
 nessuna selezione canonica o extrapolazione dal timing ridotto.
 Il [record di chiusura](../../benchmarks/results/c71-certificates-rms-byte-close-2026-10-11-30867b9b.json)
 conserva anche i primi poll con runtime ancora presente. Backend RMS
-completo e conto fisico simultaneo restano aperti; il seguito è locale,
-senza lasciare acceso hardware privo di un caller completo eseguibile.
+completo e conto fisico simultaneo restano aperti; dopo lo stop il
+proprietario ha autorizzato il seguito sul pod riportato all'inizio.
 L'avvio autorizzato16:13:00 e la deadline12 ottobre00:13:00 UTC restano
 immutati dallo stop anticipato; nessun nuovo setup/sessione AES avviato.
 Le [ricevute di avvio](../../benchmarks/results/c71-certificates-rms-byte-start-2026-10-11-30867b9b.json)

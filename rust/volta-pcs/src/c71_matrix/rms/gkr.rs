@@ -8,6 +8,8 @@ component_wire!(Layer { rounds, terminal });
 component_wire!(Proof { layers, products, functions });
 use super::{Circuit, Gate, Op, ReplayLayerScratch};
 mod patterns;
+mod cell_cache;
+use cell_cache::CellCache;
 #[cfg(test)]
 mod gamma_screen_fixture;
 
@@ -808,6 +810,23 @@ fn source_cell_round<const BOOLEAN_ROWS: bool>(
     weights: &[Fp3],
     work: &mut SourceCellWork,
 ) -> Result<SourceCellRound, String> {
+    source_cell_round_cached::<BOOLEAN_ROWS>(programs, depth, width, cell_count,
+        challenges, row, selector, weights, work, &mut None, 0)
+}
+
+fn source_cell_round_cached<const BOOLEAN_ROWS: bool>(
+    programs: &[Circuit],
+    depth: usize,
+    width: usize,
+    cell_count: usize,
+    challenges: &[Fp3],
+    row: &impl Fn(usize, &mut [Fp3]) -> Result<(), String>,
+    selector: &impl Fn(usize) -> Result<Option<(usize, Fp3)>, String>,
+    weights: &[Fp3],
+    work: &mut SourceCellWork,
+    cache: &mut Option<Box<CellCache>>,
+    cache_bytes: usize,
+) -> Result<SourceCellRound, String> {
     if depth == 0
         || cell_count == 0
         || cell_count > 1 << 29
@@ -828,6 +847,15 @@ fn source_cell_round<const BOOLEAN_ROWS: bool>(
     let active = cell_count >> challenges.len();
     let half = active / 2;
     let program_count = programs.len();
+    let capturing = cache.is_none();
+    if capturing {
+        *cache = CellCache::new(depth, width, program_count, active, challenges.len(), cache_bytes)?;
+    }
+    if let Some(table) = cache.as_ref() {
+        table.validate(depth, width, program_count, active, challenges.len())?;
+        if table.capacity_bytes() > cache_bytes { return Err("RMS folded cache budget reduced".into()); }
+        if !capturing && !table.ready() { return Err("RMS folded cache capture incomplete".into()); }
+    }
     let mut lo = vec![Fp3::ZERO; width];
     let mut hi = vec![Fp3::ZERO; width];
     let mut scratch = vec![Fp3::ZERO; width];
@@ -843,7 +871,8 @@ fn source_cell_round<const BOOLEAN_ROWS: bool>(
             + selector_hi.capacity()
             + prefix_path.capacity())
             * core::mem::size_of::<Fp3>()
-            + present.capacity(),
+            + present.capacity()
+            + cache.as_ref().map_or(0, |table| table.capacity_bytes()),
     );
     let leaves = 1usize << challenges.len();
     let mut c = [Fp3::ZERO; 4];
@@ -853,44 +882,58 @@ fn source_cell_round<const BOOLEAN_ROWS: bool>(
         selector_lo.fill(Fp3::ZERO);
         selector_hi.fill(Fp3::ZERO);
         present.fill(false);
-        for side in 0..2 {
-            let index = cell + side * half;
-            let (folded, folded_selectors) =
-                if side == 0 { (&mut lo, &mut selector_lo) } else { (&mut hi, &mut selector_hi) };
-            for prefix in 0..leaves {
-                let weight = prefix_weight(prefix, challenges, &mut prefix_path, work);
-                let source_cell = index + prefix * active;
-                work.selector_source_callbacks += 1;
-                if let Some((program, value)) = selector(source_cell)? {
-                    let slot = folded_selectors
-                        .get_mut(program)
-                        .ok_or("RMS sourcewise selector program differs")?;
-                    present[program] = true;
-                    *slot += weight * value;
-                    work.selector_assigned_terms += 1;
-                    work.fold_value_multiplications += 1;
-                    work.fold_additions += 1;
-                    // Public padding has a fixed zero Boolean row. Do not
-                    // invoke the original-byte getter for a dummy cell.
-                    row(source_cell, &mut scratch)?;
-                    work.row_source_callbacks += 1;
-                    work.value_source_scalars += width as u64;
-                    for wire in 0..width {
-                        if BOOLEAN_ROWS {
-                            // The active caller fills this row directly from
-                            // Circuit::replay_layer bits. Keep the complete
-                            // invariant check in debug builds, then use only
-                            // the canonical base limb to form the mask.
-                            debug_assert!(scratch[wire] == Fp3::ZERO || scratch[wire] == Fp3::ONE);
-                            folded[wire] += weight.mul_bool(scratch[wire].c0.value() == 1);
-                            work.boolean_fold_masks += 1;
-                        } else {
-                            folded[wire] += weight * scratch[wire];
-                            work.fold_value_multiplications += 1;
-                        }
+        if !capturing {
+            let table = cache.as_ref().ok_or("RMS folded cache missing")?;
+            table.row(cell, &mut lo, &mut selector_lo);
+            table.row(cell + half, &mut hi, &mut selector_hi);
+            table.pair_support(cell, &mut present);
+        } else {
+            for side in 0..2 {
+                let index = cell + side * half;
+                let (folded, folded_selectors) =
+                    if side == 0 { (&mut lo, &mut selector_lo) } else { (&mut hi, &mut selector_hi) };
+                for prefix in 0..leaves {
+                    let weight = prefix_weight(prefix, challenges, &mut prefix_path, work);
+                    let source_cell = index + prefix * active;
+                    work.selector_source_callbacks += 1;
+                    if let Some((program, value)) = selector(source_cell)? {
+                        let slot = folded_selectors
+                            .get_mut(program)
+                            .ok_or("RMS sourcewise selector program differs")?;
+                        present[program] = true;
+                        if let Some(table) = cache.as_mut() { table.mark_present(index, program); }
+                        *slot += weight * value;
+                        work.selector_assigned_terms += 1;
+                        work.fold_value_multiplications += 1;
                         work.fold_additions += 1;
+                        // Public padding has a fixed zero Boolean row. Do not
+                        // invoke the original-byte getter for a dummy cell.
+                        row(source_cell, &mut scratch)?;
+                        work.row_source_callbacks += 1;
+                        work.value_source_scalars += width as u64;
+                        for wire in 0..width {
+                            if BOOLEAN_ROWS {
+                                // The active caller fills this row directly from
+                                // Circuit::replay_layer bits. Keep the complete
+                                // invariant check in debug builds, then use only
+                                // the canonical base limb to form the mask.
+                                debug_assert!(scratch[wire] == Fp3::ZERO || scratch[wire] == Fp3::ONE);
+                                folded[wire] += weight.mul_bool(scratch[wire].c0.value() == 1);
+                                work.boolean_fold_masks += 1;
+                            } else {
+                                folded[wire] += weight * scratch[wire];
+                                work.fold_value_multiplications += 1;
+                            }
+                            work.fold_additions += 1;
+                        }
                     }
                 }
+            }
+        }
+        if capturing {
+            if let Some(table) = cache.as_mut() {
+                table.store(cell, &lo, &selector_lo);
+                table.store(cell + half, &hi, &selector_hi);
             }
         }
         for (program_index, program) in programs.iter().enumerate() {
@@ -977,6 +1020,7 @@ fn source_cell_round<const BOOLEAN_ROWS: bool>(
             work.coefficient_subtractions += 1;
         }
     }
+    if capturing { if let Some(table) = cache.as_mut() { table.finish_capture(); } }
     let terminal = (half == 1).then_some((lo, hi, selector_lo, selector_hi));
     Ok(SourceCellRound { coefficients: c, terminal })
 }
@@ -1126,8 +1170,23 @@ fn prove_impl(
     sourcewise: bool,
     pattern_prefix: Option<usize>,
 ) -> Result<(Proof, Vec<Fp3>, Auth, SourceProverWork), String> {
+    prove_impl_cached(s, get_frame, fs, correlations, sourcewise, pattern_prefix, 0)
+}
+
+fn prove_impl_cached(
+    s: &Statement<'_>,
+    get_frame: &impl Fn(usize) -> [u8; 12],
+    fs: &mut Fs,
+    correlations: &mut impl ExactSizeIterator<Item = Auth>,
+    sourcewise: bool,
+    pattern_prefix: Option<usize>,
+    cache_bytes: usize,
+) -> Result<(Proof, Vec<Fp3>, Auth, SourceProverWork), String> {
     use std::cell::{Cell, RefCell};
 
+    if cache_bytes > cell_cache::MAX_BYTES || (cache_bytes != 0 && (!sourcewise || pattern_prefix.is_some())) {
+        return Err("RMS folded cache configuration differs".into());
+    }
     let widths = s.geometry()?;
     let widths_capacity_bytes = widths.capacity() * core::mem::size_of::<usize>();
     let count = s.required()?;
@@ -1294,6 +1353,7 @@ fn prove_impl(
             } else {
                 None
             };
+            let mut cell_cache = None;
             for _ in 0..point.len() {
                 if let Some(table) = &pattern {
                     let c = table.coefficients(&prefix);
@@ -1310,7 +1370,7 @@ fn prove_impl(
                 replay_prefix.set(prefix.len());
                 replay_group.set(None); // prefix changes the public traversal
                 let mut work = SourceCellWork::default();
-                let result = source_cell_round::<true>(
+                let result = source_cell_round_cached::<true>(
                     s.programs,
                     depth,
                     width,
@@ -1320,13 +1380,18 @@ fn prove_impl(
                     &selector,
                     &weights,
                     &mut work,
+                    &mut cell_cache,
+                    cache_bytes,
                 )?;
                 work.selector_weight_multiplications +=
                     work.selector_assigned_terms * selector_point.len() as u64;
-                work.selector_weight_subtractions += selector_zero_bits;
+                if work.selector_assigned_terms != 0 { work.selector_weight_subtractions += selector_zero_bits; }
                 fs.set_phase(0x1000 + 64 * depth as u16 + rounds.len() as u16);
                 let (wire, r) =
                     round_prove(&result.coefficients, &mut target, fs, &mut rows, &round_auth_heap);
+                if result.terminal.is_none() {
+                    if let Some(table) = cell_cache.as_mut() { table.advance(r, &mut work); }
+                }
                 if let Some((lo, hi, selector_lo, selector_hi)) = result.terminal {
                     let interpolations = (lo.len() + selector_lo.len()) as u64;
                     let values = lo.into_iter().zip(hi).map(|(a, b)| a + r * (b - a)).collect();
@@ -1995,10 +2060,12 @@ mod tests {
             "cells":cells,"live_cells":cells-1,"programs":programs.len(),
             "depth":widths(&programs).unwrap().len()-1,"compile_ns":compile_ns,
             "program_inner_capacity_bytes":program_inner_capacity_bytes(&programs),"credit":false}));
+        let cache_bytes = std::env::var("C71_RMS_BENCH_CACHE_BYTES")
+            .map(|value| value.parse::<usize>().unwrap()).unwrap_or(0);
         let started = std::time::Instant::now();
-        let (proof, point, original, work) = prove_sourcewise(&statement, |i| {
+        let (proof, point, original, work) = prove_impl_cached(&statement, &|i| {
             assert!(assignments[i].is_some()); frames[i]
-        }, &mut fs, &mut rows).unwrap();
+        }, &mut fs, &mut rows, true, None, cache_bytes).unwrap();
         let prove_ns = started.elapsed().as_nanos();
         assert_eq!(rows.len(), 0);
         let mut verify_fs = start();
@@ -2014,7 +2081,8 @@ mod tests {
         crate::c71_matrix::wire::Wire::write(&proof, &mut wire);
         println!("C71_RMS_BENCH_COMPLETE {}", serde_json::json!({"cells":cells,
             "compile_ns":compile_ns,"prove_ns":prove_ns,"verify_ns":verify_ns,
-            "work":work,"wire_bytes":wire.len(),"correlations":count,
+            "work":work,"wire_bytes":wire.len(),"wire_blake3":blake3::hash(&wire).to_hex().as_str(),
+            "folded_cache_limit_bytes":cache_bytes,"correlations":count,
             "same_FS_original_MAC_endpoint":true,"all_original_layers_executed":true,
             "private_values":"nonzero synthetic rows evaluated with original integer RMS",
             "scope":"selected pinned recipes with reduced cells; excludes statistics caller, PCS, real model, AES setup and full response",
@@ -2075,6 +2143,37 @@ mod tests {
         assert_eq!(packed_fs.digest(),dense_fs.digest());
         assert_eq!(packed_rows.len(),0);
         assert_eq!(dense_rows.len(),0);
+        let mut cache_variants = Vec::new();
+        for budget in [1, 4096, cell_cache::MAX_BYTES] {
+            let mut cached_fs = start();
+            let mut cached_rows = rows.clone().into_iter();
+            let (cached, cached_point, cached_original, cached_work) = prove_impl_cached(
+                &statement, &read, &mut cached_fs, &mut cached_rows, true, None, budget).unwrap();
+            let mut cached_wire = Vec::new();
+            crate::c71_matrix::wire::Wire::write(&cached, &mut cached_wire);
+            assert_eq!(cached_wire, dense_wire);
+            assert_eq!(cached_point, dense_point);
+            assert_eq!((cached_original.x,cached_original.m),(dense_original.x,dense_original.m));
+            assert_eq!(cached_fs.digest(),dense_fs.digest());
+            assert_eq!(cached_rows.len(),0);
+            if budget > 1 {
+                assert!(cached_work.packed_replay.original_frames < work.packed_replay.original_frames);
+            }
+            assert_eq!(cached_work.cell_rounds.iter().map(|r|r.coefficient_multiplications).sum::<u64>(),
+                work.cell_rounds.iter().map(|r|r.coefficient_multiplications).sum::<u64>());
+            assert!(cached_work.cell_phase_owned_heap_peak_bytes <= work.cell_phase_owned_heap_peak_bytes + budget);
+            cache_variants.push(serde_json::json!({"budget_bytes":budget,
+                "cell_original_frames":cached_work.packed_replay.original_frames,
+                "cell_owned_heap_peak_bytes":cached_work.cell_phase_owned_heap_peak_bytes,
+                "exact_wire_FS_original_MAC":true}));
+        }
+        for (sourcewise, pattern, budget) in [(true,None,cell_cache::MAX_BYTES+1),(true,Some(5),4096),(false,None,4096)] {
+            let mut rejected_fs=start(); let before=rejected_fs.digest();
+            let mut unused_rows=rows.clone().into_iter();
+            assert!(prove_impl_cached(&statement,&read,&mut rejected_fs,&mut unused_rows,
+                sourcewise,pattern,budget).is_err());
+            assert_eq!(unused_rows.len(),count); assert_eq!(rejected_fs.digest(),before);
+        }
         let mut verify_rows = keys.clone().into_iter();
         let (verified_point, verified) = verify(
             &statement, &proof, delta, &mut verify_fs, &mut verify_rows).unwrap();
@@ -2091,6 +2190,7 @@ mod tests {
         println!("C71_RMS_PACKED_GKR_WIRE {}",serde_json::json!({
             "cells":8,"programs":3,"correlations":count,"wire_bytes":packed_wire.len(),
             "packed_prove_ns":packed_ns,"dense_prove_ns":dense_ns,"work":work,
+            "folded_cache_candidates":cache_variants,
             "exact_wire_FS_RNG_original_MAC":true,"PCS_composition_excluded":true,
             "credit":false,"GPU_execution":false
         }));

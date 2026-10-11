@@ -23,6 +23,15 @@ del lavoro RMS, parità e contabilità pertinenti, quindi una nuova sessione
 canonica da O=0 quando gli impedimenti siano chiusi. I componenti non sono
 certificati e non forniscono stato da riprendere.
 
+La [candidata RMS folded-cache](../c7.1-history/local-rms-fold-cache-2026-10-11.md)
+è accessibile soltanto al benchmark/test interno: limite 16 MiB, default
+zero nel prover canonico. Cattura righe e selettori originali quando la
+tabella ridotta entra nel budget; aggiorna con lo stesso fold affine dopo
+ogni sfida. Il supporto è strutturale e si unisce con OR, anche se Eq vale
+zero. Box, capacità Vec e supporti restano addebitati fino al drop per
+profondità; una cattura parziale è rifiutata. Nessun cambio a gate, messaggi,
+correlazioni o endpoint; il ledger canonico non seleziona questa candidata.
+
 Il [preflight dell’11 ottobre](../c7.1-history/h100-certificates-preflight-2026-10-11.md)
 conferma packed ed esponenti originali e conserva il replay di 512 cicli di
 sole allocazioni grandi: nessuno spike riprodotto, controllo finale del

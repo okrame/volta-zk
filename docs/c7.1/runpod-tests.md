@@ -23,6 +23,14 @@ del lavoro RMS, parità e contabilità pertinenti, quindi una nuova sessione
 canonica da O=0 quando gli impedimenti siano chiusi. I componenti non sono
 certificati e non forniscono stato da riprendere.
 
+La [candidata locale folded-cache RMS](../c7.1-history/local-rms-fold-cache-2026-10-11.md)
+aggiunge al benchmark ignorato il limite `C71_RMS_BENCH_CACHE_BYTES`
+(default 0, massimo 16777216) e l'hash BLAKE3 della wire. Un eventuale
+confronto deve usare gli stessi 159 programmi, celle, seed e sorgenti,
+contare memoria e verificare gli hash; non è ancora eseguito. La candidata
+non seleziona la cache nel runner canonico. Il pod resta spento; queste
+verifiche locali non riaprono né estendono la finestra della campagna.
+
 Il [preflight dell’11 ottobre](../c7.1-history/h100-certificates-preflight-2026-10-11.md)
 conferma packed ed esponenti originali e conserva il replay di 512 cicli di
 sole allocazioni grandi: nessuno spike riprodotto, controllo finale del

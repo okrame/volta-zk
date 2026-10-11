@@ -23,6 +23,16 @@ del lavoro RMS, parità e contabilità pertinenti, quindi una nuova sessione
 canonica da O=0 quando gli impedimenti siano chiusi. I componenti non sono
 certificati e non forniscono stato da riprendere.
 
+Una [cache RMS locale candidata](../c7.1-history/local-rms-fold-cache-2026-10-11.md)
+conserva al più 16 MiB di righe e selettori già folded, per una sola
+profondità. Le parità ridotte conservano wire/FS/MAC; il conto pubblico
+riduce i callback di cella da 998.927.195.904 a 718.142.017.536 (−28,11%),
+ma lascia **751.359.028.655.932 prodotti Fp3 del core**. Il percorso
+canonico mantiene cache disabilitata. Distributività del campo, ordine
+MSB del fold, determinismo della sorgente e lifetime Rust sono premesse
+implementative: nessun nuovo lemma Lean le scarica. Mancano misura sul
+mix completo e conto simultaneo ammesso; il costo canonico resta aperto.
+
 Il [preflight dell’11 ottobre](../c7.1-history/h100-certificates-preflight-2026-10-11.md)
 conferma packed ed esponenti originali e conserva il replay di 512 cicli di
 sole allocazioni grandi: nessuno spike riprodotto, controllo finale del

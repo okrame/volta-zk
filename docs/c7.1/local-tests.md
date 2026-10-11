@@ -23,6 +23,14 @@ del lavoro RMS, parità e contabilità pertinenti, quindi una nuova sessione
 canonica da O=0 quando gli impedimenti siano chiusi. I componenti non sono
 certificati e non forniscono stato da riprendere.
 
+La [candidata folded-cache RMS](../c7.1-history/local-rms-fold-cache-2026-10-11.md)
+passa tre test `c71_rms_folded_cache_` (budget/capacità, parità zero/uno,
+cattura fallita) e le tre regressioni coefficienti/Booleani/wire. La
+fixture wire confronta budget 1 B, 4 KiB e 16 MiB, byte/FS/MAC originali
+e rifiuto della configurazione prima di consumare correlazioni. Tutti i
+filtri sono separati, AS 2 GiB/60 s/un worker. Lo screen delle 99 shape
+è solo un conto pubblico; il benchmark completo resta sul pod autorizzato.
+
 Il [preflight dell’11 ottobre](../c7.1-history/h100-certificates-preflight-2026-10-11.md)
 conferma packed ed esponenti originali e conserva il replay di 512 cicli di
 sole allocazioni grandi: nessuno spike riprodotto, controllo finale del

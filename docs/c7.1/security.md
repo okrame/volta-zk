@@ -23,6 +23,15 @@ del lavoro RMS, parità e contabilità pertinenti, quindi una nuova sessione
 canonica da O=0 quando gli impedimenti siano chiusi. I componenti non sono
 certificati e non forniscono stato da riprendere.
 
+La [candidata cache RMS](../c7.1-history/local-rms-fold-cache-2026-10-11.md)
+usa solo righe già ottenute dalla sorgente originale e sfide già emesse.
+L'identità affine e la distributività giustificano algebricamente il fold
+incrementale; il mapping MSB degli indici Rust, l'aritmetica Fp3 e la
+corrispondenza con i pesi Eq restano obblighi di raffinamento espliciti.
+Il supporto pubblico non dipende da cancellazioni dei valori. Lifetime di
+una sola profondità, rifiuto della cattura incompleta e consumo monouso
+sono verificati su fixture; nessuna selezione o nuova garanzia canonica.
+
 Il [preflight dell’11 ottobre](../c7.1-history/h100-certificates-preflight-2026-10-11.md)
 conferma packed ed esponenti originali e conserva il replay di 512 cicli di
 sole allocazioni grandi: nessuno spike riprodotto, controllo finale del

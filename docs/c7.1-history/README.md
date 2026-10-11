@@ -1,5 +1,7 @@
 # C7.1 — archivio e provenienza
 
+[Cache folded RMS candidata, controlli locali dell’11 ottobre](local-rms-fold-cache-2026-10-11.md).
+
 Per il lavoro corrente leggere [design](../c7.1/design.md), [specifiche](../c7.1/specs.md),
 [sicurezza](../c7.1/security.md), [test locali](../c7.1/local-tests.md) e
 [test su RunPod](../c7.1/runpod-tests.md). Le istruzioni di questo archivio

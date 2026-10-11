@@ -75,6 +75,9 @@ usa gli stessi dati ridotti pinned e byte CPU contracted32 MiB con supporto
 compilato; skip pubblico dei programmi assenti,32 errori owner da verificare.
 Richiede confronto wire320.320 B/hash del record CPU e verificatore originale.
 Byte/statistica GPU, conto completo e raffinamento restano aperti.
+Il [conto del calendario GPU preparato](../c7.1-history/h100-rms-native-schedule-prepared-2026-10-11.md)
+usa le launch del runtime attuale, incluse tutte le riletture del tail;
+confronto con contatori conservati e screen canonico da eseguire sul pod.
 
 **Zero certificati canonici**: O=0 incompleto, O=150/300 non iniziati.
 Backend RMS completo, conto simultaneo e premessa di raffinamento aperti.

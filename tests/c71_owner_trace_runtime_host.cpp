@@ -92,9 +92,22 @@ int main(int argc,char** argv) {
     const int created=c71_range_create(0,scenario=="large"?(2ULL<<20):262144,256,joint_account,&context);
     assert(context && (created!=0)==init_failure);
     const auto initial=stats(context);
-    assert(initial.host_owner_bytes==42128 && joint_live==initial.host_owner_bytes);
+    assert(initial.host_owner_bytes==42096+sizeof(c71_owner_trace::Trace) && joint_live==initial.host_owner_bytes);
     if(init_failure) {
         assert(initial.stopped && !set_device_calls && !allocations && !frees && !launches);
+    } else if(scenario=="physical" || scenario=="physicalquery" || scenario=="physicalwrite") {
+        const auto first=alloc(context,C71_I64,3);
+        fake_free-=32ULL<<20;
+        uint64_t second=0;
+        if(scenario=="physicalquery") fake_free=80000000001ULL;
+        if(scenario=="physicalwrite") poison_trace_descriptor();
+        const int result=c71_range_alloc(context,C71_I64,3,&second);
+        assert((result!=0)==(scenario!="physical"));
+        if(scenario=="physical") {
+            fake_free-=32ULL<<20;
+            assert(!c71_dense_pointwise(context,0,0,0,0,{0,0,0},first));
+            assert(!c71_range_release(context,first) && !c71_range_release(context,second));
+        } else assert(stats(context).stopped && allocations==1);
     } else if(scenario=="windowmatched" || scenario=="windowmissing") {
         install(context);
         const uint32_t first_coset=scenario=="windowmatched"?4:0;
@@ -180,7 +193,7 @@ int main(int argc,char** argv) {
     const uint64_t debt=original_free_failure?256:0;
     C71RangeStats final{};
     const int closed=c71_range_close(context,&final);
-    const bool cleanup_error=scenario!="normal" && scenario!="windowmatched" && scenario!="large";
+    const bool cleanup_error=scenario!="normal" && scenario!="windowmatched" && scenario!="large" && scenario!="physical";
     assert((closed!=0)==cleanup_error);
     assert(final.cleanup_failed==cleanup_error);
     assert(final.arena_bytes==debt && !final.weights_bytes && joint_live==debt);

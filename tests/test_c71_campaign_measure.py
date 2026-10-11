@@ -177,6 +177,12 @@ def test_calibration_limits_are_separate_from_canonical():
         monitor.check_resources(**sample(mode='canonical', rss=96 << 30))
 
 
+def test_component_enforces_physical_cap_without_W_exemptions():
+    assert monitor.check_resources(**sample(mode='component')) == 2 << 30
+    with pytest.raises(RuntimeError, match='physical temporaries'):
+        monitor.check_resources(**sample(mode='component', rss=monitor.PHYSICAL_LIMIT))
+
+
 @pytest.mark.parametrize('changes', [dict(swap=1), dict(disk=monitor.DISK_MARGIN - 1),
     dict(gpu_used=monitor.GPU_LIMIT, gpu_total=90_000_000_000, gpu_free=2 << 30),
     dict(gpu_free=monitor.GPU_MARGIN - 1)])

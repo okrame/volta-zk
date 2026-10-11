@@ -94,6 +94,11 @@ Un errore di export termina la sessione senza riuso. Nessuna chiave DV
 o correlazione è esportata; il bundle non introduce verifica pubblica,
 resume o un nuovo lemma di raffinamento.
 
+La traccia fisica diagnostica aggiunge solo metadati di risorsa pubblici
+ai confini owner e termina su query/scrittura fallita. Non altera relazione,
+coin, capacità private o endpoint; le query possono alterare il timing e non
+dischiudono l’assunzione di raffinamento Rust/CUDA né il bound fisico completo.
+
 ## Ambito e ipotesi
 
 Il [preflight del seguito H100](../../benchmarks/results/c71-h100-followup-preflight-2026-10-10-7b0885ad316f.json)

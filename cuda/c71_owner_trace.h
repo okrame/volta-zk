@@ -38,6 +38,9 @@ struct Trace {
     uint64_t seq = 0, used = 0;
     bool failed = false, armed = true;
     int current_group = -1;
+#ifdef C71_OWNER_TRACE_PHYSICAL
+    uint64_t last_overhead = std::numeric_limits<uint64_t>::max();
+#endif
 
     bool open() noexcept {
         if (failed || fd >= 0 || seq || used) return reject();
@@ -103,7 +106,8 @@ struct Trace {
 
     bool emit(const char* op, const char* edge, int slot, uint32_t kind,
               uint64_t logical, uint64_t capacity, uint64_t arena,
-              uint64_t weights, int status, unsigned line) noexcept {
+              uint64_t weights, int status, unsigned line,
+              uint64_t physical_used = 0, uint64_t physical_total = 0) noexcept {
         if (failed || fd < 0) return reject();
         if (!armed) return true;
         if (seq >= max_records || slot < -1 || slot >= 512) return reject();
@@ -130,6 +134,12 @@ struct Trace {
         record.text(",\"capacity_bytes\":"); record.number(capacity);
         record.text(",\"arena_bytes\":"); record.number(arena);
         record.text(",\"weights_bytes\":"); record.number(weights);
+#ifdef C71_OWNER_TRACE_PHYSICAL
+        record.text(",\"cuda_used_bytes\":"); record.number(physical_used);
+        record.text(",\"cuda_total_bytes\":"); record.number(physical_total);
+#else
+        (void)physical_used; (void)physical_total;
+#endif
         record.text(",\"status\":"); record.signed_number(status);
         record.text(",\"line\":"); record.number(line); record.text("}\n");
         if (!record.valid || used > max_bytes || record.length > max_bytes - used)
@@ -205,6 +215,10 @@ private:
     };
 };
 
+#ifdef C71_OWNER_TRACE_PHYSICAL
+static_assert(sizeof(Trace) == 40, "physical diagnostic owner trace charge differs");
+#else
 static_assert(sizeof(Trace) == 32, "diagnostic owner trace charge differs");
+#endif
 
 } // namespace c71_owner_trace

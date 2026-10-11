@@ -74,6 +74,13 @@ screening di scale A, con Γ ammesso come riferimento immutato. Il
 [piano hardware mirato](../c7.1-history/local-hardware-plan-2026-10-10.md) specifica le misure discriminanti: il nuovo
 seguito hardware sopra misura componenti, senza ammettere candidate Γ.
 
+Il diagnostico `C71_OWNER_TRACE_PHYSICAL` estende la traccia owner con
+`cuda_used_bytes` e `cuda_total_bytes`; registra variazioni di overhead
+da 16 MiB e snapshot. Aggiunge 8 B alla traccia owner (40 B totali, owner
+42.136 B), con record da 512 B e cap invariato 16 MiB. Una query o scrittura
+fallita ferma il caller e conserva il cleanup native. Il default non include
+query o stato diagnostico. Le query non forniscono un limite ai picchi transitori.
+
 ## Input e identità
 
 Il checkpoint testuale è `google/gemma-4-31B` alla revisione

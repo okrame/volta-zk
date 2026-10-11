@@ -105,6 +105,12 @@ confronta la CLI ridotta con il compilatore RMS originale e i suoi rifiuti.
 Fixture, profili pubblici e tempi CPU non sono parità CUDA, qualità sui
 pesi reali, ammissione Γ o previsione di accelerazione H100.
 
+Il filtro Python `test_owner_trace_physical_changes_and_query_write_failures`
+verifica soglia, memoria osservata, stop su query/scrittura e cleanup senza
+debito con driver simulato. I quattro test owner passano in 54,83 s entro
+AS 2 GiB/60 s. I 44 test del monitor includono la modalità `component`: stesso
+cap fisico canonico, nessuna esenzione W o richiesta di completamento protocollo.
+
 ## Limiti e ambiente
 
 Il controller della [finestra CUDA](../c7.1-history/h100-window-method-2026-10-10.md)

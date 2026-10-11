@@ -77,6 +77,14 @@ Il conto del setup AES reale include anche cache W
 e owner già installati; NoPeek, MAC originali, correlazioni fresche,
 PCG AES e fail-closed restano quelli del percorso selezionato.
 
+Per diagnostici senza W usare `c71_campaign_measure.py --mode component`: cap
+fisico 6.174.015.488 B, nessuna esenzione W e nessun credito di census/accettazione.
+Il precedente `allocator01` resta negativo nel riepilogo finale per assenza
+del census canonico, pur avendo terminato 512 cicli senza superare il cap.
+La build `C71_OWNER_TRACE_PHYSICAL` interroga la memoria CUDA a ogni evento
+owner e conserva variazioni di overhead da 16 MiB; owner 42.136 B e cap file
+16 MiB. Usarla solo per attribuzione, prima del nuovo runner senza diagnostica.
+
 ## Stato e sequenza operativa
 
 La [finestra CUDA esterna](../c7.1-history/h100-window-method-2026-10-10.md)

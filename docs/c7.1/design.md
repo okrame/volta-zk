@@ -140,6 +140,12 @@ pubblicazione durevole e rifiuti I/O. Il bound corrente deve aggiungere
 32.768 B di metadata export a quello storico; allowance fisica e
 completamento rimangono aperti.
 
+La build diagnostica `C71_OWNER_TRACE_PHYSICAL` aggiunge query CUDA ai confini
+di allocazione/free/fence e conserva solo variazioni di almeno 16 MiB della
+differenza fra memoria CUDA usata e payload native, oltre agli snapshot.
+Owner diagnostico 42.136 B, file sempre bounded 16 MiB; non è selezionata
+per il runner definitivo e non dimostra un picco fisico completo.
+
 ## Obiettivo e relazione dimostrata
 
 C7.1 dimostra a un verificatore designato l'inferenza intera di un modello

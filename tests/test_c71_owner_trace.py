@@ -13,12 +13,14 @@ FIELDS = {"schema", "credit", "seq", "a_first", "a_group", "monotonic_ns", "op",
           "status", "line"}
 
 
-def compile_fixture(binary, *, header_only=False, large_only=False):
+def compile_fixture(binary, *, header_only=False, large_only=False, physical=False):
     command = ["g++", "-std=c++17", "-O2", "-Wall", "-Wextra", "-Werror",
                "-fsanitize=undefined", "-fno-sanitize-recover=all", "-DC71_OWNER_TRACE",
                "-I", str(ROOT / "tests/cuda_stub"), "-I", str(ROOT / "cuda")]
     if large_only:
         command.append("-DC71_OWNER_TRACE_LARGE_ONLY")
+    if physical:
+        command.append("-DC71_OWNER_TRACE_PHYSICAL")
     if header_only:
         command.append(str(HEADER_SOURCE))
     else:
@@ -46,11 +48,11 @@ def run_fixture(binary, scenario, path):
     return report
 
 
-def read_records(path):
+def read_records(path, *, physical=False):
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
     records = [json.loads(line) for line in path.read_text().splitlines()]
     for index, record in enumerate(records):
-        assert set(record) == FIELDS
+        assert set(record) == FIELDS | ({"cuda_used_bytes", "cuda_total_bytes"} if physical else set())
         assert record["schema"] == "volta-c71-owner-trace-v1" and record["credit"] is False
         assert record["seq"] == index and -1 <= record["slot"] < 512
         assert -1 <= record["a_first"] <= 511 and -1 <= record["a_group"] <= 511
@@ -61,6 +63,26 @@ def read_records(path):
         for key in ("logical_bytes", "capacity_bytes", "arena_bytes", "weights_bytes"):
             assert record[key] >= 0
     return records
+
+
+def test_owner_trace_physical_changes_and_query_write_failures(tmp_path):
+    binary = tmp_path / "physical"
+    compile_fixture(binary, physical=True)
+    for scenario in ("physical", "physicalquery", "physicalwrite"):
+        path = tmp_path / f"{scenario}.jsonl"
+        report = run_fixture(binary, scenario, path)
+        assert report["host_owner_bytes"] == 42136
+        assert report["native_allocations"] == report["native_frees"]
+        assert report["joint_debt_bytes"] == 0
+        assert report["cleanup_failed"] == (scenario != "physical")
+        records = read_records(path, physical=True)
+        assert all(r["cuda_used_bytes"] <= r["cuda_total_bytes"] == 80_000_000_000 for r in records)
+        if scenario == "physical":
+            changes = [r for r in records if r["op"] in {"allocate", "fence"}]
+            assert [(r["op"], r["edge"], r["cuda_used_bytes"]) for r in changes] == [
+                ("allocate", "before", 32 << 20), ("allocate", "before", 64 << 20)]
+        else:
+            assert not any(r["op"] == "allocate" for r in records)
 
 
 def test_owner_trace_large_window_keeps_real_lifecycles_and_native_cleanup(tmp_path):

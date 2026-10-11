@@ -392,7 +392,7 @@ def run(args):
         raise ValueError('command and fresh alphanumeric/hyphen label required')
     if args.mode == 'canonical' and args.progress is None:
         raise ValueError('canonical mode requires --progress for the runner journal sibling')
-    if args.mode == 'calibration' and args.progress is not None:
+    if args.mode != 'canonical' and args.progress is not None:
         raise ValueError('--progress is only valid for canonical monitoring')
     progress = Progress(args.progress) if args.mode == 'canonical' else None
     if progress and args.progress.exists():
@@ -546,7 +546,7 @@ def run(args):
             'sampled_host_rss_peak_bytes': host_peak, 'sampled_whole_gpu_peak_bytes': gpu_peak,
             'observed_payload_peak_bytes': progress.peak if progress else None,
             'payload_limit_bytes': PAYLOAD_LIMIT if progress else None,
-            'physical_temporary_limit_bytes': PHYSICAL_LIMIT if progress else None,
+            'physical_temporary_limit_bytes': PHYSICAL_LIMIT if args.mode != 'calibration' else None,
             'physical_complete_peak': False, 'resource_failure': failure,
             'sampling_limit': 'Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.',
         }
@@ -565,7 +565,7 @@ def run(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--mode', choices=('canonical', 'calibration'), required=True)
+    parser.add_argument('--mode', choices=('canonical', 'calibration', 'component'), required=True)
     parser.add_argument('--progress', type=Path)
     parser.add_argument('root', type=Path)
     parser.add_argument('label')

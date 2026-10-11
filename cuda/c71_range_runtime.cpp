@@ -212,6 +212,30 @@ TraceAllocation trace_buffer(C71RangeContext* c,const Buffer* b) {
 }
 int trace_event(C71RangeContext* c,const char* op,const char* edge,
     TraceAllocation a,int status,unsigned line) {
+#ifdef C71_OWNER_TRACE_PHYSICAL
+    // Query every observed lifecycle/fence, retain only >=16 MiB overhead
+    // changes and owner snapshots. This is diagnostic timing, not a peak bound.
+    if(c->diagnostic.failed) return fail(c,"physical owner trace failed");
+    if(!c->diagnostic.armed) return 0;
+    size_t available=0,total=0;
+    const auto queried=cudaMemGetInfo(&available,&total);
+    if(queried!=cudaSuccess || available>total) {
+        c->diagnostic.failed=true;
+        return fail(c,"physical owner query failed");
+    }
+    const uint64_t used=total-available, payload=c->stats.arena_bytes+c->stats.weights_bytes;
+    const uint64_t overhead=used>payload?used-payload:0;
+    const uint64_t previous=c->diagnostic.last_overhead;
+    const uint64_t difference=overhead>previous?overhead-previous:previous-overhead;
+    const bool lifecycle=!std::strcmp(op,"allocate") || !std::strcmp(op,"c71_range_release") ||
+        !std::strcmp(op,"fence");
+    if(!status && lifecycle && difference<(16ULL<<20)) return 0;
+    if(!c->diagnostic.emit(op,edge,a.slot,a.kind,a.logical,a.capacity,
+        c->stats.arena_bytes,c->stats.weights_bytes,status,line,used,total))
+        return fail(c,"bounded physical owner trace failed");
+    c->diagnostic.last_overhead=overhead;
+    return 0;
+#else
 #ifdef C71_OWNER_TRACE_LARGE_ONLY
     // A real scan exhausted 16 MiB in 2.47 s. Keep snapshots and large
     // lifecycles; the external CUDA profiler supplies the omitted API events.
@@ -222,6 +246,7 @@ int trace_event(C71RangeContext* c,const char* op,const char* edge,
     return c->diagnostic.emit(op,edge,a.slot,a.kind,a.logical,a.capacity,
         c->stats.arena_bytes,c->stats.weights_bytes,status,line)
         ? 0 : fail(c,"bounded owner trace failed");
+#endif
 }
 #define C71_TRACE_BUFFER(c,b) const auto diagnostic_allocation=trace_buffer(c,b)
 #define C71_TRACE_VALUE(slot,kind,logical,capacity) const TraceAllocation diagnostic_allocation={slot,kind,logical,capacity}

@@ -860,7 +860,7 @@ def complete_prepared_phases(phases, directory, common, persistent, replay, init
               class6_RMS_edge_capacity_moving_upper=3*24121920,
               class6_RMS_packed_replay_plans_builder_scratch_fixed_upper=packed_replay_upper,
               class6_RMS_prover_work_records_moving_upper=rms_work_records_moving,
-              class6_RMS_coefficient_and_weight_payload_upper=(7*16384+2*421)*24+421),
+              class6_RMS_coefficient_and_weight_payload_upper=(7*16384+2*421+30)*24+421),
               'Pinned99-layer159-program RMS; packed plans retain one depth only and retire before index edges/byte LUT. Plans, builder/scratch moving and fixed stacks conservatively overlap here; original Circuit and edge growth are separately charged. Single-program statistic/pattern consumers keep their previous replay schedule.')
         extra(f'proof_A{caches}_EXP30_checkpoint', dict(base,
               class8_pending_original_current_role_upper=pending,

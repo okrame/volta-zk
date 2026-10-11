@@ -63,6 +63,14 @@ Il pool non risolve la crescita esterna. Il launcher CPU a 128 GiB è una
 deviazione conservata; il monitor ora impone autonomamente AS ≤64 GiB.
 Si valuta il backing differito delle colonne A di padding pubblico.
 
+La [scansione incrementale dei pesi RMS](../c7.1-history/h100-certificates-rms-prefix-2026-10-11.md)
+ricalcola soltanto il suffisso cambiato di Eq, senza divisioni. Passano
+prefissi zero/uno, coefficienti densi e wire/FS/MAC della fixture mista;
+ledger RMS +720 B. Il core da 844.006.203.160.300 prodotti e i callback
+restano invariati. Lo screen dei gate condivisi sulle 159 ricette è solo
+un conto pubblico, non una riduzione implementata o un tempo completo.
+Nessun nuovo lemma di raffinamento runtime; l’identità usa il prodotto Eq originale.
+
 La [campagna precedente](../c7.1-history/h100-followup-close-2026-10-10.md)
 è chiusa con provider EXITED alle 21:24:47 UTC del 10 ottobre e zero
 certificati. Γ originale, pool e fill selezionati, geometria PCS,

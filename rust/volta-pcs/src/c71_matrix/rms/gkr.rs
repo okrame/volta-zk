@@ -527,7 +527,7 @@ pub(in super::super) fn work_census(
                 "edge_logical_heap_bytes":g as usize*core::mem::size_of::<Edge>(),
                 "index_vector_interpolations":2*(w-1),
                 "dense_previous_bytes":n*w*24,
-                "cell_first_rows_selectors_and_support_bytes":(3*w+2*programs.len() as u64)*24+programs.len() as u64,
+                "cell_first_rows_selectors_and_support_bytes":(3*w+2*programs.len() as u64+c)*24+programs.len() as u64,
                 "logical_live_frame_callbacks":live*replay_repetitions,
                 "field_value_source_scalars":live*c*w,
                 "field_fold_mul_add_each_reference_generic_rows_before_terminal":live*c*(w+1),
@@ -535,8 +535,8 @@ pub(in super::super) fn work_census(
                 "field_fold_additions_active_boolean_rows":live*c*(w+1)+terminal_interpolations,
                 "field_fold_subtractions_terminal":terminal_interpolations,
                 "boolean_fold_masks_active":live*c*w,
-                "prefix_weight_multiplications":n*c*c.saturating_sub(1)/2,
-                "prefix_weight_subtractions":n*c*c.saturating_sub(1)/4,
+                "prefix_weight_multiplications":2*n*c+4-4*n,
+                "prefix_weight_subtractions":n*c+2-2*n,
                 "scalar_boolean_replay_gate_evaluations":replay,
             }));
     }
@@ -587,8 +587,9 @@ pub(in super::super) fn work_census(
         "field_fold_additions_active_boolean_rows":live*c*(widths[..depth].iter().map(|&w| w as u64).sum::<u64>()+depth as u64)+if c == 0 {0} else {widths[..depth].iter().map(|&w| w as u64).sum::<u64>()+programs.len() as u64*depth as u64},
         "field_fold_subtractions_terminal":if c == 0 {0} else {widths[..depth].iter().map(|&w| w as u64).sum::<u64>()+programs.len() as u64*depth as u64},
         "boolean_fold_masks_active":live*c*widths[..depth].iter().map(|&w| w as u64).sum::<u64>(),
-        "prefix_weight_multiplications":n*c*c.saturating_sub(1)/2*depth as u64,
-        "prefix_weight_subtractions":n*c*c.saturating_sub(1)/4*depth as u64,
+        "prefix_weight_multiplications":(2*n*c+4-4*n)*depth as u64,
+        "prefix_weight_subtractions":(n*c+2-2*n)*depth as u64,
+        "prefix_weight_schedule":"division-free incremental MSB path",
         "cell_first_scalar_boolean_replay_gates":boolean_replay_gates,
         "structural_selector_callbacks":n*c*depth as u64,
         "structural_selector_assigned_terms":live*c*depth as u64,
@@ -745,19 +746,23 @@ pub(in super::super) struct SourceProverWork {
     pub capacity: SourceCapacityWork,
 }
 
-fn prefix_weight(prefix: usize, challenges: &[Fp3], work: &mut SourceCellWork) -> Fp3 {
-    let mut weight = Fp3::ONE;
-    for (round, &r) in challenges.iter().enumerate() {
+fn prefix_weight(prefix: usize, challenges: &[Fp3], path: &mut [Fp3], work: &mut SourceCellWork) -> Fp3 {
+    // The public traversal visits consecutive prefixes; only its changed
+    // suffix needs recomputing. No division, including at zero/one challenges.
+    let changed = if prefix == 0 { challenges.len() }
+        else { (prefix ^ (prefix - 1)).ilog2() as usize + 1 };
+    for round in challenges.len()-changed..challenges.len() {
+        let r = challenges[round];
         let bit = prefix >> (challenges.len() - 1 - round) & 1;
-        if bit == 0 {
-            weight = weight * (Fp3::ONE - r);
+        path[round + 1] = if bit == 0 {
             work.fold_subtractions += 1;
+            path[round] * (Fp3::ONE - r)
         } else {
-            weight = weight * r;
-        }
+            path[round] * r
+        };
         work.fold_weight_multiplications += 1;
     }
-    weight
+    path[challenges.len()]
 }
 
 // At the first cell fold the unfurled wires are Boolean. Their quadratic
@@ -829,12 +834,14 @@ fn source_cell_round<const BOOLEAN_ROWS: bool>(
     let mut selector_lo = vec![Fp3::ZERO; program_count];
     let mut selector_hi = vec![Fp3::ZERO; program_count];
     let mut present = vec![false; program_count];
+    let mut prefix_path = vec![Fp3::ONE; challenges.len()+1];
     work.owned_heap_peak_bytes = work.owned_heap_peak_bytes.max(
         (lo.capacity()
             + hi.capacity()
             + scratch.capacity()
             + selector_lo.capacity()
-            + selector_hi.capacity())
+            + selector_hi.capacity()
+            + prefix_path.capacity())
             * core::mem::size_of::<Fp3>()
             + present.capacity(),
     );
@@ -851,7 +858,7 @@ fn source_cell_round<const BOOLEAN_ROWS: bool>(
             let (folded, folded_selectors) =
                 if side == 0 { (&mut lo, &mut selector_lo) } else { (&mut hi, &mut selector_hi) };
             for prefix in 0..leaves {
-                let weight = prefix_weight(prefix, challenges, work);
+                let weight = prefix_weight(prefix, challenges, &mut prefix_path, work);
                 let source_cell = index + prefix * active;
                 work.selector_source_callbacks += 1;
                 if let Some((program, value)) = selector(source_cell)? {
@@ -1776,6 +1783,75 @@ mod tests {
     use rand_010::RngExt;
 
     #[test]
+    fn c71_rms_incremental_prefix_weights_match_original_at_zero_one_and_extension_points() {
+        for bits in 0..=9 {
+            for mode in 0..3 {
+                let point: Vec<_> = (0..bits).map(|i| match mode {
+                    0 => Fp3::new(Fp::new(11+i as u64), Fp::new(2), Fp::new(3)),
+                    1 => if i % 2 == 0 { Fp3::ZERO } else { Fp3::ONE },
+                    _ => Fp3::ONE,
+                }).collect();
+                let mut path = vec![Fp3::ONE; bits+1];
+                let mut work = SourceCellWork::default();
+                for prefix in 0..1 << bits {
+                    assert_eq!(prefix_weight(prefix, &point, &mut path, &mut work),
+                               equality_at(&point, prefix));
+                }
+                assert_eq!(work.fold_weight_multiplications, (2 << bits)-2);
+                assert_eq!(work.fold_subtractions, (1 << bits)-1);
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "bounded public structural screen; explicit pinned recipes required"]
+    fn c71_rms_pinned_shared_gate_screen() {
+        use std::{collections::{HashMap, HashSet}, io::Read};
+        #[derive(serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Recipe { columns: usize, exponents: [i32; 3], weighted: bool }
+        let mut body = Vec::new();
+        std::fs::File::open(std::env::var("C71_RMS_BENCH_RECIPES").unwrap()).unwrap()
+            .take(1_048_577).read_to_end(&mut body).unwrap();
+        assert!(body.len() <= 1 << 20);
+        let recipes: Vec<Recipe> = serde_json::from_slice(&body).unwrap();
+        assert!((2..=159).contains(&recipes.len()));
+        let programs: Vec<_> = recipes.iter().map(|r| {
+            let [x, w, y] = r.exponents;
+            super::super::compile(r.columns, x, w, y, r.weighted).unwrap()
+        }).collect();
+        let geometry = widths(&programs).unwrap();
+        for depth in 1..geometry.len() {
+            let mut indexed: HashMap<(usize, u8, usize, usize), [u64; 3]> = HashMap::new();
+            let mut raw = [0usize; 3];
+            for (p, program) in programs.iter().enumerate() {
+                for (i, g) in gates(program, depth).iter().enumerate() {
+                    let op = match g.op { Op::And => 0, Op::Xor => 1, Op::Copy => 2 };
+                    raw[op as usize] += 1;
+                    indexed.entry((i, op, g.x, g.y)).or_default()[p / 64] |= 1 << (p % 64);
+                }
+            }
+            let mut grouped = HashSet::new();
+            let mut masks = HashSet::new();
+            for (&(_, op, x, y), &mask) in &indexed {
+                grouped.insert((mask, op, x, y));
+                masks.insert(mask);
+            }
+            let mut merged = [0usize; 3];
+            for &(_, op, _, _) in &grouped { merged[op as usize] += 1; }
+            println!("C71_RMS_SHARED_GATE_SCREEN {}", serde_json::json!({
+                "credit":false,"gpu_execution":false,"private_inputs":false,
+                "recipes_blake3":blake3::hash(&body).to_hex().as_str(),
+                "programs":programs.len(),"depth":depth,"input_width":geometry[depth-1],
+                "original_gates":raw,"indexed_gate_union":indexed.len(),
+                "selector_support_classes":masks.len(),"merged_weighted_gates":merged,
+                "original_all_programs_products_per_pair":7*(raw[0]+raw[1])+2*raw[2]+6*programs.len(),
+                "merged_all_classes_products_per_pair":7*(merged[0]+merged[1])+2*merged[2]+6*masks.len(),
+                "scope":"public full-support algebraic count only; excludes structural pruning, first Boolean round, plan build, replay and all runtime costs"}));
+        }
+    }
+
+    #[test]
     #[ignore = "representative full-depth CPU GKR; authorized hardware and finite monitor required"]
     fn c71_rms_pinned_representative_full_depth_benchmark() {
         use std::io::Read;
@@ -2110,7 +2186,7 @@ mod tests {
             assert_eq!(actual, expected);
             assert_eq!(
                 work.owned_heap_peak_bytes,
-                (3 * width + 2 * programs.len()) * core::mem::size_of::<Fp3>() + programs.len()
+                (3 * width + 2 * programs.len() + prefix.len()+1) * core::mem::size_of::<Fp3>() + programs.len()
             );
             assert_eq!(work.row_source_callbacks, 3);
             assert_eq!(work.value_source_scalars, (3 * width) as u64);

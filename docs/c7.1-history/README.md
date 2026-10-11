@@ -1,5 +1,7 @@
 # C7.1 — archivio e provenienza
 
+[Censimento RMS pubblico e correzione della diagnosi della fixture](h100-rms-moments-census-2026-10-11.md).
+
 [Momenti dei cubici RMS misti e proiezione del supporto pubblico](local-rms-prefix-moments-2026-10-11.md).
 
 [Confronto H100 RMS byte AB/BA e chiusura confermata](h100-rms-byte-paired-2026-10-11.md).

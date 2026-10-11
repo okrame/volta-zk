@@ -1,5 +1,11 @@
 # RMS misto: coefficienti passati e fixture wire negativa — 11 ottobre 2026
 
+**Rettifica successiva:** la diagnosi del caso negativo sotto è superseduta
+dal [secondo censimento e diagnosi letterale](h100-rms-moments-census-2026-10-11.md).
+Entrambi i fallimenti avvengono nel caso etichettato onesto, su sei celle
+del programma1 con predicato zero. Record, log e prima interpretazione
+rimangono conservati; nessuna acceptance è provata dal marker wire.
+
 Seguito del [riavvio sul pod](h100-rms-moments-restart-2026-10-11.md).
 Il [record pulito `b459b8f6`](../../benchmarks/results/c71-certificates-rms-moments-rust-negative-2026-10-11-b459b8f6.json)
 conserva build647,373s e la parità dei cubici Goldilocks contro fold densi

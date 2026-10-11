@@ -12,14 +12,18 @@ Finestra invariata: calcolo fino a23:43:00, guard00:03:00 e hard stop
 preparazione computazionale, test e build si svolgono sul pod.
 Tre test F97 del prefisso misto e nove documentali passano sul checkout
 pulito `f25452bf`; primo negativo documentale per fonti assenti conservato.
-Il [primo controllo Rust misto](../c7.1-history/h100-rms-moments-rust-negative-2026-10-11.md)
-passa build, coefficienti Goldilocks, EXP30/decoder e check produzione.
-Il test wire composto è **negativo**: parità onesta presente, ma l'input
-negativo della fixture violava già il predicato prima del controllo PCS.
-Correzione preparata, ancora da riverificare. Il percorso è solo `cfg(test)`,
-max512 celle/pesatura per sorgente; nessun builder CUDA completo.
-Census parallel per i159 programmi e screen chunk32/batch4096 preparati,
-ancora da eseguire; residuo fold/core e conto completo restano aperti.
+Il [censimento pubblico RMS](../c7.1-history/h100-rms-moments-census-2026-10-11.md)
+passa replay parallel contro Booleano originale per159 programmi/99 profondità.
+I due test wire composti restano **negativi**: sei celle del caso etichettato
+onesto hanno predicato zero. La prima diagnosi del caso negativo era errata;
+record originali immutati e rettifica collegata. Factor12→4 e assertion
+sul replay letterale preparati, ancora da riverificare. Coefficienti
+Goldilocks, EXP30/decoder e check produzione passano; percorso `cfg(test)`,
+max512 celle/pesatura per sorgente. Screen chunk32/batch4096: massimo nuovo
+payload nominato130.378.444B, ma24.443.818.538.631.168B di traffico logico
+contatori; nessuna misura HBM o capacità completa. Esaminare riduzione fusa.
+Shared massimo40.896B entro232.448B H100; parità CUDA, caller nativo,
+residuo fold/core e conto simultaneo restano aperti.
 **Zero certificati canonici**: O=0 incompleto, O=150/300 non iniziati.
 Backend RMS completo, conto simultaneo e premessa di raffinamento aperti.
 

@@ -3005,11 +3005,23 @@ mod tests {
             (i % 7 != 5).then_some((i * 5 + i / 3) % programs.len())).collect::<Vec<_>>();
         let honest = assignments.iter().enumerate().map(|(i, p)| {
             p.map_or([0; 12], |p| {
-                let product = match p { 0 => (i % 2) * 48 + (i % 4) * 64, 1 => (i % 2) * 12 + (i % 4) * 64, _ => i * 7 };
+                let product = match p { 0 => (i % 2) * 48 + (i % 4) * 64, 1 => (i % 2) * 4 + (i % 4) * 64, _ => i * 7 };
                 frame(product as i64, 1, 0, true)
             })
         }).collect::<Vec<_>>();
         let changed = assignments.iter().position(|p| *p == Some(0)).unwrap();
+        let predicate = |p: usize, bytes: [u8; 12]| {
+            let mut input = vec![0u64; programs[p].ports]; input[1] = 1;
+            for bit in 0..programs[p].ports - 2 {
+                input[bit + 2] = u64::from(bytes[bit / 8] >> (bit % 8) & 1);
+            }
+            programs[p].replay(&input, 1).unwrap().last().unwrap()[programs[p].valid]
+        };
+        for (cell, p) in assignments.iter().enumerate() {
+            if let Some(p) = p { assert_eq!(predicate(*p, honest[cell]), 1, "fixture cell {cell}"); }
+        }
+        assert_eq!(predicate(0, frame(3, 1, 0, true)), 0);
+        assert_eq!(predicate(0, frame(64, 1, 0, true)), 1);
         // Unused bit 6 preserves this fixture's predicate and isolates PCS rejection.
         check_cells_with_mixed_prefix(&programs, &assignments, &honest,
             (changed, frame(3, 1, 0, true)), (changed, frame(64, 1, 0, true)), true);

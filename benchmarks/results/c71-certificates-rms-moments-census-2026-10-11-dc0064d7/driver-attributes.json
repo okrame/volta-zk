@@ -1,0 +1,24 @@
+{
+  "before": {
+    "epoch": 1791741177.5028849,
+    "memory_used_mib": 0,
+    "compute_apps": ""
+  },
+  "gpu_uuid": "GPU-e05e977b-758d-f3f4-cbe8-5720b83d1ae1",
+  "attributes": {
+    "SM_count": 132,
+    "compute_capability_major": 9,
+    "compute_capability_minor": 0,
+    "max_shared_per_SM_bytes": 233472,
+    "max_optin_shared_per_block_bytes": 232448
+  },
+  "after": {
+    "epoch": 1791741177.7994258,
+    "memory_used_mib": 4,
+    "compute_apps": ""
+  },
+  "scope": "Driver hardware attribute queries only; no CUDA context creation or kernel launch, no protocol/complete-resource credit",
+  "credit": false,
+  "gpu_execution": false,
+  "sdk_source": "/usr/local/cuda/include/cuda.h"
+}

@@ -441,6 +441,22 @@ impl Sources {
         fs: &mut Fs,
         correlations: &mut impl ExactSizeIterator<Item = Auth>,
     ) -> Result<(Proof, Pending<Auth>), String> {
+        self.prove_rms_impl(s,parameters,read,fs,correlations,None)
+    }
+
+    pub(in crate::c71_matrix) fn prove_rms_native(
+        &self,s:&P0Statement<'_>,parameters:&[[i32;3]],read:impl Fn(usize,usize,usize,usize)->u8,
+        fs:&mut Fs,correlations:&mut impl ExactSizeIterator<Item=Auth>,
+        runtime:&mut range::windowed::native::Runtime,capacity:usize,
+    )->Result<(Proof,Pending<Auth>),String> {
+        self.prove_rms_impl(s,parameters,read,fs,correlations,Some((runtime,capacity)))
+    }
+
+    fn prove_rms_impl(
+        &self,s:&P0Statement<'_>,parameters:&[[i32;3]],read:impl Fn(usize,usize,usize,usize)->u8,
+        fs:&mut Fs,correlations:&mut impl ExactSizeIterator<Item=Auth>,
+        native:Option<(&mut range::windowed::native::Runtime,usize)>,
+    )->Result<(Proof,Pending<Auth>),String> {
         let (programs, profiles, count) = self.prepare(s, parameters)?;
         if correlations.len() < count {
             return Err("RMS dispatcher prover capacity exhausted".into());
@@ -484,8 +500,16 @@ impl Sources {
             programs: &programs,
             assignments: gkr::Assignments::new(self.cells.next_power_of_two(), &assignment),
         };
-        let (joint, byte_point, byte) =
-            gkr::prove(&gs, |i| frames.frame(i).unwrap(), fs, &mut rows)?;
+        let (joint, byte_point, byte) = if let Some((runtime,capacity))=native {
+            let spans=self.tiles.iter().map(|tile| {
+                Ok((u32::try_from(tile.offset).map_err(|_|"RMS support start overflow")?,
+                    u32::try_from(tile.offset+tile.rows*tile.cols).map_err(|_|"RMS support end overflow")?,
+                    u16::try_from(profiles[tile.tensor]).map_err(|_|"RMS support program overflow")?))
+            }).collect::<Result<Vec<_>,String>>()?;
+            let (proof,point,original,_)=gkr::prove_native_sourcewise(&gs,|i|frames.frame(i).unwrap(),fs,&mut rows,
+                runtime,&spans,capacity)?;
+            (proof,point,original)
+        } else {gkr::prove(&gs, |i| frames.frame(i).unwrap(), fs, &mut rows)?};
         debug_assert!(rows.next().is_none());
         Ok((
             Proof { statistics, products, joint },

@@ -1,6 +1,8 @@
 //! Same cubic messages, with gate weights applied after position histograms.
 //! No correlations or challenger are accessible from this module.
 use super::*;
+mod native_prefix;
+pub(super) use native_prefix::build as build_native;
 
 #[derive(Clone, Default, Debug, Eq, PartialEq, serde::Serialize)]
 pub(super) struct Work {
@@ -379,7 +381,6 @@ impl<'a> PackedReplay<'a> {
 
 // Each stage reads only older values. Slots retired by a stage become reusable
 // AFTER its barrier; no in-place overwrite can race another thread's operand.
-#[cfg(test)]
 struct ParallelReplay {
     ops: Vec<[u32; 4]>, // And=0/Xor=1, output slot, x slot, y slot.
     boundaries: Vec<u32>,
@@ -387,7 +388,6 @@ struct ParallelReplay {
     slots: usize,
 }
 
-#[cfg(test)]
 impl ReplayPlan {
     fn parallel(&self, ports: usize) -> ParallelReplay {
         let mut depth = vec![0; ports];
@@ -924,6 +924,19 @@ mod tests {
 }
 
 impl Prefix {
+    fn from_native_moments(point:&[Fp3],masks:&[u16],values:Vec<Fp3>)->Result<Self,String> {
+        if !(5..=29).contains(&point.len()) || masks.is_empty() || values.len()!=masks.len()*272 ||
+            masks.iter().any(|&mask|mask==0) || masks.windows(2).any(|pair|pair[0]>=pair[1]) {
+            return Err("native RMS moment shape or mask differs".into());
+        }
+        let mut values=values.into_iter();
+        let histograms=masks.iter().map(|&mask|Histogram {
+            mask:u64::from(mask),moments:true,tiles:vec![],offsets:vec![],size:16,
+            gate_offsets:vec![],raw:vec![],carries:vec![],quadratic:values.by_ref().take(256).collect(),
+            linear:values.by_ref().take(16).collect(),
+        }).collect();
+        Ok(Self {bits:4,selector:eq(&point[..4]),histograms})
+    }
     // Private prover-internal transfer, NOT a transcript message or new MAC.
     // Caller must establish the public canonical support and original Eq.
     pub(super) fn from_bmma_bytes(point: &[Fp3], bytes: &[u8]) -> Result<Self, String> {

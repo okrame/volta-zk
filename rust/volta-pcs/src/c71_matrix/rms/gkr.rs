@@ -1254,6 +1254,17 @@ fn prove_impl_evaluated(
     shared_gates: bool,
     byte_contracted: bool,
 ) -> Result<(Proof, Vec<Fp3>, Auth, SourceProverWork), String> {
+    prove_impl_backend(s,get_frame,fs,correlations,sourcewise,pattern_prefix,cache_bytes,shared_gates,byte_contracted,None)
+}
+
+type NativePrefixBuilder<'a> = dyn FnMut(usize,&[Fp3],&[Fp3],&dyn Fn(usize)->[u8;12],&mut patterns::Work)
+    -> Result<Option<patterns::Prefix>,String> + 'a;
+
+fn prove_impl_backend(
+    s:&Statement<'_>,get_frame:&impl Fn(usize)->[u8;12],fs:&mut Fs,
+    correlations:&mut impl ExactSizeIterator<Item=Auth>,sourcewise:bool,pattern_prefix:Option<usize>,
+    cache_bytes:usize,shared_gates:bool,byte_contracted:bool,mut native:Option<&mut NativePrefixBuilder<'_>>,
+) -> Result<(Proof,Vec<Fp3>,Auth,SourceProverWork),String> {
     use std::cell::{Cell, RefCell};
 
     if cache_bytes > cell_cache::MAX_BYTES || ((cache_bytes != 0 || shared_gates || byte_contracted) && (!sourcewise || pattern_prefix.is_some())) {
@@ -1346,7 +1357,9 @@ fn prove_impl_evaluated(
             let replay_prefix = Cell::new(0usize);
             let replay_group = Cell::new(None);
             let selector_point = point.clone();
-            let mut pattern = if let Some(tile_bits) = pattern_prefix {
+            let mut pattern = if let Some(builder) = native.as_mut() {
+                builder(depth,&point,&weights,&read_frame,&mut source_work.pattern_prefix)?
+            } else if let Some(tile_bits) = pattern_prefix {
                 patterns::build(
                     s,
                     depth,
@@ -1808,6 +1821,17 @@ fn prove_impl_evaluated(
         excluded_external_owner_count: SOURCE_CAPACITY_EXCLUDED_OWNERS.len(),
     };
     Ok((proof, point, original, source_work))
+}
+
+pub(in super::super) fn prove_native_sourcewise(
+    s:&Statement<'_>,get_frame:impl Fn(usize)->[u8;12],fs:&mut Fs,
+    correlations:&mut impl ExactSizeIterator<Item=Auth>,
+    runtime:&mut crate::c71_matrix::range::windowed::native::Runtime,
+    public_spans:&[(u32,u32,u16)],capacity:usize,
+) -> Result<(Proof,Vec<Fp3>,Auth,SourceProverWork),String> {
+    let mut builder=|depth,point:&[Fp3],weights:&[Fp3],read:&dyn Fn(usize)->[u8;12],work:&mut patterns::Work|
+        patterns::build_native(s,depth,point,weights,read,work,runtime,public_spans,capacity);
+    prove_impl_backend(s,&get_frame,fs,correlations,true,Some(1),0,false,false,Some(&mut builder))
 }
 
 pub(in super::super) fn prove_sourcewise(
@@ -3031,6 +3055,19 @@ mod tests {
             (changed, frame(3, 1, 0, true)), (changed, frame(64, 1, 0, true)), true);
     }
 
+    #[test]
+    #[ignore="explicit real CUDA library and authorized hardware required"]
+    fn c71_b12_mixed_prefix_common_gpu_original_wire_mac_and_pcs() {
+        let programs=mixed_moment_programs();
+        let assignments=(0..32).map(|i|(i%7!=5).then_some((i*5+i/3)%3)).collect::<Vec<_>>();
+        let honest=assignments.iter().enumerate().map(|(i,p)|p.map_or([0;12],|p| {
+            let product=match p {0=>(i%2)*48+(i%4)*64,1=>(i%2)*4+(i%4)*64,_=>i*7};
+            frame(product as i64,1,0,true)
+        })).collect::<Vec<_>>();
+        check_cells_backend(&programs,&assignments,&honest,
+            (0,frame(3,1,0,true)),(0,frame(64,1,0,true)),false,true);
+    }
+
     fn check(
         programs: &[Circuit],
         honest: [[u8; 12]; 4],
@@ -3095,6 +3132,13 @@ mod tests {
         wrong_output: (usize, [u8; 12]), changed_input: (usize, [u8; 12]),
         mixed_prefix: bool,
     ) -> (usize, usize) {
+        check_cells_backend(programs,assignments,honest,wrong_output,changed_input,mixed_prefix,false)
+    }
+
+    fn check_cells_backend(
+        programs:&[Circuit],assignments:&[Option<usize>],honest:&[[u8;12]],
+        wrong_output:(usize,[u8;12]),changed_input:(usize,[u8;12]),mixed_prefix:bool,gpu:bool,
+    )->(usize,usize) {
         let c = assignments.len().ilog2() as usize;
         let packed_replay = programs.len() > 1;
         let n = 1usize << ((c + 4).div_ceil(2)).max(5);
@@ -3165,7 +3209,7 @@ mod tests {
             let expanded = std::cell::Cell::new(0);
             let first_frame = std::cell::Cell::new(false);
             let mut prows = rows.clone().into_iter().inspect(|_| expanded.set(expanded.get() + 1));
-            let (proof, point, original, source_work) = prove_sourcewise(
+            let (mut proof, mut point, mut original, source_work) = prove_sourcewise(
                 &statement,
                 |index| {
                     if !first_frame.replace(true) {
@@ -3177,6 +3221,31 @@ mod tests {
                 &mut prows,
             )
             .unwrap();
+            if gpu {
+                use crate::c71_matrix::range::windowed::native;
+                let config=native::tests::hardware_config(512,16<<20);
+                let weights=Arc::new(Vec::new());
+                let _budget=crate::c71_matrix::census::Budget::new(&weights).unwrap();
+                let mut runtime=native::Runtime::new(&config).unwrap();
+                let before=runtime.stats().unwrap();
+                let mut native_fs=start();let mut native_rows=rows.clone().into_iter();
+                let (candidate,candidate_point,candidate_original,work)=prove_native_sourcewise(
+                    &statement,|i|used[i],&mut native_fs,&mut native_rows,&mut runtime,&[],256).unwrap();
+                let mut bytes=Vec::new();let mut reference=Vec::new();
+                crate::c71_matrix::wire::Wire::write(&candidate,&mut bytes);
+                crate::c71_matrix::wire::Wire::write(&proof,&mut reference);
+                assert_eq!(bytes,reference);assert_eq!(candidate_point,point);
+                assert_eq!((candidate_original.x,candidate_original.m),(original.x,original.m));
+                assert_eq!(native_fs.digest(),fs.digest());assert_eq!(native_rows.len(),prows.len());
+                assert!(work.pattern_prefix.original_frames>0);
+                let after=runtime.stats().unwrap();
+                assert_eq!(after.arena_bytes,0);assert_eq!(after.host_owner_bytes,before.host_owner_bytes);
+                assert_eq!(after.allocations,after.releases);assert!(after.launches>0);
+                println!("C71_RMS_COMMON_GPU {}",serde_json::json!({"fault":fault,"stats":after,
+                    "original_wire_fs_mac":true,"gpu_execution":true,"canonical_certificates":0,"credit":false}));
+                runtime.close().unwrap();
+                proof=candidate;point=candidate_point;original=candidate_original;fs=native_fs;
+            }
             assert!(first_frame.get());
             assert_eq!(expanded.get(), statement.required().unwrap());
             assert_eq!(source_work.cell_rounds.len(), c * (widths.len() - 1));

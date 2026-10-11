@@ -36,6 +36,12 @@ nessuna affermazione di isolamento. Runtime/caller comune, residuo fold/core
 e conto simultaneo restano aperti; nessuna selezione canonica.
 Distributività, selector/mask/wire, ricostruzione/count bounds/modulo,
 determinismo dei frame e lifetime/capacità CUDA sono premesse non scaricate.
+Il collegamento candidato al runtime comune è in verifica: owner default
+42.280 B (+184 B), piani pubblici trattenuti sul device e sette buffer
+privati nell’arena, con staging host addebitato e copertura delle sezioni
+prima della pubblicazione. Il caller esplicito usa gli intervalli delle
+tile originali; build e prove sul pod, nessuna selezione canonica o
+ammissione del conto simultaneo da questa preparazione.
 **Zero certificati canonici**: O=0 incompleto, O=150/300 non iniziati.
 Backend RMS completo, conto simultaneo e premessa di raffinamento aperti.
 

@@ -153,6 +153,14 @@ struct ResidualQueryTransaction {
     uint64_t meta=0,offsets[4]{},low=0,flag=0,cursor=0,source[3]{},last[3]{};
     uint32_t phase=0,mode=0,pad_rows=0,capacity=0,column=0,loaded=0,mask=0;
 };
+struct RmsPrefixTransaction {
+    c71_rms_prefix::Shape shape{};
+    uint64_t meta=0,frames=0,assignments=0,stage=0,eq=0,chunk=0,aggregate=0,offsets[6]{},cursor=0,windows=0;
+    uint32_t active=0,slots=0;
+    uint8_t* shadow=nullptr;
+    uint64_t shadow_bytes=0;
+};
+static_assert(sizeof(RmsPrefixTransaction)==184);
 struct C71RangeContext {
 #ifdef C71_SOURCE_VMM_EXPERIMENT
     C71SourceTail source_tails[121];
@@ -195,13 +203,14 @@ struct C71RangeContext {
     ResidualTransaction residual{};
     ContractTransaction contract{};
     ResidualQueryTransaction residual_query{};
+    RmsPrefixTransaction rms{};
 };
 namespace {
-constexpr uint64_t sizes[]={1,2,48,96,24,96,8,1,8,8,32,32,32,40,8,8,8,1,1,8};
+constexpr uint64_t sizes[]={1,2,48,96,24,96,8,1,8,8,32,32,32,40,8,8,8,1,1,8,1};
 constexpr uint64_t caps[]={uint64_t{1}<<31,uint64_t{1}<<27,uint64_t{1}<<24,
                           uint64_t{1}<<24,256*32*32,65536,uint64_t(c71_dense::max_m)*c71_dense::max_n,uint64_t{1}<<31,65535,
                           uint64_t{1}<<28,uint64_t{1}<<25,uint64_t{1}<<25,uint64_t{1}<<26,65536,uint64_t{1}<<25,
-                          uint64_t{1}<<28,256,uint64_t{1}<<28,uint64_t{1}<<30,uint64_t{1}<<28};
+                          uint64_t{1}<<28,256,uint64_t{1}<<28,uint64_t{1}<<30,uint64_t{1}<<28,uint64_t{1}<<29};
 std::atomic<uint64_t> next_handle{1};
 bool canonical(Fp3 a) { return a.c0<P && a.c1<P && a.c2<P; }
 bool power2(uint64_t n) { return n && !(n&(n-1)); }
@@ -406,7 +415,7 @@ extern "C" int c71_range_source_pool_begin(C71RangeContext* c) {
     if(!ready(c)) return -1;
 #ifdef C71_ASYNC_ALLOCATOR_EXPERIMENT
     if(c->async_phase || c->async_cache_charged || c->async_live_bytes || c->source.values[0] ||
-        c->salts.phase || c->linear.phase || c->residual.active || c->contract.active || c->residual_query.phase)
+        c->salts.phase || c->linear.phase || c->residual.active || c->contract.active || c->residual_query.phase || c->rms.active)
         return fail(c,"source pool begin overlaps an active phase");
     if(fence(c)) return -1;
     if(c->account) {
@@ -432,7 +441,7 @@ extern "C" int c71_range_source_pool_end(C71RangeContext* c) {
     if(!ready(c)) return -1;
 #ifdef C71_ASYNC_ALLOCATOR_EXPERIMENT
     if(!c->async_phase || c->async_live_bytes || c->source.values[0] || c->salts.phase ||
-        c->linear.phase || c->residual.active || c->contract.active || c->residual_query.phase)
+        c->linear.phase || c->residual.active || c->contract.active || c->residual_query.phase || c->rms.active)
         return fail(c,"source pool end retains live work");
     if(fence(c)) return -1;
     uint64_t reserved=0,used=0;
@@ -526,6 +535,11 @@ extern "C" int c71_range_close(C71RangeContext* c,C71RangeStats* out) {
 #else
     (void)diagnostic_error;
 #endif
+    if(c->rms.shadow) {
+        delete[] c->rms.shadow;
+        c->stats.host_owner_bytes-=c->rms.shadow_bytes;
+        if(c->account) c->account(-int64_t(c->rms.shadow_bytes));
+    }
     c->stats.cleanup_failed=error;
     *out=c->stats;
     if(c->account) c->account(-int64_t(sizeof(*c)));
@@ -534,7 +548,7 @@ extern "C" int c71_range_close(C71RangeContext* c,C71RangeStats* out) {
 namespace {
 int allocate(C71RangeContext* c,uint32_t kind,uint64_t count,uint64_t* out) {
     if(!ready(c)) return -1;
-    if(!out || kind>C71_PCS_RESIDUAL_PRIVATE || !count || count>caps[kind]) return fail(c,"range allocation shape");
+    if(!out || kind>C71_RMS_PRIVATE || !count || count>caps[kind]) return fail(c,"range allocation shape");
     const uint64_t capacity=(count*sizes[kind]+255)&~uint64_t{255};
     Buffer* slot=nullptr;
     for(auto& b:c->buffers) if(!b.id) { slot=&b; break; }
@@ -1680,7 +1694,7 @@ extern "C" int c71_pcs_salts_begin(C71RangeContext* c,const uint8_t seed[32],c71
     uint32_t group_cosets,uint32_t capacity,uint64_t* session) {
     if(!ready(c)) return -1;
     if(session) *session=0;
-    if(!session || !seed || c->salts.phase || c->linear.phase || c->residual.active || c->contract.active || c->residual_query.phase || !c71_salts::valid(g) || g.cut<g.cosets ||
+    if(!session || !seed || c->rms.active || c->salts.phase || c->linear.phase || c->residual.active || c->contract.active || c->residual_query.phase || !c71_salts::valid(g) || g.cut<g.cosets ||
        (group_cosets!=2 && group_cosets!=4 && group_cosets!=32) || group_cosets>g.cosets ||
        (group_cosets==2 ? (g.cosets<2 || g.rows>(uint64_t{1}<<23) || g.rows*g.cosets>(uint64_t{1}<<32) ||
            (g.rows>(uint64_t{1}<<20) && g.cut!=4096)) : g.rows>(uint64_t{1}<<20)) ||
@@ -1864,7 +1878,7 @@ extern "C" int c71_linear_begin(C71RangeContext* c,c71_linear::Shape shape,const
     if(!ready(c)) return -1;
     uintptr_t token_end=0;
     if(!token || reinterpret_cast<uintptr_t>(token)%alignof(uint64_t) || !c71_dense::span(token,8,token_end) ||
-       !c71_linear::valid(shape) || table_count>1280 || c->linear.phase || c->salts.phase || c->source.values[0] || c->residual.active || c->contract.active || c->residual_query.phase)
+       !c71_linear::valid(shape) || table_count>1280 || c->linear.phase || c->salts.phase || c->source.values[0] || c->residual.active || c->contract.active || c->residual_query.phase || c->rms.active)
         return fail(c,"linear begin shape, output or active consumer");
     const void* arrays[]={&shape,chunks,tables,groups,intervals,points};
     const uint64_t lengths[]={sizeof(shape),uint64_t(shape.chunks)*sizeof(*chunks),uint64_t(table_count)*sizeof(*tables),
@@ -1966,7 +1980,7 @@ namespace {
 namespace residual=c71_pcs_residual;
 constexpr unsigned residual_plane_role=3, residual_ring_role=2;
 bool residual_idle(C71RangeContext* c) {
-    if(c->residual_query.phase || c->residual.active || c->contract.active || c->linear.phase || c->salts.phase || c->source.values[0]) {
+    if(c->rms.active || c->residual_query.phase || c->residual.active || c->contract.active || c->linear.phase || c->salts.phase || c->source.values[0]) {
         fail(c,"PCS residual consumer already active"); return false;
     }
     return true;
@@ -2085,7 +2099,7 @@ extern "C" int c71_pcs_residual_begin(C71RangeContext* c,residual::Shape shape,r
     const bool salts_bound=!c->salts.phase || (phase==residual::Phase::cosets && c->salts.phase==3 &&
         c->salts.group_cosets==2 && cosets.rows==c->salts.geometry.rows &&
         cosets.cosets==c->salts.geometry.cosets && cosets.first_coset==2*c->salts.group && !c->salts.first);
-    if(c->residual_query.phase || c->residual.active || c->contract.active || c->linear.phase || c->source.values[0] || !salts_bound ||
+    if(c->rms.active || c->residual_query.phase || c->residual.active || c->contract.active || c->linear.phase || c->source.values[0] || !salts_bound ||
        !token || reinterpret_cast<uintptr_t>(token)%8 || !c71_dense::span(token,8,token_end) ||
        !residual::valid(shape,phase) || !residual::canonical(point) ||
        (phase==residual::Phase::cosets ? (!residual::valid(cosets,shape) || pad_count!=4*cosets.pad_rows || !residual::zero(point)) :
@@ -2284,7 +2298,7 @@ extern "C" int c71_pcs_residual_retire_planes(C71RangeContext* c,C71PcsResidualP
 extern "C" int c71_pcs_residual_retire_ring(C71RangeContext* c,uint64_t ring) {
     if(!ready(c)) return -1;
     auto* b=buffer(c,ring);
-    if(c->residual_query.phase || c->residual.active || c->contract.active || c->linear.phase || c->source.values[0] || (c->salts.phase && c->salts.phase!=3 && c->salts.phase!=4) ||
+    if(c->rms.active || c->residual_query.phase || c->residual.active || c->contract.active || c->linear.phase || c->source.values[0] || (c->salts.phase && c->salts.phase!=3 && c->salts.phase!=4) ||
        (c->salts.short_ring==ring && c->salts.first) ||
        !full(b,C71_PCS_RESIDUAL_PRIVATE) || b->residual_role!=residual_ring_role)
         return fail(c,"PCS residual ring retirement type or state");
@@ -2636,3 +2650,5 @@ extern "C" int c71_pcs_residual_query_finish(C71RangeContext* c,uint64_t token,c
     for(auto* id:{&q.flag,&q.low,&q.meta}) if(residual_retire(c,*id)) return cleanup(-1);
     std::memcpy(output,staged,size_t(bytes)); q={}; return cleanup(0);
 }
+
+#include "c71_rms_runtime.inc"

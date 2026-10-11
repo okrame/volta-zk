@@ -21,6 +21,24 @@ static uint64_t fake_pool_reserved_extra=0;
 static bool model_pool_physical=false;
 static uint64_t fake_pool_granularity=1ULL<<21;
 static bool fail_launch=false, fail_fence=false, fail_free=false, corrupt=false;
+namespace c71_rms_prefix {
+// Ownership model only. These stubs deliberately supply no GPU moment math.
+cudaError_t replay(cudaStream_t stream,const uint8_t*,const uint16_t*,const Program*,const Node*,
+    const uint32_t*,const uint32_t*,unsigned,unsigned width,unsigned capacity,unsigned,unsigned,
+    uint64_t* stage,unsigned* attempted,uint64_t* zeroed) {
+    *attempted=0; *zeroed=0;
+    const auto status=cudaMemsetAsync(stage,0,uint64_t(width)*capacity*2,stream);
+    if(status)return status;
+    *zeroed=uint64_t(width)*capacity*2; *attempted=2;
+    return fail_launch?cudaErrorInvalidValue:cudaSuccess;
+}
+cudaError_t suffix_eq(cudaStream_t,const Fp3*,unsigned,unsigned,unsigned,unsigned,uint32_t*,unsigned* attempted) {
+    *attempted=1; return fail_launch?cudaErrorInvalidValue:cudaSuccess;
+}
+cudaError_t consume(cudaStream_t,const uint32_t*,const uint32_t*,const Gate*,unsigned,unsigned,Fp3*,Fp3*,unsigned* attempted) {
+    *attempted=3; return fail_launch?cudaErrorInvalidValue:cudaSuccess;
+}
+}
 static bool fail_dense=false;
 static bool fail_memset=false;
 static int memset_fail_after=-1;
@@ -2694,5 +2712,6 @@ int main() {
     initial_weight_query_test::negative();
     assert(allocations==frees);
     std::puts("C71_RANGE_OWNER_HOST {\"rejections\":13,\"dense_rejections\":23,\"byte_rejections\":19,\"pointwise_rejections\":14,\"embedding_rejections\":17,\"dense_batches\":2,\"dense_row_views\":1,\"max_arena_bytes\":262144,\"gpu_execution\":false,\"credit\":false}");
+    return 0;
 }
 #endif

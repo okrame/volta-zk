@@ -167,33 +167,44 @@ __global__ void late_weight(const Gate* gates,unsigned gate_count,const Fp3* chu
 }
 cudaError_t replay(cudaStream_t stream,const uint8_t* frames,const uint16_t* assignments,
     const Program* programs,const Node* nodes,const uint32_t* boundaries,const uint32_t* outputs,
-    unsigned count,unsigned width,unsigned capacity,unsigned n,unsigned shared_slots,uint64_t* stage) {
+    unsigned count,unsigned width,unsigned capacity,unsigned n,unsigned shared_slots,uint64_t* stage,unsigned* launches,uint64_t* zeroed) {
+    if(launches) *launches=0;
+    if(zeroed) *zeroed=0;
     if(!n||n>capacity||capacity>4096||capacity%256||!count||count>421||!width||width>16384||shared_slots<2||shared_slots>16384)
         return cudaErrorInvalidValue;
     auto status=cudaMemsetAsync(stage,0,size_t(width)*capacity*2,stream);
     if(status!=cudaSuccess) return status;
+    if(zeroed) *zeroed=size_t(width)*capacity*2;
     status=cudaFuncSetAttribute(original_replay,cudaFuncAttributeMaxDynamicSharedMemorySize,shared_slots*8);
     if(status!=cudaSuccess) return status;
     original_replay<<<(n+3)/4,128,shared_slots*8,stream>>>(frames,assignments,programs,nodes,boundaries,outputs,count,width,capacity,n,stage);
+    if(launches) ++*launches;
     status=cudaGetLastError();if(status!=cudaSuccess) return status;
     transpose<<<width*(capacity/256),128,0,stream>>>(stage,width,capacity);
+    if(launches) ++*launches;
     return cudaGetLastError();
 }
 cudaError_t suffix_eq(cudaStream_t stream,const Fp3* point,unsigned bits,unsigned first,
-    unsigned capacity,unsigned n,uint32_t* planes) {
+    unsigned capacity,unsigned n,uint32_t* planes,unsigned* launches) {
+    if(launches) *launches=0;
     if(!bits||bits>25||!n||n>capacity||capacity>4096||capacity%256||first>=(1u<<bits)||n>(1u<<bits)-first)
         return cudaErrorInvalidValue;
     original_eq<<<capacity/256,256,0,stream>>>(point,bits,first,capacity,n,planes);
+    if(launches) ++*launches;
     return cudaGetLastError();
 }
 cudaError_t consume(cudaStream_t stream,const uint32_t* stage,const uint32_t* eq,const Gate* gates,
-    unsigned count,unsigned capacity,Fp3* chunk,Fp3* aggregate) {
+    unsigned count,unsigned capacity,Fp3* chunk,Fp3* aggregate,unsigned* launches) {
+    if(launches) *launches=0;
     if(!count||count>gate_chunk||capacity>4096||capacity%256||!capacity) return cudaErrorInvalidValue;
     binary_moments<<<(count*64+127)/128,128,0,stream>>>(stage,eq,gates,count,capacity/256,chunk);
+    if(launches) ++*launches;
     auto status=cudaGetLastError();if(status!=cudaSuccess) return status;
     linear_moments<<<(count*16+127)/128,128,0,stream>>>(stage,eq,gates,count,capacity/256,chunk);
+    if(launches) ++*launches;
     status=cudaGetLastError();if(status!=cudaSuccess) return status;
     late_weight<<<3,128,0,stream>>>(gates,count,chunk,aggregate);
+    if(launches) ++*launches;
     return cudaGetLastError();
 }
 }

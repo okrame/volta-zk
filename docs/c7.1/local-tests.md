@@ -36,6 +36,12 @@ nessuna affermazione di isolamento. Runtime/caller comune, residuo fold/core
 e conto simultaneo restano aperti; nessuna selezione canonica.
 Distributività, selector/mask/wire, ricostruzione/count bounds/modulo,
 determinismo dei frame e lifetime/capacità CUDA sono premesse non scaricate.
+Il collegamento candidato al runtime comune è in verifica: owner default
+42.280 B (+184 B), piani pubblici trattenuti sul device e sette buffer
+privati nell’arena, con staging host addebitato e copertura delle sezioni
+prima della pubblicazione. Il caller esplicito usa gli intervalli delle
+tile originali; build e prove sul pod, nessuna selezione canonica o
+ammissione del conto simultaneo da questa preparazione.
 **Zero certificati canonici**: O=0 incompleto, O=150/300 non iniziati.
 Backend RMS completo, conto simultaneo e premessa di raffinamento aperti.
 
@@ -698,7 +704,7 @@ nvcc -std=c++17 -O2 -arch=sm_90 --shared --cudart static -Xcompiler=-fPIC \
   cuda/c71_pcs_weight.cu cuda/c71_pcs_weight_tensor.cu cuda/c71_pcs_source.cu \
   cuda/c71_pcs_salts.cu cuda/c71_pcs_query.cu cuda/c71_linear_native.cu \
   cuda/c71_pcs_residual.cu cuda/c71_pcs_residual_query.cu \
-  cuda/c71_range_runtime.cpp \
+  cuda/c71_rms_prefix.cu cuda/c71_range_runtime.cpp \
   -o /tmp/libc71_device_runner.so
 nvcc -std=c++17 -O2 -arch=sm_90 --cudart static \
   cuda/c71_nonlinear_parity.cu cuda/c71_dense_i16.cu -o /tmp/c71_device_parity

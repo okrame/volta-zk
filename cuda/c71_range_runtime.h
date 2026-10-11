@@ -13,13 +13,14 @@
 #include "c71_pcs_query.cuh"
 #include "c71_linear_native.cuh"
 #include "c71_pcs_residual.cuh"
+#include "c71_rms_prefix.cuh"
 
 struct C71RangeContext;
 using C71RangeAccount = int (*)(int64_t);
 enum C71RangeKind : uint32_t { C71_U8, C71_I16, C71_PAIR, C71_CHILDREN, C71_GRAM, C71_CUBIC, C71_I64, C71_BYTE_PENDING, C71_HISTOGRAM_PENDING,
     C71_PCS_BASE, C71_PCS_HASH_PENDING, C71_PCS_DIGEST, C71_PCS_FRONTIER_PENDING,
     C71_PCS_WEIGHT_TILES, C71_PCS_POWERS, C71_PCS_SOURCE_PENDING, C71_PCS_BYTE_COUNTS_PENDING,
-    C71_PCS_PRIVATE, C71_LINEAR_PRIVATE, C71_PCS_RESIDUAL_PRIVATE };
+    C71_PCS_PRIVATE, C71_LINEAR_PRIVATE, C71_PCS_RESIDUAL_PRIVATE, C71_RMS_PRIVATE };
 struct C71RangeStats {
     // ABI 4: actual live device reservations (released after fence), aligned
     // capacities and logical payload. create() sets a budget, not a slab.
@@ -59,6 +60,18 @@ int c71_range_alloc(C71RangeContext*,uint32_t kind,uint64_t count,uint64_t* hand
 int c71_range_release(C71RangeContext*,uint64_t handle);
 int c71_range_upload(C71RangeContext*,uint64_t handle,const void* input,uint64_t bytes);
 int c71_range_zero(C71RangeContext*,uint64_t handle);
+// Prover-private moment consumer in the SAME owner/arena. Sorted nonzero
+// prefix masks; originals only, no correlations/FS or numeric buffer export.
+int c71_rms_prefix_begin(C71RangeContext*,c71_rms_prefix::Shape,
+    const c71_rms_prefix::Program*,const c71_rms_prefix::Node*,const uint32_t*,const uint32_t*,
+    const c71_rms_prefix::Gate*,const Fp3*,const c71_rms_prefix::GateRange*,const uint16_t*,
+    const c71_rms_prefix::Section*,uint64_t*);
+// Every row's public program assignment is constant within one source window.
+// mask_ids has programs entries;0xffff means absent. Frames/ids are padded
+// [16][capacity][12B/u16]. source_first/n use ORIGINAL suffix coordinates.
+int c71_rms_prefix_window(C71RangeContext*,uint64_t,uint32_t source_first,uint32_t n,
+    const uint8_t* frames,const uint16_t* assignments,const uint16_t* mask_ids);
+int c71_rms_prefix_finish(C71RangeContext*,uint64_t,Fp3* moments,uint32_t count);
 int c71_range_roots(C71RangeContext*,uint64_t input,uint32_t bottom,Fp3 alpha,uint64_t output,uint64_t first);
 int c71_range_runtime_canopy(C71RangeContext*,uint64_t input,uint64_t output);
 int c71_range_as_children(C71RangeContext*,uint64_t handle);

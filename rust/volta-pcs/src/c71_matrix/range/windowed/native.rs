@@ -157,6 +157,35 @@ impl LinearPacket {
 const _: () = assert!(size_of::<Field>() == 24 && size_of::<LinearShape>() == 32
     && size_of::<LinearChunk>() == 16 && size_of::<LinearGroup>() == 16
     && size_of::<LinearInterval>() == 64 && size_of::<[Field; 5]>() == 120);
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub(in crate::c71_matrix) struct RmsShape {
+    pub programs:u32, pub width:u32, pub capacity:u32, pub suffix_bits:u32,
+    pub nodes:u32, pub boundaries:u32, pub outputs:u32, pub gates:u32, pub masks:u32, pub sections:u32,
+}
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub(in crate::c71_matrix) struct RmsProgram {
+    pub ports:u32, pub slots:u32, pub stages:u32, pub nodes_first:u32,
+    pub boundaries_first:u32, pub outputs_first:u32, pub outputs_count:u32,
+}
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub(in crate::c71_matrix) struct RmsGate {pub op:u32, pub x:u32, pub y:u32, pub reserved:u32, pub weight:Field}
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub(in crate::c71_matrix) struct RmsRange {pub first:u32, pub count:u32}
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub(in crate::c71_matrix) struct RmsSection {pub first:u32, pub end:u32}
+pub(in crate::c71_matrix) struct RmsPacket {
+    pub shape:RmsShape, pub programs:Vec<RmsProgram>, pub nodes:Vec<[u32;4]>,
+    pub boundaries:Vec<u32>, pub outputs:Vec<u32>, pub gates:Vec<RmsGate>,
+    pub point:Vec<Field>, pub ranges:Vec<RmsRange>, pub masks:Vec<u16>, pub sections:Vec<RmsSection>,
+}
+pub(in crate::c71_matrix) struct RmsToken {id:u64, owner:Arc<()>, capacity:usize, programs:usize, masks:usize}
+const _: () = assert!(size_of::<RmsShape>()==40 && size_of::<RmsProgram>()==28 && size_of::<RmsGate>()==40
+    && size_of::<RmsRange>()==8 && size_of::<RmsSection>()==8);
 // PCS v^3=v+1 basis. MAC Field is deliberately a different Rust type.
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
@@ -532,6 +561,10 @@ api! {
     salts_complete: unsafe extern "C" fn(Raw,u64,*mut u64,u64,*mut u64)->i32 => "c71_pcs_salts_complete",
     linear_begin: unsafe extern "C" fn(Raw,LinearShape,*const LinearChunk,*const Field,u32,
         *const LinearGroup,*const LinearInterval,*const Field,*mut u64)->i32 => "c71_linear_begin",
+    rms_prefix_begin: unsafe extern "C" fn(Raw,RmsShape,*const RmsProgram,*const [u32;4],*const u32,*const u32,
+        *const RmsGate,*const Field,*const RmsRange,*const u16,*const RmsSection,*mut u64)->i32 => "c71_rms_prefix_begin",
+    rms_prefix_window: unsafe extern "C" fn(Raw,u64,u32,u32,*const u8,*const u16,*const u16)->i32 => "c71_rms_prefix_window",
+    rms_prefix_finish: unsafe extern "C" fn(Raw,u64,*mut Field,u32)->i32 => "c71_rms_prefix_finish",
     linear_source: unsafe extern "C" fn(Raw,u64,u64,PcsSourceTile)->i32 => "c71_linear_source_tile",
     linear_weights: unsafe extern "C" fn(Raw,u64,u64)->i32 => "c71_linear_weights",
     linear_finish: unsafe extern "C" fn(Raw,u64,*mut Field)->i32 => "c71_linear_finish",
@@ -764,6 +797,46 @@ impl Runtime {
         let mut completed=0;
         let status=unsafe {(self.api.short_private)(self.raw,private.id,ring.id,output.id,group as u32,first as u64,count as u64,&mut completed)};
         self.check(status)?;if first.checked_add(count)==output.count.checked_mul(2){output.kind=11;}Ok(completed)
+    }
+    pub(in crate::c71_matrix) fn rms_prefix_begin(&mut self, packet:&RmsPacket)->Result<RmsToken,String> {
+        self.ready()?;
+        let s=packet.shape;
+        if s.programs as usize!=packet.programs.len() || s.nodes as usize!=packet.nodes.len() ||
+            s.boundaries as usize!=packet.boundaries.len() || s.outputs as usize!=packet.outputs.len() ||
+            s.gates as usize!=packet.gates.len() || s.suffix_bits as usize!=packet.point.len() ||
+            s.programs as usize!=packet.ranges.len() || s.masks as usize!=packet.masks.len() ||
+            s.sections as usize!=packet.sections.len() {
+            return self.abort("native RMS packet lengths differ");
+        }
+        let mut id=0;
+        let status=unsafe {(self.api.rms_prefix_begin)(self.raw,s,packet.programs.as_ptr(),packet.nodes.as_ptr(),
+            packet.boundaries.as_ptr(),packet.outputs.as_ptr(),packet.gates.as_ptr(),packet.point.as_ptr(),
+            packet.ranges.as_ptr(),packet.masks.as_ptr(),packet.sections.as_ptr(),&mut id)};
+        self.check(status)?;
+        if id==0 {return self.abort("native RMS returned null capability");}
+        Ok(RmsToken {id,owner:self.owner.clone(),capacity:s.capacity as usize,programs:s.programs as usize,masks:s.masks as usize})
+    }
+    fn require_rms(&mut self,token:&RmsToken)->Result<(),String> {
+        self.ready()?;
+        if token.id==0 || !Arc::ptr_eq(&self.owner,&token.owner) {return self.abort("native RMS owner differs");}
+        Ok(())
+    }
+    pub(in crate::c71_matrix) fn rms_prefix_window(&mut self,token:&RmsToken,first:usize,n:usize,
+        frames:&[u8],assignments:&[u16],masks:&[u16])->Result<(),String> {
+        self.require_rms(token)?;
+        if first>u32::MAX as usize || n==0 || n>token.capacity || frames.len()!=16*token.capacity*12 ||
+            assignments.len()!=16*token.capacity || masks.len()!=token.programs {
+            return self.abort("native RMS window lengths differ");
+        }
+        let status=unsafe {(self.api.rms_prefix_window)(self.raw,token.id,first as u32,n as u32,
+            frames.as_ptr(),assignments.as_ptr(),masks.as_ptr())};self.check(status)
+    }
+    pub(in crate::c71_matrix) fn rms_prefix_finish(&mut self,token:RmsToken)->Result<Vec<Fp3>,String> {
+        self.require_rms(&token)?;
+        let mut fields=vec![Field::default();token.masks*272];
+        let status=unsafe {(self.api.rms_prefix_finish)(self.raw,token.id,fields.as_mut_ptr(),fields.len() as u32)};
+        self.check(status)?;
+        fields.into_iter().map(Field::decode).collect::<Result<Vec<_>,_>>().or_else(|error|self.abort(error))
     }
     pub(in crate::c71_matrix) fn linear_begin(&mut self, packet: &LinearPacket) -> Result<LinearToken, String> {
         self.ready()?;

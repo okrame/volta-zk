@@ -11,6 +11,12 @@ struct Program {
 struct Node { uint32_t op, z, x, y; }; // And=0, Xor=1; Copy is an output alias.
 struct Gate { uint32_t op, x, y, reserved; Fp3 weight; }; // And=0, Xor=1, Copy=2.
 static_assert(sizeof(Program)==28 && sizeof(Node)==16 && sizeof(Gate)==40);
+struct GateRange { uint32_t first,count; };
+struct Section { uint32_t first,end; };
+struct Shape {
+    uint32_t programs,width,capacity,suffix_bits,nodes,boundaries,outputs,gates,masks,sections;
+};
+static_assert(sizeof(GateRange)==8 && sizeof(Section)==8 && sizeof(Shape)==40);
 
 // producer -> transpose -> original suffix Eq -> fused counts -> late weight.
 // All buffers are caller owned; launches do not allocate or download.
@@ -20,10 +26,11 @@ static_assert(sizeof(Program)==28 && sizeof(Node)==16 && sizeof(Gate)==40);
 #ifdef __CUDACC__
 cudaError_t replay(cudaStream_t, const uint8_t*, const uint16_t*, const Program*,
     const Node*, const uint32_t*, const uint32_t*, unsigned programs, unsigned width,
-    unsigned capacity, unsigned n, unsigned shared_slots, uint64_t* stage);
+    unsigned capacity, unsigned n, unsigned shared_slots, uint64_t* stage,
+    unsigned* launches=nullptr, uint64_t* zeroed=nullptr);
 cudaError_t suffix_eq(cudaStream_t, const Fp3* point, unsigned bits, unsigned first,
-    unsigned capacity, unsigned n, uint32_t* planes);
+    unsigned capacity, unsigned n, uint32_t* planes, unsigned* launches=nullptr);
 cudaError_t consume(cudaStream_t, const uint32_t* stage, const uint32_t* eq,
-    const Gate*, unsigned gates, unsigned capacity, Fp3* chunk, Fp3* aggregate);
+    const Gate*, unsigned gates, unsigned capacity, Fp3* chunk, Fp3* aggregate, unsigned* launches=nullptr);
 #endif
 }

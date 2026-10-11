@@ -378,6 +378,17 @@ def ledger_native(directory, query_record, linear_record, proposed_s1=False, lif
             raise ValueError('incompatible source pool lifetime receipt')
         owner = source_pool[0]['host_owner_bytes']
         owner_observations.append({'marker': 'C71_SOURCE_POOL_PHASE', 'bytes': owner})
+    source_vmm = records(directory, 'C71_SOURCE_VMM')
+    if source_vmm:
+        if (len(source_vmm) != 1 or not proposed_s1 or source_pool
+                or source_vmm[0].get('host_owner_bytes', 0) < owner
+                or source_vmm[0].get('granularity_bytes') not in [1 << k for k in range(12, 22)]
+                or source_vmm[0].get('kv_columns') != [2048]*20+[4096]*100
+                or source_vmm[0].get('live_columns') != [99, 107, 116]
+                or source_vmm[0].get('preserves_shared_handles') is not True):
+            raise ValueError('incompatible deferred source backing receipt')
+        owner = source_vmm[0]['host_owner_bytes']
+        owner_observations.append({'marker': 'C71_SOURCE_VMM', 'bytes': owner})
     replay = max(row['replay_upper_bytes_including_persistent'] for row in device)
     persistent = max(row['persistent_device_bytes'] for row in device)
     c = claims[0]
@@ -548,6 +559,30 @@ def ledger_native(directory, query_record, linear_record, proposed_s1=False, lif
                            remaining_shared_payload_capacity_bytes=payload-total,
                            named_subtotal_exceeds_payload=total > payload)
                 row['lifetime'] += ' Pool reserve covers the complete initial A commitment, including salt prescan; fenced empty-pool check precedes refund and root publication.'
+    if source_vmm:
+        geometry = source_vmm[0]
+        granularity = geometry['granularity_bytes']
+        rounded = lambda n: (n+granularity-1)//granularity*granularity
+        full_kv = sum(rounded(450*columns*2) for columns in geometry['kv_columns'])
+        prefix_kv = sum(rounded(150*columns*2) for columns in geometry['kv_columns'])
+        for row in phases:
+            parts = row['parts']
+            key = 'device_persistent_or_single_replay_envelope'
+            if key in parts:
+                # Full capacity outside the explicitly modeled O=0 initial A
+                # phases is conservative; no unmeasured proof saving is claimed.
+                parts['KV_VMM_full_rounding_upper'] = full_kv-405504000
+                if row['phase'] in ('native_initial_A1_accumulate', 'native_initial_A1_hash'):
+                    parts[key] -= full_kv-prefix_kv
+            for caches, columns in enumerate(geometry['live_columns'], 1):
+                if row['phase'] == f'native_initial_A{caches}_accumulate':
+                    deferred = (128-columns)*4*(1 << 20)*8
+                    parts['A_values'] -= deferred
+                    row['lifetime'] += ' Unwritten public-padding columns gain backing only after producer return; all 128 columns remain for pad/FFT/hash.'
+            total = sum(parts.values())
+            row.update(named_allocation_subtotal_bytes=total,
+                       remaining_shared_payload_capacity_bytes=payload-total,
+                       named_subtotal_exceeds_payload=total > payload)
     return {'backend': 's1-prepared' if proposed_s1 else 'native-2026-10-09',
             'credit': False, 'gpu_execution': False, 'canonical_execution': False,
             'enforced_joint_allocation_limit_bytes': payload,
@@ -566,6 +601,7 @@ def ledger_native(directory, query_record, linear_record, proposed_s1=False, lif
             'current_owner_host_byte_observations': owner_observations,
             'synchronous_error_flag_retention': sync_flag[0] if sync_flag else None,
             'initial_A_source_pool_phase': source_pool[0] if source_pool else None,
+            'initial_A_deferred_backing': source_vmm[0] if source_vmm else None,
             'additional_explicit_component_caps': {
                 'residual_dim35_EQ_packet_device': residual_packet(35)['device'],
                 'residual_dim35_EQ_packet_host_upper': residual_packet(35)['host_upper'],

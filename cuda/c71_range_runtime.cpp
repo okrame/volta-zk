@@ -8,6 +8,12 @@
 #ifdef C71_OWNER_TRACE
 #include "c71_owner_trace.h"
 #endif
+#ifdef C71_SOURCE_VMM_EXPERIMENT
+#include "c71_source_tail.h"
+#if !defined(C71_OWNER_TRACE_PHYSICAL) || !defined(C71_OWNER_TRACE) || defined(C71_ASYNC_ALLOCATOR_EXPERIMENT)
+#error "source VMM requires physical diagnostics and excludes the pool experiment"
+#endif
+#endif
 #if defined(C71_ASYNC_ALLOCATOR_EXPERIMENT) && (!defined(C71_OWNER_TRACE_PHYSICAL) || !defined(C71_OWNER_TRACE))
 #error "the allocator experiment requires bounded physical diagnostics"
 #endif
@@ -118,6 +124,7 @@ struct Buffer {
     uint64_t visits=0;
     bool release_failed=false;
     bool pooled=false;
+    uint8_t deferred_index=0;
     uint32_t residual_role=0;
     uint64_t residual_group=0;
 };
@@ -147,6 +154,9 @@ struct ResidualQueryTransaction {
     uint32_t phase=0,mode=0,pad_rows=0,capacity=0,column=0,loaded=0,mask=0;
 };
 struct C71RangeContext {
+#ifdef C71_SOURCE_VMM_EXPERIMENT
+    C71SourceTail source_tails[121];
+#endif
 #ifdef C71_OWNER_TRACE
     c71_owner_trace::Trace diagnostic;
 #endif
@@ -202,7 +212,17 @@ int fail(C71RangeContext* c,const char* message) {
 int checked(C71RangeContext* c,cudaError_t status) {
     return status==cudaSuccess ? 0 : fail(c,cudaGetErrorString(status));
 }
-cudaError_t release_allocation(C71RangeContext* c,void* allocation,bool pooled=false) {
+cudaError_t release_allocation(C71RangeContext* c,void* allocation,bool pooled=false,uint8_t deferred_index=0) {
+#ifdef C71_SOURCE_VMM_EXPERIMENT
+    if(deferred_index) {
+        auto& tail=c->source_tails[deferred_index-1];
+        if(tail.release()) return cudaSuccess;
+        fail(c,tail.error);
+        return cudaErrorInvalidValue;
+    }
+#else
+    (void)deferred_index;
+#endif
 #ifdef C71_ASYNC_ALLOCATOR_EXPERIMENT
     // Drain the pool's free itself before reading its capacity counters.
     auto status=pooled?cudaFreeAsync(allocation,c->stream):cudaFree(allocation);
@@ -471,6 +491,7 @@ extern "C" int c71_range_close(C71RangeContext* c,C71RangeStats* out) {
             if(C71_TRACE_EVENT(c,"after",status) || trace_failed) error=true;
         }
         for(auto& b:c->buffers) if(b.id) {
+            if(b.deferred_index && !drained) { error=true; continue; }
 #ifdef C71_ASYNC_ALLOCATOR_EXPERIMENT
             // cudaFree on pool memory does not add an implicit fence.
             if(b.pooled && !drained) { error=true; continue; }
@@ -480,9 +501,9 @@ extern "C" int c71_range_close(C71RangeContext* c,C71RangeStats* out) {
             if(b.release_failed) { error=true; continue; }
             C71_TRACE_BUFFER(c,&b);
             const bool trace_failed=C71_TRACE_EVENT(c,"before",0)!=0;
-            const auto status=release_allocation(c,b.allocation,b.pooled);
+            const auto status=release_allocation(c,b.allocation,b.pooled,b.deferred_index);
             if(checked(c,status)) error=true;
-            else { if(c->account) c->account(-int64_t(b.capacity)); b={}; ++c->stats.releases; }
+            else { if(c->account && !b.deferred_index) c->account(-int64_t(b.capacity)); b={}; ++c->stats.releases; }
             C71_TRACE_RECOUNT(c);
             if(C71_TRACE_EVENT(c,"after",status) || trace_failed) error=true;
         }
@@ -546,6 +567,45 @@ int allocate(C71RangeContext* c,uint32_t kind,uint64_t count,uint64_t* out) {
     ++c->stats.allocations; recount(c);
     return C71_TRACE_EVENT(c,"after",status) ? -1 : 0;
 }
+#ifdef C71_SOURCE_VMM_EXPERIMENT
+int allocate_source_tail(C71RangeContext* c,uint32_t kind,uint64_t count,uint64_t initial,uint64_t* out) {
+    Buffer* slot=nullptr;
+    for(auto& b:c->buffers) if(!b.id) { slot=&b; break; }
+    C71SourceTail* tail=nullptr;
+    for(auto& candidate:c->source_tails) if(!candidate.full) { tail=&candidate; break; }
+    if(!slot || !tail || !count || count>caps[kind]) return fail(c,"source tail allocation shape");
+    if(!tail->prepare(c->device,count*sizes[kind],initial)) return fail(c,tail->error);
+    const auto capacity=tail->prefix;
+    if(capacity>c->usable || c->stats.arena_bytes>c->usable-capacity) return fail(c,"source tail arena exhausted");
+    uint64_t id=next_handle.load();
+    do { if(id==UINT64_MAX) return fail(c,"range handle exhaustion"); }
+    while(!next_handle.compare_exchange_weak(id,id+1));
+    C71_TRACE_VALUE(int(slot-c->buffers),kind,count*sizes[kind],capacity);
+    if(C71_TRACE_EVENT(c,"before",0)) return -1;
+    const bool created=tail->create(c->account);
+    *slot={id,reinterpret_cast<void*>(tail->address),tail->charged,count,0,kind};
+    slot->deferred_index=uint8_t(tail-c->source_tails+1);
+    *out=id; ++c->stats.allocations; recount(c);
+    if(!created) return fail(c,tail->error);
+    return C71_TRACE_EVENT(c,"after",0)?-1:0;
+}
+int materialize_source_tail(C71RangeContext* c,Buffer* b,bool zero) {
+    auto& tail=c->source_tails[b->deferred_index-1];
+    if(tail.charged!=b->capacity || tail.full<b->capacity) return fail(c,"source tail capacity differs");
+    const uint64_t extra=tail.full-b->capacity;
+    if(extra>c->usable || c->stats.arena_bytes>c->usable-extra) return fail(c,"source tail growth arena exhausted");
+    if(fence(c)) return -1;
+    const uint64_t before=b->capacity;
+    const bool grown=tail.grow();
+    b->capacity=tail.charged; recount(c);
+    if(!grown) return fail(c,tail.error);
+    if(zero && extra) {
+        if(checked(c,cudaMemsetAsync(static_cast<unsigned char*>(b->allocation)+before,0,extra,c->stream))) return -1;
+        c->stats.zeroed_bytes+=extra;
+    }
+    return 0;
+}
+#endif
 }
 extern "C" int c71_range_alloc(C71RangeContext* c,uint32_t kind,uint64_t count,uint64_t* out) {
     if(kind>C71_PCS_BYTE_COUNTS_PENDING) return fail(c,"private allocation requires PCS capability");
@@ -562,9 +622,9 @@ extern "C" int c71_range_release(C71RangeContext* c,uint64_t id) {
     if(fence(c)) return -1;
     C71_TRACE_BUFFER(c,b);
     if(C71_TRACE_EVENT(c,"before",0)) return -1;
-    const auto status=release_allocation(c,b->allocation,b->pooled);
+    const auto status=release_allocation(c,b->allocation,b->pooled,b->deferred_index);
     if(checked(c,status)) { b->release_failed=true; (void)C71_TRACE_EVENT(c,"after",status); return -1; }
-    if(c->account) c->account(-int64_t(b->capacity));
+    if(c->account && !b->deferred_index) c->account(-int64_t(b->capacity));
     *b={}; ++c->stats.releases; recount(c);
     return C71_TRACE_EVENT(c,"after",status) ? -1 : 0;
 }
@@ -572,7 +632,7 @@ extern "C" int c71_range_upload(C71RangeContext* c,uint64_t id,const void* input
     if(!ready(c)) return -1;
     if(c->residual_query.phase) return fail(c,"PCS E query keeps inputs and workspaces private");
     auto* b=buffer(c,id);
-    if(!b || b->kind>C71_I16 || !input || bytes!=b->count*sizes[b->kind]) return fail(c,"range upload shape");
+    if(!b || b->deferred_index || b->kind>C71_I16 || !input || bytes!=b->count*sizes[b->kind]) return fail(c,"range upload shape");
     if(b->kind==C71_I16) for(uint64_t i=0;i<b->count;++i) {
         int16_t value; std::memcpy(&value,static_cast<const unsigned char*>(input)+2*i,2);
         if(value==INT16_MIN) return fail(c,"signed range overflow marker");
@@ -784,7 +844,7 @@ extern "C" int c71_dense_product(C71RangeContext* c,uint64_t in,uint64_t offset,
 extern "C" int c71_dense_quantize(C71RangeContext* c,uint64_t in,int32_t shift,uint64_t out) {
     if(!ready(c)) return -1;
     auto* a=buffer(c,in); auto* b=buffer(c,out);
-    if(!full(a,C71_I64) || !b || b->kind!=C71_I16 || b->initialized || a->count!=b->count)
+    if(!full(a,C71_I64) || !b || b->deferred_index || b->kind!=C71_I16 || b->initialized || a->count!=b->count)
         return fail(c,"dense RNE shape");
     uint64_t flag=0; if(dense_flag(c,&flag,true)) return -1;
     if(launched(c,c71_dense_rne_launch(c->stream,ptr<int64_t>(c,a),ptr<int16_t>(c,b),a->count,shift,
@@ -796,7 +856,7 @@ extern "C" int c71_dense_embedding(C71RangeContext* c,uint64_t offset,uint32_t v
     if(!ready(c)) return -1;
     auto* b=buffer(c,out); uintptr_t end=0;
     const uint64_t words=uint64_t(vocabulary)*columns;
-    if(!b || b->kind!=C71_I16 || b->initialized || !c->stats.weights_sealed ||
+    if(!b || b->deferred_index || b->kind!=C71_I16 || b->initialized || !c->stats.weights_sealed ||
        !rows || rows>150 || !columns || columns>21504 || !vocabulary || vocabulary>262144 ||
        b->count!=uint64_t(rows)*columns || offset>c->stats.weights_bytes/2 ||
        words>c->stats.weights_bytes/2-offset || reinterpret_cast<uintptr_t>(tokens)%4 ||
@@ -857,7 +917,7 @@ const unsigned char* nonlinear_table(C71RangeContext* c,uint64_t id,uint64_t off
 }
 Buffer* pending(C71RangeContext* context,uint64_t id,unsigned kind,uint64_t count) {
     auto* output=buffer(context,id);
-    if(!output || output->kind!=kind || output->initialized || output->count!=count) {
+    if(!output || output->deferred_index || output->kind!=kind || output->initialized || output->count!=count) {
         fail(context,"numeric output shape"); return nullptr;
     }
     return output;
@@ -872,12 +932,26 @@ const int16_t* attention_tail(C71RangeContext* context,uint64_t id,c71_nonlinear
     return ptr<int16_t>(context,input);
 }
 }
+extern "C" int c71_dense_kv_capacity(C71RangeContext* c,uint64_t columns,uint64_t* out) {
+    if(!ready(c)) return -1;
+    if(!out || !columns || columns>caps[C71_I16]/450) return fail(c,"KV capacity geometry");
+#ifdef C71_SOURCE_VMM_EXPERIMENT
+    return allocate_source_tail(c,C71_I16,450*columns,150*columns*2,out);
+#else
+    return allocate(c,C71_I16,450*columns,out);
+#endif
+}
 extern "C" int c71_signed_append_at(C71RangeContext* context,uint64_t input,uint64_t first,uint64_t count,uint64_t output,uint64_t output_first) {
     if(!ready(context)) return -1;
     auto* source=buffer(context,input); auto* target=buffer(context,output);
     if(!source || !target || source==target || source->kind!=C71_I16 || target->kind!=C71_I16 || !count ||
+        source->initialized>source->count || target->initialized>target->count ||
         first>source->initialized || count>source->initialized-first || output_first!=target->initialized || count>target->count-target->initialized)
         return fail(context,"signed append span or coverage");
+#ifdef C71_SOURCE_VMM_EXPERIMENT
+    if(target->deferred_index && (target->initialized+count)*2>target->capacity &&
+       materialize_source_tail(context,target,false)) return -1;
+#endif
     if(checked(context,cudaMemcpyAsync(ptr<int16_t>(context,target)+target->initialized,ptr<int16_t>(context,source)+first,count*2,cudaMemcpyDeviceToDevice,context->stream))) return -1;
     context->stats.d2d_bytes+=count*2;
     if(fence(context)) return -1;
@@ -998,7 +1072,7 @@ extern "C" int c71_histogram_seal(C71RangeContext* c,uint64_t id) {
 extern "C" int c71_dense_lookup(C71RangeContext* c,uint64_t in,uint64_t first,uint64_t table,uint64_t offset,uint64_t hist,uint64_t out) {
     if(!ready(c)) return -1;
     auto* b=buffer(c,out); auto* h=buffer(c,hist);
-    if(!b || b->kind!=C71_I16 || b->initialized || b->count>uint64_t(c71_dense::max_m)*c71_dense::max_n ||
+    if(!b || b->deferred_index || b->kind!=C71_I16 || b->initialized || b->count>uint64_t(c71_dense::max_m)*c71_dense::max_n ||
        !full(h,C71_HISTOGRAM_PENDING) || h->count!=65535 || b->count>uint64_t(INT32_MAX)-h->visits) return fail(c,"lookup output or histogram shape");
     const auto* x=nonlinear_input(c,in,first,b->count);
     const auto* t=nonlinear_table(c,table,offset,65535*2,2);
@@ -1023,7 +1097,7 @@ extern "C" int c71_dense_rope(C71RangeContext* c,uint64_t in,uint64_t first,uint
 extern "C" int c71_dense_argmax(C71RangeContext* c,uint64_t in,uint64_t first,uint32_t rows,uint32_t columns,uint64_t out,uint32_t* public_tokens) {
     if(!ready(c)) return -1;
     auto* b=buffer(c,out); uintptr_t end=0;
-    if(!rows || rows>150 || !columns || columns>262144 || !b || b->kind!=C71_I16 || b->initialized ||
+    if(!rows || rows>150 || !columns || columns>262144 || !b || b->deferred_index || b->kind!=C71_I16 || b->initialized ||
        b->count!=uint64_t(rows)*columns || reinterpret_cast<uintptr_t>(public_tokens)%4 ||
        !c71_dense::span(public_tokens,rows*4,end)) return fail(c,"argmax output shape");
     const auto* x=nonlinear_input(c,in,first,b->count); if(!x) return -1;
@@ -1401,6 +1475,20 @@ extern "C" int c71_pcs_source_powers(C71RangeContext* c,uint64_t low,uint64_t hi
     a->initialized=a->count; b->initialized=b->count;
     a->visits=b->visits=(uint64_t(s.cosets)<<32)|s.first_coset; return 0;
 }
+extern "C" int c71_pcs_source_allocate(C71RangeContext* c,c71_pcs::SourceShape s,uint64_t* first,uint64_t* second) {
+    if(!ready(c)) return -1;
+    if(!first || !second || first==second || !c71_pcs::valid(s) || c->source.values[0])
+        return fail(c,"source allocation geometry or state");
+    *first=*second=0;
+    if(allocate(c,C71_PCS_SOURCE_PENDING,256*s.rows,first)) return -1;
+#ifdef C71_SOURCE_VMM_EXPERIMENT
+    const uint64_t columns=(s.live+s.message_rows-1)/s.message_rows;
+    const uint64_t live_second=columns>64?columns-64:0;
+    return allocate_source_tail(c,C71_PCS_SOURCE_PENDING,256*s.rows,live_second*4*s.rows*8,second);
+#else
+    return allocate(c,C71_PCS_SOURCE_PENDING,256*s.rows,second);
+#endif
+}
 extern "C" int c71_pcs_source_begin(C71RangeContext* c,uint64_t first,uint64_t second,uint64_t low,
     uint64_t high,uint64_t histogram,c71_pcs::SourceShape s) {
     if(!ready(c)) return -1;
@@ -1414,6 +1502,13 @@ extern "C" int c71_pcs_source_begin(C71RangeContext* c,uint64_t first,uint64_t s
        l->count!=4*s.rows || h->count!=4*c71_pcs::high_rows(s) || l->visits!=binding || h->visits!=binding ||
        (histogram && (!counts || counts->kind!=C71_PCS_BYTE_COUNTS_PENDING || counts->initialized || counts->count!=256 || s.first_coset)))
         return fail(c,"PCS source begin geometry, powers or state");
+#ifdef C71_SOURCE_VMM_EXPERIMENT
+    const uint64_t columns=(s.live+s.message_rows-1)/s.message_rows;
+    if(a->deferred_index || (b->deferred_index && (b->capacity!=c->source_tails[b->deferred_index-1].charged ||
+        reinterpret_cast<CUdeviceptr>(b->allocation)!=c->source_tails[b->deferred_index-1].address ||
+        b->capacity<(columns>64?columns-64:0)*4*s.rows*8)))
+        return fail(c,"source tail backing does not cover original columns");
+#endif
 #ifdef C71_OWNER_TRACE
     // Select a public A group so inference cannot consume the diagnostic cap.
     // Existing allocations are snapshots, never fabricated malloc events.
@@ -1428,8 +1523,9 @@ extern "C" int c71_pcs_source_begin(C71RangeContext* c,uint64_t first,uint64_t s
 #endif
     if(dense_flag(c,&a->flag)) return -1;
     for(auto* out: {a,b,counts}) if(out) {
-        if(checked(c,cudaMemsetAsync(ptr<void>(c,out),0,out->count*8,c->stream))) return -1;
-        c->stats.zeroed_bytes+=out->count*8;
+        const auto bytes=std::min(out->capacity,out->count*8);
+        if(checked(c,cudaMemsetAsync(ptr<void>(c,out),0,bytes,c->stream))) return -1;
+        c->stats.zeroed_bytes+=bytes;
     }
     c->source={s,{first,second},low,high,histogram,0};
 #ifdef C71_OWNER_TRACE
@@ -1468,6 +1564,9 @@ extern "C" int c71_pcs_source_finish(C71RangeContext* c,uint64_t first,uint64_t 
        !full(l,C71_PCS_POWERS) || !full(h,C71_PCS_POWERS) || !full(p,C71_PCS_BASE) || p->count!=128*s.pad_rows ||
        !full(w,C71_PCS_POWERS) || w->count!=s.rows || w->visits!=((uint64_t{1}<<63)|s.rows) ||
        (c->source.histogram && (!counts || counts->kind!=C71_PCS_BYTE_COUNTS_PENDING))) return fail(c,"PCS source final inputs or state");
+#ifdef C71_SOURCE_VMM_EXPERIMENT
+    if(b->deferred_index && materialize_source_tail(c,b,true)) return -1;
+#endif
     unsigned log_rows=0; while((uint64_t{1}<<log_rows)<s.rows) ++log_rows;
     for(unsigned half=0;half<2;++half) {
         auto* out=half?b:a;

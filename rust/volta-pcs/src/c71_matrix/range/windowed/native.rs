@@ -458,6 +458,7 @@ api! {
     stats: unsafe extern "C" fn(Raw,*mut Stats)->i32 => "c71_range_stats",
     source_pool_begin: unsafe extern "C" fn(Raw)->i32 => "c71_range_source_pool_begin",
     source_pool_end: unsafe extern "C" fn(Raw)->i32 => "c71_range_source_pool_end",
+    source_allocate: unsafe extern "C" fn(Raw,PcsSourceShape,*mut u64,*mut u64)->i32 => "c71_pcs_source_allocate",
     alloc: unsafe extern "C" fn(Raw,u32,u64,*mut u64)->i32 => "c71_range_alloc",
     release: unsafe extern "C" fn(Raw,u64)->i32 => "c71_range_release",
     upload: unsafe extern "C" fn(Raw,u64,*const c_void,u64)->i32 => "c71_range_upload",
@@ -482,6 +483,7 @@ api! {
     histogram_begin: unsafe extern "C" fn(Raw,u64)->i32 => "c71_histogram_begin",
     histogram_seal: unsafe extern "C" fn(Raw,u64)->i32 => "c71_histogram_seal",
     histogram_padding: unsafe extern "C" fn(Raw,u64,u64)->i32 => "c71_histogram_padding",
+    kv_capacity: unsafe extern "C" fn(Raw,u64,*mut u64)->i32 => "c71_dense_kv_capacity",
     signed_append: unsafe extern "C" fn(Raw,u64,u64,u64,u64,u64)->i32 => "c71_signed_append_at",
     original_read: unsafe extern "C" fn(Raw,u64,u32,u64,u64,*mut c_void)->i32 => "c71_original_read",
     rms: unsafe extern "C" fn(Raw,u64,u64,u64,RmsShape,u64,u64,u64)->i32 => "c71_dense_rms",
@@ -1172,7 +1174,11 @@ impl Runtime {
         shape: PcsSourceShape, with_histogram: bool) -> Result<([Buffer; 2], Option<Buffer>), String> {
         self.require_buffer(low)?; self.require_buffer(high)?;
         if shape.rows < 4 || shape.rows > 1 << 20 { return self.abort("native PCS source capacity differs"); }
-        let values = [self.allocate_buffer(15, 256 * shape.rows as usize)?, self.allocate_buffer(15, 256 * shape.rows as usize)?];
+        let (mut first, mut second) = (0, 0);
+        let status = unsafe { (self.api.source_allocate)(self.raw, shape, &mut first, &mut second) };
+        self.check(status)?;
+        let values = [first, second].map(|id| Buffer {
+            id, kind: 15, count: 256 * shape.rows as usize, owner: self.owner.clone() });
         let histogram = if with_histogram { Some(self.allocate_buffer(16, 256)?) } else { None };
         let status = unsafe { (self.api.pcs_source_begin)(self.raw, values[0].id, values[1].id, low.id, high.id,
             histogram.as_ref().map_or(0, |h| h.id), shape) };
@@ -1379,6 +1385,13 @@ impl Runtime {
         count: usize,
     ) -> Result<Buffer, String> {
         self.allocate_buffer(1, count)
+    }
+    pub(in crate::c71_matrix) fn kv_capacity(&mut self, columns: usize) -> Result<Buffer, String> {
+        let count = columns.checked_mul(450).ok_or("KV capacity overflow")?;
+        let mut id = 0;
+        let status = unsafe { (self.api.kv_capacity)(self.raw, columns as u64, &mut id) };
+        self.check(status)?;
+        Ok(Buffer { id, kind: 1, count, owner: self.owner.clone() })
     }
     pub(in crate::c71_matrix) fn append_signed(
         &mut self,
@@ -2264,6 +2277,44 @@ pub(in crate::c71_matrix) mod tests {
     }
 
     #[test]
+    #[ignore = "explicit authorized GPU experiment; requires C71_NATIVE_PARITY_LIBRARY"]
+    fn c71_b12_native_hardware_kv_deferred_capacity_and_duplicate_rejection() {
+        let config = hardware_config(512, 16 << 20);
+        let weights = Arc::new(Vec::new());
+        let _budget = crate::c71_matrix::census::Budget::new(&weights).unwrap();
+        let mut runtime = Runtime::new(&config).unwrap();
+        let tail = runtime.kv_capacity(4096).unwrap();
+        let initial = runtime.stats().unwrap();
+        let count = 150 * 4096;
+        for slot in 0..3 {
+            let input = runtime.upload_signed(&vec![slot as i16 + 1; count]).unwrap();
+            runtime.append_signed(&input, 0, count, &tail, slot * count).unwrap();
+            runtime.release_buffer(input).unwrap();
+            let mut actual = vec![0; 1];
+            for prior in 0..=slot {
+                runtime.download_words(&tail, (prior + 1) * count - 1, &mut actual).unwrap();
+                assert_eq!(actual, [prior as i64 + 1]);
+            }
+        }
+        let full = runtime.stats().unwrap();
+        assert_eq!(initial.allocations, full.allocations - 3);
+        assert!(initial.live_capacity_bytes <= full.live_capacity_bytes);
+        let input = runtime.upload_signed(&[7]).unwrap();
+        let before = runtime.stats().unwrap();
+        assert!(runtime.append_signed(&input, 0, 1, &tail, 150 * 4096).is_err());
+        let after = runtime.stats().unwrap();
+        assert_eq!(after.d2d_bytes, before.d2d_bytes);
+        assert_eq!(after.allocations, before.allocations);
+        let closed = runtime.close().unwrap();
+        assert_eq!(closed.arena_bytes, 0);
+        eprintln!("C71_HARDWARE_KV_DEFERRED {}", serde_json::json!({
+            "initial": initial, "full": full, "contexts": [0, 150, 300],
+            "same_handle": true, "duplicate_rejected_before_copy": true,
+            "gpu_execution": true, "credit": false, "cleanup_success": true
+        }));
+    }
+
+    #[test]
     #[ignore = "requires the owner-authorized real CUDA library; no host fallback"]
     fn c71_b12_native_hardware_numeric_flag_and_public_zero() {
         let config = hardware_config(512, 16 << 20);
@@ -2383,6 +2434,10 @@ pub(in crate::c71_matrix) mod tests {
     fn c71_b12_native_residual_symbols_4() {
         residual_missing_symbols(&["c71_pcs_residual_contract_finish","c71_pcs_short_leaves_private",
             "c71_range_source_pool_begin","c71_range_source_pool_end"]);
+    }
+    #[test]
+    fn c71_b12_native_source_allocation_symbol_required() {
+        residual_missing_symbols(&["c71_pcs_source_allocate", "c71_dense_kv_capacity"]);
     }
     fn residual_fixture_packet(remaining:usize,point:&[E])->ResidualPacket {
         let tables=Poly::new_from_point(point,E::ONE).as_slice().iter().copied().map(PcsField::from).collect();

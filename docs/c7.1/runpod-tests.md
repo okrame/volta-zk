@@ -63,6 +63,21 @@ Il pool non risolve la crescita esterna. Il launcher CPU a 128 GiB è una
 deviazione conservata; il monitor ora impone autonomamente AS ≤64 GiB.
 Si valuta il backing differito delle colonne A di padding pubblico.
 
+La variante diagnostica **`C71_SOURCE_VMM_EXPERIMENT`** riserva gli indirizzi
+A/KV e rinvia il backing fisico delle code pubblicamente inutilizzate. Per
+A O=0 differisce 29 colonne, 973.078.528 B, fino al ritorno del producer;
+prima di padding/FFT/hash tutte le 128 colonne sono allocate e azzerate.
+KV conserva handle condiviso, capacità logica 450 e contatore del prefisso:
+inizialmente 150 righe, crescita prima dell’append che oltrepassa il backing.
+Owner 50.848 B, 121 slot fissi da 72 B; ogni pagina arrotondata è addebitata
+prima dell’allocazione, mai rimborsata con ownership incerta. Nessun nuovo
+lemma Lean raffina il mapping driver: indirizzi stabili, fence, contabilità
+e prefisso restano premesse implementative da verificare anche su H100.
+Passano 22 scenari VMM simulati, regressioni default/pool e rifiuto dei fork
+Rust; la variante non è ancora verificata su GPU né selezionata canonica.
+Il [resoconto locale](../c7.1-history/h100-certificates-vmm-local-2026-10-11.md)
+conserva ipotesi e limiti; nessuna root completa o certificato.
+
 La [scansione incrementale dei pesi RMS](../c7.1-history/h100-certificates-rms-prefix-2026-10-11.md)
 ricalcola soltanto il suffisso cambiato di Eq, senza divisioni. Passano
 prefissi zero/uno, coefficienti densi e wire/FS/MAC della fixture mista;

@@ -88,6 +88,7 @@ int c71_dense_pointwise(C71RangeContext*,uint64_t x,uint64_t x_first,uint64_t y,
 int c71_histogram_begin(C71RangeContext*,uint64_t histogram);
 int c71_histogram_seal(C71RangeContext*,uint64_t histogram);
 int c71_histogram_padding(C71RangeContext*,uint64_t histogram,uint64_t count);
+int c71_dense_kv_capacity(C71RangeContext*,uint64_t columns,uint64_t* output);
 int c71_signed_append_at(C71RangeContext*,uint64_t input,uint64_t first,uint64_t count,uint64_t output,uint64_t output_first);
 int c71_original_read(C71RangeContext*,uint64_t input,uint32_t kind,uint64_t first,uint64_t count,void* output);
 int c71_dense_rms(C71RangeContext*,uint64_t input,uint64_t first,uint64_t weight_offset,c71_nonlinear::Rms,
@@ -158,6 +159,7 @@ int c71_pcs_compare_words(C71RangeContext*,uint64_t left,uint64_t right);
 // 64-column buffers fit the existing per-allocation cap; neither is readable
 // while pending. Optional byte counts are fused into the first reconstruction.
 int c71_pcs_source_powers(C71RangeContext*,uint64_t low,uint64_t high,c71_pcs::SourceShape);
+int c71_pcs_source_allocate(C71RangeContext*,c71_pcs::SourceShape,uint64_t* first,uint64_t* second);
 int c71_pcs_source_begin(C71RangeContext*,uint64_t first,uint64_t second,uint64_t low,uint64_t high,
     uint64_t histogram,c71_pcs::SourceShape);
 int c71_pcs_source_tile(C71RangeContext*,uint64_t original,const c71_pcs::SourceTile*);

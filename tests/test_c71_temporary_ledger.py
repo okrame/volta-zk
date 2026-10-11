@@ -106,3 +106,32 @@ def test_current_ledger_rejects_receipt_without_certificate_export(tmp_path):
     prepare_inputs(tmp_path, export=False)
     with pytest.raises(ValueError, match="certificate export"):
         compute(tmp_path)
+
+
+@pytest.mark.parametrize("granularity", [65536, 2097152])
+def test_source_vmm_accounts_rounding_and_only_public_lifetimes(tmp_path, granularity):
+    prepare_inputs(tmp_path)
+    before = compute(tmp_path)
+    marker = dict(host_owner_bytes=50848, granularity_bytes=granularity,
+                  kv_columns=[2048]*20+[4096]*100, live_columns=[99, 107, 116],
+                  preserves_shared_handles=True)
+    (tmp_path / "vmm.log").write_text("C71_SOURCE_VMM " + json.dumps(marker) + "\n")
+    after = compute(tmp_path)
+    rounded = lambda n: (n+granularity-1)//granularity*granularity
+    full = sum(rounded(450*c*2) for c in marker['kv_columns'])
+    prefix = sum(rounded(150*c*2) for c in marker['kv_columns'])
+    changed = []
+    for old, new in zip(before['named_phase_crosschecks'], after['named_phase_crosschecks']):
+        parts = new['parts']
+        delta = 50848-old['parts']['native_common_owner_host'] if 'native_common_owner_host' in old['parts'] else 0
+        if 'device_persistent_or_single_replay_envelope' in parts:
+            delta += full-405504000
+            if new['phase'] in ('native_initial_A1_accumulate', 'native_initial_A1_hash'):
+                delta -= full-prefix
+        if new['phase'].startswith('native_initial_A') and new['phase'].endswith('_accumulate'):
+            changed.append(new['phase'])
+            columns = marker['live_columns'][int(new['phase'][16])-1]
+            delta -= (128-columns)*4*(1 << 20)*8
+        assert new['named_allocation_subtotal_bytes']-old['named_allocation_subtotal_bytes'] == delta
+    assert changed == [f'native_initial_A{i}_accumulate' for i in (1, 2, 3)]
+    assert after['credit'] is False and after['allowance_physically_verified'] is False

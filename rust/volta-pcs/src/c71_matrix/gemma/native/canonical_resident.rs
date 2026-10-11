@@ -89,7 +89,7 @@ impl Tail {
             _ => return runtime.abort("resident tail predecessor differs or is incomplete"),
         }
         let buffer = match previous {
-            None => Arc::new(runtime.signed_capacity(450 * columns)?),
+            None => Arc::new(runtime.kv_capacity(columns)?),
             Some((_, prior)) => runtime.share_buffer(&prior.buffer)?,
         };
         Ok(Self {

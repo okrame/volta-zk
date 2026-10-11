@@ -1,0 +1,16 @@
+C71_ASYNC_ALLOCATOR_HOST {"scenario":"normal","owner_bytes":42168,"fixed_cache_reserve_bytes":134217728,"final_joint_debt_bytes":0,"allocations":3,"frees":3,"gpu_execution":false,"credit":false}
+C71_ASYNC_ALLOCATOR_HOST {"scenario":"reserve_failure","owner_bytes":42168,"fixed_cache_reserve_bytes":134217728,"final_joint_debt_bytes":0,"allocations":2,"frees":2,"gpu_execution":false,"credit":false}
+C71_ASYNC_ALLOCATOR_HOST {"scenario":"allocation_failure","owner_bytes":42168,"fixed_cache_reserve_bytes":134217728,"final_joint_debt_bytes":0,"allocations":2,"frees":2,"gpu_execution":false,"credit":false}
+C71_ASYNC_ALLOCATOR_HOST {"scenario":"query_failure","owner_bytes":42168,"fixed_cache_reserve_bytes":134217728,"final_joint_debt_bytes":134217728,"allocations":3,"frees":3,"gpu_execution":false,"credit":false}
+C71_ASYNC_ALLOCATOR_HOST {"scenario":"trim_failure","owner_bytes":42168,"fixed_cache_reserve_bytes":134217728,"final_joint_debt_bytes":135266304,"allocations":3,"frees":3,"gpu_execution":false,"credit":false}
+C71_ASYNC_ALLOCATOR_HOST {"scenario":"fence_failure","owner_bytes":42168,"fixed_cache_reserve_bytes":134217728,"final_joint_debt_bytes":135266304,"allocations":3,"frees":2,"gpu_execution":false,"credit":false}
+C71_ASYNC_ALLOCATOR_HOST {"scenario":"cache_limit","owner_bytes":42168,"fixed_cache_reserve_bytes":134217728,"final_joint_debt_bytes":0,"allocations":2,"frees":2,"gpu_execution":false,"credit":false}
+C71_ASYNC_ALLOCATOR_HOST {"scenario":"free_failure","owner_bytes":42168,"fixed_cache_reserve_bytes":134217728,"final_joint_debt_bytes":135266304,"allocations":3,"frees":2,"gpu_execution":false,"credit":false}
+C71_ASYNC_ALLOCATOR_HOST {"scenario":"free_fence_failure","owner_bytes":42168,"fixed_cache_reserve_bytes":134217728,"final_joint_debt_bytes":135266304,"allocations":3,"frees":3,"gpu_execution":false,"credit":false}
+C71_ASYNC_ALLOCATOR_HOST {"scenario":"nested_begin","owner_bytes":42168,"fixed_cache_reserve_bytes":134217728,"final_joint_debt_bytes":0,"allocations":2,"frees":2,"gpu_execution":false,"credit":false}
+C71_ASYNC_ALLOCATOR_HOST {"scenario":"end_without_begin","owner_bytes":42168,"fixed_cache_reserve_bytes":134217728,"final_joint_debt_bytes":0,"allocations":2,"frees":2,"gpu_execution":false,"credit":false}
+C71_ASYNC_ALLOCATOR_HOST {"scenario":"end_live","owner_bytes":42168,"fixed_cache_reserve_bytes":134217728,"final_joint_debt_bytes":0,"allocations":3,"frees":3,"gpu_execution":false,"credit":false}
+C71_ASYNC_ALLOCATOR_HOST {"scenario":"end_query_failure","owner_bytes":42168,"fixed_cache_reserve_bytes":134217728,"final_joint_debt_bytes":134217728,"allocations":3,"frees":3,"gpu_execution":false,"credit":false}
+C71_ASYNC_ALLOCATOR_HOST {"scenario":"end_trim_failure","owner_bytes":42168,"fixed_cache_reserve_bytes":134217728,"final_joint_debt_bytes":134217728,"allocations":3,"frees":3,"gpu_execution":false,"credit":false}
+.........
+9 passed in 13.78s

@@ -1,0 +1,22 @@
+
+running 13 tests
+test c71_matrix::range::windowed::native::tests::c71_b12_windowed_native_abi4_rejects_legacy_stats ... ok
+test c71_matrix::range::windowed::native::tests::c71_b12_windowed_native_attention_rejections_are_terminal ... ok
+test c71_matrix::range::windowed::native::tests::c71_b12_windowed_native_dense_chain ... ok
+test c71_matrix::range::windowed::native::tests::c71_b12_windowed_native_descriptor_capacity_is_bounded ... ok
+test c71_matrix::range::windowed::native::tests::c71_b12_windowed_native_distinct_libraries_reject_colliding_handles ... ok
+test c71_matrix::range::windowed::native::tests::c71_b12_windowed_native_nonlinear_rejections_are_terminal ... C71_NONLINEAR_REJECTIONS count=12 terminal=true gpu=false
+ok
+test c71_matrix::range::windowed::native::tests::c71_b12_windowed_native_original_staging_is_bounded_and_fenced ... ok
+test c71_matrix::range::windowed::tests::c71_b12_windowed_native_byte_transcript_original_mac ... ok
+test c71_matrix::range::windowed::tests::c71_b12_windowed_native_failure_before_authentication ... native cleanup failed, arena bytes: 0, W bytes: 0
+native cleanup failed, arena bytes: 768, W bytes: 0
+ok
+test c71_matrix::range::windowed::tests::c71_b12_windowed_native_hardware_parity_explicit ... ignored, explicit authorized GPU experiment; requires C71_NATIVE_PARITY_LIBRARY
+test c71_matrix::range::windowed::tests::c71_b12_windowed_native_shared_failures_stop_common_owner ... ok
+test c71_matrix::range::windowed::tests::c71_b12_windowed_native_shared_resident_transcript_original_mac ... C71_TEMPORARY_ALLOCATIONS {"denied_allocations":0,"enforced":true,"excluded_packed_w_capacity_bytes":0,"host_large_allocation_release":"glibc fixed mmap threshold 128 KiB, max 2 arenas","host_layout_bytes":35229,"native_reservation_bytes":768,"operational_margin_required_bytes":268435456,"payload_limit_bytes":5905580032,"peak_plus_runtime_allowance_bytes":320023478,"physical_runtime_allowance_verified":false,"runtime_allowance_bytes":268435456,"temporary_live_bytes":36722,"temporary_payload_peak_bytes":51588022}
+ok
+test c71_matrix::range::windowed::tests::c71_b12_windowed_native_signed_transcript_original_mac ... ok
+
+test result: ok. 12 passed; 0 failed; 1 ignored; 0 measured; 485 filtered out; finished in 18.69s
+

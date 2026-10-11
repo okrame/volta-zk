@@ -103,6 +103,12 @@ GPU idle verificata; il successivo trial combinato richiede prima parità
 H100. Ipotesi: ridurre il costo delle allocazioni legacy durante il replay;
 la causa del rallentamento non è attribuita. [Dettagli](../c7.1-history/h100-certificates-vmm-pool-2026-10-11.md).
 
+Il [controllo pulito VMM + pool](../../benchmarks/results/c71-certificates-vmm-pool-local-2026-10-11-6ccb54a1.json)
+passa 22 test, 29,80 s, AS 2 GiB. Alle sei fasi A restano da 51.235.582
+a 1.142.302.058 B di payload; il massimo generale O=300 supera ancora il
+cap di 29.066.098 B. Riserva pool 128 MiB solo durante A, owner 50.880 B;
+nessun credito fisico o certificato dal ledger.
+
 La [scansione incrementale dei pesi RMS](../c7.1-history/h100-certificates-rms-prefix-2026-10-11.md)
 ricalcola soltanto il suffisso cambiato di Eq, senza divisioni. Passano
 prefissi zero/uno, coefficienti densi e wire/FS/MAC della fixture mista;

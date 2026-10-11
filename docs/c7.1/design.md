@@ -32,6 +32,15 @@ byte conserva 30.985.128 letture dei frame, non ridotte dai nuovi callback
 di cella. Le premesse di raffinamento e Seed6 non sono scaricate da questa
 misura; nessuna extrapolazione canonica o attribuzione del target 65 s.
 
+È pronto il [piano del seguito RMS byte](../c7.1-history/h100-rms-byte-followup-plan-2026-10-11.md),
+che richiede nuova autorizzazione di durata sullo stesso pod. Il solo
+binario di test distingue tempi di cella/replay, indici, endpoint byte
+e residuo; nessuna modifica al protocollo in produzione. Il confronto
+proposto usa due coppie AB/BA, 512 celle e tutte le 159 ricette, con
+cache/gate comuni e contrazione byte spenta/accesa. Nessun processo
+hardware avviato; costo canonico, backend RMS CUDA e certificati restano
+aperti. La finestra precedente non viene riaperta né estesa implicitamente.
+
 Il [ledger delle candidate RMS](../c7.1-history/local-rms-candidate-ledger-2026-10-11.md)
 aggiunge fasi distinte per cache/gate e contrazione byte, conservando
 CompactFrames, claim, Writer, PCG e VMM nello stesso conto. Addebita anche

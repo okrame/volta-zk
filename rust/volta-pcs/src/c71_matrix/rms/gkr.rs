@@ -728,6 +728,9 @@ const SOURCE_CAPACITY_EXCLUDED_OWNERS: [&str; 7] = [
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, serde::Serialize)]
 pub(in super::super) struct SourceProverWork {
+    // Diagnostic clocks are absent from production protocol builds.
+    #[cfg(test)]
+    phase_ns: [u128; 3], // cell (including replay), index, byte endpoint
     pattern_prefix: patterns::Work,
     packed_replay: patterns::PackedReplayWork,
     pub cell_rounds: Vec<SourceCellWork>,
@@ -1334,6 +1337,8 @@ fn prove_impl_evaluated(
     let (mut layers, mut triples) = (Vec::new(), Vec::new());
     for depth in (1..widths.len()).rev() {
         let width = widths[depth - 1];
+        #[cfg(test)]
+        let cell_started = std::time::Instant::now();
         let (previous, selectors, following, mut rounds) = if sourcewise {
             let replay = if packed_replay {
                 Some(RefCell::new(patterns::PackedReplay::new_validated(s.programs, depth - 1, width)?))
@@ -1548,6 +1553,10 @@ fn prove_impl_evaluated(
             let selectors: Vec<Fp3> = selectors.into_iter().map(|v| v[0]).collect();
             (previous, selectors, following, rounds)
         };
+        #[cfg(test)]
+        { source_work.phase_ns[0] += cell_started.elapsed().as_nanos(); }
+        #[cfg(test)]
+        let index_started = std::time::Instant::now();
         let mut edges = edges(s, depth, &weights, &selectors);
         source_work.edge_capacity_elements_peak =
             source_work.edge_capacity_elements_peak.max(edges.capacity());
@@ -1615,6 +1624,8 @@ fn prove_impl_evaluated(
         point = following;
         triples.push(original);
         layers.push(Layer { rounds, terminal });
+        #[cfg(test)]
+        { source_work.phase_ns[1] += index_started.elapsed().as_nanos(); }
     }
     // Each packed replay plan/scratch dropped at the end of its cell phase,
     // before index edges and before the disjoint byte LUT allocation.
@@ -1644,6 +1655,8 @@ fn prove_impl_evaluated(
             _ => 0,
         }
     };
+    #[cfg(test)]
+    let byte_started = std::time::Instant::now();
     let (functions, point, original, byte_endpoint) =
         if byte_contracted {
             let support=s.assignments.support();
@@ -1671,6 +1684,8 @@ fn prove_impl_evaluated(
                 &mut rows,
             )?
         };
+    #[cfg(test)]
+    { source_work.phase_ns[2] = byte_started.elapsed().as_nanos(); }
     debug_assert!(rows.next().is_none());
     source_work.boolean_replay_calls = replay_calls.get();
     source_work.boolean_and_gates = replay_and.get();
@@ -2214,6 +2229,8 @@ mod tests {
             assert!(assignments[i].is_some()); frames[i]
         }, &mut fs, &mut rows, true, None, cache_bytes, shared,byte_contracted).unwrap();
         let prove_ns = started.elapsed().as_nanos();
+        let classified_ns = work.phase_ns.iter().sum::<u128>();
+        assert!(classified_ns <= prove_ns);
         assert_eq!(rows.len(), 0);
         let mut verify_fs = start();
         let mut keys = keys.into_iter();
@@ -2228,6 +2245,9 @@ mod tests {
         crate::c71_matrix::wire::Wire::write(&proof, &mut wire);
         println!("C71_RMS_BENCH_COMPLETE {}", serde_json::json!({"cells":cells,
             "compile_ns":compile_ns,"prove_ns":prove_ns,"verify_ns":verify_ns,
+            "phase_ns":{"cell_including_replay_fold_FS_MAC":work.phase_ns[0],
+                "index_including_edges_FS_MAC":work.phase_ns[1],"byte_endpoint":work.phase_ns[2],
+                "other_prover":prove_ns-classified_ns},
             "work":work,"wire_bytes":wire.len(),"wire_blake3":blake3::hash(&wire).to_hex().as_str(),
             "folded_cache_limit_bytes":cache_bytes,"shared_gates":shared,"correlations":count,
             "byte_contracted":byte_contracted,
@@ -2334,8 +2354,12 @@ mod tests {
                 "exact_wire_FS_original_MAC":true}));
         }
         let mut contracted_fs=start();let mut contracted_rows=rows.clone().into_iter();
+        let contracted_started=std::time::Instant::now();
         let (contracted,contracted_point,contracted_original,contracted_work)=prove_impl_evaluated(
             &statement,&read,&mut contracted_fs,&mut contracted_rows,true,None,cell_cache::MAX_BYTES,true,true).unwrap();
+        let contracted_ns=contracted_started.elapsed().as_nanos();
+        assert!(contracted_work.phase_ns.iter().all(|&ns|ns>0));
+        assert!(contracted_work.phase_ns.iter().sum::<u128>()<=contracted_ns);
         let mut contracted_wire=Vec::new();crate::c71_matrix::wire::Wire::write(&contracted,&mut contracted_wire);
         assert_eq!(contracted_wire,dense_wire);assert_eq!(contracted_point,dense_point);
         assert_eq!((contracted_original.x,contracted_original.m),(dense_original.x,dense_original.m));
@@ -2346,6 +2370,7 @@ mod tests {
         println!("C71_RMS_BYTE_CONTRACTION {}",serde_json::json!({"wire_bytes":contracted_wire.len(),
             "original_frame_reads_baseline":work.original_frame_reads,
             "original_frame_reads_candidate":contracted_work.original_frame_reads,
+            "phase_ns_cell_index_byte":contracted_work.phase_ns,"prove_ns":contracted_ns,
             "byte_work":byte_work,"exact_wire_FS_original_MAC":true}));
         for (sourcewise,pattern) in [(false,None),(true,Some(5))] {
             let mut rejected_fs=start();let before=rejected_fs.digest();let mut unused=rows.clone().into_iter();

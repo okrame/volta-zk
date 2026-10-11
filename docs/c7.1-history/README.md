@@ -1,5 +1,7 @@
 # C7.1 — archivio e provenienza
 
+[Piano del seguito RMS byte, nuova autorizzazione richiesta](h100-rms-byte-followup-plan-2026-10-11.md).
+
 [Conto simultaneo delle candidate RMS](local-rms-candidate-ledger-2026-10-11.md).
 
 [Contrazione byte a memoria limitata, controlli locali](local-byte-streamed-contraction-2026-10-11.md).

@@ -18,6 +18,8 @@ static FakePool fake_pool;
 static bool fail_pool_query=false, fail_pool_trim=false, fail_pool_alloc=false;
 static bool fail_pool_free=false, fail_pool_free_fence=false;
 static uint64_t fake_pool_reserved_extra=0;
+static bool model_pool_physical=false;
+static uint64_t fake_pool_granularity=1ULL<<21;
 static bool fail_launch=false, fail_fence=false, fail_free=false, corrupt=false;
 static bool fail_dense=false;
 static bool fail_memset=false;
@@ -62,7 +64,7 @@ cudaError_t cudaMemPoolGetAttribute(cudaMemPool_t p,cudaMemPoolAttr attr,void* v
     assert(p==&fake_pool); if(fail_pool_query) return 1;
     uint64_t used=0; for(auto allocation:p->allocations) used+=allocation.second;
     *static_cast<uint64_t*>(value)=attr==cudaMemPoolAttrReleaseThreshold?p->threshold:
-        attr==cudaMemPoolAttrUsedMemCurrent?used:((used+(1<<21)-1)&~uint64_t((1<<21)-1))+fake_pool_reserved_extra;
+        attr==cudaMemPoolAttrUsedMemCurrent?used:((used+fake_pool_granularity-1)&~(fake_pool_granularity-1))+fake_pool_reserved_extra;
     return 0;
 }
 cudaError_t cudaMemPoolTrimTo(cudaMemPool_t p,size_t minimum) {
@@ -72,7 +74,11 @@ cudaError_t cudaMallocFromPoolAsync(void** output,size_t bytes,cudaMemPool_t poo
     assert(pool==&fake_pool && stream); if(fail_pool_alloc) return 1;
     const auto status=cudaMalloc(output,bytes); if(!status) pool->allocations.emplace_back(*output,bytes); return status;
 }
-cudaError_t cudaMemGetInfo(size_t* free,size_t* total) { *free=fake_free; *total=80000000000ULL; return 0; }
+cudaError_t cudaMemGetInfo(size_t* free,size_t* total) {
+    uint64_t reserved=0;
+    if(model_pool_physical) assert(!cudaMemPoolGetAttribute(&fake_pool,cudaMemPoolAttrReservedMemCurrent,&reserved));
+    *free=fake_free-reserved; *total=80000000000ULL; return 0;
+}
 cudaError_t cudaFree(void* p) {
     for(auto it=fake_pool.allocations.begin();it!=fake_pool.allocations.end();++it)
         if(it->first==p) { fake_pool.allocations.erase(it); break; }

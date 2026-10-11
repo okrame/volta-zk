@@ -30,8 +30,13 @@ def test_async_pool_reserve_and_cleanup_failures(tmp_path):
         assert report["scenario"] == scenario and report["credit"] is False
         assert report["owner_bytes"] == 42160 and report["fixed_cache_reserve_bytes"] == 128 << 20
         rejected = 0
-        for line in trace.read_text().splitlines():
-            record = json.loads(line)
+        records = [json.loads(line) for line in trace.read_text().splitlines()]
+        if scenario == "normal":
+            assert not any(r["op"] == "allocate" for r in records)
+            assert any(r["op"] == "fence" and
+                       r["cuda_used_bytes"] - r["pool_reserved_bytes"] == 20 << 20
+                       for r in records)
+        for record in records:
             if record["op"] == "pool_account":
                 assert record["edge"] == "after" and record["status"] == -1
                 assert scenario in ("query_failure", "cache_limit")

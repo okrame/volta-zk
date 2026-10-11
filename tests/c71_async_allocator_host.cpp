@@ -10,6 +10,7 @@
 int main(int argc,char** argv) {
     assert(argc==2);
     const std::string scenario=argv[1];
+    if(scenario=="normal") { model_pool_physical=true; fake_pool_granularity=32ULL<<20; }
     constexpr uint64_t reserve=128ULL<<20, capacity=1ULL<<20;
     joint_limit=scenario=="reserve_failure"?2ULL<<20:reserve+(2ULL<<20);
     C71RangeContext* context=nullptr;
@@ -28,6 +29,7 @@ int main(int argc,char** argv) {
             assert(joint_live==initial.host_owner_bytes+reserve+capacity);
             if(scenario=="normal") {
                 assert(!c71_dense_pointwise(context,0,0,0,0,{0,0,0},id));
+                fake_free-=20ULL<<20; // A real change outside the charged pool.
                 int64_t word=-1;
                 assert(!c71_original_read(context,id,C71_I64,0,1,&word) && !word);
                 const auto before=stats(context);

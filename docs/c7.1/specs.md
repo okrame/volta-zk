@@ -40,11 +40,13 @@ Owner 42.160 B e cap invariati. È **solo un diagnostico A**: la riserva
 permanente supera il margine del ledger generale e blocca la selezione
 canonica finché non viene ridotta o motivata con lifetime distinto.
 
-Il [pool con free ordinato](../c7.1-history/h100-certificates-async-capacity-2026-10-11.md)
-passa tre parità H100, poi A si arresta al gruppo 0: slack 77.871.360 B
-oltre i 64 MiB preaddebitati. Monitor negativo, GPU idle dopo teardown.
-La riserva diagnostica diventa 128 MiB, interamente nel payload con gli
-stessi cap. Nessuna selezione canonica; nove scenari simulati passano.
+Il [pool con riserva 128 MiB](../c7.1-history/h100-certificates-async-trace-2026-10-11.md)
+passa tre parità H100 e arriva a **39/512 gruppi**, poi esaurisce i 16 MiB
+di traccia. Nessuno stop fisico osservato: massimo campionato 6.062.788.096 B;
+slack pool massimo registrato 86.097.152 B. Monitor finale negativo, GPU
+idle dopo teardown. Il filtro corretto registra crescita esterna al backing
+del pool già contabilizzato; controlli del pool e monitor fisico invariati.
+Nessuna selezione canonica o root A completa; nove scenari simulati passano.
 
 La [campagna precedente](../c7.1-history/h100-followup-close-2026-10-10.md)
 è chiusa con provider EXITED alle 21:24:47 UTC del 10 ottobre e zero

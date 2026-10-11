@@ -264,7 +264,13 @@ int trace_event(C71RangeContext* c,const char* op,const char* edge,
         c->diagnostic.failed=true;
         return fail(c,"physical owner query failed");
     }
-    const uint64_t used=total-available, payload=c->stats.arena_bytes+c->stats.weights_bytes;
+    const uint64_t used=total-available;
+#ifdef C71_ASYNC_ALLOCATOR_EXPERIMENT
+    // Pool backing is already bounded and charged; retain unexplained growth.
+    const uint64_t payload=pool_reserved+c->stats.weights_bytes;
+#else
+    const uint64_t payload=c->stats.arena_bytes+c->stats.weights_bytes;
+#endif
     const uint64_t overhead=used>payload?used-payload:0;
     const uint64_t previous=c->diagnostic.last_overhead;
     const uint64_t difference=overhead>previous?overhead-previous:previous-overhead;

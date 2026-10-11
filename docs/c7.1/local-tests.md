@@ -88,6 +88,9 @@ raffinamento restano aperti. Pod RUNNING e guard originale attivo.
 È [preparato il batching comune dei gate del prefisso](../c7.1-history/h100-rms-mixed-gate-batch-prepared-2026-10-11.md):
 chunk512 degli stessi gate e maschere, con staging pubblico posseduto;
 parità/capacità e timing da rieseguire sul pod. Il conto sopra resta92afea54.
+È [preparata anche la riduzione per programma del tail](../c7.1-history/h100-rms-tail-program-reduction-prepared-2026-10-11.md):
+due kernel per finestra, stessi coefficienti/selector; nuovo staging/range
+posseduto e23 rifiuti owner da verificare. Nessun esito o conto canonico dedotto.
 
 **Zero certificati canonici**: O=0 incompleto, O=150/300 non iniziati.
 Backend RMS completo, conto simultaneo e premessa di raffinamento aperti.

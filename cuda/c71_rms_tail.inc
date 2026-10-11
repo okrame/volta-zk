@@ -41,8 +41,8 @@ int rms_tail_start(C71RangeContext* c,uint64_t source,const Fp3* point,uint32_t 
     std::memcpy(t.shadow,point,uint64_t(bits)*24);
     if(rms_retire(c,s.aggregate) || rms_retire(c,s.eq) ||
        allocate(c,C71_RMS_PRIVATE,uint64_t(2)*t.capacity*(s.shape.width+s.shape.programs)*24,&t.fold) ||
-       allocate(c,C71_RMS_PRIVATE,uint64_t(tail::table_slots)*24,&t.tables) ||
-       allocate(c,C71_RMS_PRIVATE,uint64_t(rms::gate_chunk)*t.capacity*3*24,&t.gate_values))return -1;
+       allocate(c,C71_RMS_PRIVATE,uint64_t(tail::table_slots)*24+uint64_t(s.shape.programs)*sizeof(rms::GateRange),&t.tables) ||
+       allocate(c,C71_RMS_PRIVATE,uint64_t(s.shape.programs)*t.capacity*4*24,&t.gate_values))return -1;
     s.active=2;return 0;
 }
 bool rms_tail_session(C71RangeContext* c,uint64_t token) {
@@ -83,6 +83,12 @@ extern "C" int c71_rms_tail_round(C71RangeContext* c,uint64_t token,const Fp3* p
     const uint64_t point_bytes=tail::point_slots*24;
     bool error=checked(c,cudaMemcpyAsync(tables,t.shadow,point_bytes,cudaMemcpyHostToDevice,c->stream))!=0;
     if(!error)c->stats.h2d_bytes+=point_bytes;
+    auto* device_ranges=reinterpret_cast<rms::GateRange*>(tables+tail::table_slots);
+    if(!error && round==4) {
+        const auto bytes=uint64_t(s.shape.programs)*sizeof(rms::GateRange);
+        error=checked(c,cudaMemcpyAsync(device_ranges,rms_ranges(s),bytes,cudaMemcpyHostToDevice,c->stream))!=0;
+        if(!error)c->stats.h2d_bytes+=bytes;
+    }
     if(!error && !rms_tail_zero(c,result,96))error=true;
     tail::Shape shape{s.shape.width,s.shape.programs,s.shape.capacity,t.bits,round,0};
     if(!error) {
@@ -116,16 +122,8 @@ extern "C" int c71_rms_tail_round(C71RangeContext* c,uint64_t token,const Fp3* p
             }
             group+=count;
         }
-        for(unsigned p=0;!error && p<shape.programs;++p) {
-            if(!rms_tail_zero(c,u,uint64_t(3)*shape.n*24)) {error=true;break;}
-            const auto range=rms_ranges(s)[p];
-            for(unsigned first_gate=0;!error && first_gate<range.count;first_gate+=rms::gate_chunk) {
-                const auto count=std::min(rms::gate_chunk,range.count-first_gate);
-                if(launched(c,tail::gates(c->stream,shape,p,rms_meta<rms::Gate>(c,4)+range.first+first_gate,count,folded,gate_values)) ||
-                   launched(c,tail::sum_gates(c->stream,shape.n,count,gate_values,u)))error=true;
-            }
-            if(!error && launched(c,tail::selector(c->stream,shape,p,tables,folded,u,result)))error=true;
-        }
+        if(!error && (launched(c,tail::program_values(c->stream,shape,rms_meta<rms::Gate>(c,4),device_ranges,tables,folded,gate_values)) ||
+            launched(c,tail::sum_programs(c->stream,shape,gate_values,result))))error=true;
     }
     if(!error && last && launched(c,tail::terminal_selectors(c->stream,shape,tables,folded)))error=true;
     if(!error) {

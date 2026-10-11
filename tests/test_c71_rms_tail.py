@@ -18,6 +18,6 @@ def test_cell_tail_owner_round_order_staging_and_retirement(tmp_path):
     result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=10)
     assert result.returncode == 0, result.stdout + result.stderr
     assert json.loads(result.stdout.removeprefix("C71_RMS_CELL_TAIL_OWNER ")) == {
-        "success": 1, "terminal_rejections": 22, "publication_after_free": True,
+        "success": 1, "terminal_rejections": 23, "publication_after_free": True,
         "failed_fence_staging_retained": True, "gpu_execution": False, "credit": False,
     }

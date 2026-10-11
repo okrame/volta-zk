@@ -4,7 +4,7 @@
 
 int main() {
     using namespace c71_rms_prefix;
-    for(unsigned fault=0;fault<=22;++fault) {
+    for(unsigned fault=0;fault<=23;++fault) {
         joint_limit=16ULL<<20;assert(!joint_live && !rms_registered);
         C71RangeContext* c=nullptr;assert(!c71_range_create(0,16ULL<<20,256,joint_account,&c));
         std::vector<uint8_t> payload(280,42);SourceShape source_shape{280,64,64,1,1,1,0};
@@ -32,6 +32,7 @@ int main() {
             if(fault==5)fail_launch=true;
             if(fault==6)fail_memset=true;
             if(fault==7)upload_fail_after=0;
+            if(fault==23)upload_fail_after=1; // Owned public ranges after the point upload.
             if(fault==8 || fault==19)fail_fence=true;
             if(fault==9)corrupt=true;
             if(fault==11)challenges[0].c0=P;
@@ -72,5 +73,5 @@ int main() {
         }else assert(!closed && !joint_live && !rms_registered && !final.arena_bytes);
         fail_fence=false;
     }
-    std::puts("C71_RMS_CELL_TAIL_OWNER {\"success\":1,\"terminal_rejections\":22,\"publication_after_free\":true,\"failed_fence_staging_retained\":true,\"gpu_execution\":false,\"credit\":false}");
+    std::puts("C71_RMS_CELL_TAIL_OWNER {\"success\":1,\"terminal_rejections\":23,\"publication_after_free\":true,\"failed_fence_staging_retained\":true,\"gpu_execution\":false,\"credit\":false}");
 }

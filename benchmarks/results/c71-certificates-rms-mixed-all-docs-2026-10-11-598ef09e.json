@@ -1,0 +1,61 @@
+{
+  "schema": "volta-c71-rms-mixed-all-docs-v1",
+  "source_git_sha": "598ef09e7700e2275e3310c3a076ece1f292612e",
+  "git_dirty": false,
+  "credit": false,
+  "canonical_certificates": 0,
+  "status": "Nine documentation/link/procedure checks pass after publishing mixed159/99 original GPU parity and launch schedule evidence",
+  "checks": {
+    "docs": {
+      "authorized_end_epoch": 1791763980.494,
+      "close_reserve_seconds": 1800,
+      "command": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_c71_docs.py"
+      ],
+      "compute_end_epoch": 1791762180.494,
+      "diagnostic_file_cache_reserve_bytes": 0,
+      "exit_code": 0,
+      "gpu_uuid": "GPU-e05e977b-758d-f3f4-cbe8-5720b83d1ae1",
+      "incomplete_samples": 0,
+      "label": "docs",
+      "mode": "component",
+      "monitor_cpu_AS_limit_bytes": 68719476736,
+      "observed_payload_peak_bytes": null,
+      "payload_limit_bytes": null,
+      "physical_complete_peak": false,
+      "physical_temporary_limit_bytes": 6174015488,
+      "resource_failure": null,
+      "sample_interval_clock": "Linux CLOCK_MONOTONIC, absolute nanoseconds on this host boot",
+      "sample_interval_scope": "Start/end bracket collection of the resource sample; no GPU synchronization or instantaneous peak. External profiler clock alignment requires a matching clock or explicit anchor.",
+      "sampled_host_rss_peak_bytes": 62566400,
+      "sampled_stable_temporary_peak_bytes": 62566400,
+      "sampled_whole_gpu_peak_bytes": 0,
+      "samples": 7,
+      "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+      "sampling_target_seconds": 0.2,
+      "smaps_read_failures": 0,
+      "stable_samples": 7,
+      "start_unix_seconds": 1791758016.0233092,
+      "tracked_descendant_identities": 3,
+      "wall_seconds": 1.4039118736982346
+    }
+  },
+  "private_bundle": "artifact/c7.1-pod/certificates-rms-mixed-all-docs01-20261011",
+  "raw_members": 12,
+  "archive_bytes": 3300,
+  "archive_sha256": "edeeb9920df02a6d151b79dcd1a806ba600d704f55d226a6c6d1a5cfe261ecc2",
+  "manifest_sha256": "6b319844fcb7b235e0e3d385010c7ba77a4092b84c9d19def1ddb6f3a9b38564",
+  "public_artifacts": [
+    {
+      "path": "benchmarks/results/c71-certificates-rms-mixed-all-docs-2026-10-11-598ef09e/docs.log",
+      "bytes": 98,
+      "sha256": "7d11cf415414c639cbd80321ec4f49cdb5900fe72320a0d3d9d4d8c19acc5883"
+    }
+  ]
+}

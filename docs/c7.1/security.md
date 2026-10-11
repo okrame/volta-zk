@@ -27,10 +27,22 @@ GPU zero durante le prove, un campione incompleto nella candidata.
 Sono esclusi modello, statistiche del caller, PCS, AES e risposta completa.
 
 Le candidate restano disabilitate nel runner canonico. Il lavoro RMS
-completo e il conto simultaneo restano aperti: nella fixture l'endpoint
+completo e la verifica fisica del conto simultaneo restano aperti: nella fixture l'endpoint
 byte conserva 30.985.128 letture dei frame, non ridotte dai nuovi callback
 di cella. Le premesse di raffinamento e Seed6 non sono scaricate da questa
 misura; nessuna extrapolazione canonica o attribuzione del target 65 s.
+
+Il [ledger delle candidate RMS](../c7.1-history/local-rms-candidate-ledger-2026-10-11.md)
+aggiunge fasi distinte per cache/gate e contrazione byte, conservando
+CompactFrames, claim, Writer, PCG e VMM nello stesso conto. Addebita anche
+1.918.464 B di proof/triple GKR trattenute prima non esplicitate.
+Con VMM a 2 MiB e pool limitato ad A, il massimo RMS nominato è
+5.028.218.943 B. I massimi generali per O=0/150/300 restano nelle query PCS:
+margini rispettivi 82.643.566, 41.647.614 e **−29.066.098 B**.
+È uno screen analitico di 659 fasi, `credit:false` e `joint_admitted:false`;
+non risolve costo RMS completo, allowance fisica o superamento O=300.
+Capacità Vec e lifetime Rust restano premesse di raffinamento; nessun
+nuovo lemma Lean, selezione canonica o processo hardware.
 
 Una [contrazione byte a memoria limitata](../c7.1-history/local-byte-streamed-contraction-2026-10-11.md)
 passa le parità locali di coefficienti e wire. Sostituisce le tabelle

@@ -306,7 +306,8 @@ def native_residual_phases(dimension, stages, extensions, initial, common, add, 
             'Final query construction has the same preceding lifetime and explicit additional CPU temporaries.')
 
 
-def ledger_native(directory, query_record, linear_record, proposed_s1=False, lifetime_record=None):
+def ledger_native(directory, query_record, linear_record, proposed_s1=False, lifetime_record=None,
+                  rms_candidates=False):
     """Source-derived named screens. Missing capacity classes stay explicit.
 
     This path neither calls legacy fit assertions nor treats the remaining
@@ -550,7 +551,7 @@ def ledger_native(directory, query_record, linear_record, proposed_s1=False, lif
                 'Old and new generations remain charged through successful out-of-place fold/fence, then predecessor retires. '
                 'CPU shrink also has a possible old+new overlap; powers for the preceding two folds already retired.')
     complete_capacity = (complete_prepared_phases(phases, directory, common, persistent,
-                         replay, initial, extensions, stages, owner) if proposed_s1 else None)
+                         replay, initial, extensions, stages, owner, rms_candidates) if proposed_s1 else None)
     if source_pool:
         for row in phases:
             if row['phase'].startswith('native_initial_A') and row['phase'].endswith(('_accumulate', '_hash')):
@@ -603,6 +604,8 @@ def ledger_native(directory, query_record, linear_record, proposed_s1=False, lif
             'synchronous_error_flag_retention': sync_flag[0] if sync_flag else None,
             'initial_A_source_pool_phase': source_pool[0] if source_pool else None,
             'initial_A_deferred_backing': source_vmm[0] if source_vmm else None,
+            'rms_candidates_modeled': rms_candidates,
+            'rms_candidates_selected_in_canonical_runner': False,
             'additional_explicit_component_caps': {
                 'residual_dim35_EQ_packet_device': residual_packet(35)['device'],
                 'residual_dim35_EQ_packet_host_upper': residual_packet(35)['host_upper'],
@@ -678,7 +681,7 @@ def current_opening_parts(height, base_columns, batch_rows, binding=False):
 
 
 def complete_prepared_phases(phases, directory, common, persistent, replay, initial,
-                             extensions, stages, owner):
+                             extensions, stages, owner, rms_candidates=False):
     """Typed payload integration. Honest-fit and physical credit remain separate."""
     import re
     cap, tele, forms, wire = prepared_capacity_markers(directory)
@@ -709,6 +712,11 @@ def complete_prepared_phases(phases, directory, common, persistent, replay, init
     replay_fixed = 768+1032+1536+312+32  # frames/widths/ordinals/Option+cells
     packed_replay_upper = replay_plans+replay_builder+replay_scratch+replay_fixed
     rms_work_records_moving = (4096+2048)*176  # 2871 cell rounds; Vec old/new
+    # <=128 layers, <=57 rounds (29 cells + 2*14 indices), wire Vec cap<=8.
+    # Charge moving outer/round Vec capacity and all product triples. These
+    # retained proof buffers are distinct from the SourceCellWork records.
+    rms_proof_moving = ((128+64)*120 + 128*((64+32)*24 + 64*8*24)
+                        + (128+64)*3*48)
     producer = max(p['producer_descriptor_heap_upper_bytes'] for p in producers)
     # Session::census has one lock-protected dedup set, even outside a replay.
     unique = max((3*p['kv_source_count']+1
@@ -888,7 +896,7 @@ def complete_prepared_phases(phases, directory, common, persistent, replay, init
               class6_RMS_Builder_and_prune_capacity_upper=266001396,
               class6_RMS_prepare_map_keys_profiles_outer_capacity_upper=208400),
               'Before compact checkpoint construction. Existing final capacities conservatively include the current program; explicit compiler scratch bounds its preceding lifetime.')
-        extra(f'proof_A{caches}_RMS_GKR_steady', dict(base,
+        rms = dict(base,
               class8_pending_original_current_role_upper=pending,
               class6_RMS_compact_checkpoint_payload_and_descriptors=2023511878,
               class6_RMS_public_program_inner_capacity=457616928,
@@ -897,8 +905,23 @@ def complete_prepared_phases(phases, directory, common, persistent, replay, init
               class6_RMS_edge_capacity_moving_upper=3*24121920,
               class6_RMS_packed_replay_plans_builder_scratch_fixed_upper=packed_replay_upper,
               class6_RMS_prover_work_records_moving_upper=rms_work_records_moving,
-              class6_RMS_coefficient_and_weight_payload_upper=(7*16384+2*421+30)*24+421),
+              class6_RMS_retained_proof_and_triples_moving_upper=rms_proof_moving,
+              class6_RMS_coefficient_and_weight_payload_upper=(7*16384+2*421+30)*24+421)
+        extra(f'proof_A{caches}_RMS_GKR_steady', rms,
               'Pinned99-layer159-program RMS; packed plans retain one depth only and retire before index edges/byte LUT. Plans, builder/scratch moving and fixed stacks conservatively overlap here; original Circuit and edge growth are separately charged. Single-program statistic/pattern consumers keep their previous replay schedule.')
+        if rms_candidates:
+            extra(f'proof_A{caches}_RMS_GKR_candidate_cell', dict(rms,
+                  class6_RMS_folded_cache_capacity_limit=16 << 20,
+                  class6_RMS_shared_gate_plan_and_builder_capacity_limit=32 << 20),
+                  'Candidate only: full shared-plan builder cap plus folded-cache cap conservatively coexist with the old RMS envelope. Both retire at the end of this depth cell phase, before index reduction and byte endpoint. No canonical selection or physical credit.')
+            extra(f'proof_A{caches}_RMS_GKR_candidate_byte', dict(rms,
+                  class6_RMS_byte_LUT_nodes=16*256*511*48,
+                  class6_RMS_byte_coefficients=16*256*24,
+                  class6_RMS_byte_contraction_evaluator_capacity_upper=32 << 20,
+                  class6_RMS_byte_compiled_support_copy_upper=16384*8,
+                  class6_RMS_byte_tree_proof_and_triples_upper=8*(216+40*5*24)+24*3*48,
+                  class6_RMS_byte_points_and_leaf_EQ_moving_upper=(3*41+16+256+128)*24),
+                  'Candidate only: 29 cell bits, 16 lanes, 8 byte levels, <=16384 compiled support intervals. The evaluator includes two retained states and its own Eq/feature/support temporaries; original LUT, coefficients, driver proof/triples, points and leaf Eq are additional. Folded cache and shared gate plan are absent. The old packed/index envelope and GKR triples are deliberately retained as an overcount; no saving is claimed from their actual retirement.')
         extra(f'proof_A{caches}_EXP30_checkpoint', dict(base,
               class8_pending_original_current_role_upper=pending,
               class6_EXP30_checkpoint_upper=1 << 30),
@@ -1005,12 +1028,16 @@ def complete_prepared_phases(phases, directory, common, persistent, replay, init
             ],
             'counter_is_fit_evidence':False,'physical_allowance_verified':False}
 
-def ledger(directory, backend='legacy', query_record=None, linear_record=None, lifetime_record=None):
+def ledger(directory, backend='legacy', query_record=None, linear_record=None, lifetime_record=None,
+           rms_candidates=False):
+    if rms_candidates and backend != 's1-prepared':
+        raise ValueError('RMS candidate screen requires the prepared complete-capacity ledger')
     if backend == 'legacy':
         return ledger_legacy(directory)
     if backend not in ('native-2026-10-09', 's1-prepared') or query_record is None or linear_record is None:
         raise ValueError('explicit supported backend and both clean component records required')
-    return ledger_native(directory, query_record, linear_record, backend == 's1-prepared', lifetime_record)
+    return ledger_native(directory, query_record, linear_record, backend == 's1-prepared', lifetime_record,
+                         rms_candidates)
 
 
 if __name__ == '__main__':
@@ -1020,5 +1047,8 @@ if __name__ == '__main__':
     parser.add_argument('--query-record', type=Path)
     parser.add_argument('--linear-record', type=Path)
     parser.add_argument('--lifetime-record', type=Path)
+    parser.add_argument('--rms-candidates', action='store_true',
+                        help='also model the bounded cache/shared-gate/byte candidates; does not select them')
     args = parser.parse_args()
-    print(json.dumps(ledger(args.logs, args.backend, args.query_record, args.linear_record, args.lifetime_record), indent=2, sort_keys=True))
+    print(json.dumps(ledger(args.logs, args.backend, args.query_record, args.linear_record, args.lifetime_record,
+                           args.rms_candidates), indent=2, sort_keys=True))

@@ -28,11 +28,12 @@ def prepare_inputs(directory, *, export=True):
         (directory / path.name).write_text("\n".join(lines) + "\n")
 
 
-def compute(directory):
+def compute(directory, *, rms_candidates=False):
     return LEDGER.ledger(directory, "s1-prepared",
         ROOT / "benchmarks/results/c71-crypto-query-local-2026-10-09-46d295ef4ea6.json",
         ROOT / "benchmarks/results/c71-crypto-linear-local-2026-10-09-31280382f681.json",
-        ROOT / "benchmarks/results/c71-crypto-retirement-local-2026-10-09-96b69ded52c1.json")
+        ROOT / "benchmarks/results/c71-crypto-retirement-local-2026-10-09-96b69ded52c1.json",
+        rms_candidates=rms_candidates)
 
 
 def test_retained_sync_flag_is_charged_until_native_cleanup(tmp_path):
@@ -158,3 +159,52 @@ def test_source_vmm_pool_requires_combined_lifetime_receipt(tmp_path):
             assert row['parts']['initial_A_stream_ordered_pool_reserve'] == 128 << 20
             assert not row['named_subtotal_exceeds_payload']
     assert 'initial_A_stream_ordered_pool_reserve' not in phases['proof_A1_RMS_GKR_steady']['parts']
+
+
+def test_rms_candidates_have_separate_lifetimes_and_keep_joint_owners(tmp_path):
+    prepare_inputs(tmp_path)
+    # Reuse the frozen combined lifetime receipt, including measured 2 MiB pages.
+    frozen = ROOT / 'benchmarks/results/c71-certificates-vmm-pool-local-2026-10-11-6ccb54a1'
+    for name in ('inputs-pool.log', 'inputs-vmm.log'):
+        (tmp_path / name).write_bytes((frozen / name).read_bytes())
+    before = compute(tmp_path)
+    after = compute(tmp_path, rms_candidates=True)
+    baseline = {r['phase']: r for r in before['named_phase_crosschecks']}
+    phases = {r['phase']: r for r in after['named_phase_crosschecks']}
+    assert len(phases) == len(baseline)+6
+    for name, row in baseline.items():
+        assert phases[name] == row
+    for i in (1, 2, 3):
+        original = baseline[f'proof_A{i}_RMS_GKR_steady']
+        cell = phases[f'proof_A{i}_RMS_GKR_candidate_cell']
+        byte = phases[f'proof_A{i}_RMS_GKR_candidate_byte']
+        for row in (cell, byte):
+            # Includes caller CompactFrames, claims, W/KV, Writer, PCG and VMM.
+            for key, value in original['parts'].items():
+                assert row['parts'][key] == value
+            assert 'initial_A_stream_ordered_pool_reserve' not in row['parts']
+            assert row['named_allocation_subtotal_bytes'] == sum(row['parts'].values())
+            assert row['remaining_shared_payload_capacity_bytes'] == (
+                after['enforced_joint_allocation_limit_bytes']-sum(row['parts'].values()))
+            assert row['is_complete_phase_peak'] is False
+        assert cell['named_allocation_subtotal_bytes']-original['named_allocation_subtotal_bytes'] == 48 << 20
+        assert not any('_byte_' in key for key in cell['parts'])
+        assert not any('_folded_cache_' in key or '_shared_gate_' in key for key in byte['parts'])
+        assert byte['parts']['class6_RMS_byte_LUT_nodes'] == 100466688
+        assert byte['parts']['class6_RMS_byte_contraction_evaluator_capacity_upper'] == 32 << 20
+        assert byte['parts']['class6_RMS_byte_tree_proof_and_triples_upper'] == 43584
+        assert byte['parts']['class6_RMS_retained_proof_and_triples_moving_upper'] > 128*64*8*24
+    # Adding an RMS candidate must not hide the existing O300 PCS excess.
+    maximum = max(phases.values(), key=lambda r: r['named_allocation_subtotal_bytes'])
+    assert maximum['phase'] == 'native_E_D34_A3_S2_predecessor_E_query_publication'
+    assert maximum['named_subtotal_exceeds_payload'] is True
+    assert after['rms_candidates_modeled'] is True
+    assert after['rms_candidates_selected_in_canonical_runner'] is False
+    assert after['credit'] is False and after['joint_admitted'] is False
+    assert after['allowance_physically_verified'] is False
+
+
+@pytest.mark.parametrize('backend', ['legacy', 'native-2026-10-09', 'unknown'])
+def test_rms_candidates_reject_incomplete_backend(tmp_path, backend):
+    with pytest.raises(ValueError, match='prepared complete-capacity ledger'):
+        LEDGER.ledger(tmp_path, backend, rms_candidates=True)

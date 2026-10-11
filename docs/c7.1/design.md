@@ -102,6 +102,15 @@ restano invariati. Lo screen dei gate condivisi sulle 159 ricette è solo
 un conto pubblico, non una riduzione implementata o un tempo completo.
 Nessun nuovo lemma di raffinamento runtime; l’identità usa il prodotto Eq originale.
 
+Lo [screen RMS con supporto originale](../c7.1-history/h100-certificates-rms-shared-support-2026-10-11.md)
+ricostruisce il core corrente da 844.006.203.160.300 prodotti Fp3 e riduce
+il beneficio ipotetico della fusione statica: 559.922.206.698.409 prodotti,
+rapporto 0,663410, rispetto allo screen precedente a supporto completo.
+Conservare i primi due round correnti darebbe 542.419.458.937.257 prodotti.
+Esclusi replay, fold, callback e costruzione; nessuna implementazione o
+selezione, costo RMS completo ancora irrisolto. Controllo esaustivo dei
+residui e tre screen locali bounded passano sulle 99 profondità.
+
 La [campagna precedente](../c7.1-history/h100-followup-close-2026-10-10.md)
 è chiusa con provider EXITED alle 21:24:47 UTC del 10 ottobre e zero
 certificati. Γ originale, pool e fill selezionati, geometria PCS,

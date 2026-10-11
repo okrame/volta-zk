@@ -1803,6 +1803,40 @@ mod tests {
         }
     }
 
+    fn shared_support_pairs(intervals: &[(usize, usize)], period: usize) -> u64 {
+        let mut projected = Vec::new();
+        for &(begin, end) in intervals {
+            assert!(begin <= end);
+            let size = end - begin;
+            if size >= period { return period as u64; }
+            let first = begin % period;
+            projected.push((first, period.min(first + size)));
+            if first + size > period { projected.push((0, first + size - period)); }
+        }
+        projected.sort_unstable();
+        let (mut end, mut count) = (0, 0);
+        for (a, b) in projected {
+            if b > end { count += b - a.max(end); end = b; }
+        }
+        count as u64
+    }
+
+    #[test]
+    fn c71_rms_shared_support_pairs_match_exhaustive_residues() {
+        for n in [2usize, 4, 8] {
+            for mask in 0..1usize << n {
+                let intervals: Vec<_> = (0..n).filter(|i| mask >> i & 1 != 0)
+                    .map(|i| (i, i + 1)).collect();
+                for round in 0..n.ilog2() {
+                    let half = n >> (round + 1);
+                    let expected = (0..half).filter(|&r| (r..n).step_by(half)
+                        .any(|i| mask >> i & 1 != 0)).count() as u64;
+                    assert_eq!(shared_support_pairs(&intervals, half), expected);
+                }
+            }
+        }
+    }
+
     #[test]
     #[ignore = "bounded public structural screen; explicit pinned recipes required"]
     fn c71_rms_pinned_shared_gate_screen() {
@@ -1821,7 +1855,26 @@ mod tests {
             super::super::compile(r.columns, x, w, y, r.weighted).unwrap()
         }).collect();
         let geometry = widths(&programs).unwrap();
-        for depth in 1..geometry.len() {
+        #[derive(serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Support { padded_cells: usize, intervals: Vec<Vec<(usize, usize)>> }
+        let support: Option<Support> = std::env::var("C71_RMS_BENCH_SUPPORT").ok().map(|path| {
+            let mut bytes = Vec::new();
+            std::fs::File::open(path).unwrap().take(1_048_577).read_to_end(&mut bytes).unwrap();
+            assert!(bytes.len() <= 1 << 20);
+            let value: Support = serde_json::from_slice(&bytes).unwrap();
+            assert!(value.padded_cells.is_power_of_two() && value.padded_cells <= 1 << 29);
+            assert_eq!(value.intervals.len(), programs.len());
+            for spans in &value.intervals {
+                assert!(spans.iter().all(|&(a, b)| a < b && b <= value.padded_cells));
+            }
+            value
+        });
+        let mut support_cache = HashMap::<[u64; 3], Vec<u64>>::new();
+        let first: usize = std::env::var("C71_RMS_SCREEN_FIRST_DEPTH").map_or(1, |v| v.parse().unwrap());
+        let last: usize = std::env::var("C71_RMS_SCREEN_LAST_DEPTH").map_or(geometry.len()-1, |v| v.parse().unwrap());
+        assert!(first >= 1 && first <= last && last < geometry.len());
+        for depth in first..=last {
             let mut indexed: HashMap<(usize, u8, usize, usize), [u64; 3]> = HashMap::new();
             let mut raw = [0usize; 3];
             for (p, program) in programs.iter().enumerate() {
@@ -1839,6 +1892,39 @@ mod tests {
             }
             let mut merged = [0usize; 3];
             for &(_, op, _, _) in &grouped { merged[op as usize] += 1; }
+            if let Some(support) = &support {
+                let rounds = support.padded_cells.ilog2() as usize;
+                let mut counts = HashMap::<[u64; 3], [u64; 3]>::new();
+                for &(mask, op, _, _) in &grouped { counts.entry(mask).or_default()[op as usize] += 1; }
+                let mut original = vec![0u64; rounds];
+                for (p, program) in programs.iter().enumerate() {
+                    let mut gate_counts = [0u64; 3];
+                    for gate in gates(program, depth) {
+                        gate_counts[match gate.op { Op::And=>0, Op::Xor=>1, Op::Copy=>2 }] += 1;
+                    }
+                    for (round, value) in original.iter_mut().enumerate() {
+                        let pairs = shared_support_pairs(&support.intervals[p], support.padded_cells >> (round+1));
+                        *value += pairs * (6 + if round==0 { 0 } else { 7*(gate_counts[0]+gate_counts[1])+2*gate_counts[2] });
+                    }
+                }
+                let mut merged_products = vec![0u64; rounds];
+                for (mask, gate_counts) in counts {
+                    let pairs = support_cache.entry(mask).or_insert_with(|| {
+                        let intervals: Vec<_> = support.intervals.iter().enumerate()
+                            .filter(|(p, _)| mask[p/64] >> (p%64) & 1 != 0)
+                            .flat_map(|(_, spans)| spans.iter().copied()).collect();
+                        (0..rounds).map(|round| shared_support_pairs(&intervals, support.padded_cells >> (round+1))).collect()
+                    });
+                    for (round, value) in merged_products.iter_mut().enumerate() {
+                        *value += pairs[round] * (6 + if round==0 { 0 } else { 7*(gate_counts[0]+gate_counts[1])+2*gate_counts[2] });
+                    }
+                }
+                println!("C71_RMS_SHARED_SUPPORT_SCREEN {}", serde_json::json!({
+                    "depth":depth,"original_Fp3_products_by_round":original,
+                    "merged_Fp3_products_by_round":merged_products,
+                    "support_masks_cached":support_cache.len(),"credit":false,
+                    "scope":"public structural support and Boolean first round; excludes selector sums, plan build, replay, row folds and runtime"}));
+            }
             println!("C71_RMS_SHARED_GATE_SCREEN {}", serde_json::json!({
                 "credit":false,"gpu_execution":false,"private_inputs":false,
                 "recipes_blake3":blake3::hash(&body).to_hex().as_str(),

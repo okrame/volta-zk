@@ -96,8 +96,8 @@ dei tre piani pubblici. La precedente campagna sul pod è **conclusa**:
 conferma provider `EXITED`/runtime assente alle 01:49:55 UTC del 10 ottobre,
 dopo 6 h 41 min, prima della deadline 03:08:42 UTC.
 Fine calcolo prevista 02:38:42, guard indipendente 03:03:42; ritiro del
-guard solo dopo lo stop confermato. Quella campagna è terminata; la nuova autorizzazione e deadline sono
-quelle riportate sopra. Codice ed evidenze sono sul branch Git HTTPS
+guard solo dopo lo stop confermato. Quella campagna e il seguito descritto
+sopra sono entrambi conclusi. Codice ed evidenze della precedente sono sul branch Git HTTPS
 `runpod/z6wx2kkn69eoc0/c71-h100-20261009`.
 
 | Trial canonico | Esito conservato |
@@ -110,7 +110,7 @@ quelle riportate sopra. Codice ed evidenze sono sul branch Git HTTPS
 | [06](../c7.1-history/h100-canonical-06-2026-10-10.md) | W/setup/preparazione e 35 gruppi A; stop fisico a 6.560.767.488 B |
 
 Zero certificati accettati; O=150/300 non iniziati. Nessun trial riprende
-stato terminale. Il [checkpoint W/setup più recente](../c7.1-history/h100-setup06-checkpoint-2026-10-10.md)
+stato terminale. Il [checkpoint W/setup della campagna precedente](../c7.1-history/h100-setup06-checkpoint-2026-10-10.md)
 misura PCS 190,425 s, installazione 212,418 s e setup 1.493,833 s.
 Il setup migliora del 24,799% osservato rispetto al quinto trial; il record
 dichiara limiti del confronto e sovrapposizioni CPU precedenti.

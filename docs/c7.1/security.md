@@ -74,8 +74,8 @@ W, architettura, workload e ricette numeriche sono fissati; variare scale
 cambia la relazione e richiede i controlli numerici/qualità e l'ammissione
 completa, più il ricalcolo delle prenotazioni e dei bound applicabili.
 Il [piano hardware mirato](../c7.1-history/local-hardware-plan-2026-10-10.md)
-è ora coperto dalla nuova autorizzazione sopra, nello stesso ambito e
-termine; le candidate Γ restano screening non ammessi.
+era coperto dall'autorizzazione della campagna ora chiusa, entro il suo
+ambito e termine; le candidate Γ restano screening non ammessi.
 
 ## Ambito e ipotesi
 

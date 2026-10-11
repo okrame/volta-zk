@@ -120,7 +120,7 @@ upper packed 325.906.729/191.732.984/193.965.966 B per riferimento/coarser/
 finer, compreso fixed storico: differenze fra upper, non memoria risparmiata
 misurata. Circuiti e PYS coesistono; altro stato del caller/PCG e picco
 dei due ruoli restano esclusi. Nessun nuovo bound completo o ammissione.
-Le verifiche hardware del seguito sono eseguite nella campagna corrente
+Le verifiche hardware del seguito sono eseguite nella campagna ora chiusa
 con i risultati e i confini indicati sopra.
 
 ## Obiettivo e relazione dimostrata

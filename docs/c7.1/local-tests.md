@@ -80,7 +80,7 @@ il nostro esecutore intero esatto. Il seguito misura 76,760 s con pool
 e completa il confronto SDPA floating sullo stesso prompt/lunghezza,
 con aritmetica e storie libere diverse: nessuna equivalenza intera.
 Il [piano hardware mirato](../c7.1-history/local-hardware-plan-2026-10-10.md)
-è coperto dalla nuova autorizzazione sopra; i limiti locali restano
+ha riguardato la campagna ora chiusa; i limiti locali restano
 invariati e sul pod valgono quelli del runbook.
 
 I controlli della nuova modifica mantengono esiti, limiti e provenienza:

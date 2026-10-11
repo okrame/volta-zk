@@ -1,0 +1,16 @@
+{
+  "source_git_sha": "abf57c4a7eb43bfe5cbaa6cc2d4af6c5224b9dd2",
+  "git_dirty": false,
+  "command": [
+    "rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+    "c71_canonical_public_metadata",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "exit_code": 0,
+  "wall_s": 5.9988538809120655,
+  "max_rss_bytes": 141139968,
+  "as_bytes": 2147483648,
+  "credit": false,
+  "gpu_execution": false
+}

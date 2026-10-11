@@ -78,6 +78,13 @@ Rust; la variante non è ancora verificata su GPU né selezionata canonica.
 Il [resoconto locale](../c7.1-history/h100-certificates-vmm-local-2026-10-11.md)
 conserva ipotesi e limiti; nessuna root completa o certificato.
 
+Il [record locale pulito VMM](../../benchmarks/results/c71-certificates-vmm-local-2026-10-11-abf57c4a.json)
+conserva 11 test e gli screen alle granularità 64 KiB/2 MiB. Il massimo
+nominato è 5.884.838.738/5.934.646.098 B: la seconda ipotesi supera il
+payload complessivo di 29.066.066 B, pur lasciando spazio alle sei fasi
+iniziali A. Granularità e lifetime reali devono essere verificati prima
+della selezione canonica; nessun credito fisico da questi conti.
+
 La [scansione incrementale dei pesi RMS](../c7.1-history/h100-certificates-rms-prefix-2026-10-11.md)
 ricalcola soltanto il suffisso cambiato di Eq, senza divisioni. Passano
 prefissi zero/uno, coefficienti densi e wire/FS/MAC della fixture mista;

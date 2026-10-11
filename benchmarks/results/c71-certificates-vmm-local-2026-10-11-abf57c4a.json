@@ -1,0 +1,157 @@
+{
+  "artifact_directory": "benchmarks/results/c71-certificates-vmm-local-2026-10-11-abf57c4a",
+  "artifacts": [
+    {
+      "bytes": 3389,
+      "path": "checks.log",
+      "sha256": "7f3521089b8d2bcc0ccdaaba11b1454b18c3b885b302b560b683df76910b4b20"
+    },
+    {
+      "bytes": 5253,
+      "path": "metadata.log",
+      "sha256": "3ecacd96ce3f4f92712514ec8a3636e8d877fdef11f79dfeb8287793ed2c7211"
+    },
+    {
+      "bytes": 396,
+      "path": "metadata.json",
+      "sha256": "6f976cd24e160d1e82c4e6ba661cb5690bba887881fedd04bc7f48eefdd22ba7"
+    },
+    {
+      "bytes": 1467205,
+      "path": "ledger-2097152.json",
+      "sha256": "1f23aa4d0f6123d70532bf50b4da68b3d37beca3928a8d6b8ca3fe4f844afb7d"
+    },
+    {
+      "bytes": 1466558,
+      "path": "ledger-65536.json",
+      "sha256": "6cfbe743af00db4382e985b17f8ba1eda21008c6cd51cfc3d7bfdd4da3f38872"
+    },
+    {
+      "bytes": 2852,
+      "path": "c71-vmm-source-tree-retry-20261011.log",
+      "sha256": "fbefc355a3b77edd44009be616a19fb3b73616e5b9293fc3f67158182389eb9b"
+    },
+    {
+      "bytes": 3505,
+      "path": "ledger-input-provenance.json",
+      "sha256": "c0cae988b4c207e7a325e982036b677f2aa4f6d4dd36820cfead3bb74650b6e3"
+    }
+  ],
+  "canonical_contexts_completed": [],
+  "certificates_generated": 0,
+  "certificates_verified": 0,
+  "checks": {
+    "as_bytes": 2147483648,
+    "deadline_s": 60,
+    "metadata": {
+      "as_bytes": 2147483648,
+      "command": [
+        "rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+        "c71_canonical_public_metadata",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "credit": false,
+      "exit_code": 0,
+      "git_dirty": false,
+      "gpu_execution": false,
+      "max_rss_bytes": 141139968,
+      "source_git_sha": "abf57c4a7eb43bfe5cbaa6cc2d4af6c5224b9dd2",
+      "wall_s": 5.9988538809120655
+    },
+    "precommit_source_tree": {
+      "git_dirty": true,
+      "passes": 1,
+      "source_identical": true,
+      "wall_s": 22.89
+    },
+    "pytest_tests": 11,
+    "wall_s": 14.34,
+    "workers": 1
+  },
+  "credit": false,
+  "formal_premises": [
+    "No new CUDA/Rust-to-Lean refinement lemma",
+    "VMM ownership, current context, mapping and fences",
+    "Shared initialized prefix remains source of original values"
+  ],
+  "git_dirty": false,
+  "gpu_execution": false,
+  "hardware_granularity_measured": false,
+  "schema": "volta-c71-certificates-vmm-local-v1",
+  "screens": [
+    {
+      "granularity_bytes": 65536,
+      "maximum_named_bytes": 5884838738,
+      "phases": [
+        {
+          "named_allocation_subtotal_bytes": 4515027574,
+          "phase": "native_initial_A1_accumulate",
+          "remaining_shared_payload_capacity_bytes": 1390552458
+        },
+        {
+          "named_allocation_subtotal_bytes": 5317735714,
+          "phase": "native_initial_A1_hash",
+          "remaining_shared_payload_capacity_bytes": 587844318
+        },
+        {
+          "named_allocation_subtotal_bytes": 5096725078,
+          "phase": "native_initial_A2_accumulate",
+          "remaining_shared_payload_capacity_bytes": 808854954
+        },
+        {
+          "named_allocation_subtotal_bytes": 5630997762,
+          "phase": "native_initial_A2_hash",
+          "remaining_shared_payload_capacity_bytes": 274582270
+        },
+        {
+          "named_allocation_subtotal_bytes": 5438036534,
+          "phase": "native_initial_A3_accumulate",
+          "remaining_shared_payload_capacity_bytes": 467543498
+        },
+        {
+          "named_allocation_subtotal_bytes": 5670319330,
+          "phase": "native_initial_A3_hash",
+          "remaining_shared_payload_capacity_bytes": 235260702
+        }
+      ]
+    },
+    {
+      "granularity_bytes": 2097152,
+      "maximum_named_bytes": 5934646098,
+      "phases": [
+        {
+          "named_allocation_subtotal_bytes": 4629060214,
+          "phase": "native_initial_A1_accumulate",
+          "remaining_shared_payload_capacity_bytes": 1276519818
+        },
+        {
+          "named_allocation_subtotal_bytes": 5431768354,
+          "phase": "native_initial_A1_hash",
+          "remaining_shared_payload_capacity_bytes": 473811678
+        },
+        {
+          "named_allocation_subtotal_bytes": 5146532438,
+          "phase": "native_initial_A2_accumulate",
+          "remaining_shared_payload_capacity_bytes": 759047594
+        },
+        {
+          "named_allocation_subtotal_bytes": 5680805122,
+          "phase": "native_initial_A2_hash",
+          "remaining_shared_payload_capacity_bytes": 224774910
+        },
+        {
+          "named_allocation_subtotal_bytes": 5487843894,
+          "phase": "native_initial_A3_accumulate",
+          "remaining_shared_payload_capacity_bytes": 417736138
+        },
+        {
+          "named_allocation_subtotal_bytes": 5720126690,
+          "phase": "native_initial_A3_hash",
+          "remaining_shared_payload_capacity_bytes": 185453342
+        }
+      ]
+    }
+  ],
+  "source_git_sha": "abf57c4a7eb43bfe5cbaa6cc2d4af6c5224b9dd2"
+}

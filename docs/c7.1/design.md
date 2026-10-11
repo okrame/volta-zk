@@ -34,17 +34,17 @@ compare dopo `cudaFree` di un buffer I64 da 4.915.200 B; stack CUDA
 invariato a 256 B. GPU idle dopo ogni teardown, zero certificati.
 Default: 16 filtri H100 passati; diagnostiche: trasformazione a owner
 singolo passata, rifiuto del file esclusivo al secondo owner conservato.
-Il nuovo esperimento di allocazione stream-ordered addebita 64 MiB di
+Il nuovo esperimento di allocazione stream-ordered addebita 128 MiB di
 cache prima dell’uso, controlla reserved/used e conserva i fence.
 Owner 42.160 B e cap invariati. È **solo un diagnostico A**: la riserva
 permanente supera il margine del ledger generale e blocca la selezione
 canonica finché non viene ridotta o motivata con lifetime distinto.
 
-Il [preflight del pool](../c7.1-history/h100-certificates-async-release-2026-10-11.md)
-si arresta dopo i primi quattro free: reserved 0 B, used 1.024 B, arena
-0 B. Nessuna parità hardware o trial A del pool completato. La revisione
-accoda il free sullo stream owner e ne conta la sincronizzazione prima
-del trim; nove scenari simulati coprono anche free/fence falliti.
+Il [pool con free ordinato](../c7.1-history/h100-certificates-async-capacity-2026-10-11.md)
+passa tre parità H100, poi A si arresta al gruppo 0: slack 77.871.360 B
+oltre i 64 MiB preaddebitati. Monitor negativo, GPU idle dopo teardown.
+La riserva diagnostica diventa 128 MiB, interamente nel payload con gli
+stessi cap. Nessuna selezione canonica; nove scenari simulati passano.
 
 La [campagna precedente](../c7.1-history/h100-followup-close-2026-10-10.md)
 è chiusa con provider EXITED alle 21:24:47 UTC del 10 ottobre e zero

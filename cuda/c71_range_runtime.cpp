@@ -153,7 +153,7 @@ struct C71RangeContext {
     cudaMemPool_t async_pool=nullptr;
     uint64_t async_cache_peak=0;
     bool async_cache_charged=false;
-    static constexpr uint64_t async_cache_upper=64ULL<<20;
+    static constexpr uint64_t async_cache_upper=128ULL<<20;
 #endif
     C71RangeAccount account=nullptr;
     int device=0;

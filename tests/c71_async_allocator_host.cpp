@@ -10,7 +10,7 @@
 int main(int argc,char** argv) {
     assert(argc==2);
     const std::string scenario=argv[1];
-    constexpr uint64_t reserve=64ULL<<20, capacity=1ULL<<20;
+    constexpr uint64_t reserve=128ULL<<20, capacity=1ULL<<20;
     joint_limit=scenario=="reserve_failure"?2ULL<<20:reserve+(2ULL<<20);
     C71RangeContext* context=nullptr;
     const int created=c71_range_create(0,2ULL<<20,256,joint_account,&context);
@@ -20,7 +20,7 @@ int main(int argc,char** argv) {
     if(!created) {
         assert(joint_live==initial.host_owner_bytes+reserve);
         if(scenario=="allocation_failure") fail_pool_alloc=true;
-        if(scenario=="cache_limit") fake_pool_reserved_extra=65ULL<<20;
+        if(scenario=="cache_limit") fake_pool_reserved_extra=129ULL<<20;
         uint64_t id=0;
         const int allocated=c71_range_alloc(context,C71_I64,capacity/8,&id);
         assert((allocated!=0)==(scenario=="allocation_failure" || scenario=="cache_limit"));

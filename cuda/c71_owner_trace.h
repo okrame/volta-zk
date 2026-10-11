@@ -152,7 +152,7 @@ struct Trace {
         record.text(",\"pool_reserved_bytes\":"); record.number(pool_reserved);
         record.text(",\"pool_used_bytes\":"); record.number(pool_used);
         record.text(",\"pool_cache_peak_bytes\":"); record.number(pool_cache_peak);
-        record.text(",\"pool_cache_upper_bytes\":67108864");
+        record.text(",\"pool_cache_upper_bytes\":134217728");
 #endif
 #else
         (void)physical_used; (void)physical_total;

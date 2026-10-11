@@ -74,7 +74,8 @@ prima dell’allocazione, mai rimborsata con ownership incerta. Nessun nuovo
 lemma Lean raffina il mapping driver: indirizzi stabili, fence, contabilità
 e prefisso restano premesse implementative da verificare anche su H100.
 Passano 22 scenari VMM simulati, regressioni default/pool e rifiuto dei fork
-Rust; la variante non è ancora verificata su GPU né selezionata canonica.
+Rust; la variante passa anche le parità H100 descritte sotto, senza
+selezione canonica.
 Il [resoconto locale](../c7.1-history/h100-certificates-vmm-local-2026-10-11.md)
 conserva ipotesi e limiti; nessuna root completa o certificato.
 
@@ -84,6 +85,13 @@ nominato è 5.884.838.738/5.934.646.098 B: la seconda ipotesi supera il
 payload complessivo di 29.066.066 B, pur lasciando spazio alle sei fasi
 iniziali A. Granularità e lifetime reali devono essere verificati prima
 della selezione canonica; nessun credito fisico da questi conti.
+
+Il [preflight H100 VMM](../c7.1-history/h100-certificates-vmm-preflight-2026-10-11.md)
+passa quattro parità: KV condiviso/duplicato, trasformazioni, A completa
+ridotta e wire lineare FS/MAC originali. Granularità 2 MiB osservata,
+CPU AS 64 GiB verificato, GPU idle dopo cleanup. Il distinto `a-vmm01`
+è avviato da O=0 con 5.400 s e cap invariati; risultato pendente.
+Nessuna root del modello o certificato, RMS completo ancora aperto.
 
 La [scansione incrementale dei pesi RMS](../c7.1-history/h100-certificates-rms-prefix-2026-10-11.md)
 ricalcola soltanto il suffisso cambiato di Eq, senza divisioni. Passano

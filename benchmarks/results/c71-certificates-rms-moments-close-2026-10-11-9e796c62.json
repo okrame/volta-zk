@@ -1,0 +1,112 @@
+{
+  "schema": "volta-c71-rms-moments-close-v1",
+  "source_git_sha": "9e796c6266073faf67d77dbb7789f63b44bc12e9",
+  "git_dirty": false,
+  "credit": false,
+  "canonical_certificates": 0,
+  "canonical_o0_complete": false,
+  "canonical_o150_started": false,
+  "canonical_o300_started": false,
+  "status": "Original authorized compute window ended without extra-duration approval. Trials terminal and H100 idle before shutdown; provider get confirms EXITED and runtime absent, then guard identity verified and retired. Required O=0 certificate/journal and same fresh real/AES O150/300 remain incomplete.",
+  "pod_id": "z6wx2kkn69eoc0",
+  "gpu_uuid": "GPU-e05e977b-758d-f3f4-cbe8-5720b83d1ae1",
+  "provider_observed_epoch": 1791762277.9387095,
+  "provider_desired_status": "EXITED",
+  "provider_runtime_absent": true,
+  "original_start_epoch": 1791735180.494,
+  "compute_end_epoch": 1791762180.494,
+  "original_guard_epoch": 1791763380.494,
+  "hard_end_epoch": 1791763980.494,
+  "extra_duration_authorized": false,
+  "preclose_observation": {
+    "epoch": 1791762158.933162,
+    "gpu_uuid": "GPU-e05e977b-758d-f3f4-cbe8-5720b83d1ae1",
+    "gpu_name": "NVIDIA H100 80GB HBM3",
+    "gpu_used_bytes": 0,
+    "pod_source_git_sha": "55b987d540611232e444c40e42772d8b6d74d298",
+    "git_dirty": false,
+    "provenance": "Read-only SSH observation returned by c71-rms-moments-remote helper before shutdown; launcher /proc identities inspected, all terminal or missing",
+    "runs": [
+      {
+        "name": "tail-reduce01",
+        "status": "complete",
+        "matching_live_process": false
+      },
+      {
+        "name": "batched-schedule01",
+        "status": "complete",
+        "matching_live_process": false
+      },
+      {
+        "name": "native-paired01",
+        "status": "complete",
+        "matching_live_process": false
+      },
+      {
+        "name": "tail-ragged01",
+        "status": "failed",
+        "matching_live_process": false
+      },
+      {
+        "name": "tail-ragged02",
+        "status": "complete",
+        "matching_live_process": false
+      },
+      {
+        "name": "tail-final-docs01",
+        "status": "complete",
+        "matching_live_process": false
+      }
+    ],
+    "canonical_certificates": 0,
+    "extra_duration_authorized": false
+  },
+  "guard_retirement": {
+    "epoch": 1791762323.802661,
+    "pod_id": "z6wx2kkn69eoc0",
+    "provider_confirmed_exited": true,
+    "runtime_absent": true,
+    "guard_pid": 27013,
+    "expected_start_ticks": "332392984",
+    "before": {
+      "state": "S",
+      "start_ticks": "332392984"
+    },
+    "signal_sent": true,
+    "after": null,
+    "scope": "Original campaign guard retired only after authoritative provider get confirms EXITED with no runtime; no spending extension authorized"
+  },
+  "records_preserved": [
+    {
+      "path": "benchmarks/results/c71-certificates-rms-tail-reduce-2026-10-11-c0e0448d.json",
+      "sha256": "345af777c7e105708d5dd1cc9e64fbc2b31ed6dd9b7ac667513397ad0bdbc69f"
+    },
+    {
+      "path": "benchmarks/results/c71-certificates-rms-batched-schedule-2026-10-11-b13ccaa2.json",
+      "sha256": "87535cc926bd3b628b4f963ce9d66f0cd958b0e328f4e2f98d39a9c5f8eda5b9"
+    },
+    {
+      "path": "benchmarks/results/c71-certificates-rms-native-paired-2026-10-11-c0e0448d.json",
+      "sha256": "7e04685b9288d2922eb6f7d7704aa0cc84196e5d5a40add01940ec78aed9d060"
+    },
+    {
+      "path": "benchmarks/results/c71-certificates-rms-tail-ragged-negative-2026-10-11-8d1471f1.json",
+      "sha256": "a8a3bbc1c1e8ef5c34703d6396c6e50690b1705b5ed29eb1696411fcbefaa074"
+    },
+    {
+      "path": "benchmarks/results/c71-certificates-rms-tail-ragged-negative-provenance-correction-2026-10-11-8d1471f1.json",
+      "sha256": "7a74323f94b1c46326095b85426a26b3b0f161db559e07c09ec4ba5e5495becf"
+    },
+    {
+      "path": "benchmarks/results/c71-certificates-rms-tail-ragged-2026-10-11-39aef3bc.json",
+      "sha256": "e4691bae9899ebe6819ef5f27971f7c242b6a4634747b6fb210aa21d35a5bb33"
+    },
+    {
+      "path": "benchmarks/results/c71-certificates-rms-tail-final-docs-2026-10-11-55b987d5.json",
+      "sha256": "10e04023c6cb607c3ca137b2c086c50e2db9bb15178e72ff06ffe9fbbb092e1a"
+    }
+  ],
+  "private_bundle": "artifact/c7.1-pod/certificates-rms-moments-close-20261011",
+  "private_manifest_sha256": "b5e42800a2875d9c40181e8c7d03329839332cbe3b00a0e3a06efd5bbb6bb222",
+  "notes": "VM performed editing/control and streaming artifact/hash verification only; builds, proof fixtures, schedule arithmetic and tests ran on the pod. No model or fresh real/AES setup/canonical runner in this backend campaign. No completed-protocol/physical/time credit. Source and immutable benchmark evidence were pushed to the dedicated HTTPS branch before stop. Original failed records and their linked corrections remain preserved; original manifests unchanged."
+}

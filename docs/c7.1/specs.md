@@ -3,16 +3,16 @@
 [Design](design.md) · [Sicurezza](security.md) · [Test locali](local-tests.md) ·
 [Test su RunPod](runpod-tests.md) · [Archivio](../c7.1-history/README.md)
 
-Il [seguito RMS misto sul pod](../c7.1-history/h100-rms-moments-restart-2026-10-11.md)
-è **attivo**: il proprietario autorizza il riavvio dello stesso
-`z6wx2kkn69eoc0` alle **17:05:42 UTC** dell'11 ottobre. H100 originale
-riverificata, idle all'accesso; nuovo guard indipendente prima del resume.
-Finestra invariata: calcolo fino a23:43:00, guard00:03:00 e hard stop
-12 ottobre00:13:00 UTC. La VM ha poche risorse: solo editing e controllo;
-preparazione computazionale, test e build si svolgono sul pod.
+Il [seguito RMS misto sul pod è concluso](../c7.1-history/h100-rms-moments-close-2026-10-11.md):
+riavvio autorizzato dello stesso `z6wx2kkn69eoc0` alle17:05:42 UTC,
+termine calcolo originale23:43:00; provider **EXITED/runtime assente
+alle23:44:37 UTC** dell'11 ottobre, prima del hard stop12 ottobre00:13:00.
+GPU idle e processi terminali prima dello stop; guard ritirato dopo conferma.
 La [richiesta di altre8 ore](../c7.1-history/rms-duration-request-2026-10-11.md)
-per il consumer byte è in attesa di risposta: nessuna estensione concessa,
-guard e scadenze originali invariati.
+per il consumer byte resta in attesa di risposta: nessuna estensione
+concessa. Editing/review resta autorizzato; altre build/esecuzioni pagate
+richiedono nuova durata. La VM ha poche risorse ed è solo editing/controllo;
+test, screen numerici e compilazioni restano sul pod autorizzato.
 Tre test F97 del prefisso misto e nove documentali passano sul checkout
 pulito `f25452bf`; primo negativo documentale per fonti assenti conservato.
 Il [censimento pubblico RMS](../c7.1-history/h100-rms-moments-census-2026-10-11.md)
@@ -87,7 +87,7 @@ In dominio canonico conta182.626.739.937 launch a cap256,11.418.407.370
 a cap4096;25 riletture tail/profondità,1.328.755.507.200 posizioni padded.
 Screen analitico `credit:false`, senza tempo/capacità completa ammessi.
 Serve ridurre launch/replay; byte/statistica GPU, conto simultaneo e
-raffinamento restano aperti. Pod RUNNING e guard originale attivo.
+raffinamento restano aperti. Pod concluso; altra durata non autorizzata.
 Il [batching del prefisso verificato](../c7.1-history/h100-rms-gate-batch-parity-2026-10-11.md)
 passa18 check su `f868468e`, inclusi23 rifiuti owner e stesso wire159/99:
 launch707.364, prover126,808 s; la singola misura non migliora il tempo

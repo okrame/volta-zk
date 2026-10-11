@@ -122,9 +122,9 @@ rilasciate e GPU idle. È il primo commitment A completo del modello;
 **zero certificati canonici**. Restano esclusi W PCS/setup AES, prova,
 verifica e continuazioni. Non dimostra il picco istantaneo o l’allowance
 di tutte le fasi canoniche; il massimo analitico O=300 resta oltre cap.
-Il confronto CPU RMS con tutte le 159 ricette è in corso. La variante
-VMM + pool resta diagnostica finché non sono chiusi gli impedimenti
-pertinenti al runner completo.
+Il confronto CPU RMS con tutte le 159 ricette è completato come riportato
+sotto; il costo completo resta irrisolto. La variante VMM + pool resta
+diagnostica finché non sono chiusi gli impedimenti del runner completo.
 
 La [scansione incrementale dei pesi RMS](../c7.1-history/h100-certificates-rms-prefix-2026-10-11.md)
 ricalcola soltanto il suffisso cambiato di Eq, senza divisioni. Passano
@@ -159,8 +159,8 @@ Booleano invariato. L’identità segue `mul_add`, `add_mul`, `sub_mul` e
 `mul_sub` nel campo; il raffinamento Rust/Fp3 resta una premessa, senza
 nuovo lemma runtime. Stesse tre celle locali, nessun nuovo heap o messaggio.
 Contatori e screen della candidata sono aggiornati; i conti storici
-restano riferiti alla vecchia schedule. Le parità locali passano; misure pendenti,
-nessuna selezione canonica o risoluzione del costo completo.
+restano riferiti alla vecchia schedule. Le parità locali passano; la misura ridotta è riportata sotto,
+senza selezione canonica o risoluzione del costo completo.
 
 La candidata supera tre regressioni Rust: pattern Booleani esaustivi,
 coefficienti contro fold densi e byte wire/FS/MAC originali della fixture
@@ -174,7 +174,23 @@ conserva tre parità Rust, 11 controlli Python/documenti e il census entro
 AS 2 GiB/60 s. Gli screen dei nuovi census riconoscono la schedule
 a sei o sette prodotti dai contatori di tutti i livelli e rifiutano
 census misti; i record congelati mantengono la propria aritmetica. Binario compilato prima del commit con sorgenti identici,
-provenienza distinta. La misura H100 con tutte le ricette resta pendente.
+provenienza distinta.
+
+Il [confronto CPU sulle 159 ricette](../c7.1-history/h100-certificates-rms-all-recipes-2026-10-11.md)
+completa entrambe le prove ridotte: 99 profondità, 511 celle vive
+sintetiche più padding, verifier/FS/MAC originali e consumo di tutte le
+9.919 correlazioni ideali. Prover baseline/candidata **194,166/191,238 s**,
+verifier **6,577/6,602 s**, wire 320.320 B ciascuno. Una sola coppia:
+−1,51% osservato, senza guadagno stabile o extrapolazione canonica.
+I prodotti del core ridotto sono 1.321.999.818/1.176.979.554; i callback
+restano 455.301. Nessun confronto byte-per-byte fra le due wire complete.
+Il massimo RSS è 734.949.376/734.371.840 B; 15 campioni della candidata
+registrano occupazione GPU non attribuita, fino a 556.793.856 B per circa
+3,3 s. È inclusa nel conto fisico, massimo 1.218.600.960 B; nessun credito
+GPU o isolamento della coppia. GPU idle finale, cap e AS rispettati.
+Esclusi modello, statistiche del caller, PCS, setup AES e risposta completa.
+Il core canonico resta analiticamente 751.359.028.655.932 prodotti Fp3;
+nessun ostacolo RMS completo risolto, zero certificati canonici.
 
 La [campagna precedente](../c7.1-history/h100-followup-close-2026-10-10.md)
 è chiusa con provider EXITED alle 21:24:47 UTC del 10 ottobre e zero

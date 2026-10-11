@@ -1,0 +1,439 @@
+{
+  "schema": "volta-c71-rms-all-recipes-v1",
+  "source_git_sha": "04137d0c5595ea53d3c82ecd5ca0dd64672efdee",
+  "git_dirty": false,
+  "credit": false,
+  "certificates_generated": 0,
+  "certificates_verified": 0,
+  "canonical_contexts_completed": [],
+  "provenance": {
+    "epoch": 1791722440.9505653,
+    "scope": "CPU full-depth RMS with all 159 pinned recipes, 511 synthetic live cells plus padding; no model, PCS, AES or canonical response",
+    "credit": false,
+    "source_git_sha": "04137d0c5595ea53d3c82ecd5ca0dd64672efdee",
+    "git_dirty": false,
+    "builds": [
+      {
+        "source_git_sha": "7dc4d2be95cb43435c168a7fc207121a3ccdf23c",
+        "git_dirty": false,
+        "epoch": 1791718483.5207572,
+        "profile_opt_level": 2,
+        "concurrent_trial": "a-vmm-pool01",
+        "credit": false,
+        "run_after_A_idle": true,
+        "binary": {
+          "path": "/workspace/c71-certificates-20261011/rms-all-build01/rms-bench",
+          "bytes": 36462336,
+          "sha256": "6694353488944e51f55c788ac9d3f4151ced0b1125fd94e37371f3bc4b16e673"
+        },
+        "git_dirty_end": false,
+        "end_epoch": 1791719238.5424685
+      },
+      {
+        "source_git_sha": "04137d0c5595ea53d3c82ecd5ca0dd64672efdee",
+        "git_dirty": false,
+        "epoch": 1791719238.6209335,
+        "profile_opt_level": 2,
+        "concurrent_trial": "a-vmm-pool01",
+        "credit": false,
+        "run_after_A_idle": true,
+        "binary": {
+          "path": "/workspace/c71-certificates-20261011/rms-endpoint-build01/rms-bench",
+          "bytes": 36458504,
+          "sha256": "0ddc80e50a378d8bd1312e6c83253fd9008099f8528ccaa0b409e1ba1220f16f"
+        },
+        "git_dirty_end": false,
+        "end_epoch": 1791722440.9499254
+      }
+    ],
+    "recipes_sha256": "b0c69fdb2395a1014f877725b119948af038a48baaebcbb4b336551f87f35853",
+    "cells": 512,
+    "canonical_certificates_generated": 0,
+    "canonical_certificates_verified": 0,
+    "deadline_each_s": 600,
+    "cpu_as_bytes": 68719476736
+  },
+  "workflow": {
+    "epoch": 1791722845.834375,
+    "results": [
+      {
+        "label": "baseline",
+        "exit_code": 0
+      },
+      {
+        "label": "endpoint",
+        "exit_code": 0
+      }
+    ],
+    "git_dirty_end": false,
+    "credit": false
+  },
+  "runs": [
+    {
+      "label": "baseline",
+      "success": true,
+      "begin": {
+        "cells": 512,
+        "compile_ns": 2555403369,
+        "credit": false,
+        "depth": 99,
+        "live_cells": 511,
+        "program_inner_capacity_bytes": 457616928,
+        "programs": 159,
+        "recipes_blake3": "f192c0a159f6783f6058a57c9ff8a6ef77ab353afb147ef27222fc26c1bace10"
+      },
+      "complete": {
+        "GPU_execution": false,
+        "all_original_layers_executed": true,
+        "cells": 512,
+        "compile_ns": 2555403369,
+        "correlations": 9919,
+        "credit": false,
+        "private_values": "nonzero synthetic rows evaluated with original integer RMS",
+        "prove_ns": 194165777463,
+        "same_FS_original_MAC_endpoint": true,
+        "scope": "selected pinned recipes with reduced cells; excludes statistics caller, PCS, real model, AES setup and full response",
+        "verify_ns": 6576525668,
+        "wire_bytes": 320320,
+        "work_summary": {
+          "cell_rounds": 891,
+          "cell_round_totals": {
+            "coefficient_multiplications": 1321999818,
+            "coefficient_additions": 1516105906,
+            "coefficient_subtractions": 668620492,
+            "fold_value_multiplications": 595120,
+            "fold_weight_multiplications": 710028,
+            "boolean_fold_masks": 570634722,
+            "row_source_callbacks": 455301,
+            "selector_source_callbacks": 456192,
+            "gate_cell_iterations": 340100346
+          },
+          "original_frame_reads": 31440429,
+          "packed_replay": {
+            "batches": 7128,
+            "dag_word_and": 5029845317,
+            "dag_word_operations": 9687049272,
+            "dag_word_xor": 4657203955,
+            "fixed_frame_stack_bytes": 768,
+            "original_frames": 455301,
+            "original_scalar_gate_equivalent": 22261581567,
+            "padding_lanes": 891,
+            "plan_build_capacity_upper_bytes": 264082901,
+            "plan_build_original_gate_visits": 771447452,
+            "plan_capacity_bytes": 251190048,
+            "program_replays": 397485,
+            "scratch_capacity_bytes": 342704,
+            "scratch_moving_capacity_upper_bytes": 685408
+          },
+          "capacity": {
+            "bind": {
+              "phase_owned_capacity_bytes": 120425402,
+              "program_inner_capacity_bytes": 457616928,
+              "proof_capacity_bytes": 0,
+              "protocol_capacity_bytes": 800,
+              "row_capacity_bytes": 0,
+              "total_named_heap_capacity_bytes": 578043130,
+              "triples_capacity_bytes": 0
+            },
+            "bind_attempt_capacity_bytes": 130,
+            "bind_point_capacity_bytes": 216,
+            "bind_prefix_capacity_bytes": 120425186,
+            "bind_stream_stack_bytes": 4096,
+            "bind_transcript_bytes": 120425698,
+            "byte_bind": {
+              "phase_owned_capacity_bytes": 289445,
+              "program_inner_capacity_bytes": 457616928,
+              "proof_capacity_bytes": 442176,
+              "protocol_capacity_bytes": 4256,
+              "row_capacity_bytes": 0,
+              "total_named_heap_capacity_bytes": 458352805,
+              "triples_capacity_bytes": 0
+            },
+            "byte_lut": {
+              "phase_owned_capacity_bytes": 100776440,
+              "program_inner_capacity_bytes": 457616928,
+              "proof_capacity_bytes": 442176,
+              "protocol_capacity_bytes": 4256,
+              "row_capacity_bytes": 0,
+              "total_named_heap_capacity_bytes": 558839800,
+              "triples_capacity_bytes": 0
+            },
+            "byte_proof_capacity_bytes": 17568,
+            "byte_row_capacity_bytes": 0,
+            "byte_triples_capacity_bytes": 3456,
+            "cell": {
+              "phase_owned_capacity_bytes": 264566236,
+              "program_inner_capacity_bytes": 457616928,
+              "proof_capacity_bytes": 442176,
+              "protocol_capacity_bytes": 100472,
+              "row_capacity_bytes": 0,
+              "total_named_heap_capacity_bytes": 722744244,
+              "triples_capacity_bytes": 18432
+            },
+            "cell_round_records_capacity_bytes": 180224,
+            "complete_owned_capacity": false,
+            "edge_capacity_bytes_peak": 38400000,
+            "excluded_external_owner_count": 7,
+            "gkr_layers_capacity_bytes": 442176,
+            "gkr_triples_capacity_bytes": 18432,
+            "index": {
+              "phase_owned_capacity_bytes": 39077096,
+              "program_inner_capacity_bytes": 457616928,
+              "proof_capacity_bytes": 442176,
+              "protocol_capacity_bytes": 800,
+              "row_capacity_bytes": 0,
+              "total_named_heap_capacity_bytes": 497155432,
+              "triples_capacity_bytes": 18432
+            },
+            "named_heap_capacity_peak_bytes": 722744244,
+            "next_weights_transition_capacity_bytes_peak": 38896872,
+            "program_inner_capacity_bytes": 457616928,
+            "proof_capacity_bytes": 459744,
+            "round_auth_capacity_bytes_peak": 192,
+            "row_capacity_bytes": 0,
+            "table_stack_bytes": 98304,
+            "widths_capacity_bytes": 800
+          }
+        }
+      },
+      "measurement": {
+        "authorized_end_epoch": 1791732678.0,
+        "close_reserve_seconds": 1800,
+        "command": [
+          "/workspace/c71-certificates-20261011/rms-all-build01/rms-bench",
+          "c71_rms_pinned_representative_full_depth_benchmark",
+          "--ignored",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "compute_end_epoch": 1791730878.0,
+        "diagnostic_file_cache_reserve_bytes": 0,
+        "exit_code": 0,
+        "gpu_uuid": "GPU-e05e977b-758d-f3f4-cbe8-5720b83d1ae1",
+        "incomplete_samples": 0,
+        "label": "baseline",
+        "mode": "component",
+        "monitor_cpu_AS_limit_bytes": 68719476736,
+        "observed_payload_peak_bytes": null,
+        "payload_limit_bytes": null,
+        "physical_complete_peak": false,
+        "physical_temporary_limit_bytes": 6174015488,
+        "resource_failure": null,
+        "sample_interval_clock": "Linux CLOCK_MONOTONIC, absolute nanoseconds on this host boot",
+        "sample_interval_scope": "Start/end bracket collection of the resource sample; no GPU synchronization or instantaneous peak. External profiler clock alignment requires a matching clock or explicit anchor.",
+        "sampled_host_rss_peak_bytes": 734949376,
+        "sampled_stable_temporary_peak_bytes": 734949376,
+        "sampled_whole_gpu_peak_bytes": 0,
+        "samples": 1018,
+        "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+        "sampling_target_seconds": 0.2,
+        "smaps_read_failures": 0,
+        "stable_samples": 1018,
+        "start_unix_seconds": 1791722441.0403755,
+        "tracked_descendant_identities": 2,
+        "wall_seconds": 203.69611229002476
+      },
+      "gpu_observation": {
+        "nonzero_samples": 0,
+        "samples": 1018,
+        "first_epoch": null,
+        "last_epoch": null,
+        "max_bytes": 0,
+        "attribution": "Unattributed whole-device occupancy; fixture code executes on CPU, monitor has no contemporaneous GPU process inventory."
+      }
+    },
+    {
+      "label": "endpoint",
+      "success": true,
+      "begin": {
+        "cells": 512,
+        "compile_ns": 2673374269,
+        "credit": false,
+        "depth": 99,
+        "live_cells": 511,
+        "program_inner_capacity_bytes": 457616928,
+        "programs": 159,
+        "recipes_blake3": "f192c0a159f6783f6058a57c9ff8a6ef77ab353afb147ef27222fc26c1bace10"
+      },
+      "complete": {
+        "GPU_execution": false,
+        "all_original_layers_executed": true,
+        "cells": 512,
+        "compile_ns": 2673374269,
+        "correlations": 9919,
+        "credit": false,
+        "private_values": "nonzero synthetic rows evaluated with original integer RMS",
+        "prove_ns": 191237654814,
+        "same_FS_original_MAC_endpoint": true,
+        "scope": "selected pinned recipes with reduced cells; excludes statistics caller, PCS, real model, AES setup and full response",
+        "verify_ns": 6602378559,
+        "wire_bytes": 320320,
+        "work_summary": {
+          "cell_rounds": 891,
+          "cell_round_totals": {
+            "coefficient_multiplications": 1176979554,
+            "coefficient_additions": 1371085642,
+            "coefficient_subtractions": 958661020,
+            "fold_value_multiplications": 595120,
+            "fold_weight_multiplications": 710028,
+            "boolean_fold_masks": 570634722,
+            "row_source_callbacks": 455301,
+            "selector_source_callbacks": 456192,
+            "gate_cell_iterations": 340100346
+          },
+          "original_frame_reads": 31440429,
+          "packed_replay": {
+            "batches": 7128,
+            "dag_word_and": 5029845317,
+            "dag_word_operations": 9687049272,
+            "dag_word_xor": 4657203955,
+            "fixed_frame_stack_bytes": 768,
+            "original_frames": 455301,
+            "original_scalar_gate_equivalent": 22261581567,
+            "padding_lanes": 891,
+            "plan_build_capacity_upper_bytes": 264082901,
+            "plan_build_original_gate_visits": 771447452,
+            "plan_capacity_bytes": 251190048,
+            "program_replays": 397485,
+            "scratch_capacity_bytes": 342704,
+            "scratch_moving_capacity_upper_bytes": 685408
+          },
+          "capacity": {
+            "bind": {
+              "phase_owned_capacity_bytes": 120425402,
+              "program_inner_capacity_bytes": 457616928,
+              "proof_capacity_bytes": 0,
+              "protocol_capacity_bytes": 800,
+              "row_capacity_bytes": 0,
+              "total_named_heap_capacity_bytes": 578043130,
+              "triples_capacity_bytes": 0
+            },
+            "bind_attempt_capacity_bytes": 130,
+            "bind_point_capacity_bytes": 216,
+            "bind_prefix_capacity_bytes": 120425186,
+            "bind_stream_stack_bytes": 4096,
+            "bind_transcript_bytes": 120425698,
+            "byte_bind": {
+              "phase_owned_capacity_bytes": 289445,
+              "program_inner_capacity_bytes": 457616928,
+              "proof_capacity_bytes": 442176,
+              "protocol_capacity_bytes": 4256,
+              "row_capacity_bytes": 0,
+              "total_named_heap_capacity_bytes": 458352805,
+              "triples_capacity_bytes": 0
+            },
+            "byte_lut": {
+              "phase_owned_capacity_bytes": 100776440,
+              "program_inner_capacity_bytes": 457616928,
+              "proof_capacity_bytes": 442176,
+              "protocol_capacity_bytes": 4256,
+              "row_capacity_bytes": 0,
+              "total_named_heap_capacity_bytes": 558839800,
+              "triples_capacity_bytes": 0
+            },
+            "byte_proof_capacity_bytes": 17568,
+            "byte_row_capacity_bytes": 0,
+            "byte_triples_capacity_bytes": 3456,
+            "cell": {
+              "phase_owned_capacity_bytes": 264566236,
+              "program_inner_capacity_bytes": 457616928,
+              "proof_capacity_bytes": 442176,
+              "protocol_capacity_bytes": 100472,
+              "row_capacity_bytes": 0,
+              "total_named_heap_capacity_bytes": 722744244,
+              "triples_capacity_bytes": 18432
+            },
+            "cell_round_records_capacity_bytes": 180224,
+            "complete_owned_capacity": false,
+            "edge_capacity_bytes_peak": 38400000,
+            "excluded_external_owner_count": 7,
+            "gkr_layers_capacity_bytes": 442176,
+            "gkr_triples_capacity_bytes": 18432,
+            "index": {
+              "phase_owned_capacity_bytes": 39077096,
+              "program_inner_capacity_bytes": 457616928,
+              "proof_capacity_bytes": 442176,
+              "protocol_capacity_bytes": 800,
+              "row_capacity_bytes": 0,
+              "total_named_heap_capacity_bytes": 497155432,
+              "triples_capacity_bytes": 18432
+            },
+            "named_heap_capacity_peak_bytes": 722744244,
+            "next_weights_transition_capacity_bytes_peak": 38896872,
+            "program_inner_capacity_bytes": 457616928,
+            "proof_capacity_bytes": 459744,
+            "round_auth_capacity_bytes_peak": 192,
+            "row_capacity_bytes": 0,
+            "table_stack_bytes": 98304,
+            "widths_capacity_bytes": 800
+          }
+        }
+      },
+      "measurement": {
+        "authorized_end_epoch": 1791732678.0,
+        "close_reserve_seconds": 1800,
+        "command": [
+          "/workspace/c71-certificates-20261011/rms-endpoint-build01/rms-bench",
+          "c71_rms_pinned_representative_full_depth_benchmark",
+          "--ignored",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "compute_end_epoch": 1791730878.0,
+        "diagnostic_file_cache_reserve_bytes": 0,
+        "exit_code": 0,
+        "gpu_uuid": "GPU-e05e977b-758d-f3f4-cbe8-5720b83d1ae1",
+        "incomplete_samples": 0,
+        "label": "endpoint",
+        "mode": "component",
+        "monitor_cpu_AS_limit_bytes": 68719476736,
+        "observed_payload_peak_bytes": null,
+        "payload_limit_bytes": null,
+        "physical_complete_peak": false,
+        "physical_temporary_limit_bytes": 6174015488,
+        "resource_failure": null,
+        "sample_interval_clock": "Linux CLOCK_MONOTONIC, absolute nanoseconds on this host boot",
+        "sample_interval_scope": "Start/end bracket collection of the resource sample; no GPU synchronization or instantaneous peak. External profiler clock alignment requires a matching clock or explicit anchor.",
+        "sampled_host_rss_peak_bytes": 734371840,
+        "sampled_stable_temporary_peak_bytes": 1218600960,
+        "sampled_whole_gpu_peak_bytes": 556793856,
+        "samples": 999,
+        "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+        "sampling_target_seconds": 0.2,
+        "smaps_read_failures": 0,
+        "stable_samples": 999,
+        "start_unix_seconds": 1791722644.8320658,
+        "tracked_descendant_identities": 2,
+        "wall_seconds": 200.9341045152396
+      },
+      "gpu_observation": {
+        "nonzero_samples": 15,
+        "samples": 999,
+        "first_epoch": 1791722704.1060367,
+        "last_epoch": 1791722707.3700476,
+        "max_bytes": 556793856,
+        "attribution": "Unattributed whole-device occupancy; fixture code executes on CPU, monitor has no contemporaneous GPU process inventory."
+      }
+    }
+  ],
+  "gpu_idle": {
+    "epoch": 1791722845.833937,
+    "memory_used_mib": 0,
+    "apps": ""
+  },
+  "private_bundle": "artifact/c7.1-pod/certificates-rms-all-benchmark01-20261011T130000Z",
+  "private_manifest_sha256": "fbaa76fcbc5ca181460a846412fb631efbbaa466fe5fc0e348bb288c43fcf1e2",
+  "scope": "CPU all 159 original pinned recipes and all 99 depths, 511 nonzero synthetic original-integer-RMS cells plus one padding cell. Original GKR verifier, FS and MAC endpoint checked for each completed fixture. Ideal fixture correlations; excludes real model, statistics caller, PCS, AES and complete response.",
+  "full_wire_byte_comparison_across_159_recipes": false,
+  "paired_repetitions": 1,
+  "canonical_time_extrapolation": null,
+  "single_pair_comparison": {
+    "prover_seconds_baseline": 194.165777463,
+    "prover_seconds_endpoint": 191.237654814,
+    "endpoint_over_baseline": 0.9849194709425146,
+    "same_wire_length": true,
+    "same_correlation_count": true,
+    "statistical_speed_claim": false,
+    "isolated_hardware_pair": false
+  }
+}

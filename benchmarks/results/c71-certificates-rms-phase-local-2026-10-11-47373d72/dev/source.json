@@ -1,0 +1,12 @@
+{
+  "git_sha": "4389a9def5cd44e270dbe6f8f1be59d2ffa3eca2",
+  "git_dirty": true,
+  "binary_path": "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+  "binary_sha256": "257159946638bc4af54bd89b125ec0f7ccad2d036ad24454214e82b2cfc0934e",
+  "source_files": {
+    "rust/volta-pcs/src/c71_matrix/byte_function.rs": "90031a0c9c7a365be10f6881a4797113c983c21c8c1a5b7e1cf06494f5a3b95c",
+    "rust/volta-pcs/src/c71_matrix/byte_function/contraction.rs": "35887bdcf40a6b535f2b42c92b03600d3b2e43461de22154f642f0910cc6d56e",
+    "rust/volta-pcs/src/c71_matrix/rms/gkr.rs": "0472899f4252ec59b35f146011052a2d9991d09a8714df22a8b95ac60913f727"
+  },
+  "scope": "Bounded local parity; no canonical certificate or hardware result"
+}

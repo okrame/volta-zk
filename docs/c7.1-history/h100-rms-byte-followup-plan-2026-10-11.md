@@ -94,3 +94,23 @@ Conservare subito response/acceptance O=0; O=150/300 solo se la stessa
 sessione può continuare rispettando anche il cap ora negativo a O=300.
 Se manca una soluzione eseguibile nella finestra, conservare e spegnere
 anticipatamente. Target 65 s e certificato valido restano distinti.
+
+## Preparazione locale verificata
+
+Il [record pulito `47373d72`](../../benchmarks/results/c71-certificates-rms-phase-local-2026-10-11-47373d72.json)
+conserva 13 artefatti, 41.962 B, con hash verificati. Build mirata passata
+in 58,724 s, RSS aggregato campionato 2.626.625.536 B, sotto lo stop
+3 GiB e deadline 120 s. La build precede il commit; hash dei sorgenti e
+del binario coincidono prima/dopo il test pulito.
+
+Passano la fixture RMS mista (13,150 s, RSS 129.060.864 B) e nove
+controlli documentali (1,087 s, RSS 59.719.680 B), invocazioni separate
+con AS 2 GiB/60 s/un worker. Wire 14.320 B identica al riferimento denso,
+FS/MAC originali, contatori di fase positivi e somma sotto il tempo
+complessivo misurato. I tempi locali Rust opt0 non sono stime H100.
+Nessuna build CUDA o benchmark delle 159 ricette eseguito localmente.
+
+Lettura API del provider alle **15:33:09 UTC**, dopo la deadline finale
+precedente: ancora `EXITED`, runtime assente. Nessun comando resume.
+SHA256 del record:
+`836ee377afa1d4271adadd90432373e245130316d6913a95e0a81311b458da31`.

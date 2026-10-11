@@ -1,0 +1,254 @@
+{
+  "schema": "volta-c71-rms-phase-local-v1",
+  "source_git_sha": "47373d721397cb6254d1bdc74582202ba557fc49",
+  "git_dirty": false,
+  "credit": false,
+  "canonical_selected": false,
+  "gpu_execution": false,
+  "certificates_generated": 0,
+  "certificates_verified": 0,
+  "contexts_completed": [],
+  "checks": [
+    {
+      "check": "c71_b12_packed_mixed_gkr_complete_wire_mac_and_endpoint",
+      "exit_code": 0,
+      "wall_s": 13.149929552804679,
+      "rss_bytes": 129060864,
+      "as_bytes": 2147483648,
+      "deadline_s": 60,
+      "workers": 1,
+      "summary": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 619 filtered out; finished in 13.15s"
+      ]
+    },
+    {
+      "source_git_sha": "47373d721397cb6254d1bdc74582202ba557fc49",
+      "git_dirty": false,
+      "check": "test_c71_docs",
+      "exit_code": 0,
+      "wall_s": 1.086595551110804,
+      "rss_bytes": 59719680,
+      "as_bytes": 2147483648,
+      "deadline_s": 60,
+      "workers": 1
+    }
+  ],
+  "source_provenance": {
+    "git_sha": "47373d721397cb6254d1bdc74582202ba557fc49",
+    "git_dirty": false,
+    "binary_path": "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+    "binary_sha256": "257159946638bc4af54bd89b125ec0f7ccad2d036ad24454214e82b2cfc0934e",
+    "source_files": {
+      "rust/volta-pcs/src/c71_matrix/byte_function.rs": "90031a0c9c7a365be10f6881a4797113c983c21c8c1a5b7e1cf06494f5a3b95c",
+      "rust/volta-pcs/src/c71_matrix/byte_function/contraction.rs": "35887bdcf40a6b535f2b42c92b03600d3b2e43461de22154f642f0910cc6d56e",
+      "rust/volta-pcs/src/c71_matrix/rms/gkr.rs": "0472899f4252ec59b35f146011052a2d9991d09a8714df22a8b95ac60913f727"
+    },
+    "scope": "Bounded local parity; no canonical certificate or hardware result"
+  },
+  "build": {
+    "command": [
+      "cargo",
+      "rustc",
+      "--offline",
+      "--locked",
+      "-j",
+      "1",
+      "-p",
+      "volta-pcs",
+      "--features",
+      "c71-seed6-reference",
+      "--lib",
+      "--profile",
+      "test",
+      "--config",
+      "profile.dev.package.volta-pcs.opt-level=0",
+      "--config",
+      "profile.dev.package.volta-pcs.codegen-units=64",
+      "--",
+      "-Clink-arg=-fuse-ld=lld",
+      "-Clink-arg=-B/home/okrame/.rustup/toolchains/stable-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/bin/gcc-ld",
+      "-Clink-arg=-Wl,--threads=1"
+    ],
+    "cwd": "/home/okrame/projects/volta-zk/rust",
+    "exit_code": 0,
+    "wall_s": 58.723797732032835,
+    "max_rss_bytes": 2562752512,
+    "sampled_aggregate_live_rss_peak_bytes": 2626625536,
+    "sampled_processes": {
+      "2": {
+        "name": "bash",
+        "max_rss_bytes": 3031040,
+        "cpu_ticks": 1,
+        "first_seen_s": 0.0008840840309858322,
+        "last_seen_s": 58.72358177276328
+      },
+      "3": {
+        "name": "python3",
+        "max_rss_bytes": 11096064,
+        "cpu_ticks": 2,
+        "first_seen_s": 0.0009704176336526871,
+        "last_seen_s": 58.723626689985394
+      },
+      "5": {
+        "name": "timeout",
+        "max_rss_bytes": 1576960,
+        "cpu_ticks": 0,
+        "first_seen_s": 0.0010774177499115467,
+        "last_seen_s": 58.72368935588747
+      },
+      "6": {
+        "name": "cargo",
+        "max_rss_bytes": 53043200,
+        "cpu_ticks": 15,
+        "first_seen_s": 0.10309386299923062,
+        "last_seen_s": 58.622010787948966
+      },
+      "21": {
+        "name": "rustc",
+        "max_rss_bytes": 2557878272,
+        "cpu_ticks": 5722,
+        "first_seen_s": 0.3058323757722974,
+        "last_seen_s": 58.62208916293457
+      },
+      "91": {
+        "name": "cc",
+        "max_rss_bytes": 2117632,
+        "cpu_ticks": 0,
+        "first_seen_s": 57.398702966980636,
+        "last_seen_s": 58.520554970018566
+      },
+      "92": {
+        "name": "collect2",
+        "max_rss_bytes": 1495040,
+        "cpu_ticks": 0,
+        "first_seen_s": 57.39883780060336,
+        "last_seen_s": 58.52059267880395
+      },
+      "93": {
+        "name": "rust-lld",
+        "max_rss_bytes": 607969280,
+        "cpu_ticks": 113,
+        "first_seen_s": 57.398971758782864,
+        "last_seen_s": 58.520630220882595
+      }
+    },
+    "sample_interval_s": 0.1,
+    "clock_ticks_per_s": 100,
+    "deadline_s": 120,
+    "workers": 1,
+    "as_limit_mib": null,
+    "sampled_aggregate_rss_stop_bytes": 3221225472,
+    "memory_stop": false,
+    "user_s": 51.795005,
+    "system_s": 6.9503889999999995,
+    "log": "/tmp/c71-rms-phase-build-20261011.log"
+  },
+  "build_provenance": "Build preceded source commit; unchanged source files and binary hashes verified before and after clean test. Production build excludes diagnostic clocks via cfg(test).",
+  "bounded_fixture": {
+    "byte_work": {
+      "checkpoint_max": 0,
+      "checkpoint_min": 0,
+      "heap_capacity_upper_bytes": 33554432,
+      "original_byte_reads": 1152,
+      "regenerated_rows": 576,
+      "retained_rows_peak": 6,
+      "retained_state_capacity_peak_bytes": 60816
+    },
+    "exact_wire_FS_original_MAC": true,
+    "original_frame_reads_baseline": 243340,
+    "original_frame_reads_candidate": 1100,
+    "phase_ns_cell_index_byte": [
+      590084,
+      506293,
+      4586710505
+    ],
+    "prove_ns": 4589952176,
+    "wire_bytes": 14320
+  },
+  "provider_observation": {
+    "action": "get",
+    "observed_epoch": 1791732789.9377341,
+    "pod": {
+      "id": "z6wx2kkn69eoc0",
+      "desiredStatus": "EXITED",
+      "imageName": "runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404",
+      "gpuCount": 1,
+      "memoryInGb": 251,
+      "vcpuCount": 28,
+      "volumeInGb": 0,
+      "containerDiskInGb": 230,
+      "runtime": null
+    }
+  },
+  "provider_observed_utc": "2026-10-11T15:33:09.937734+00:00",
+  "hardware_plan": "docs/c7.1-history/h100-rms-byte-followup-plan-2026-10-11.md",
+  "scope": "Only test-build monotonic phase timers, original reduced wire/FS/MAC parity and documents. No CUDA RMS consumer implemented or measured. No fresh paid duration authorized; provider read-only observation, no resume.",
+  "artifact_directory": "benchmarks/results/c71-certificates-rms-phase-local-2026-10-11-47373d72",
+  "artifacts": [
+    {
+      "path": "c71-byte-streamed-tests-20261011.py",
+      "bytes": 2672,
+      "sha256": "236bfcb64831461232e4390637f2b7d2566c1e7376025fa9e4be7660d806ff77"
+    },
+    {
+      "path": "c71-rms-phase-build-20261011.json",
+      "bytes": 2513,
+      "sha256": "321059a412d336fc9348cf101635c692ee442a05cae4941ed30aeb2081280343"
+    },
+    {
+      "path": "c71-rms-phase-build-20261011.log",
+      "bytes": 14061,
+      "sha256": "3392a3131484445f6493fee256ba6d88778b5f69a0b2985b05a93746078bed76"
+    },
+    {
+      "path": "c71-rms-phase-docs-clean-20261011.json",
+      "bytes": 253,
+      "sha256": "a5cba4b271b74b6d7325ef3bb49ba6c9b7e5be5acb28d37dad476d96d7f39ce1"
+    },
+    {
+      "path": "c71-rms-phase-docs-clean-20261011.log",
+      "bytes": 98,
+      "sha256": "705317e68dd9bc1e6aeed6f42c58890abf69fc058c42906c0aaf818e4c5c4fcf"
+    },
+    {
+      "path": "c71-rms-phase-docs-dev-20261011.log",
+      "bytes": 98,
+      "sha256": "8ee01317196d6f2739df70655380a9128eebacde47c1b93d08a1b87797a42c77"
+    },
+    {
+      "path": "c71-rms-phase-provider-20261011.json",
+      "bytes": 339,
+      "sha256": "64e91adaa95b0e94791f84c49c8dd80608f1f19b936a22fe283526f8e842efed"
+    },
+    {
+      "path": "clean/c71_b12_packed_mixed_gkr_complete_wire_mac_and_endpoint.log",
+      "bytes": 9856,
+      "sha256": "0291b6c7f459937f5161131e831ce2ff6ade7fc937c5a306573673b028c00d5e"
+    },
+    {
+      "path": "clean/checks.json",
+      "bytes": 362,
+      "sha256": "1aedf6a9e6cd89f8814e252093b432fd8176aa15b8089a136429c1e18a13b7d1"
+    },
+    {
+      "path": "clean/source.json",
+      "bytes": 746,
+      "sha256": "b4b8caf84ed60a3f79764e5b2c9cc5972168c3f61f80e9afc725ca0202e565bb"
+    },
+    {
+      "path": "dev/c71_b12_packed_mixed_gkr_complete_wire_mac_and_endpoint.log",
+      "bytes": 9857,
+      "sha256": "30aed42a12ddd8bbbdbb8029649e0b96ec3730fea2d09754e74252e7587a1fda"
+    },
+    {
+      "path": "dev/checks.json",
+      "bytes": 362,
+      "sha256": "771a8f701cebe834107c74f29a669dd38f7a5ad44186cd793a6e8c128ae127e7"
+    },
+    {
+      "path": "dev/source.json",
+      "bytes": 745,
+      "sha256": "b6c975e783353fe6b5124aa4ab0842b2ea94e0ba42c7ec9bcbd5108d454aecd8"
+    }
+  ]
+}

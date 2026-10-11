@@ -1,0 +1,15 @@
+{
+  "action": "get",
+  "observed_epoch": 1791732789.9377341,
+  "pod": {
+    "id": "z6wx2kkn69eoc0",
+    "desiredStatus": "EXITED",
+    "imageName": "runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404",
+    "gpuCount": 1,
+    "memoryInGb": 251,
+    "vcpuCount": 28,
+    "volumeInGb": 0,
+    "containerDiskInGb": 230,
+    "runtime": null
+  }
+}

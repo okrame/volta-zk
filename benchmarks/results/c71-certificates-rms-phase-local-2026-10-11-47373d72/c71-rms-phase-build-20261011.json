@@ -1,0 +1,98 @@
+{
+  "command": [
+    "cargo",
+    "rustc",
+    "--offline",
+    "--locked",
+    "-j",
+    "1",
+    "-p",
+    "volta-pcs",
+    "--features",
+    "c71-seed6-reference",
+    "--lib",
+    "--profile",
+    "test",
+    "--config",
+    "profile.dev.package.volta-pcs.opt-level=0",
+    "--config",
+    "profile.dev.package.volta-pcs.codegen-units=64",
+    "--",
+    "-Clink-arg=-fuse-ld=lld",
+    "-Clink-arg=-B/home/okrame/.rustup/toolchains/stable-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/bin/gcc-ld",
+    "-Clink-arg=-Wl,--threads=1"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk/rust",
+  "exit_code": 0,
+  "wall_s": 58.723797732032835,
+  "max_rss_bytes": 2562752512,
+  "sampled_aggregate_live_rss_peak_bytes": 2626625536,
+  "sampled_processes": {
+    "2": {
+      "name": "bash",
+      "max_rss_bytes": 3031040,
+      "cpu_ticks": 1,
+      "first_seen_s": 0.0008840840309858322,
+      "last_seen_s": 58.72358177276328
+    },
+    "3": {
+      "name": "python3",
+      "max_rss_bytes": 11096064,
+      "cpu_ticks": 2,
+      "first_seen_s": 0.0009704176336526871,
+      "last_seen_s": 58.723626689985394
+    },
+    "5": {
+      "name": "timeout",
+      "max_rss_bytes": 1576960,
+      "cpu_ticks": 0,
+      "first_seen_s": 0.0010774177499115467,
+      "last_seen_s": 58.72368935588747
+    },
+    "6": {
+      "name": "cargo",
+      "max_rss_bytes": 53043200,
+      "cpu_ticks": 15,
+      "first_seen_s": 0.10309386299923062,
+      "last_seen_s": 58.622010787948966
+    },
+    "21": {
+      "name": "rustc",
+      "max_rss_bytes": 2557878272,
+      "cpu_ticks": 5722,
+      "first_seen_s": 0.3058323757722974,
+      "last_seen_s": 58.62208916293457
+    },
+    "91": {
+      "name": "cc",
+      "max_rss_bytes": 2117632,
+      "cpu_ticks": 0,
+      "first_seen_s": 57.398702966980636,
+      "last_seen_s": 58.520554970018566
+    },
+    "92": {
+      "name": "collect2",
+      "max_rss_bytes": 1495040,
+      "cpu_ticks": 0,
+      "first_seen_s": 57.39883780060336,
+      "last_seen_s": 58.52059267880395
+    },
+    "93": {
+      "name": "rust-lld",
+      "max_rss_bytes": 607969280,
+      "cpu_ticks": 113,
+      "first_seen_s": 57.398971758782864,
+      "last_seen_s": 58.520630220882595
+    }
+  },
+  "sample_interval_s": 0.1,
+  "clock_ticks_per_s": 100,
+  "deadline_s": 120,
+  "workers": 1,
+  "as_limit_mib": null,
+  "sampled_aggregate_rss_stop_bytes": 3221225472,
+  "memory_stop": false,
+  "user_s": 51.795005,
+  "system_s": 6.9503889999999995,
+  "log": "/tmp/c71-rms-phase-build-20261011.log"
+}

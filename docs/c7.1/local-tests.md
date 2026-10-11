@@ -40,6 +40,9 @@ proposto usa due coppie AB/BA, 512 celle e tutte le 159 ricette, con
 cache/gate comuni e contrazione byte spenta/accesa. Nessun processo
 hardware avviato; costo canonico, backend RMS CUDA e certificati restano
 aperti. La finestra precedente non viene riaperta né estesa implicitamente.
+Il [record pulito `47373d72`](../../benchmarks/results/c71-certificates-rms-phase-local-2026-10-11-47373d72.json)
+conserva build, parità RMS mista e nove controlli documentali passati;
+provider `EXITED` con runtime assente riverificato alle 15:33:09 UTC.
 
 Il [ledger delle candidate RMS](../c7.1-history/local-rms-candidate-ledger-2026-10-11.md)
 aggiunge fasi distinte per cache/gate e contrazione byte, conservando

@@ -1,0 +1,11 @@
+{
+  "source_git_sha": "47373d721397cb6254d1bdc74582202ba557fc49",
+  "git_dirty": false,
+  "check": "test_c71_docs",
+  "exit_code": 0,
+  "wall_s": 1.086595551110804,
+  "rss_bytes": 59719680,
+  "as_bytes": 2147483648,
+  "deadline_s": 60,
+  "workers": 1
+}

@@ -68,6 +68,29 @@ def test_AES_setup_keeps_the_already_installed_W_cache_and_owner(tmp_path):
     assert "native_common_owner_host" not in phases["public_profile_construction"]["parts"]
 
 
+def test_source_pool_reserve_is_released_before_proof_phases(tmp_path):
+    prepare_inputs(tmp_path)
+    before = compute(tmp_path)
+    marker = dict(reserve_bytes=128 << 20, host_owner_bytes=42168,
+                  initial_commitment_only=True, end_requires_empty_pool=True)
+    (tmp_path / "pool.log").write_text("C71_SOURCE_POOL_PHASE " + json.dumps(marker) + "\n")
+    after = compute(tmp_path)
+    charged = []
+    for old, new in zip(before['named_phase_crosschecks'], after['named_phase_crosschecks']):
+        extra = new['parts'].get('initial_A_stream_ordered_pool_reserve', 0)
+        if extra:
+            charged.append(new['phase'])
+            assert extra == 128 << 20
+        owner_delta = 42168-old['parts']['native_common_owner_host'] if 'native_common_owner_host' in old['parts'] else 0
+        assert new['named_allocation_subtotal_bytes']-old['named_allocation_subtotal_bytes'] == extra+owner_delta
+    assert charged == [f'native_initial_A{i}_{phase}' for i in (1, 2, 3) for phase in ('accumulate', 'hash')]
+    assert after['joint_admitted'] is False
+    marker['end_requires_empty_pool'] = False
+    (tmp_path / "pool.log").write_text("C71_SOURCE_POOL_PHASE " + json.dumps(marker) + "\n")
+    with pytest.raises(ValueError, match='source pool lifetime'):
+        compute(tmp_path)
+
+
 @pytest.mark.parametrize("change", [dict(retained_device_capacity_bytes=0), dict(flag_count=2),
                                   dict(host_owner_bytes=1), dict(sync_flag_reuse=False)])
 def test_invalid_retention_receipt_is_rejected(tmp_path, change):

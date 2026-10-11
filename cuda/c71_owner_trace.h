@@ -22,7 +22,7 @@ namespace c71_owner_trace {
 
 struct Trace {
     // Account sizeof(Trace) in the diagnostic owner's existing host charge.
-    // No heap or stdio buffer. Record storage is 512 B (768 B physical); allow
+    // No heap or stdio buffer. Records: 512 B, physical 768 B, pool 1024 B; allow
     // another 1 KiB stack for emit and 8 KiB for open (4 KiB parent path plus
     // scalars/system-call frames). These are additional diagnostic upper terms.
     // This ceiling is for components/short windows. A selected first group
@@ -30,7 +30,9 @@ struct Trace {
     // it never extends the cap or provides a whole-replay/physical-peak credit.
     static constexpr uint64_t max_records = 131072;
     static constexpr uint64_t max_bytes = 16ULL << 20;
-#ifdef C71_OWNER_TRACE_PHYSICAL
+#ifdef C71_ASYNC_ALLOCATOR_EXPERIMENT
+    static constexpr size_t record_bytes = 1024;
+#elif defined(C71_OWNER_TRACE_PHYSICAL)
     static constexpr size_t record_bytes = 768;
 #else
     static constexpr size_t record_bytes = 512;
@@ -114,7 +116,8 @@ struct Trace {
               uint64_t physical_used = 0, uint64_t physical_total = 0,
               const char* caller = nullptr, unsigned caller_line = 0,
               uint64_t stack_bytes = 0, uint64_t pool_reserved = 0,
-              uint64_t pool_used = 0, uint64_t pool_cache_peak = 0) noexcept {
+              uint64_t pool_used = 0, uint64_t pool_cache_peak = 0,
+              uint64_t pool_live = 0, bool pool_phase = false) noexcept {
         if (failed || fd < 0) return reject();
         if (!armed) return true;
         if (seq >= max_records || slot < -1 || slot >= 512) return reject();
@@ -153,12 +156,15 @@ struct Trace {
         record.text(",\"pool_used_bytes\":"); record.number(pool_used);
         record.text(",\"pool_cache_peak_bytes\":"); record.number(pool_cache_peak);
         record.text(",\"pool_cache_upper_bytes\":134217728");
+        record.text(",\"pool_live_bytes\":"); record.number(pool_live);
+        record.text(",\"pool_phase_active\":"); record.number(pool_phase?1:0);
 #endif
 #else
         (void)physical_used; (void)physical_total;
         (void)caller; (void)caller_line; (void)stack_bytes;
 #endif
         (void)pool_reserved; (void)pool_used; (void)pool_cache_peak;
+        (void)pool_live; (void)pool_phase;
         record.text(",\"status\":"); record.signed_number(status);
         record.text(",\"line\":"); record.number(line); record.text("}\n");
         if (!record.valid || used > max_bytes || record.length > max_bytes - used)

@@ -48,6 +48,15 @@ idle dopo teardown. Il filtro corretto registra crescita esterna al backing
 del pool già contabilizzato; controlli del pool e monitor fisico invariati.
 Nessuna selezione canonica o root A completa; nove scenari simulati passano.
 
+La [variante con lifetime limitato](../c7.1-history/h100-certificates-pool-phase-2026-10-11.md)
+addebita il pool soltanto durante il commitment iniziale A e rimborsa dopo
+fence e pool vuoto verificato. Owner 42.168 B, metadati Rust +16 B;
+14 scenari simulati e parità locale A passano. Ledger aggiornato:
+O=0 5.890.193.534 B, margine 15.386.498 B; O=150/300 superano il
+payload di 23.935.070/63.256.638 B. Variante ancora diagnostica,
+nessuna selezione canonica o verifica H100 del nuovo lifetime.
+Il trial `a-async04` prosegue sulla SHA precedente senza modifiche.
+
 La [campagna precedente](../c7.1-history/h100-followup-close-2026-10-10.md)
 è chiusa con provider EXITED alle 21:24:47 UTC del 10 ottobre e zero
 certificati. Γ originale, pool e fill selezionati, geometria PCS,
@@ -151,8 +160,8 @@ bound; nessuna esenzione o estensione del limite. La modalità è esclusa
 dalla calibrazione e accetta solo zero o il cap completo di 16 MiB.
 
 `tests/test_c71_async_allocator.py` compila solo la variante sperimentale:
-nove scenari su driver simulato, inclusi debito conservato e free dopo
-fence. Eseguire separatamente con AS 2 GiB/60 s e un worker. Non confondere
+14 scenari su driver simulato, inclusi begin/end, debito conservato e
+free dopo fence. Il ledger controlla il rimborso prima delle fasi di prova. Eseguire separatamente con AS 2 GiB/60 s e un worker. Non confondere
 la riserva cache del pool (payload addebitato) con i 16 MiB del file di traccia
 (riserva aggiunta dal monitor al campione fisico).
 

@@ -53,6 +53,8 @@ int c71_range_close(C71RangeContext* context,C71RangeStats* final_stats);
 const char* c71_range_error(const C71RangeContext* context);
 int c71_range_stats(const C71RangeContext* context,C71RangeStats* stats);
 int c71_range_abort(C71RangeContext*);
+int c71_range_source_pool_begin(C71RangeContext*);
+int c71_range_source_pool_end(C71RangeContext*);
 int c71_range_alloc(C71RangeContext*,uint32_t kind,uint64_t count,uint64_t* handle);
 int c71_range_release(C71RangeContext*,uint64_t handle);
 int c71_range_upload(C71RangeContext*,uint64_t handle,const void* input,uint64_t bytes);

@@ -456,6 +456,8 @@ api! {
     error: unsafe extern "C" fn(Raw)->*const c_char => "c71_range_error",
     abort: unsafe extern "C" fn(Raw)->i32 => "c71_range_abort",
     stats: unsafe extern "C" fn(Raw,*mut Stats)->i32 => "c71_range_stats",
+    source_pool_begin: unsafe extern "C" fn(Raw)->i32 => "c71_range_source_pool_begin",
+    source_pool_end: unsafe extern "C" fn(Raw)->i32 => "c71_range_source_pool_end",
     alloc: unsafe extern "C" fn(Raw,u32,u64,*mut u64)->i32 => "c71_range_alloc",
     release: unsafe extern "C" fn(Raw,u64)->i32 => "c71_range_release",
     upload: unsafe extern "C" fn(Raw,u64,*const c_void,u64)->i32 => "c71_range_upload",
@@ -608,6 +610,14 @@ impl Runtime {
         let status=unsafe {(self.api.residual_query_finish)(self.raw,token.id,ids.as_ptr(),count as u32,output.as_mut_ptr())};
         self.check(status)?;if output.iter().any(|&x|x>=volta_field::P){return self.abort("native E query noncanonical output");}
         Ok(output)
+    }
+    pub(in crate::c71_matrix) fn source_pool_begin(&mut self)->Result<(),String> {
+        self.ready()?;
+        let status=unsafe {(self.api.source_pool_begin)(self.raw)};self.check(status)
+    }
+    pub(in crate::c71_matrix) fn source_pool_end(&mut self)->Result<(),String> {
+        self.ready()?;
+        let status=unsafe {(self.api.source_pool_end)(self.raw)};self.check(status)
     }
     fn require_residual_packet(&mut self,packet:&ResidualPacket)->Result<(),String> {
         self.ready()?;
@@ -2371,7 +2381,8 @@ pub(in crate::c71_matrix) mod tests {
     }
     #[test]
     fn c71_b12_native_residual_symbols_4() {
-        residual_missing_symbols(&["c71_pcs_residual_contract_finish","c71_pcs_short_leaves_private"]);
+        residual_missing_symbols(&["c71_pcs_residual_contract_finish","c71_pcs_short_leaves_private",
+            "c71_range_source_pool_begin","c71_range_source_pool_end"]);
     }
     fn residual_fixture_packet(remaining:usize,point:&[E])->ResidualPacket {
         let tables=Poly::new_from_point(point,E::ONE).as_slice().iter().copied().map(PcsField::from).collect();

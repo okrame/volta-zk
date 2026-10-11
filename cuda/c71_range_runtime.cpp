@@ -117,6 +117,7 @@ struct Buffer {
     uint64_t flag=0;
     uint64_t visits=0;
     bool release_failed=false;
+    bool pooled=false;
     uint32_t residual_role=0;
     uint64_t residual_group=0;
 };
@@ -152,7 +153,9 @@ struct C71RangeContext {
 #ifdef C71_ASYNC_ALLOCATOR_EXPERIMENT
     cudaMemPool_t async_pool=nullptr;
     uint64_t async_cache_peak=0;
+    uint64_t async_live_bytes=0;
     bool async_cache_charged=false;
+    bool async_phase=false;
     static constexpr uint64_t async_cache_upper=128ULL<<20;
 #endif
     C71RangeAccount account=nullptr;
@@ -199,17 +202,17 @@ int fail(C71RangeContext* c,const char* message) {
 int checked(C71RangeContext* c,cudaError_t status) {
     return status==cudaSuccess ? 0 : fail(c,cudaGetErrorString(status));
 }
-cudaError_t release_allocation(C71RangeContext* c,void* allocation) {
+cudaError_t release_allocation(C71RangeContext* c,void* allocation,bool pooled=false) {
 #ifdef C71_ASYNC_ALLOCATOR_EXPERIMENT
     // Drain the pool's free itself before reading its capacity counters.
-    auto status=allocation==c->weights?cudaFree(allocation):cudaFreeAsync(allocation,c->stream);
-    if(status==cudaSuccess && allocation!=c->weights) {
+    auto status=pooled?cudaFreeAsync(allocation,c->stream):cudaFree(allocation);
+    if(status==cudaSuccess && pooled) {
         ++c->stats.fences;
         status=cudaStreamSynchronize(c->stream);
     }
-    if(status==cudaSuccess && c->async_pool) return cudaMemPoolTrimTo(c->async_pool,0);
+    if(status==cudaSuccess && pooled) return cudaMemPoolTrimTo(c->async_pool,0);
 #else
-    (void)c;
+    (void)c; (void)pooled;
     const auto status=cudaFree(allocation);
 #endif
     return status;
@@ -246,15 +249,15 @@ int trace_event(C71RangeContext* c,const char* op,const char* edge,
         const auto reserved_status=cudaMemPoolGetAttribute(c->async_pool,cudaMemPoolAttrReservedMemCurrent,&pool_reserved);
         const auto used_status=cudaMemPoolGetAttribute(c->async_pool,cudaMemPoolAttrUsedMemCurrent,&pool_used);
         if(reserved_status!=cudaSuccess || used_status!=cudaSuccess || pool_used>pool_reserved ||
-            pool_reserved>c->stats.arena_bytes+c->async_cache_upper) {
+            pool_reserved>c->async_live_bytes+(c->async_phase?c->async_cache_upper:0)) {
             (void)c->diagnostic.emit("pool_account","after",a.slot,a.kind,a.logical,a.capacity,
                 c->stats.arena_bytes,c->stats.weights_bytes,-1,__LINE__,0,0,caller,caller_line,0,
-                pool_reserved,pool_used,c->async_cache_peak);
+                pool_reserved,pool_used,c->async_cache_peak,c->async_live_bytes,c->async_phase);
             c->diagnostic.failed=true;
             return fail(c,"experimental pool exceeds charged cache reserve or query failed");
         }
     }
-    c->async_cache_peak=std::max(c->async_cache_peak,pool_reserved>c->stats.arena_bytes?pool_reserved-c->stats.arena_bytes:0);
+    c->async_cache_peak=std::max(c->async_cache_peak,pool_reserved>c->async_live_bytes?pool_reserved-c->async_live_bytes:0);
     pool_cache_peak=c->async_cache_peak;
 #endif
     if(!c->diagnostic.armed) return 0;
@@ -267,7 +270,7 @@ int trace_event(C71RangeContext* c,const char* op,const char* edge,
     const uint64_t used=total-available;
 #ifdef C71_ASYNC_ALLOCATOR_EXPERIMENT
     // Pool backing is already bounded and charged; retain unexplained growth.
-    const uint64_t payload=pool_reserved+c->stats.weights_bytes;
+    const uint64_t payload=pool_reserved+c->stats.arena_bytes-c->async_live_bytes+c->stats.weights_bytes;
 #else
     const uint64_t payload=c->stats.arena_bytes+c->stats.weights_bytes;
 #endif
@@ -282,8 +285,12 @@ int trace_event(C71RangeContext* c,const char* op,const char* edge,
         c->diagnostic.failed=true;
         return fail(c,"physical owner stack query failed");
     }
+    uint64_t pool_live=0; bool pool_phase=false;
+#ifdef C71_ASYNC_ALLOCATOR_EXPERIMENT
+    pool_live=c->async_live_bytes; pool_phase=c->async_phase;
+#endif
     if(!c->diagnostic.emit(op,edge,a.slot,a.kind,a.logical,a.capacity,
-        c->stats.arena_bytes,c->stats.weights_bytes,status,line,used,total,caller,caller_line,stack,pool_reserved,pool_used,pool_cache_peak))
+        c->stats.arena_bytes,c->stats.weights_bytes,status,line,used,total,caller,caller_line,stack,pool_reserved,pool_used,pool_cache_peak,pool_live,pool_phase))
         return fail(c,"bounded physical owner trace failed");
     c->diagnostic.last_overhead=overhead;
     return 0;
@@ -337,9 +344,15 @@ int fence(C71RangeContext* c,const char* caller=nullptr,unsigned caller_line=0,b
 int launched(C71RangeContext* c,cudaError_t e) { ++c->stats.launches; return checked(c,e); }
 void recount(C71RangeContext* c) {
     c->stats.live_capacity_bytes=0; c->stats.logical_bytes=0;
+#ifdef C71_ASYNC_ALLOCATOR_EXPERIMENT
+    c->async_live_bytes=0;
+#endif
     for(const auto& b:c->buffers) if(b.id) {
         c->stats.live_capacity_bytes+=b.capacity;
         c->stats.logical_bytes+=b.count*sizes[b.kind];
+#ifdef C71_ASYNC_ALLOCATOR_EXPERIMENT
+        if(b.pooled) c->async_live_bytes+=b.capacity;
+#endif
     }
     c->stats.peak_capacity_bytes=std::max(c->stats.peak_capacity_bytes,c->stats.live_capacity_bytes);
     c->stats.arena_bytes=c->stats.live_capacity_bytes;
@@ -369,6 +382,52 @@ extern "C" int c71_range_stats(const C71RangeContext* c,C71RangeStats* out) {
     if(!c || !out) return -1;
     *out=c->stats; return 0;
 }
+extern "C" int c71_range_source_pool_begin(C71RangeContext* c) {
+    if(!ready(c)) return -1;
+#ifdef C71_ASYNC_ALLOCATOR_EXPERIMENT
+    if(c->async_phase || c->async_cache_charged || c->async_live_bytes || c->source.values[0] ||
+        c->salts.phase || c->linear.phase || c->residual.active || c->contract.active || c->residual_query.phase)
+        return fail(c,"source pool begin overlaps an active phase");
+    if(fence(c)) return -1;
+    if(c->account) {
+        if(c->account(int64_t(c->async_cache_upper))) return fail(c,"experimental pool cache budget exhausted");
+        c->async_cache_charged=true;
+    }
+    c->async_phase=true;
+    uint64_t threshold=0,reserved=0,used=0;
+    if(checked(c,cudaDeviceGetDefaultMemPool(&c->async_pool,c->device)) ||
+        checked(c,cudaMemPoolSetAttribute(c->async_pool,cudaMemPoolAttrReleaseThreshold,&threshold)) ||
+        checked(c,cudaMemPoolGetAttribute(c->async_pool,cudaMemPoolAttrReleaseThreshold,&threshold)) ||
+        checked(c,cudaMemPoolTrimTo(c->async_pool,0)) ||
+        checked(c,cudaMemPoolGetAttribute(c->async_pool,cudaMemPoolAttrReservedMemCurrent,&reserved)) ||
+        checked(c,cudaMemPoolGetAttribute(c->async_pool,cudaMemPoolAttrUsedMemCurrent,&used))) return -1;
+    if(threshold || reserved || used) return fail(c,"source pool initial state differs");
+    C71_TRACE_VALUE(-1,0,0,0);
+    return C71_TRACE_EVENT(c,"after",0)?-1:0;
+#else
+    return 0;
+#endif
+}
+extern "C" int c71_range_source_pool_end(C71RangeContext* c) {
+    if(!ready(c)) return -1;
+#ifdef C71_ASYNC_ALLOCATOR_EXPERIMENT
+    if(!c->async_phase || c->async_live_bytes || c->source.values[0] || c->salts.phase ||
+        c->linear.phase || c->residual.active || c->contract.active || c->residual_query.phase)
+        return fail(c,"source pool end retains live work");
+    if(fence(c)) return -1;
+    uint64_t reserved=0,used=0;
+    if(checked(c,cudaMemPoolTrimTo(c->async_pool,0)) ||
+        checked(c,cudaMemPoolGetAttribute(c->async_pool,cudaMemPoolAttrReservedMemCurrent,&reserved)) ||
+        checked(c,cudaMemPoolGetAttribute(c->async_pool,cudaMemPoolAttrUsedMemCurrent,&used))) return -1;
+    if(reserved || used) return fail(c,"source pool end retains backing memory");
+    if(c->async_cache_charged) c->account(-int64_t(c->async_cache_upper));
+    c->async_cache_charged=false; c->async_phase=false; c->async_pool=nullptr;
+    C71_TRACE_VALUE(-1,0,0,0);
+    return C71_TRACE_EVENT(c,"after",0)?-1:0;
+#else
+    return 0;
+#endif
+}
 extern "C" int c71_range_create(int device,uint64_t bytes,uint64_t reserve,C71RangeAccount account,C71RangeContext** out) {
     if(!out) return -1;
     *out=nullptr;
@@ -386,17 +445,6 @@ extern "C" int c71_range_create(int device,uint64_t bytes,uint64_t reserve,C71Ra
     C71_TRACE_VALUE(-1,0,sizeof(*c),0);
     if(C71_TRACE_EVENT(c,"before",0)) return -1;
     if(checked(c,cudaSetDevice(device))) return -1;
-#ifdef C71_ASYNC_ALLOCATOR_EXPERIMENT
-    if(c->account) {
-        if(c->account(int64_t(c->async_cache_upper))) return fail(c,"experimental pool cache budget exhausted");
-        c->async_cache_charged=true;
-    }
-    uint64_t threshold=0;
-    if(checked(c,cudaDeviceGetDefaultMemPool(&c->async_pool,device)) ||
-        checked(c,cudaMemPoolSetAttribute(c->async_pool,cudaMemPoolAttrReleaseThreshold,&threshold)) ||
-        checked(c,cudaMemPoolGetAttribute(c->async_pool,cudaMemPoolAttrReleaseThreshold,&threshold))) return -1;
-    if(threshold) return fail(c,"experimental pool release threshold differs");
-#endif
     // sm_90 kernels need at most 216 B; avoid the unused default stack reserve.
     size_t stack=0;
     if(checked(c,cudaDeviceSetLimit(cudaLimitStackSize,256)) ||
@@ -425,14 +473,14 @@ extern "C" int c71_range_close(C71RangeContext* c,C71RangeStats* out) {
         for(auto& b:c->buffers) if(b.id) {
 #ifdef C71_ASYNC_ALLOCATOR_EXPERIMENT
             // cudaFree on pool memory does not add an implicit fence.
-            if(!drained) { error=true; continue; }
+            if(b.pooled && !drained) { error=true; continue; }
 #endif
             // A failed cudaFree has uncertain ownership. Never submit the same
             // pointer again; keep its entire capacity in the failure ledger.
             if(b.release_failed) { error=true; continue; }
             C71_TRACE_BUFFER(c,&b);
             const bool trace_failed=C71_TRACE_EVENT(c,"before",0)!=0;
-            const auto status=release_allocation(c,b.allocation);
+            const auto status=release_allocation(c,b.allocation,b.pooled);
             if(checked(c,status)) error=true;
             else { if(c->account) c->account(-int64_t(b.capacity)); b={}; ++c->stats.releases; }
             C71_TRACE_RECOUNT(c);
@@ -444,7 +492,7 @@ extern "C" int c71_range_close(C71RangeContext* c,C71RangeStats* out) {
         const bool pool_clean=!c->async_pool ||
             (!checked(c,cudaMemPoolTrimTo(c->async_pool,0)) &&
              !checked(c,cudaMemPoolGetAttribute(c->async_pool,cudaMemPoolAttrReservedMemCurrent,&reserved)) && !reserved);
-        if(pool_clean && !c->stats.arena_bytes) {
+        if(pool_clean && !c->async_live_bytes) {
             if(c->async_cache_charged) c->account(-int64_t(c->async_cache_upper));
             c->async_cache_charged=false;
         } else error=true;
@@ -482,7 +530,7 @@ int allocate(C71RangeContext* c,uint32_t kind,uint64_t count,uint64_t* out) {
         return -1;
     }
 #ifdef C71_ASYNC_ALLOCATOR_EXPERIMENT
-    const auto status=cudaMallocFromPoolAsync(&allocation,capacity,c->async_pool,c->stream);
+    const auto status=c->async_phase?cudaMallocFromPoolAsync(&allocation,capacity,c->async_pool,c->stream):cudaMalloc(&allocation,capacity);
 #else
     const auto status=cudaMalloc(&allocation,capacity);
 #endif
@@ -492,6 +540,9 @@ int allocate(C71RangeContext* c,uint32_t kind,uint64_t count,uint64_t* out) {
         return -1;
     }
     *slot={id,allocation,capacity,count,0,kind}; *out=id;
+#ifdef C71_ASYNC_ALLOCATOR_EXPERIMENT
+    slot->pooled=c->async_phase;
+#endif
     ++c->stats.allocations; recount(c);
     return C71_TRACE_EVENT(c,"after",status) ? -1 : 0;
 }
@@ -511,7 +562,7 @@ extern "C" int c71_range_release(C71RangeContext* c,uint64_t id) {
     if(fence(c)) return -1;
     C71_TRACE_BUFFER(c,b);
     if(C71_TRACE_EVENT(c,"before",0)) return -1;
-    const auto status=release_allocation(c,b->allocation);
+    const auto status=release_allocation(c,b->allocation,b->pooled);
     if(checked(c,status)) { b->release_failed=true; (void)C71_TRACE_EVENT(c,"after",status); return -1; }
     if(c->account) c->account(-int64_t(b->capacity));
     *b={}; ++c->stats.releases; recount(c);
@@ -701,7 +752,7 @@ int dense_complete(C71RangeContext* c,uint64_t flag,Buffer* output) {
         auto* completed_flag=buffer(c,flag);
         C71_TRACE_BUFFER(c,completed_flag);
         if(C71_TRACE_EVENT(c,"before",0)) return -1;
-        const auto status=release_allocation(c,completed_flag->allocation);
+        const auto status=release_allocation(c,completed_flag->allocation,completed_flag->pooled);
         if(checked(c,status)) { completed_flag->release_failed=true; (void)C71_TRACE_EVENT(c,"after",status); return -1; }
         if(c->account) c->account(-int64_t(completed_flag->capacity));
         *completed_flag={}; ++c->stats.releases; recount(c);
@@ -1485,7 +1536,7 @@ int retire_private(C71RangeContext* c,uint64_t& id) {
     if(!b || b->kind!=C71_PCS_PRIVATE) return fail(c,"private PCS retirement type");
     C71_TRACE_BUFFER(c,b);
     if(C71_TRACE_EVENT(c,"before",0)) return -1;
-    const auto status=release_allocation(c,b->allocation);
+    const auto status=release_allocation(c,b->allocation,b->pooled);
     if(checked(c,status)) { b->release_failed=true; (void)C71_TRACE_EVENT(c,"after",status); return -1; }
     if(c->account) c->account(-int64_t(b->capacity));
     *b={}; id=0; ++c->stats.releases; recount(c);
@@ -1701,7 +1752,7 @@ int retire_linear(C71RangeContext* c,uint64_t& id) {
     if(!b || b->kind!=C71_LINEAR_PRIVATE) return fail(c,"linear private retirement type");
     C71_TRACE_BUFFER(c,b);
     if(C71_TRACE_EVENT(c,"before",0)) return -1;
-    const auto status=release_allocation(c,b->allocation);
+    const auto status=release_allocation(c,b->allocation,b->pooled);
     if(checked(c,status)) { b->release_failed=true; (void)C71_TRACE_EVENT(c,"after",status); return -1; }
     if(c->account) c->account(-int64_t(b->capacity));
     *b={}; id=0; ++c->stats.releases; recount(c);
@@ -1834,7 +1885,7 @@ int residual_retire(C71RangeContext* c,uint64_t& id) {
         return fail(c,"PCS residual retirement type");
     C71_TRACE_BUFFER(c,b);
     if(C71_TRACE_EVENT(c,"before",0)) return -1;
-    const auto status=release_allocation(c,b->allocation);
+    const auto status=release_allocation(c,b->allocation,b->pooled);
     if(checked(c,status)) { b->release_failed=true; (void)C71_TRACE_EVENT(c,"after",status); return -1; }
     if(c->account) c->account(-int64_t(b->capacity));
     *b={}; id=0; ++c->stats.releases; recount(c);

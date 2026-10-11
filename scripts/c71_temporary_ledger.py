@@ -368,6 +368,16 @@ def ledger_native(directory, query_record, linear_record, proposed_s1=False, lif
             raise ValueError('incompatible measured synchronous flag retention')
         owner = sync_flag[0]['host_owner_bytes']
         owner_observations.append({'marker': 'C71_SYNC_ERROR_FLAG_REUSE', 'bytes': owner})
+    source_pool = records(directory, 'C71_SOURCE_POOL_PHASE')
+    if source_pool:
+        if (len(source_pool) != 1 or not proposed_s1
+                or source_pool[0].get('reserve_bytes') != 128 << 20
+                or source_pool[0].get('host_owner_bytes', 0) < owner
+                or source_pool[0].get('initial_commitment_only') is not True
+                or source_pool[0].get('end_requires_empty_pool') is not True):
+            raise ValueError('incompatible source pool lifetime receipt')
+        owner = source_pool[0]['host_owner_bytes']
+        owner_observations.append({'marker': 'C71_SOURCE_POOL_PHASE', 'bytes': owner})
     replay = max(row['replay_upper_bytes_including_persistent'] for row in device)
     persistent = max(row['persistent_device_bytes'] for row in device)
     c = claims[0]
@@ -529,6 +539,15 @@ def ledger_native(directory, query_record, linear_record, proposed_s1=False, lif
                 'CPU shrink also has a possible old+new overlap; powers for the preceding two folds already retired.')
     complete_capacity = (complete_prepared_phases(phases, directory, common, persistent,
                          replay, initial, extensions, stages, owner) if proposed_s1 else None)
+    if source_pool:
+        for row in phases:
+            if row['phase'].startswith('native_initial_A') and row['phase'].endswith(('_accumulate', '_hash')):
+                row['parts']['initial_A_stream_ordered_pool_reserve'] = source_pool[0]['reserve_bytes']
+                total = sum(row['parts'].values())
+                row.update(named_allocation_subtotal_bytes=total,
+                           remaining_shared_payload_capacity_bytes=payload-total,
+                           named_subtotal_exceeds_payload=total > payload)
+                row['lifetime'] += ' Pool reserve covers the complete initial A commitment, including salt prescan; fenced empty-pool check precedes refund and root publication.'
     return {'backend': 's1-prepared' if proposed_s1 else 'native-2026-10-09',
             'credit': False, 'gpu_execution': False, 'canonical_execution': False,
             'enforced_joint_allocation_limit_bytes': payload,
@@ -546,6 +565,7 @@ def ledger_native(directory, query_record, linear_record, proposed_s1=False, lif
             'S1_query_E_all_selected_extension_stages_modeled': proposed_s1,
             'current_owner_host_byte_observations': owner_observations,
             'synchronous_error_flag_retention': sync_flag[0] if sync_flag else None,
+            'initial_A_source_pool_phase': source_pool[0] if source_pool else None,
             'additional_explicit_component_caps': {
                 'residual_dim35_EQ_packet_device': residual_packet(35)['device'],
                 'residual_dim35_EQ_packet_host_upper': residual_packet(35)['host_upper'],

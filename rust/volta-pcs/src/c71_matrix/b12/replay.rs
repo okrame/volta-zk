@@ -1130,6 +1130,7 @@ impl Code {
             let rowcode = code.clone();
             let mut histogram = [0u64; 256];
             let prepare_owner = owner.clone();
+            owner.lock().map_err(|_| "native A owner poisoned")?.source_pool_begin()?;
             let (root, tree) = Tree::commit_resident_source(mmcs, code.height,
                 Arc::new(move |indices| rowcode.rows(indices)), |rng, starts, offsets| {
                     let mut runtime = prepare_owner.lock().map_err(|_| "native A owner poisoned")?;
@@ -1255,6 +1256,7 @@ impl Code {
                     "native_fences": after.fences - before.fences, "native": after}))?;
                 Ok((top, work, after.peak_capacity_bytes as usize))
             })?;
+            owner.lock().map_err(|_| "native A owner poisoned")?.source_pool_end()?;
             Ok((root, ZkWhirReplayHandle::new(Oracle { tree: Arc::new(tree), base: true, lease: None }), histogram))
         })();
         if let Err(error) = &result {

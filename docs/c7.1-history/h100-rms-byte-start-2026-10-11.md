@@ -53,3 +53,18 @@ cap fisico6.174.015.488 B, un worker; nessun setup AES o profiler in questa
 misura. I cronometri separano cella/replay, indici, byte e residuo.
 Resta aperto il core RMS CUDA: misure ridotte e conti non sono un
 certificato, tempo canonico o selezione delle candidate.
+
+Il [record di avvio pulito `30867b9b`](../../benchmarks/results/c71-certificates-rms-byte-start-2026-10-11-30867b9b.json)
+conserva timestamp REST, deadline, hardware autenticato e PID/start ticks
+del workflow. Il bundle privato contiene19 file,30.284 B, manifest SHA256
+`340d75461e565d2dd721b53fb8988a2093bb2f2738486f9a6ffe1393e7cc8a37`.
+Il workflow parte alle16:22:50 UTC, PID1587/start ticks1476126403,
+CPU AS64 GiB. Checkout anonimo pulito `30867b9b`, Rust1.96.1 e
+ricette159 con SHA256
+`b0c69fdb2395a1014f877725b119948af038a48baaebcbb4b336551f87f35853`
+coincidente con la VM. Nove controlli documentali passano localmente,
+AS2 GiB/60 s/un worker. Build e benchmark sono ancora in corso nel record:
+nessuna misura completa RMS, nuova root o certificato viene attribuita.
+Il controllo `/proc` sandbox non vede il PID del guard esterno; il
+successivo controllo nel namespace host conferma PID21664/start ticks332107132
+vivo. Non è una terminazione o un riavvio del guard.

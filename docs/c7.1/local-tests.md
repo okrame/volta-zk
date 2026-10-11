@@ -43,6 +43,9 @@ cache/gate comuni, contrazione byte spenta/accesa. I tempi di test
 separano cella/replay, indici, byte e residuo. Zero certificati canonici;
 costo completo e backend RMS CUDA restano aperti. Non si riusa alcuno
 stato terminale, KV o correlazione AES delle campagne precedenti.
+Il [record di avvio `30867b9b`](../../benchmarks/results/c71-certificates-rms-byte-start-2026-10-11-30867b9b.json)
+conserva le nuove ricevute; workflow vivo, checkout e ricette verificati,
+compilazione in corso. Nessun risultato completo attribuito all'avvio.
 Il [record pulito `47373d72`](../../benchmarks/results/c71-certificates-rms-phase-local-2026-10-11-47373d72.json)
 conserva build, parità RMS mista e nove controlli documentali passati;
 provider `EXITED` con runtime assente riverificato alle 15:33:09 UTC.

@@ -1,0 +1,85 @@
+{
+  "schema": "volta-c71-rms-byte-start-v1",
+  "source_git_sha": "30867b9b4d000943d25daacc816367b9b7435a03",
+  "git_dirty": false,
+  "credit": false,
+  "canonical_selected": false,
+  "certificates_generated": 0,
+  "certificates_verified": 0,
+  "contexts_completed": [],
+  "campaign": {
+    "pod_id": "z6wx2kkn69eoc0",
+    "campaign_id": "rms-byte03-20261011",
+    "start_epoch": 1791735180.494,
+    "deadline_epoch": 1791763980.494,
+    "campaign_end_epoch": 1791762180.494,
+    "guard_stop_epoch": 1791763380.494,
+    "start_basis": "provider REST lastStartedAt, confirmed Resumed by user",
+    "provider_restart_metadata": {
+      "id": "z6wx2kkn69eoc0",
+      "desiredStatus": "RUNNING",
+      "lastStartedAt": "2026-10-11 16:13:00.494 +0000 UTC",
+      "lastStatusChange": "Resumed by user: Sun Oct 11 2026 16:13:00 GMT+0000 (Coordinated Universal Time)",
+      "createdAt": "2026-10-09 19:09:34.662 +0000 UTC",
+      "machineId": "130ww2wudblf",
+      "gpuCount": 1,
+      "memoryInGb": 251,
+      "vcpuCount": 28
+    },
+    "close_reserve_seconds": 1800,
+    "authorized_duration_seconds": 28800,
+    "authorization": "resume autorizzo a proseguire ssh z6wx2kkn69eoc0-64412195@ssh.runpod.io -i ~/.ssh/id_ed25519",
+    "start_utc": "2026-10-11T16:13:00.494000+00:00",
+    "deadline_utc": "2026-10-12T00:13:00.494000+00:00",
+    "campaign_end_utc": "2026-10-11T23:43:00.494000+00:00",
+    "guard_stop_utc": "2026-10-12T00:03:00.494000+00:00"
+  },
+  "hardware": {
+    "proxy": "z6wx2kkn69eoc0-64412195@ssh.runpod.io",
+    "method": "authenticated SSH proxy PTY with strict known proxy host and existing owner key; read /etc/ssh/ssh_host_ed25519_key.pub",
+    "host_pubkey": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGDKl0qBQLvI0Q44lE5bln2EBbTMKBRp90jefqp44LxI",
+    "hardware": "NVIDIA H100 80GB HBM3",
+    "gpu_uuid": "GPU-e05e977b-758d-f3f4-cbe8-5720b83d1ae1",
+    "gpu_memory_total_mib": 81559,
+    "driver": "580.126.09",
+    "gpu_memory_used_mib": 0,
+    "gpu_apps": "",
+    "remote_epoch": 1791735478.0518827
+  },
+  "launcher": {
+    "pid": 1587,
+    "start_ticks": "1476126403",
+    "epoch": 1791735770.4579356,
+    "cpu_as_bytes": 68719476736
+  },
+  "status": "workflow started; build in progress",
+  "fixture_plan": {
+    "recipes": 159,
+    "depth": 99,
+    "cells": 512,
+    "correlations": "9919 ideal, fixture only",
+    "order": [
+      "A1",
+      "B1",
+      "B2",
+      "A2"
+    ],
+    "common_cache_bytes": 16777216,
+    "common_shared_gates": true,
+    "byte_contracted": [
+      false,
+      true,
+      true,
+      false
+    ],
+    "build_deadline_s": 900,
+    "trial_deadline_s": 600,
+    "physical_cap_bytes": 6174015488,
+    "CPU_AS_bytes": 68719476736
+  },
+  "private_bundle": "artifact/c7.1-pod/certificates-rms-byte03-start-20261011",
+  "private_manifest_sha256": "340d75461e565d2dd721b53fb8988a2093bb2f2738486f9a6ffe1393e7cc8a37",
+  "private_files": 19,
+  "private_bytes": 30284,
+  "scope": "Provider timing and authenticated hardware/startup only. No measured complete model proof, no AES setup started. Original relation, pinned model/workload/Gamma, no session-state reuse."
+}

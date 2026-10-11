@@ -1,0 +1,8 @@
+{
+  "scope": "Documentation-only precommit check; no hardware or protocol execution",
+  "command": "(ulimit -v 2097152; timeout -k 5s 60s .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_docs.py)",
+  "result": "9 passed in 1.46s",
+  "AS_bytes": 2147483648,
+  "deadline_seconds": 60,
+  "log_sha256": "65f8cb856846cf8bd38e0f9f0e33f50d36ab8e2435ac7608a76ac20becf033d8"
+}

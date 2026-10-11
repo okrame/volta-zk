@@ -1,6 +1,6 @@
 # Documentazione
 
-[Chiusura del seguito H100 del 10 ottobre](c7.1-history/h100-followup-close-2026-10-10.md).
+[Chiusura della campagna certificati dell’11 ottobre](c7.1-history/h100-certificates-close-2026-10-11.md).
 
 ## Documentazione operativa
 

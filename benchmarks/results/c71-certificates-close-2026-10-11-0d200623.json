@@ -1,0 +1,121 @@
+{
+  "schema": "volta-c71-certificates-campaign-close-v1",
+  "source_git_sha": "0d200623a521bd4ddc6508f2c4a965ef276b3a48",
+  "git_dirty": false,
+  "credit": false,
+  "goal_achieved": false,
+  "pod_id": "z6wx2kkn69eoc0",
+  "provider_start_epoch_conservative": 1791703878.2375293,
+  "provider_exit_confirmed_epoch": 1791723586.5508983,
+  "provider_exit_confirmed_utc": "2026-10-11T12:59:46.550898+00:00",
+  "campaign_wall_seconds_conservative": 19708.31336903572,
+  "authorized_max_seconds": 28800,
+  "closed_before_compute_deadline": true,
+  "provider_final": {
+    "action": "get",
+    "observed_epoch": 1791723586.5508983,
+    "pod": {
+      "id": "z6wx2kkn69eoc0",
+      "desiredStatus": "EXITED",
+      "imageName": "runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404",
+      "gpuCount": 1,
+      "memoryInGb": 251,
+      "vcpuCount": 28,
+      "volumeInGb": 0,
+      "containerDiskInGb": 230,
+      "runtime": null
+    }
+  },
+  "guard_retirement": {
+    "epoch": 1791723617.256324,
+    "guard_pid": 4147417,
+    "start_ticks": 328983854,
+    "action": "retire_owned_guard_after_provider_EXITED_runtime_null",
+    "signal": "SIGTERM",
+    "terminated": true,
+    "provider_confirmation_epoch": 1791723586.5508983
+  },
+  "certificates_generated": 0,
+  "certificates_verified": 0,
+  "certificates": [],
+  "canonical_contexts_completed": [],
+  "same_session_O0_150_300_complete": false,
+  "complete_model_A_components": 1,
+  "A_context": 0,
+  "A_record": "benchmarks/results/c71-certificates-a-vmm-pool01-2026-10-11-6ccb54a1.json",
+  "RMS_reduced_fixture_runs_verified": 2,
+  "RMS_record": "benchmarks/results/c71-certificates-rms-all-recipes-2026-10-11-04137d0c.json",
+  "canonical_runner_started_this_campaign": false,
+  "fresh_real_AES_setup_started_this_campaign": false,
+  "early_close_reason": "RMS complete-work barrier remains unresolved after the all-recipe reduced measurement; no validated complete-certificate path is ready. Do not spend a new setup on an unresolved prefix. Minimum requested O=0 certificate was not achieved.",
+  "Gamma_original_admitted_unchanged": true,
+  "Gamma_retained_inputs": [
+    {
+      "path": "gamma-inputs/admission.json",
+      "bytes": 2580,
+      "sha256": "a6d6abe28da2d50629e1e6790d7af76ab58002f0f21aab8b917dab16b0676259"
+    },
+    {
+      "path": "gamma-inputs/candidate.json",
+      "bytes": 75661,
+      "sha256": "8965d0c3dc170e41b304982b90409b0362e93de4d029b08bba3716ab64dbf95e"
+    },
+    {
+      "path": "gamma-inputs/ingest-original.json",
+      "bytes": 54249,
+      "sha256": "564205d987de34873e4d1c48d6552da24ab2ca4667e385901ffa6bfb5bcd9314"
+    },
+    {
+      "path": "gamma-inputs/ledger-original.json",
+      "bytes": 6227073,
+      "sha256": "478ef250fdb61db673b4d4efa86b3d3ce274081ca1e00653703bc6d8b0d74d7d"
+    },
+    {
+      "path": "gamma-inputs/oracle-plan-original.json",
+      "bytes": 4029315,
+      "sha256": "a26a68972307e17b85086791a1c4870ae66b90a905922472a391267574a8fdf5"
+    },
+    {
+      "path": "gamma-inputs/recipes-original.json",
+      "bytes": 20791,
+      "sha256": "2397d8ca1a2ad65c2df36057e3232e4c51f844a5e044b7cab8a95ed99ac7dc6d"
+    },
+    {
+      "path": "gamma-inputs/tables.bin",
+      "bytes": 24414870,
+      "sha256": "052de68a51b02da1b442ed31ce49031630976747cf6605c191672c1e8417d31d"
+    },
+    {
+      "path": "gamma-inputs/transfer-manifest.json",
+      "bytes": 1627,
+      "sha256": "f1143161fd82554066fb2df8c67d548410a01e749f45fa304ec4c57f67a4d842"
+    },
+    {
+      "path": "gamma-inputs/verified-20261011.json",
+      "bytes": 178,
+      "sha256": "7dc7202cade0c1a240e76c8520b0d1e55e0b1fd4d5db81874c950da9c0421ffc",
+      "retained_copy": "/home/okrame/projects/volta-zk/artifact/c7.1-pod/certificates-preparation-20261011T080000Z/gamma-inputs/verified-20261011.json"
+    }
+  ],
+  "original_relation_and_trust_model_unchanged": true,
+  "formal_and_runtime_premises_open": [
+    "Malicious Seed6 bootstrap/guard/cGGM/split/F_EQ/EA composition and reduction resources",
+    "Rust/CUDA/Fp3/VMM refinement, replay determinism, ownership and initialized-prefix correspondence",
+    "Complete canonical physical allowance/peak and original endpoint acceptance"
+  ],
+  "no_65_second_claim": true,
+  "no_full_canonical_time_extrapolation": true,
+  "private_close_bundle": "artifact/c7.1-pod/certificates-close-20261011T130000Z",
+  "private_close_manifest_sha256": "9f790287d13f74eca79df216d9cdf99ea1082b00fd46065c77d3efb04fe81189",
+  "private_receipts_bundle": "artifact/c7.1-pod/certificates-close-receipts-20261011T130100Z",
+  "private_receipts_manifest_sha256": "4ddf2c4333facdc3a6ae31a73a299d1a9b9f81dbb99e7d45ac22b2cbbe8f1d8a",
+  "prior_manifest_entries_verified_before_close": 837,
+  "additional_files_preserved": 38,
+  "additional_bytes_preserved": 79802043,
+  "verified_reused_files_in_close_manifest": 817,
+  "historical_deviations_preserved": [
+    "a-async04 CPU launcher AS 128 GiB deviation; later monitor enforces AS 64 GiB",
+    "First local endpoint census lacked explicit AS/timeout wrapper; bounded clean repeat recorded separately"
+  ],
+  "next_required_work": "An exact RMS algorithm/backend reduction with original wire/FS/MAC parity and complete accounting, then a fresh canonical O=0 run after pertinent barriers close. Initial A diagnostic success alone is insufficient."
+}

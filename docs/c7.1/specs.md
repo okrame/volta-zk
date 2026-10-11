@@ -3,17 +3,25 @@
 [Design](design.md) · [Sicurezza](security.md) · [Test locali](local-tests.md) ·
 [Test su RunPod](runpod-tests.md) · [Archivio](../c7.1-history/README.md)
 
-La [nuova campagna certificati dell’11 ottobre](../c7.1-history/h100-certificates-start-2026-10-11.md)
-è autorizzata sul solo pod `z6wx2kkn69eoc0` per **otto ore complessive**,
-inclusi trenta minuti di conservazione e spegnimento. Avvio provider
-ricostruito conservativamente **07:31:18 UTC**, fine calcolo **15:01:18 UTC**,
-guard indipendente **15:26:18 UTC**, stop entro **15:31:18 UTC**
-(17:31:18 Italia). H100 80 GB verificata; codice e input ripristinati,
-packed ed esponenti originali verificati, Γ ammesso senza ricalibrazione.
-Priorità: risolvere lo stop fisico A con una nuova ipotesi, misurare presto
-RMS/GKR rappresentativo, esportare immediatamente ogni certificato completo
-e registrarne l’accettazione canonica durevole. Obiettivo O=0/150/300
-nella stessa nuova sessione, minimo O=0 completo e verificato.
+La [campagna certificati dell’11 ottobre è chiusa](../c7.1-history/h100-certificates-close-2026-10-11.md)
+con **zero certificati canonici generati e verificati**: il minimo O=0
+richiesto non è raggiunto e nessun contesto canonico è completato.
+Avvio provider conservativo 07:31:18 UTC, conferma **EXITED/runtime assente
+alle 12:59:46 UTC**, dopo 5 h 28 min 28 s, entro le otto ore autorizzate.
+Guard indipendente ritirato dopo la conferma; nessun processo GPU prima
+dello stop. Codice ed evidenze revisionate sul branch dedicato
+`runpod/z6wx2kkn69eoc0/c71-certificates-20261011`.
+
+Risultati acquisiti: primo commitment A reale O=0 con 512/512 gruppi sotto
+il cap fisico campionato e due fixture RMS complete su tutte le 159 ricette.
+Il costo RMS canonico resta irrisolto; nessun nuovo setup AES o runner
+canonico completo è stato avviato. La chiusura anticipata conserva questa
+mancanza e non attribuisce il target 65 s. Γ originale resta ammesso,
+verificato e invariato; input, successi e fallimenti sono conservati con
+manifest verificati. Il seguito richiede una riduzione esatta sostanziale
+del lavoro RMS, parità e contabilità pertinenti, quindi una nuova sessione
+canonica da O=0 quando gli impedimenti siano chiusi. I componenti non sono
+certificati e non forniscono stato da riprendere.
 
 Il [preflight dell’11 ottobre](../c7.1-history/h100-certificates-preflight-2026-10-11.md)
 conferma packed ed esponenti originali e conserva il replay di 512 cicli di

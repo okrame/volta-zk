@@ -198,6 +198,7 @@ def self_check():
 def admitted_rms_work():
     selected_gkr = source(PCS+'rms/gkr.rs')
     boolean_first_round = 'boolean_first_round_gate_products_saved' in selected_gkr
+    endpoint_products = 'hi[gate.x] * hi[gate.y] - f[0] - f[2]' in selected_gkr
     packed_replay = 'patterns::PackedReplay::new' in selected_gkr
     ledger_path='artifact/c7.1-pod/ledger-20261007T150200Z/ledger-attention.json'
     admission_path='artifact/c7.1-pod/gamma-admission-20261007T155133Z/admission.json'
@@ -226,12 +227,20 @@ def admitted_rms_work():
         first = {op:sum(p['gate_iterations_across_layers'][op]
                         for p in support['rounds'][0]['profiles'])
                  for op in ('and','xor','copy')}
-        saved = 7*(first['and']+first['xor'])+2*first['copy'] if boolean_first_round else 0
+        saved = (6 if endpoint_products else 7)*(first['and']+first['xor'])+2*first['copy'] if boolean_first_round else 0
         selected_core = dict(core)
+        if endpoint_products:
+            binary = ops['and']+ops['xor']
+            selected_core['Fp3_mul'] -= binary
+            selected_core['Fp3_add'] -= binary
+            selected_core['Fp3_sub'] += 2*binary
         if boolean_first_round:
             selected_core['Fp3_mul'] -= saved
             selected_core['Fp3_add'] += 5*first['and']+2*first['copy']
             selected_core['Fp3_sub'] += first['and']-first['xor']
+            if endpoint_products:
+                selected_core['Fp3_add'] += first['and']+first['xor']
+                selected_core['Fp3_sub'] -= 2*(first['and']+first['xor'])
             selected_core['Fp3_neg'] -= first['xor']
         assert all(v >= 0 for v in selected_core.values())
         assert sum(layer['scalar_boolean_replay_gate_evaluations'] for layer in rms['layers'])==cell['cell_first_scalar_boolean_replay_gates']
@@ -256,6 +265,7 @@ def admitted_rms_work():
             'complete_physical_peak':ledger['complete_physical_peak'],'credit':ledger['credit']},
         'selected_route':'canonical_prove -> caller.prove_rms -> gkr.prove -> prove_sourcewise -> prove_impl(true,None); no pattern histogram; canonical byte endpoint sourcewise',
         'selected_boolean_first_round_masks':boolean_first_round,
+        'selected_three_endpoint_products':endpoint_products,
         'selected_packed_replay':packed_replay,
         'packed_replay_scope':'64 original cells per packet, one disjoint live mask per present program; mixed packets may have no 64x sharing. Historical scalar gate counts are not selected packed counts',
         'frame_callback_scope':'CompactFrames cache reads/replay; not additional complete A reconstructions',

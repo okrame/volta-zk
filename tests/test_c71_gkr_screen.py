@@ -4,6 +4,36 @@ import pytest
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 import c71_gkr_screen as gkr
 
+
+def test_endpoint_products_keep_historical_census_and_count_current_schedule():
+    ops = {'and': 1, 'xor': 1, 'copy': 1}
+    assert gkr.factored_arithmetic(ops, 1) == {
+        'Fp3_mul': 22, 'Fp3_add': 21, 'Fp3_sub': 8, 'Fp3_neg': 1}
+    assert gkr.factored_arithmetic(ops, 1, endpoint_products=True) == {
+        'Fp3_mul': 20, 'Fp3_add': 19, 'Fp3_sub': 12, 'Fp3_neg': 1}
+
+
+def test_selected_endpoint_census_preserves_boolean_first_round(monkeypatch):
+    import c71_residual_profile as residual
+    body = (residual.ROOT / residual.PCS / 'rms/gkr.rs').read_text()
+    monkeypatch.setattr(residual, 'source', lambda _: body)
+    current = residual.admitted_rms_work()
+    monkeypatch.setattr(residual, 'source', lambda _: body.replace(
+        'hi[gate.x] * hi[gate.y] - f[0] - f[2]', 'previous four-product formula'))
+    previous = residual.admitted_rms_work()
+    assert current['selected_three_endpoint_products']
+    assert not previous['selected_three_endpoint_products']
+    for new, old in zip(current['contexts'], previous['contexts']):
+        assert new['coefficient_core_Fp3'] == old['coefficient_core_Fp3']
+        ops = new['gate_iterations_after_public_support_pruning']
+        first = old['selected_boolean_first_round_products_saved'] - new['selected_boolean_first_round_products_saved']
+        saved = ops['and'] + ops['xor'] - first
+        before, after = old['selected_coefficient_core_Fp3'], new['selected_coefficient_core_Fp3']
+        assert before['Fp3_mul'] - after['Fp3_mul'] == saved > 0
+        assert before['Fp3_add'] - after['Fp3_add'] == saved
+        assert after['Fp3_sub'] - before['Fp3_sub'] == 2 * saved
+        assert after['Fp3_neg'] == before['Fp3_neg']
+
 RECORD = (Path(__file__).resolve().parents[1] / 'benchmarks' / 'results' /
           'c71-bounded-rms-gkr-2026-09-19-3e7f24eb332b.json')
 

@@ -179,12 +179,12 @@ def aggregate(keys, blueprints, baseline_rms):
                 ops[op] += count * totals[p][op]
                 if r == 0:
                     first[op] += count * totals[p][op]
-    arithmetic = gkr.factored_arithmetic(ops, depth * pairs_all)
-    saved = 7 * (first["and"] + first["xor"]) + 2 * first["copy"]
+    arithmetic = gkr.factored_arithmetic(ops, depth * pairs_all, endpoint_products=True)
+    saved = 6 * (first["and"] + first["xor"]) + 2 * first["copy"]
     selected = dict(arithmetic)
     selected["Fp3_mul"] -= saved
-    selected["Fp3_add"] += 5 * first["and"] + 2 * first["copy"]
-    selected["Fp3_sub"] += first["and"] - first["xor"]
+    selected["Fp3_add"] += 6 * first["and"] + first["xor"] + 2 * first["copy"]
+    selected["Fp3_sub"] -= first["and"] + 3 * first["xor"]
     selected["Fp3_neg"] -= first["xor"]
     cell_bits = padded.bit_length() - 1
     rows = sum(4 * cell_bits + 6 * (w.bit_length() - 1) + 3 for w in widths[:-1]) + 1

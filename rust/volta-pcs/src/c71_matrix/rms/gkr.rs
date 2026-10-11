@@ -491,9 +491,9 @@ pub(in super::super) fn work_census(
         let [and, xor, copy] = counts;
         // Factor the shared program selector after summing weighted gate
         // polynomials; Copy omits y/dy and Xor uses additions for doubling.
-        let products = (7 * and + 7 * xor + 2 * copy + 6 * programs.len() as u64) * (n - 1);
-        let additions = (4 * and + 9 * xor + 2 * copy + 6 * programs.len() as u64) * (n - 1);
-        let subtractions = (2 * and + 4 * xor + copy + programs.len() as u64) * (n - 1);
+        let products = (6 * and + 6 * xor + 2 * copy + 6 * programs.len() as u64) * (n - 1);
+        let additions = (3 * and + 8 * xor + 2 * copy + 6 * programs.len() as u64) * (n - 1);
+        let subtractions = (4 * and + 6 * xor + copy + programs.len() as u64) * (n - 1);
         mul += products;
         add += additions;
         sub += subtractions;
@@ -934,7 +934,7 @@ fn source_cell_round<const BOOLEAN_ROWS: bool>(
                         work.coefficient_additions += 9;
                         work.coefficient_subtractions += 3;
                         work.boolean_first_round_small_integer_scales += 3;
-                        work.boolean_first_round_gate_products_saved += 7;
+                        work.boolean_first_round_gate_products_saved += 6;
                     }
                     continue;
                 }
@@ -949,7 +949,9 @@ fn source_cell_round<const BOOLEAN_ROWS: bool>(
                 } else {
                     let y = lo[gate.y];
                     let dy = hi[gate.y] - y;
-                    let mut f = [x * y, x * dy + dx * y, dx * dy];
+                    let mut f = [x * y, Fp3::ZERO, dx * dy];
+                    // hi_x*hi_y = x*y + x*dy + dx*y + dx*dy.
+                    f[1] = hi[gate.x] * hi[gate.y] - f[0] - f[2];
                     if gate.op == Op::Xor {
                         f = [x + y - (f[0] + f[0]), dx + dy - (f[1] + f[1]), -(f[2] + f[2])];
                         work.coefficient_additions += 5;
@@ -959,9 +961,9 @@ fn source_cell_round<const BOOLEAN_ROWS: bool>(
                     for j in 0..3 {
                         u[j] += gate_weight * f[j];
                     }
-                    work.coefficient_multiplications += 7;
-                    work.coefficient_additions += 4;
-                    work.coefficient_subtractions += 2;
+                    work.coefficient_multiplications += 6;
+                    work.coefficient_additions += 3;
+                    work.coefficient_subtractions += 4;
                 }
             }
             let a = selector_lo[program_index];
@@ -1904,7 +1906,7 @@ mod tests {
                     }
                     for (round, value) in original.iter_mut().enumerate() {
                         let pairs = shared_support_pairs(&support.intervals[p], support.padded_cells >> (round+1));
-                        *value += pairs * (6 + if round==0 { 0 } else { 7*(gate_counts[0]+gate_counts[1])+2*gate_counts[2] });
+                        *value += pairs * (6 + if round==0 { 0 } else { 6*(gate_counts[0]+gate_counts[1])+2*gate_counts[2] });
                     }
                 }
                 let mut merged_products = vec![0u64; rounds];
@@ -1916,7 +1918,7 @@ mod tests {
                         (0..rounds).map(|round| shared_support_pairs(&intervals, support.padded_cells >> (round+1))).collect()
                     });
                     for (round, value) in merged_products.iter_mut().enumerate() {
-                        *value += pairs[round] * (6 + if round==0 { 0 } else { 7*(gate_counts[0]+gate_counts[1])+2*gate_counts[2] });
+                        *value += pairs[round] * (6 + if round==0 { 0 } else { 6*(gate_counts[0]+gate_counts[1])+2*gate_counts[2] });
                     }
                 }
                 println!("C71_RMS_SHARED_SUPPORT_SCREEN {}", serde_json::json!({
@@ -1931,8 +1933,8 @@ mod tests {
                 "programs":programs.len(),"depth":depth,"input_width":geometry[depth-1],
                 "original_gates":raw,"indexed_gate_union":indexed.len(),
                 "selector_support_classes":masks.len(),"merged_weighted_gates":merged,
-                "original_all_programs_products_per_pair":7*(raw[0]+raw[1])+2*raw[2]+6*programs.len(),
-                "merged_all_classes_products_per_pair":7*(merged[0]+merged[1])+2*merged[2]+6*masks.len(),
+                "original_all_programs_products_per_pair":6*(raw[0]+raw[1])+2*raw[2]+6*programs.len(),
+                "merged_all_classes_products_per_pair":6*(merged[0]+merged[1])+2*merged[2]+6*masks.len(),
                 "scope":"public full-support algebraic count only; excludes structural pruning, first Boolean round, plan build, replay and all runtime costs"}));
         }
     }
@@ -2139,8 +2141,8 @@ mod tests {
                 ).unwrap();
                 assert_eq!(actual, expected, "pattern={pattern}, missing={missing:?}");
                 assert_eq!(boolean.coefficient_multiplications, 6);
-                assert_eq!(ordinary.coefficient_multiplications, 22);
-                assert_eq!(boolean.boolean_first_round_gate_products_saved, 16);
+                assert_eq!(ordinary.coefficient_multiplications, 20);
+                assert_eq!(boolean.boolean_first_round_gate_products_saved, 14);
                 assert_eq!(boolean.owned_heap_peak_bytes, ordinary.owned_heap_peak_bytes);
             }
         }
@@ -2280,9 +2282,9 @@ mod tests {
             assert_eq!(work.selector_assigned_terms, 3);
             let expected_work = if prefix.is_empty() {
                 // One of the two cell pairs has no program-1 selector.
-                (8, 6, 2, 55, 55, 20)
+                (8, 6, 2, 50, 50, 30)
             } else {
-                (4, 4, 0, 35, 36, 13)
+                (4, 4, 0, 32, 33, 19)
             };
             assert_eq!(work.logical_gate_cell_iterations, expected_work.0);
             assert_eq!(work.gate_cell_iterations, expected_work.1);

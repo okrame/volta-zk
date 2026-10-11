@@ -142,6 +142,23 @@ una cella di padding. È un ampliamento della fixture, senza modifiche al prover
 serve a misurare tutte le profondità con il mix completo. Esecuzione
 solo sul pod con timeout finito; nessuna extrapolazione a modello intero.
 
+La candidata RMS a **tre prodotti agli estremi** riscrive il solo
+coefficiente incrociato: `hi_x*hi_y - x*y - dx*dy`. Per AND/XOR generali
+passa da sette a sei prodotti Fp3, compresa la ponderazione; primo round
+Booleano invariato. L’identità segue `mul_add`, `add_mul`, `sub_mul` e
+`mul_sub` nel campo; il raffinamento Rust/Fp3 resta una premessa, senza
+nuovo lemma runtime. Stesse tre celle locali, nessun nuovo heap o messaggio.
+Contatori e screen della candidata sono aggiornati; i conti storici
+restano riferiti alla vecchia schedule. Le parità locali passano; misure pendenti,
+nessuna selezione canonica o risoluzione del costo completo.
+
+La candidata supera tre regressioni Rust: pattern Booleani esaustivi,
+coefficienti contro fold densi e byte wire/FS/MAC originali della fixture
+mista. Passano anche 22 controlli Python/documenti. Il core analitico con
+supporto originale è 751.359.028.655.932 prodotti Fp3 per contesto,
+92.647.174.504.368 in meno (10,98%); replay, callback e memoria invariati.
+Nessun tempo completo dedotto. [Evidenza e limiti](../c7.1-history/h100-certificates-rms-endpoint-2026-10-11.md).
+
 La [campagna precedente](../c7.1-history/h100-followup-close-2026-10-10.md)
 è chiusa con provider EXITED alle 21:24:47 UTC del 10 ottobre e zero
 certificati. Γ originale, pool e fill selezionati, geometria PCS,

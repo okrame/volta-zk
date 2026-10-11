@@ -101,11 +101,13 @@ def native_record(path, kind='RMS', old=0):
     raise ValueError(f'native O={old} {kind} census missing')
 
 
-def factored_arithmetic(ops, program_pairs):
+def factored_arithmetic(ops, program_pairs, *, endpoint_products=False):
+    # Frozen callers keep the seven-product schedule unless explicitly upgraded.
+    saved = ops['and'] + ops['xor'] if endpoint_products else 0
     return {
-        'Fp3_mul':7*(ops['and']+ops['xor'])+2*ops['copy']+6*program_pairs,
-        'Fp3_add':4*ops['and']+9*ops['xor']+2*ops['copy']+6*program_pairs,
-        'Fp3_sub':2*ops['and']+4*ops['xor']+ops['copy']+program_pairs,
+        'Fp3_mul':7*(ops['and']+ops['xor'])+2*ops['copy']+6*program_pairs-saved,
+        'Fp3_add':4*ops['and']+9*ops['xor']+2*ops['copy']+6*program_pairs-saved,
+        'Fp3_sub':2*ops['and']+4*ops['xor']+ops['copy']+program_pairs+2*saved,
         'Fp3_neg':ops['xor'],
     }
 

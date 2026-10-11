@@ -109,6 +109,13 @@ a 1.142.302.058 B di payload; il massimo generale O=300 supera ancora il
 cap di 29.066.098 B. Riserva pool 128 MiB solo durante A, owner 50.880 B;
 nessun credito fisico o certificato dal ledger.
 
+Il [preflight H100 combinato](../../benchmarks/results/c71-certificates-vmm-pool-preflight-2026-10-11-6ccb54a1.json)
+passa KV, trasformazioni, root/aperture A e wire/FS/MAC lineare originali;
+GPU idle dopo cleanup. Build CUDA 21,775 s, binari Rust riusati da
+`abf57c4a` con produzione invariata e SHA conservata. Il nuovo
+`a-vmm-pool01` parte da O=0 con 5.400 s e cap invariati; esito pendente.
+Zero root del modello e certificati canonici.
+
 La [scansione incrementale dei pesi RMS](../c7.1-history/h100-certificates-rms-prefix-2026-10-11.md)
 ricalcola soltanto il suffisso cambiato di Eq, senza divisioni. Passano
 prefissi zero/uno, coefficienti densi e wire/FS/MAC della fixture mista;

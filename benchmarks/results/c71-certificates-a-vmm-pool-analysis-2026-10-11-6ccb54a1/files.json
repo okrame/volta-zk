@@ -1,0 +1,36 @@
+{
+  "credit": false,
+  "scope": "Post-run clock-bracket analysis of frozen raw records, not a new hardware run. Inputs retain their original SHAs and failures. Earlier negative summaries were generated before the final validation-only asserts; formulas are unchanged.",
+  "files": [
+    {
+      "path": "c71-a-async04-groups-20261011.json",
+      "bytes": 14135,
+      "sha256": "a405c4748da0cfb890791ef4886ed887c2d53fa2722d2b0a2af799ccba0a7b46"
+    },
+    {
+      "path": "c71-a-vmm-pool01-groups-20261011.json",
+      "bytes": 83362,
+      "sha256": "9627065093f0f1e21abae362dd36467672a71df22fb7a4589efd80b338d87ef7"
+    },
+    {
+      "path": "c71-a-vmm01-groups-20261011.json",
+      "bytes": 3333,
+      "sha256": "a61ea832df9129a35e43eb986b41d8d509c021fa3baa71db95b9cae30525d878"
+    },
+    {
+      "path": "c71-group-resource-report-20261011.py",
+      "bytes": 3367,
+      "sha256": "aa383de91fcbc316608f30761600f0a12d75e70f86eb48de15432f3668119837"
+    },
+    {
+      "path": "c71-group-resource-selfcheck-20261011.py",
+      "bytes": 2523,
+      "sha256": "051821ec89a97f7554e00976f87adad3eb92af4df50db0b8085b9550f4041f2d"
+    },
+    {
+      "path": "c71-group-resource-selfcheck-final02-20261011.log",
+      "bytes": 150,
+      "sha256": "7db4451c81017c6790c669e18752dc90f9819f855b91f9972aca61574d7b19a0"
+    }
+  ]
+}

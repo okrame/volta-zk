@@ -1,0 +1,130 @@
+{
+  "credit": false,
+  "physical_complete_peak": false,
+  "input_directory": "artifact/c7.1-pod/certificates-a-vmm01-20261011T112800Z/a-vmm01",
+  "clock_anchor_uncertainty_ns": 490,
+  "completed_groups": 14,
+  "partial_groups": [
+    14
+  ],
+  "samples_outside_completed_group_interiors": 3606,
+  "group_wall_seconds": {
+    "min": 58.474276172,
+    "median": 60.995961729,
+    "max": 65.001651996,
+    "sum": 858.095742123
+  },
+  "groups": [
+    {
+      "group": 0,
+      "sampled_peak_bytes": 4839312896,
+      "contained_samples": 145,
+      "start": 904190549305,
+      "end": 965352089146
+    },
+    {
+      "group": 1,
+      "sampled_peak_bytes": 5368524288,
+      "contained_samples": 149,
+      "start": 965353032417,
+      "end": 1029824693811
+    },
+    {
+      "group": 2,
+      "sampled_peak_bytes": 4894780928,
+      "contained_samples": 151,
+      "start": 1029829381692,
+      "end": 1090659765309
+    },
+    {
+      "group": 3,
+      "sampled_peak_bytes": 4846550528,
+      "contained_samples": 149,
+      "start": 1090660893915,
+      "end": 1152135857058
+    },
+    {
+      "group": 4,
+      "sampled_peak_bytes": 5700107776,
+      "contained_samples": 150,
+      "start": 1152139065487,
+      "end": 1217140717483
+    },
+    {
+      "group": 5,
+      "sampled_peak_bytes": 5700107776,
+      "contained_samples": 148,
+      "start": 1217141395367,
+      "end": 1280552935949
+    },
+    {
+      "group": 6,
+      "sampled_peak_bytes": 4846571008,
+      "contained_samples": 147,
+      "start": 1280553796891,
+      "end": 1342492656547
+    },
+    {
+      "group": 7,
+      "sampled_peak_bytes": 4894801408,
+      "contained_samples": 151,
+      "start": 1342493525005,
+      "end": 1404098196778
+    },
+    {
+      "group": 8,
+      "sampled_peak_bytes": 4894801408,
+      "contained_samples": 152,
+      "start": 1404098916057,
+      "end": 1464378836787
+    },
+    {
+      "group": 9,
+      "sampled_peak_bytes": 4894805504,
+      "contained_samples": 152,
+      "start": 1464379543310,
+      "end": 1524557440763
+    },
+    {
+      "group": 10,
+      "sampled_peak_bytes": 4846571008,
+      "contained_samples": 151,
+      "start": 1524558544960,
+      "end": 1583032821132
+    },
+    {
+      "group": 11,
+      "sampled_peak_bytes": 5700111872,
+      "contained_samples": 150,
+      "start": 1583034405215,
+      "end": 1643397206178
+    },
+    {
+      "group": 12,
+      "sampled_peak_bytes": 4846571008,
+      "contained_samples": 150,
+      "start": 1643398505313,
+      "end": 1702597899481
+    },
+    {
+      "group": 13,
+      "sampled_peak_bytes": 4846571008,
+      "contained_samples": 151,
+      "start": 1702598813074,
+      "end": 1762304993709
+    }
+  ],
+  "scope": "Only complete monitor collection intervals strictly contained in completed A group clock brackets; sampled peaks are not instantaneous or complete physical maxima.",
+  "input_files": [
+    {
+      "path": "artifact/c7.1-pod/certificates-a-vmm01-20261011T112800Z/a-vmm01/journals.progress.jsonl",
+      "bytes": 1193801,
+      "sha256": "083bfe9c75a9383826da27c41a0261ca3a95464fca3c4c1d4f36bdcb0c88e9a1"
+    },
+    {
+      "path": "artifact/c7.1-pod/certificates-a-vmm01-20261011T112800Z/a-vmm01/logs/a.memory.csv",
+      "bytes": 945829,
+      "sha256": "6a20ccda7d01d0cac1ea8fd01d43e2454277540ab146dac1f7a2e26575061d9a"
+    }
+  ]
+}

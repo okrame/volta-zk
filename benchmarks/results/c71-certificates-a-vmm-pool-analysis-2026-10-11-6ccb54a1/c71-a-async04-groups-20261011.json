@@ -1,0 +1,606 @@
+{
+  "credit": false,
+  "physical_complete_peak": false,
+  "input_directory": "artifact/c7.1-pod/certificates-a-async04-20261011T101000Z/a-async04",
+  "clock_anchor_uncertainty_ns": 769,
+  "completed_groups": 82,
+  "partial_groups": [
+    82
+  ],
+  "samples_outside_completed_group_interiors": 3769,
+  "group_wall_seconds": {
+    "min": 6.490289838,
+    "median": 6.529770014,
+    "max": 7.901499116,
+    "sum": 540.893028738
+  },
+  "groups": [
+    {
+      "group": 0,
+      "sampled_peak_bytes": 5994110464,
+      "contained_samples": 33,
+      "start": 745483283458,
+      "end": 752212479313
+    },
+    {
+      "group": 1,
+      "sampled_peak_bytes": 5994991104,
+      "contained_samples": 35,
+      "start": 752213219409,
+      "end": 759318937928
+    },
+    {
+      "group": 2,
+      "sampled_peak_bytes": 6028602880,
+      "contained_samples": 32,
+      "start": 759319678552,
+      "end": 765833360472
+    },
+    {
+      "group": 3,
+      "sampled_peak_bytes": 5961494016,
+      "contained_samples": 32,
+      "start": 765834153368,
+      "end": 772362184489
+    },
+    {
+      "group": 4,
+      "sampled_peak_bytes": 5995048448,
+      "contained_samples": 32,
+      "start": 772363003627,
+      "end": 778875296171
+    },
+    {
+      "group": 5,
+      "sampled_peak_bytes": 5995048448,
+      "contained_samples": 32,
+      "start": 778876100607,
+      "end": 785403020587
+    },
+    {
+      "group": 6,
+      "sampled_peak_bytes": 5995052544,
+      "contained_samples": 33,
+      "start": 785403832408,
+      "end": 792143369089
+    },
+    {
+      "group": 7,
+      "sampled_peak_bytes": 6028606976,
+      "contained_samples": 32,
+      "start": 792144223929,
+      "end": 798642046287
+    },
+    {
+      "group": 8,
+      "sampled_peak_bytes": 5961498112,
+      "contained_samples": 32,
+      "start": 798642912924,
+      "end": 805183751196
+    },
+    {
+      "group": 9,
+      "sampled_peak_bytes": 5961502208,
+      "contained_samples": 32,
+      "start": 805184613537,
+      "end": 811708198502
+    },
+    {
+      "group": 10,
+      "sampled_peak_bytes": 6028611072,
+      "contained_samples": 32,
+      "start": 811709105344,
+      "end": 818228121352
+    },
+    {
+      "group": 11,
+      "sampled_peak_bytes": 5995056640,
+      "contained_samples": 33,
+      "start": 818228997351,
+      "end": 825009194376
+    },
+    {
+      "group": 12,
+      "sampled_peak_bytes": 5995056640,
+      "contained_samples": 32,
+      "start": 825010031852,
+      "end": 831526490071
+    },
+    {
+      "group": 13,
+      "sampled_peak_bytes": 6028611072,
+      "contained_samples": 32,
+      "start": 831528051917,
+      "end": 838046895718
+    },
+    {
+      "group": 14,
+      "sampled_peak_bytes": 5961502208,
+      "contained_samples": 32,
+      "start": 838047942603,
+      "end": 844577108000
+    },
+    {
+      "group": 15,
+      "sampled_peak_bytes": 5995056640,
+      "contained_samples": 32,
+      "start": 844577985774,
+      "end": 851103202605
+    },
+    {
+      "group": 16,
+      "sampled_peak_bytes": 6028611072,
+      "contained_samples": 32,
+      "start": 851104104317,
+      "end": 857626890269
+    },
+    {
+      "group": 17,
+      "sampled_peak_bytes": 5961502208,
+      "contained_samples": 32,
+      "start": 857627832438,
+      "end": 864151501515
+    },
+    {
+      "group": 18,
+      "sampled_peak_bytes": 6028611072,
+      "contained_samples": 33,
+      "start": 864152326710,
+      "end": 870681397151
+    },
+    {
+      "group": 19,
+      "sampled_peak_bytes": 5995056640,
+      "contained_samples": 32,
+      "start": 870682239460,
+      "end": 877211408329
+    },
+    {
+      "group": 20,
+      "sampled_peak_bytes": 5961502208,
+      "contained_samples": 33,
+      "start": 877212385497,
+      "end": 884033899273
+    },
+    {
+      "group": 21,
+      "sampled_peak_bytes": 5995056640,
+      "contained_samples": 32,
+      "start": 884034822730,
+      "end": 890569555042
+    },
+    {
+      "group": 22,
+      "sampled_peak_bytes": 5961502208,
+      "contained_samples": 33,
+      "start": 890570423101,
+      "end": 897130514726
+    },
+    {
+      "group": 23,
+      "sampled_peak_bytes": 5961502208,
+      "contained_samples": 32,
+      "start": 897132511796,
+      "end": 903696643471
+    },
+    {
+      "group": 24,
+      "sampled_peak_bytes": 5961502208,
+      "contained_samples": 32,
+      "start": 903697563840,
+      "end": 910256627898
+    },
+    {
+      "group": 25,
+      "sampled_peak_bytes": 5961502208,
+      "contained_samples": 32,
+      "start": 910258776130,
+      "end": 916808601936
+    },
+    {
+      "group": 26,
+      "sampled_peak_bytes": 5995056640,
+      "contained_samples": 32,
+      "start": 916809660157,
+      "end": 923363833915
+    },
+    {
+      "group": 27,
+      "sampled_peak_bytes": 6028611072,
+      "contained_samples": 32,
+      "start": 923364926585,
+      "end": 929901368820
+    },
+    {
+      "group": 28,
+      "sampled_peak_bytes": 5961502208,
+      "contained_samples": 33,
+      "start": 929902463422,
+      "end": 936655510724
+    },
+    {
+      "group": 29,
+      "sampled_peak_bytes": 5961506304,
+      "contained_samples": 32,
+      "start": 936656506464,
+      "end": 943159967780
+    },
+    {
+      "group": 30,
+      "sampled_peak_bytes": 6028615168,
+      "contained_samples": 32,
+      "start": 943161075951,
+      "end": 949661991854
+    },
+    {
+      "group": 31,
+      "sampled_peak_bytes": 5995060736,
+      "contained_samples": 32,
+      "start": 949662982622,
+      "end": 956153272460
+    },
+    {
+      "group": 32,
+      "sampled_peak_bytes": 6028615168,
+      "contained_samples": 34,
+      "start": 956154216927,
+      "end": 962924226333
+    },
+    {
+      "group": 33,
+      "sampled_peak_bytes": 6028615168,
+      "contained_samples": 32,
+      "start": 962925275812,
+      "end": 969468977007
+    },
+    {
+      "group": 34,
+      "sampled_peak_bytes": 5995060736,
+      "contained_samples": 32,
+      "start": 969469977361,
+      "end": 975995625703
+    },
+    {
+      "group": 35,
+      "sampled_peak_bytes": 5961506304,
+      "contained_samples": 32,
+      "start": 975997289762,
+      "end": 982523981826
+    },
+    {
+      "group": 36,
+      "sampled_peak_bytes": 5995060736,
+      "contained_samples": 32,
+      "start": 982525005407,
+      "end": 989094929138
+    },
+    {
+      "group": 37,
+      "sampled_peak_bytes": 5961506304,
+      "contained_samples": 32,
+      "start": 989095927133,
+      "end": 995614076782
+    },
+    {
+      "group": 38,
+      "sampled_peak_bytes": 5961506304,
+      "contained_samples": 33,
+      "start": 995615341973,
+      "end": 1002140040443
+    },
+    {
+      "group": 39,
+      "sampled_peak_bytes": 5995060736,
+      "contained_samples": 32,
+      "start": 1002141123574,
+      "end": 1008680768643
+    },
+    {
+      "group": 40,
+      "sampled_peak_bytes": 5961506304,
+      "contained_samples": 32,
+      "start": 1008682065142,
+      "end": 1015203558320
+    },
+    {
+      "group": 41,
+      "sampled_peak_bytes": 6062169600,
+      "contained_samples": 33,
+      "start": 1015204542714,
+      "end": 1021755178384
+    },
+    {
+      "group": 42,
+      "sampled_peak_bytes": 5995060736,
+      "contained_samples": 34,
+      "start": 1021756182554,
+      "end": 1028549344223
+    },
+    {
+      "group": 43,
+      "sampled_peak_bytes": 5995060736,
+      "contained_samples": 32,
+      "start": 1028550521662,
+      "end": 1035073751649
+    },
+    {
+      "group": 44,
+      "sampled_peak_bytes": 5961510400,
+      "contained_samples": 32,
+      "start": 1035074671375,
+      "end": 1041607752613
+    },
+    {
+      "group": 45,
+      "sampled_peak_bytes": 5961510400,
+      "contained_samples": 32,
+      "start": 1041608768572,
+      "end": 1048128050889
+    },
+    {
+      "group": 46,
+      "sampled_peak_bytes": 5995064832,
+      "contained_samples": 33,
+      "start": 1048129052267,
+      "end": 1054828880423
+    },
+    {
+      "group": 47,
+      "sampled_peak_bytes": 5995064832,
+      "contained_samples": 34,
+      "start": 1054829871043,
+      "end": 1061672677108
+    },
+    {
+      "group": 48,
+      "sampled_peak_bytes": 5995064832,
+      "contained_samples": 32,
+      "start": 1061673718034,
+      "end": 1068184976098
+    },
+    {
+      "group": 49,
+      "sampled_peak_bytes": 5995064832,
+      "contained_samples": 32,
+      "start": 1068185897000,
+      "end": 1074678767943
+    },
+    {
+      "group": 50,
+      "sampled_peak_bytes": 5961514496,
+      "contained_samples": 32,
+      "start": 1074679763052,
+      "end": 1081179210750
+    },
+    {
+      "group": 51,
+      "sampled_peak_bytes": 5995068928,
+      "contained_samples": 33,
+      "start": 1081180239337,
+      "end": 1087940497751
+    },
+    {
+      "group": 52,
+      "sampled_peak_bytes": 5961514496,
+      "contained_samples": 32,
+      "start": 1087941575145,
+      "end": 1094471014767
+    },
+    {
+      "group": 53,
+      "sampled_peak_bytes": 5995068928,
+      "contained_samples": 32,
+      "start": 1094472014668,
+      "end": 1100983408373
+    },
+    {
+      "group": 54,
+      "sampled_peak_bytes": 5961514496,
+      "contained_samples": 32,
+      "start": 1100984410627,
+      "end": 1107514511033
+    },
+    {
+      "group": 55,
+      "sampled_peak_bytes": 5961514496,
+      "contained_samples": 32,
+      "start": 1107515253637,
+      "end": 1114040077533
+    },
+    {
+      "group": 56,
+      "sampled_peak_bytes": 6028623360,
+      "contained_samples": 33,
+      "start": 1114040875237,
+      "end": 1120589881818
+    },
+    {
+      "group": 57,
+      "sampled_peak_bytes": 6028623360,
+      "contained_samples": 33,
+      "start": 1120590745398,
+      "end": 1127362913964
+    },
+    {
+      "group": 58,
+      "sampled_peak_bytes": 5995068928,
+      "contained_samples": 32,
+      "start": 1127363716341,
+      "end": 1133879745634
+    },
+    {
+      "group": 59,
+      "sampled_peak_bytes": 5961514496,
+      "contained_samples": 33,
+      "start": 1133880615131,
+      "end": 1140387056705
+    },
+    {
+      "group": 60,
+      "sampled_peak_bytes": 5995068928,
+      "contained_samples": 32,
+      "start": 1140387889211,
+      "end": 1146911451327
+    },
+    {
+      "group": 61,
+      "sampled_peak_bytes": 5995068928,
+      "contained_samples": 32,
+      "start": 1146912287943,
+      "end": 1153454641282
+    },
+    {
+      "group": 62,
+      "sampled_peak_bytes": 5961514496,
+      "contained_samples": 32,
+      "start": 1153455464783,
+      "end": 1159992177164
+    },
+    {
+      "group": 63,
+      "sampled_peak_bytes": 5995068928,
+      "contained_samples": 32,
+      "start": 1159993069181,
+      "end": 1166542638077
+    },
+    {
+      "group": 64,
+      "sampled_peak_bytes": 5961514496,
+      "contained_samples": 32,
+      "start": 1166543407558,
+      "end": 1173090340992
+    },
+    {
+      "group": 65,
+      "sampled_peak_bytes": 5961514496,
+      "contained_samples": 34,
+      "start": 1173091172429,
+      "end": 1179878520635
+    },
+    {
+      "group": 66,
+      "sampled_peak_bytes": 6028623360,
+      "contained_samples": 33,
+      "start": 1179879709743,
+      "end": 1186416192783
+    },
+    {
+      "group": 67,
+      "sampled_peak_bytes": 5995068928,
+      "contained_samples": 32,
+      "start": 1186417074736,
+      "end": 1192934426630
+    },
+    {
+      "group": 68,
+      "sampled_peak_bytes": 5961514496,
+      "contained_samples": 32,
+      "start": 1192935195782,
+      "end": 1199469914873
+    },
+    {
+      "group": 69,
+      "sampled_peak_bytes": 6062177792,
+      "contained_samples": 33,
+      "start": 1199470775438,
+      "end": 1206024470297
+    },
+    {
+      "group": 70,
+      "sampled_peak_bytes": 5961514496,
+      "contained_samples": 32,
+      "start": 1206025330744,
+      "end": 1212537878847
+    },
+    {
+      "group": 71,
+      "sampled_peak_bytes": 5961514496,
+      "contained_samples": 32,
+      "start": 1212538722854,
+      "end": 1219048977770
+    },
+    {
+      "group": 72,
+      "sampled_peak_bytes": 5995068928,
+      "contained_samples": 32,
+      "start": 1219049877806,
+      "end": 1225561092749
+    },
+    {
+      "group": 73,
+      "sampled_peak_bytes": 5995068928,
+      "contained_samples": 32,
+      "start": 1225561992829,
+      "end": 1232080136914
+    },
+    {
+      "group": 74,
+      "sampled_peak_bytes": 5961514496,
+      "contained_samples": 34,
+      "start": 1232081520368,
+      "end": 1238958113972
+    },
+    {
+      "group": 75,
+      "sampled_peak_bytes": 5995068928,
+      "contained_samples": 32,
+      "start": 1238959177389,
+      "end": 1245544261329
+    },
+    {
+      "group": 76,
+      "sampled_peak_bytes": 5995068928,
+      "contained_samples": 32,
+      "start": 1245545021736,
+      "end": 1252043641162
+    },
+    {
+      "group": 77,
+      "sampled_peak_bytes": 5961514496,
+      "contained_samples": 32,
+      "start": 1252044517359,
+      "end": 1258559796708
+    },
+    {
+      "group": 78,
+      "sampled_peak_bytes": 5995073024,
+      "contained_samples": 32,
+      "start": 1258560648445,
+      "end": 1265099756715
+    },
+    {
+      "group": 79,
+      "sampled_peak_bytes": 5961518592,
+      "contained_samples": 33,
+      "start": 1265100675021,
+      "end": 1271678415902
+    },
+    {
+      "group": 80,
+      "sampled_peak_bytes": 6028631552,
+      "contained_samples": 34,
+      "start": 1271679261600,
+      "end": 1278553348042
+    },
+    {
+      "group": 81,
+      "sampled_peak_bytes": 5961522688,
+      "contained_samples": 37,
+      "start": 1278560737122,
+      "end": 1286462236238
+    }
+  ],
+  "scope": "Only complete monitor collection intervals strictly contained in completed A group clock brackets; sampled peaks are not instantaneous or complete physical maxima.",
+  "input_files": [
+    {
+      "path": "artifact/c7.1-pod/certificates-a-async04-20261011T101000Z/a-async04/journals.progress.jsonl",
+      "bytes": 1053733,
+      "sha256": "971978d3394e3b535f09da8f25edbedd08ef947518cbf9219b39fe5bbd27c173"
+    },
+    {
+      "path": "artifact/c7.1-pod/certificates-a-async04-20261011T101000Z/a-async04/logs/a.memory.csv",
+      "bytes": 1080313,
+      "sha256": "dbedcc6645cc235cb57ad7951fb32246f084c54f3b4e61b02a53c7d46e9ea49d"
+    }
+  ]
+}

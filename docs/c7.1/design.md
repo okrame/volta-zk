@@ -112,9 +112,19 @@ nessun credito fisico o certificato dal ledger.
 Il [preflight H100 combinato](../../benchmarks/results/c71-certificates-vmm-pool-preflight-2026-10-11-6ccb54a1.json)
 passa KV, trasformazioni, root/aperture A e wire/FS/MAC lineare originali;
 GPU idle dopo cleanup. Build CUDA 21,775 s, binari Rust riusati da
-`abf57c4a` con produzione invariata e SHA conservata. Il nuovo
-`a-vmm-pool01` parte da O=0 con 5.400 s e cap invariati; esito pendente.
-Zero root del modello e certificati canonici.
+`abf57c4a` con produzione invariata e SHA conservata. Il
+[trial `a-vmm-pool01`](../c7.1-history/h100-certificates-a-vmm-pool-2026-10-11.md)
+completa **512/512 gruppi A O=0**: commitment 3.408,762 s, totale monitor
+4.158,144 s. Massimo fisico campionato **5.861.006.848 B** sotto il cap
+6.174.015.488 B, payload osservato 5.435.740.354 B; 20.746 campioni,
+zero failure smaps. Pool chiuso, arena/W azzerati, allocazioni tutte
+rilasciate e GPU idle. È il primo commitment A completo del modello;
+**zero certificati canonici**. Restano esclusi W PCS/setup AES, prova,
+verifica e continuazioni. Non dimostra il picco istantaneo o l’allowance
+di tutte le fasi canoniche; il massimo analitico O=300 resta oltre cap.
+Il confronto CPU RMS con tutte le 159 ricette è in corso. La variante
+VMM + pool resta diagnostica finché non sono chiusi gli impedimenti
+pertinenti al runner completo.
 
 La [scansione incrementale dei pesi RMS](../c7.1-history/h100-certificates-rms-prefix-2026-10-11.md)
 ricalcola soltanto il suffisso cambiato di Eq, senza divisioni. Passano

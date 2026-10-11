@@ -15,6 +15,17 @@ RMS/GKR rappresentativo, esportare immediatamente ogni certificato completo
 e registrarne l’accettazione canonica durevole. Obiettivo O=0/150/300
 nella stessa nuova sessione, minimo O=0 completo e verificato.
 
+Il [preflight dell’11 ottobre](../c7.1-history/h100-certificates-preflight-2026-10-11.md)
+conferma packed ed esponenti originali e conserva il replay di 512 cicli di
+sole allocazioni grandi: nessuno spike riprodotto, controllo finale del
+monitor negativo per census canonico assente. RMS/GKR esegue tutte le 99
+profondità su 15 e 255 celle vive: prover 4,282 e 15,438 s, verifier 0,206
+e 0,241 s, endpoint MAC/FS originali verificati. Cinque ricette Γ e frame
+sintetici, esclusi modello reale, PCS, statistiche e setup AES: nessun tempo
+canonico o target 65 s dedotto. Zero certificati canonici; lo spike A e
+il costo RMS completo restano aperti. Il ledger con export ha massimo
+nominato 5.878.767.874 B e 26.812.158 B residui, senza ammissione fisica.
+
 La [campagna precedente](../c7.1-history/h100-followup-close-2026-10-10.md)
 è chiusa con provider EXITED alle 21:24:47 UTC del 10 ottobre e zero
 certificati. Γ originale, pool e fill selezionati, geometria PCS,
@@ -80,6 +91,12 @@ da 16 MiB e snapshot. Aggiunge 8 B alla traccia owner (40 B totali, owner
 42.136 B), con record da 512 B e cap invariato 16 MiB. Una query o scrittura
 fallita ferma il caller e conserva il cleanup native. Il default non include
 query o stato diagnostico. Le query non forniscono un limite ai picchi transitori.
+
+Il monitor del trial con traccia usa `--diagnostic-cache-bytes 16777216`:
+la riserva per l’intero file viene aggiunta a RSS+GPU prima del confronto
+con lo stesso cap fisico. Owner e stack restano contati nei rispettivi
+bound; nessuna esenzione o estensione del limite. La modalità è esclusa
+dalla calibrazione e accetta solo zero o il cap completo di 16 MiB.
 
 ## Input e identità
 

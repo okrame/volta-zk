@@ -183,6 +183,13 @@ def test_component_enforces_physical_cap_without_W_exemptions():
         monitor.check_resources(**sample(mode='component', rss=monitor.PHYSICAL_LIMIT))
 
 
+@pytest.mark.parametrize('reserve', [-1, 1, (16 << 20) + 1])
+def test_diagnostic_cache_reserve_cannot_relax_physical_cap(campaign, reserve):
+    campaign.diagnostic_cache_bytes = reserve
+    with pytest.raises(ValueError, match='diagnostic cache'):
+        monitor.run(campaign)
+
+
 @pytest.mark.parametrize('changes', [dict(swap=1), dict(disk=monitor.DISK_MARGIN - 1),
     dict(gpu_used=monitor.GPU_LIMIT, gpu_total=90_000_000_000, gpu_free=2 << 30),
     dict(gpu_free=monitor.GPU_MARGIN - 1)])
@@ -329,6 +336,23 @@ def test_fake_GPU_process_success_private_outputs_and_no_overwrite(campaign):
     with pytest.raises(ValueError, match='no overwrite'):
         monitor.run(campaign)
     assert (log / 'fixture.summary.json').read_bytes() == original
+
+
+def test_component_cache_reserve_is_in_every_stable_physical_sample(campaign):
+    campaign.mode = 'component'
+    campaign.diagnostic_cache_bytes = 16 << 20
+    assert monitor.run(campaign) == 0
+    logs = campaign.root / 'logs'
+    report = json.loads((logs / 'fixture.summary.json').read_text())
+    assert report['diagnostic_file_cache_reserve_bytes'] == 16 << 20
+    assert report['physical_temporary_limit_bytes'] == monitor.PHYSICAL_LIMIT
+    assert report['payload_limit_bytes'] is None
+    rows = list(csv.DictReader((logs / 'fixture.memory.csv').open()))
+    stable = [r for r in rows if r['sampled_temporary_bytes']]
+    assert stable
+    for row in stable:
+        assert int(row['sampled_temporary_bytes']) == (
+            int(row['host_tree_rss_bytes']) + int(row['whole_gpu_used_bytes']) + (16 << 20))
 
 
 @pytest.mark.parametrize('new_session', [False, True])

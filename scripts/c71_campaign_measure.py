@@ -384,6 +384,9 @@ def interrupted(signum, _frame):
 
 def run(args):
     start = time.time()
+    diagnostic_cache = getattr(args, 'diagnostic_cache_bytes', 0)
+    if diagnostic_cache not in (0, 16 << 20) or (diagnostic_cache and args.mode == 'calibration'):
+        raise ValueError('diagnostic cache must reserve the bounded 16 MiB trace in physical monitoring')
     deadline, reserve, end = campaign_bounds(args.seconds, os.environ, start)
     gpu_uuid = os.environ['CUDA_VISIBLE_DEVICES']
     if not re.fullmatch(r'GPU-[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}', gpu_uuid):
@@ -481,7 +484,7 @@ def run(args):
                 cgroup = int((CGROUP / 'memory.current').read_text())
                 disk_state = os.statvfs(args.root)
                 disk = disk_state.f_bavail * disk_state.f_frsize
-                temporary = None if transitioning or args.mode == 'calibration' else rss + used - host_w - device_w
+                temporary = None if transitioning or args.mode == 'calibration' else rss + used - host_w - device_w + diagnostic_cache
                 smaps_failures = progress.smaps_read_failures - smaps_before if progress else 0
                 monotonic_sample_end_ns = time.clock_gettime_ns(time.CLOCK_MONOTONIC)
                 writer.writerow([time.time(), time.monotonic() - before, rss, swap, used, free,
@@ -498,7 +501,7 @@ def run(args):
                 # Keep the offending sample in the summary as well as the CSV.
                 if any(after > before for after, before in zip(cgroup_oom_events(), oom_before)):
                     raise RuntimeError('resource stop: cgroup OOM event')
-                check_resources(args.mode, rss, swap, used, total, free, disk, host_w, device_w, transitioning)
+                check_resources(args.mode, rss + diagnostic_cache, swap, used, total, free, disk, host_w, device_w, transitioning)
                 if min(stop_at - time.monotonic(), end - time.time()) <= 0:
                     raise TimeoutError('phase or authorized compute deadline reached')
                 time.sleep(max(0, min(SAMPLE_SECONDS - (time.monotonic() - before), stop_at - time.monotonic(), end - time.time())))
@@ -548,6 +551,7 @@ def run(args):
             'payload_limit_bytes': PAYLOAD_LIMIT if progress else None,
             'physical_temporary_limit_bytes': PHYSICAL_LIMIT if args.mode != 'calibration' else None,
             'physical_complete_peak': False, 'resource_failure': failure,
+            'diagnostic_file_cache_reserve_bytes': diagnostic_cache,
             'sampling_limit': 'Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.',
         }
         for name, value in [('exit', str(code)), ('end', str(time.time())), ('summary.json', json.dumps(summary, indent=2, sort_keys=True))]:
@@ -567,6 +571,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--mode', choices=('canonical', 'calibration', 'component'), required=True)
     parser.add_argument('--progress', type=Path)
+    parser.add_argument('--diagnostic-cache-bytes', type=int, choices=(0, 16 << 20), default=0)
     parser.add_argument('root', type=Path)
     parser.add_argument('label')
     parser.add_argument('seconds', type=int)

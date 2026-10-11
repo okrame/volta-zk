@@ -15,6 +15,17 @@ RMS/GKR rappresentativo, esportare immediatamente ogni certificato completo
 e registrarne l’accettazione canonica durevole. Obiettivo O=0/150/300
 nella stessa nuova sessione, minimo O=0 completo e verificato.
 
+Il [preflight dell’11 ottobre](../c7.1-history/h100-certificates-preflight-2026-10-11.md)
+conferma packed ed esponenti originali e conserva il replay di 512 cicli di
+sole allocazioni grandi: nessuno spike riprodotto, controllo finale del
+monitor negativo per census canonico assente. RMS/GKR esegue tutte le 99
+profondità su 15 e 255 celle vive: prover 4,282 e 15,438 s, verifier 0,206
+e 0,241 s, endpoint MAC/FS originali verificati. Cinque ricette Γ e frame
+sintetici, esclusi modello reale, PCS, statistiche e setup AES: nessun tempo
+canonico o target 65 s dedotto. Zero certificati canonici; lo spike A e
+il costo RMS completo restano aperti. Il ledger con export ha massimo
+nominato 5.878.767.874 B e 26.812.158 B residui, senza ammissione fisica.
+
 La [campagna precedente](../c7.1-history/h100-followup-close-2026-10-10.md)
 è chiusa con provider EXITED alle 21:24:47 UTC del 10 ottobre e zero
 certificati. Γ originale, pool e fill selezionati, geometria PCS,
@@ -91,8 +102,8 @@ Il confronto ridotto prima/dopo misura 32→1 allocazioni del flag, con
 stessi 32 kernel, 96 fence e 2.176 B D2H inclusa l'osservazione dei raw.
 Il census del caller predice 1.185.769 coppie alloc/free in meno per
 inferenza e 6.997.504 nei 512 replay A, senza attribuire guadagni di tempo.
-Il nuovo massimo nominato sul Γ ammesso è **5.878.735.106 B**, con
-**26.844.926 B** residui: il pool è contato anche inattivo e il setup AES
+Il massimo nominato del 10 ottobre sul Γ ammesso era **5.878.735.106 B**, con
+**26.844.926 B** residui, prima dell’export: il pool è contato anche inattivo e il setup AES
 include lo stato W già installato. Allowance e picco fisico restano aperti.
 
 La candidata RMS al pari più grossolano è ora respinta dal criterio
@@ -136,15 +147,21 @@ Il runner ora esporta ogni risposta completa prima dell’invio e conserva
 il completamento dopo il journal del verifier, come nelle
 [specifiche](specs.md#esportazione-immediata-del-certificato). Non ci sono
 ancora certificati reali: la verifica locale riguarda trasporto,
-pubblicazione durevole e rifiuti I/O. Il bound corrente deve aggiungere
-32.768 B di metadata export a quello storico; allowance fisica e
-completamento rimangono aperti.
+pubblicazione durevole e rifiuti I/O. Il ledger corrente aggiunge
+32.768 B di metadata export a quello storico: massimo nominato
+5.878.767.874 B; allowance fisica e completamento rimangono aperti.
 
 La build diagnostica `C71_OWNER_TRACE_PHYSICAL` aggiunge query CUDA ai confini
 di allocazione/free/fence e conserva solo variazioni di almeno 16 MiB della
 differenza fra memoria CUDA usata e payload native, oltre agli snapshot.
 Owner diagnostico 42.136 B, file sempre bounded 16 MiB; non è selezionata
 per il runner definitivo e non dimostra un picco fisico completo.
+
+Il monitor del trial con traccia usa `--diagnostic-cache-bytes 16777216`:
+la riserva per l’intero file viene aggiunta a RSS+GPU prima del confronto
+con lo stesso cap fisico. Owner e stack restano contati nei rispettivi
+bound; nessuna esenzione o estensione del limite. La modalità è esclusa
+dalla calibrazione e accetta solo zero o il cap completo di 16 MiB.
 
 ## Obiettivo e relazione dimostrata
 

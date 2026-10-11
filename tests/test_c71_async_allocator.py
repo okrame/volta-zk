@@ -31,6 +31,10 @@ def test_async_pool_reserve_and_cleanup_failures(tmp_path):
         assert report["owner_bytes"] == 42160 and report["fixed_cache_reserve_bytes"] == 64 << 20
         for line in trace.read_text().splitlines():
             record = json.loads(line)
+            if record["op"] == "pool_account":
+                assert record["edge"] == "reject" and record["status"] == -1
+                assert scenario in ("query_failure", "cache_limit")
+                continue
             assert record["pool_used_bytes"] <= record["pool_reserved_bytes"]
             assert record["pool_reserved_bytes"] <= record["arena_bytes"] + (64 << 20)
             assert record["pool_cache_peak_bytes"] <= 64 << 20

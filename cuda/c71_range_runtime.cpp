@@ -236,11 +236,17 @@ int trace_event(C71RangeContext* c,const char* op,const char* edge,
     if(c->diagnostic.failed) return fail(c,"physical owner trace failed");
     uint64_t pool_reserved=0,pool_used=0,pool_cache_peak=0;
 #ifdef C71_ASYNC_ALLOCATOR_EXPERIMENT
-    if(c->async_pool && (cudaMemPoolGetAttribute(c->async_pool,cudaMemPoolAttrReservedMemCurrent,&pool_reserved)!=cudaSuccess ||
-        cudaMemPoolGetAttribute(c->async_pool,cudaMemPoolAttrUsedMemCurrent,&pool_used)!=cudaSuccess ||
-        pool_used>pool_reserved || pool_reserved>c->stats.arena_bytes+c->async_cache_upper)) {
-        c->diagnostic.failed=true;
-        return fail(c,"experimental pool exceeds charged cache reserve or query failed");
+    if(c->async_pool) {
+        const auto reserved_status=cudaMemPoolGetAttribute(c->async_pool,cudaMemPoolAttrReservedMemCurrent,&pool_reserved);
+        const auto used_status=cudaMemPoolGetAttribute(c->async_pool,cudaMemPoolAttrUsedMemCurrent,&pool_used);
+        if(reserved_status!=cudaSuccess || used_status!=cudaSuccess || pool_used>pool_reserved ||
+            pool_reserved>c->stats.arena_bytes+c->async_cache_upper) {
+            (void)c->diagnostic.emit("pool_account","reject",a.slot,a.kind,a.logical,a.capacity,
+                c->stats.arena_bytes,c->stats.weights_bytes,-1,__LINE__,0,0,caller,caller_line,0,
+                pool_reserved,pool_used,c->async_cache_peak);
+            c->diagnostic.failed=true;
+            return fail(c,"experimental pool exceeds charged cache reserve or query failed");
+        }
     }
     c->async_cache_peak=std::max(c->async_cache_peak,pool_reserved>c->stats.arena_bytes?pool_reserved-c->stats.arena_bytes:0);
     pool_cache_peak=c->async_cache_peak;

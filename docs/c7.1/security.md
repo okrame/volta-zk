@@ -32,6 +32,14 @@ Il supporto pubblico non dipende da cancellazioni dei valori. Lifetime di
 una sola profondità, rifiuto della cattura incompleta e consumo monouso
 sono verificati su fixture; nessuna selezione o nuova garanzia canonica.
 
+La [fattorizzazione candidata RMS](../c7.1-history/local-rms-shared-gates-2026-10-11.md)
+partiziona i contributi originali per indice/gate e maschera dei programmi.
+Le leggi di somma/prodotto del campo giustificano la riscrittura; sorting,
+compattazione e associazione dei pesi Rust restano da raffinare. La scelta
+fra le due valutazioni dipende soltanto dal supporto pubblico, non da
+valori o cancellazioni. Non modifica transcript, monete, MAC, PCS o NoPeek.
+La candidata non è selezionata nel runner canonico.
+
 Il [preflight dell’11 ottobre](../c7.1-history/h100-certificates-preflight-2026-10-11.md)
 conferma packed ed esponenti originali e conserva il replay di 512 cicli di
 sole allocazioni grandi: nessuno spike riprodotto, controllo finale del

@@ -31,6 +31,12 @@ contare memoria e verificare gli hash; non è ancora eseguito. La candidata
 non seleziona la cache nel runner canonico. Il pod resta spento; queste
 verifiche locali non riaprono né estendono la finestra della campagna.
 
+Il benchmark della [candidata RMS a gate condivisi](../c7.1-history/local-rms-shared-gates-2026-10-11.md)
+accetta `C71_RMS_BENCH_SHARED_GATES=1` (default 0), indipendentemente dal
+budget della cache folded. Confrontare gli stessi input, seed, hash wire
+e cap; contare anche sorting, selettori e scelta del piano. Nessuna misura
+rappresentativa o selezione canonica acquisita; il pod resta spento.
+
 Il [preflight dell’11 ottobre](../c7.1-history/h100-certificates-preflight-2026-10-11.md)
 conferma packed ed esponenti originali e conserva il replay di 512 cicli di
 sole allocazioni grandi: nessuno spike riprodotto, controllo finale del

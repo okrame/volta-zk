@@ -33,6 +33,15 @@ MSB del fold, determinismo della sorgente e lifetime Rust sono premesse
 implementative: nessun nuovo lemma Lean le scarica. Mancano misura sul
 mix completo e conto simultaneo ammesso; il costo canonico resta aperto.
 
+Una seconda [candidata RMS fattorizza i gate comuni](../c7.1-history/local-rms-shared-gates-2026-10-11.md)
+fra programmi mantenendo i polinomi originali. Il primo round Booleano è
+invariato; dopo usa il piano condiviso solo quando il supporto pubblico
+predice meno prodotti Fp3. Piano/builder entro 32 MiB, per profondità,
+separato dalla cache folded da 16 MiB. È disabilitata nel runner canonico.
+Distributività, commutatività e corrispondenza fra indici, maschere e pesi
+sono premesse implementative esplicite; non c'è un nuovo lemma Lean di
+raffinamento. Restano necessari misura rappresentativa e conto completo.
+
 Il [preflight dell’11 ottobre](../c7.1-history/h100-certificates-preflight-2026-10-11.md)
 conferma packed ed esponenti originali e conserva il replay di 512 cicli di
 sole allocazioni grandi: nessuno spike riprodotto, controllo finale del

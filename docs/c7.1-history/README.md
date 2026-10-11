@@ -1,5 +1,7 @@
 # C7.1 — archivio e provenienza
 
+[Fattorizzazione RMS candidata, controlli locali dell’11 ottobre](local-rms-shared-gates-2026-10-11.md).
+
 [Cache folded RMS candidata, controlli locali dell’11 ottobre](local-rms-fold-cache-2026-10-11.md).
 
 Per il lavoro corrente leggere [design](../c7.1/design.md), [specifiche](../c7.1/specs.md),

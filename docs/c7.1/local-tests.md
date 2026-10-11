@@ -31,6 +31,14 @@ e rifiuto della configurazione prima di consumare correlazioni. Tutti i
 filtri sono separati, AS 2 GiB/60 s/un worker. Lo screen delle 99 shape
 è solo un conto pubblico; il benchmark completo resta sul pod autorizzato.
 
+Per la [candidata a gate condivisi](../c7.1-history/local-rms-shared-gates-2026-10-11.md),
+`c71_rms_shared_gate_` verifica maschere oltre 64 programmi, pesi che si
+annullano, supporti misti e coefficienti non Booleani. La fixture wire
+confronta anche piano condiviso con/senza cache, transcript, endpoint e
+consumo monouso. Lo screen pubblico opzionale costruisce il piano reale;
+il timeout iniziale 34–44 è conservato e il diagnostico corretto riusa i
+supporti senza calcolare anche il vecchio raggruppamento. Limiti invariati.
+
 Il [preflight dell’11 ottobre](../c7.1-history/h100-certificates-preflight-2026-10-11.md)
 conferma packed ed esponenti originali e conserva il replay di 512 cicli di
 sole allocazioni grandi: nessuno spike riprodotto, controllo finale del

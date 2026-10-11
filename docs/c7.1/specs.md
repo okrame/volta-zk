@@ -32,6 +32,15 @@ zero. Box, capacità Vec e supporti restano addebitati fino al drop per
 profondità; una cattura parziale è rifiutata. Nessun cambio a gate, messaggi,
 correlazioni o endpoint; il ledger canonico non seleziona questa candidata.
 
+La [candidata a gate condivisi RMS](../c7.1-history/local-rms-shared-gates-2026-10-11.md)
+raggruppa `(indice output, op, x, y)` per maschera dei programmi, poi
+somma i pesi dei gate identici della stessa maschera. Somma i selettori
+originali soltanto per quella maschera. Nessuna identità booleana viene
+applicata alle righe folded. Builder e piano hanno cap locale 32 MiB;
+capacità vive e transitorie sono contate fino al drop della profondità.
+La scelta per coppia usa solo supporto pubblico e numero di prodotti,
+con primo round originale. Default disabilitato, endpoint invariati.
+
 Il [preflight dell’11 ottobre](../c7.1-history/h100-certificates-preflight-2026-10-11.md)
 conferma packed ed esponenti originali e conserva il replay di 512 cicli di
 sole allocazioni grandi: nessuno spike riprodotto, controllo finale del

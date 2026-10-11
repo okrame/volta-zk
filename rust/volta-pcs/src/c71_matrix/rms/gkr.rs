@@ -10,6 +10,8 @@ use super::{Circuit, Gate, Op, ReplayLayerScratch};
 mod patterns;
 mod cell_cache;
 use cell_cache::CellCache;
+mod shared_gates;
+use shared_gates::SharedGates;
 #[cfg(test)]
 mod gamma_screen_fixture;
 
@@ -814,6 +816,70 @@ fn source_cell_round<const BOOLEAN_ROWS: bool>(
         challenges, row, selector, weights, work, &mut None, 0)
 }
 
+#[inline]
+fn accumulate_gate<const BOOLEAN_ROWS: bool>(gate: &Gate, gate_weight: Fp3,
+    lo: &[Fp3], hi: &[Fp3], first: bool, u: &mut [Fp3; 3], work: &mut SourceCellWork) {
+    work.gate_cell_iterations += 1;
+    if BOOLEAN_ROWS && first {
+        let bit = |value: Fp3| {
+            debug_assert!(value == Fp3::ZERO || value == Fp3::ONE);
+            (value.c0.value() == 1) as i8
+        };
+        let (x, hx) = (bit(lo[gate.x]), bit(hi[gate.x]));
+        let dx = hx - x;
+        if gate.op == Op::Copy {
+            u[0] += gate_weight.mul_bool(x != 0);
+            u[1] += scale_boolean_gate_coefficient(gate_weight, dx);
+            work.coefficient_additions += 4;
+            work.coefficient_subtractions += 1;
+            work.boolean_first_round_small_integer_scales += 1;
+            work.boolean_first_round_gate_products_saved += 2;
+        } else {
+            let (y, hy) = (bit(lo[gate.y]), bit(hi[gate.y]));
+            let dy = hy - y;
+            let mut f = [x*y, x*dy+dx*y, dx*dy];
+            if gate.op == Op::Xor {
+                f = [x+y-2*f[0], dx+dy-2*f[1], -2*f[2]];
+            }
+            for j in 0..3 {
+                u[j] += scale_boolean_gate_coefficient(gate_weight, f[j]);
+            }
+            work.coefficient_additions += 9;
+            work.coefficient_subtractions += 3;
+            work.boolean_first_round_small_integer_scales += 3;
+            work.boolean_first_round_gate_products_saved += 6;
+        }
+        return;
+    }
+    let x = lo[gate.x];
+    let dx = hi[gate.x] - x;
+    if gate.op == Op::Copy {
+        u[0] += gate_weight * x;
+        u[1] += gate_weight * dx;
+        work.coefficient_multiplications += 2;
+        work.coefficient_additions += 2;
+        work.coefficient_subtractions += 1;
+    } else {
+        let y = lo[gate.y];
+        let dy = hi[gate.y] - y;
+        let mut f = [x * y, Fp3::ZERO, dx * dy];
+        // hi_x*hi_y = x*y + x*dy + dx*y + dx*dy.
+        f[1] = hi[gate.x] * hi[gate.y] - f[0] - f[2];
+        if gate.op == Op::Xor {
+            f = [x + y - (f[0] + f[0]), dx + dy - (f[1] + f[1]), -(f[2] + f[2])];
+            work.coefficient_additions += 5;
+            work.coefficient_subtractions += 2;
+            work.coefficient_negations += 1;
+        }
+        for j in 0..3 {
+            u[j] += gate_weight * f[j];
+        }
+        work.coefficient_multiplications += 6;
+        work.coefficient_additions += 3;
+        work.coefficient_subtractions += 4;
+    }
+}
+
 fn source_cell_round_cached<const BOOLEAN_ROWS: bool>(
     programs: &[Circuit],
     depth: usize,
@@ -826,6 +892,24 @@ fn source_cell_round_cached<const BOOLEAN_ROWS: bool>(
     work: &mut SourceCellWork,
     cache: &mut Option<Box<CellCache>>,
     cache_bytes: usize,
+) -> Result<SourceCellRound, String> {
+    source_cell_round_planned::<BOOLEAN_ROWS>(programs, depth, width, cell_count,
+        challenges, row, selector, weights, work, cache, cache_bytes, None)
+}
+
+fn source_cell_round_planned<const BOOLEAN_ROWS: bool>(
+    programs: &[Circuit],
+    depth: usize,
+    width: usize,
+    cell_count: usize,
+    challenges: &[Fp3],
+    row: &impl Fn(usize, &mut [Fp3]) -> Result<(), String>,
+    selector: &impl Fn(usize) -> Result<Option<(usize, Fp3)>, String>,
+    weights: &[Fp3],
+    work: &mut SourceCellWork,
+    cache: &mut Option<Box<CellCache>>,
+    cache_bytes: usize,
+    plan: Option<&SharedGates>,
 ) -> Result<SourceCellRound, String> {
     if depth == 0
         || cell_count == 0
@@ -844,6 +928,7 @@ fn source_cell_round_cached<const BOOLEAN_ROWS: bool>(
     {
         return Err("RMS sourcewise coefficient geometry differs".into());
     }
+    if let Some(plan) = plan { plan.validate(depth, width, programs.len())?; }
     let active = cell_count >> challenges.len();
     let half = active / 2;
     let program_count = programs.len();
@@ -872,7 +957,8 @@ fn source_cell_round_cached<const BOOLEAN_ROWS: bool>(
             + prefix_path.capacity())
             * core::mem::size_of::<Fp3>()
             + present.capacity()
-            + cache.as_ref().map_or(0, |table| table.capacity_bytes()),
+            + cache.as_ref().map_or(0, |table| table.capacity_bytes())
+            + plan.map_or(0, SharedGates::capacity_bytes),
     );
     let leaves = 1usize << challenges.len();
     let mut c = [Fp3::ZERO; 4];
@@ -936,88 +1022,44 @@ fn source_cell_round_cached<const BOOLEAN_ROWS: bool>(
                 table.store(cell + half, &hi, &selector_hi);
             }
         }
-        for (program_index, program) in programs.iter().enumerate() {
-            let program_gates = gates(program, depth);
-            work.logical_gate_cell_iterations += program_gates.len() as u64;
-            if !present[program_index] {
-                work.unsupported_program_cells += 1;
-                work.unsupported_gate_iterations_saved += program_gates.len() as u64;
-                continue;
+        if let Some(plan) = plan.filter(|p|p.use_for(&present,BOOLEAN_ROWS && challenges.is_empty())) {
+            for (p, program) in programs.iter().enumerate() {
+                let count = gates(program, depth).len() as u64;
+                work.logical_gate_cell_iterations += count;
+                if !present[p] {
+                    work.unsupported_program_cells += 1;
+                    work.unsupported_gate_iterations_saved += count;
+                }
             }
-            // The public selector is shared by every gate of this program.
-            // Accumulate its weighted gate polynomial first, then multiply by
-            // that selector once. This preserves the four transcript values.
-            let mut u = [Fp3::ZERO; 3];
-            for (gate, &gate_weight) in program_gates.iter().zip(weights) {
-                work.gate_cell_iterations += 1;
-                if BOOLEAN_ROWS && challenges.is_empty() {
-                    let bit = |value: Fp3| {
-                        debug_assert!(value == Fp3::ZERO || value == Fp3::ONE);
-                        (value.c0.value() == 1) as i8
-                    };
-                    let (x, hx) = (bit(lo[gate.x]), bit(hi[gate.x]));
-                    let dx = hx - x;
-                    if gate.op == Op::Copy {
-                        u[0] += gate_weight.mul_bool(x != 0);
-                        u[1] += scale_boolean_gate_coefficient(gate_weight, dx);
-                        work.coefficient_additions += 4;
-                        work.coefficient_subtractions += 1;
-                        work.boolean_first_round_small_integer_scales += 1;
-                        work.boolean_first_round_gate_products_saved += 2;
-                    } else {
-                        let (y, hy) = (bit(lo[gate.y]), bit(hi[gate.y]));
-                        let dy = hy - y;
-                        let mut f = [x*y, x*dy+dx*y, dx*dy];
-                        if gate.op == Op::Xor {
-                            f = [x+y-2*f[0], dx+dy-2*f[1], -2*f[2]];
-                        }
-                        for j in 0..3 {
-                            u[j] += scale_boolean_gate_coefficient(gate_weight, f[j]);
-                        }
-                        work.coefficient_additions += 9;
-                        work.coefficient_subtractions += 3;
-                        work.boolean_first_round_small_integer_scales += 3;
-                        work.boolean_first_round_gate_products_saved += 6;
-                    }
+            plan.accumulate::<BOOLEAN_ROWS>(&lo, &hi, &selector_lo, &selector_hi,
+                &present, challenges.is_empty(), &mut c, work);
+        } else {
+            for (program_index, program) in programs.iter().enumerate() {
+                let program_gates = gates(program, depth);
+                work.logical_gate_cell_iterations += program_gates.len() as u64;
+                if !present[program_index] {
+                    work.unsupported_program_cells += 1;
+                    work.unsupported_gate_iterations_saved += program_gates.len() as u64;
                     continue;
                 }
-                let x = lo[gate.x];
-                let dx = hi[gate.x] - x;
-                if gate.op == Op::Copy {
-                    u[0] += gate_weight * x;
-                    u[1] += gate_weight * dx;
-                    work.coefficient_multiplications += 2;
-                    work.coefficient_additions += 2;
-                    work.coefficient_subtractions += 1;
-                } else {
-                    let y = lo[gate.y];
-                    let dy = hi[gate.y] - y;
-                    let mut f = [x * y, Fp3::ZERO, dx * dy];
-                    // hi_x*hi_y = x*y + x*dy + dx*y + dx*dy.
-                    f[1] = hi[gate.x] * hi[gate.y] - f[0] - f[2];
-                    if gate.op == Op::Xor {
-                        f = [x + y - (f[0] + f[0]), dx + dy - (f[1] + f[1]), -(f[2] + f[2])];
-                        work.coefficient_additions += 5;
-                        work.coefficient_subtractions += 2;
-                        work.coefficient_negations += 1;
-                    }
-                    for j in 0..3 {
-                        u[j] += gate_weight * f[j];
-                    }
-                    work.coefficient_multiplications += 6;
-                    work.coefficient_additions += 3;
-                    work.coefficient_subtractions += 4;
+                // The public selector is shared by every gate of this program.
+                // Accumulate its weighted gate polynomial first, then multiply by
+                // that selector once. This preserves the four transcript values.
+                let mut u = [Fp3::ZERO; 3];
+                for (gate, &gate_weight) in program_gates.iter().zip(weights) {
+                    accumulate_gate::<BOOLEAN_ROWS>(gate, gate_weight, &lo, &hi,
+                        challenges.is_empty(), &mut u, work);
                 }
+                let a = selector_lo[program_index];
+                let b = selector_hi[program_index] - a;
+                for j in 0..3 {
+                    c[j] += a * u[j];
+                    c[j + 1] += b * u[j];
+                }
+                work.coefficient_multiplications += 6;
+                work.coefficient_additions += 6;
+                work.coefficient_subtractions += 1;
             }
-            let a = selector_lo[program_index];
-            let b = selector_hi[program_index] - a;
-            for j in 0..3 {
-                c[j] += a * u[j];
-                c[j + 1] += b * u[j];
-            }
-            work.coefficient_multiplications += 6;
-            work.coefficient_additions += 6;
-            work.coefficient_subtractions += 1;
         }
     }
     if capturing { if let Some(table) = cache.as_mut() { table.finish_capture(); } }
@@ -1182,9 +1224,22 @@ fn prove_impl_cached(
     pattern_prefix: Option<usize>,
     cache_bytes: usize,
 ) -> Result<(Proof, Vec<Fp3>, Auth, SourceProverWork), String> {
+    prove_impl_planned(s, get_frame, fs, correlations, sourcewise, pattern_prefix, cache_bytes, false)
+}
+
+fn prove_impl_planned(
+    s: &Statement<'_>,
+    get_frame: &impl Fn(usize) -> [u8; 12],
+    fs: &mut Fs,
+    correlations: &mut impl ExactSizeIterator<Item = Auth>,
+    sourcewise: bool,
+    pattern_prefix: Option<usize>,
+    cache_bytes: usize,
+    shared_gates: bool,
+) -> Result<(Proof, Vec<Fp3>, Auth, SourceProverWork), String> {
     use std::cell::{Cell, RefCell};
 
-    if cache_bytes > cell_cache::MAX_BYTES || (cache_bytes != 0 && (!sourcewise || pattern_prefix.is_some())) {
+    if cache_bytes > cell_cache::MAX_BYTES || ((cache_bytes != 0 || shared_gates) && (!sourcewise || pattern_prefix.is_some())) {
         return Err("RMS folded cache configuration differs".into());
     }
     let widths = s.geometry()?;
@@ -1353,6 +1408,13 @@ fn prove_impl_cached(
             } else {
                 None
             };
+            let shared = if shared_gates && !point.is_empty() {
+                Some(SharedGates::new(s.programs, depth, width, &weights)?)
+            } else { None };
+            if let Some(plan) = shared.as_ref() {
+                source_work.cell_phase_owned_heap_peak_bytes = source_work.cell_phase_owned_heap_peak_bytes
+                    .max(plan.build_peak_bytes());
+            }
             let mut cell_cache = None;
             for _ in 0..point.len() {
                 if let Some(table) = &pattern {
@@ -1370,7 +1432,7 @@ fn prove_impl_cached(
                 replay_prefix.set(prefix.len());
                 replay_group.set(None); // prefix changes the public traversal
                 let mut work = SourceCellWork::default();
-                let result = source_cell_round_cached::<true>(
+                let result = source_cell_round_planned::<true>(
                     s.programs,
                     depth,
                     width,
@@ -1382,7 +1444,11 @@ fn prove_impl_cached(
                     &mut work,
                     &mut cell_cache,
                     cache_bytes,
+                    shared.as_deref(),
                 )?;
+                if prefix.is_empty() {
+                    work.coefficient_additions += shared.as_ref().map_or(0, |p| p.weight_additions());
+                }
                 work.selector_weight_multiplications +=
                     work.selector_assigned_terms * selector_point.len() as u64;
                 if work.selector_assigned_terms != 0 { work.selector_weight_subtractions += selector_zero_bits; }
@@ -1937,11 +2003,52 @@ mod tests {
             }
             value
         });
+        let mut implemented_support_cache=HashMap::<[u64;7],Vec<u64>>::new();
+        let original_pairs=support.as_ref().map(|s|s.intervals.iter().map(|v|
+            (0..s.padded_cells.ilog2()).map(|r|shared_support_pairs(v,s.padded_cells>>(r+1)))
+            .collect::<Vec<_>>()).collect::<Vec<_>>()).unwrap_or_default();
         let mut support_cache = HashMap::<[u64; 3], Vec<u64>>::new();
         let first: usize = std::env::var("C71_RMS_SCREEN_FIRST_DEPTH").map_or(1, |v| v.parse().unwrap());
         let last: usize = std::env::var("C71_RMS_SCREEN_LAST_DEPTH").map_or(geometry.len()-1, |v| v.parse().unwrap());
         assert!(first >= 1 && first <= last && last < geometry.len());
         for depth in first..=last {
+            if std::env::var("C71_RMS_SCREEN_IMPLEMENTED_SHARED").as_deref()==Ok("1") {
+                let plan=SharedGates::new(&programs,depth,geometry[depth-1],&vec![Fp3::ONE;geometry[depth]]).unwrap();
+                let mut products=vec![];
+                let mut baseline=vec![];
+                if let Some(support)=&support {
+                    products=vec![0u64;support.padded_cells.ilog2() as usize];
+                    for (mask,counts) in plan.public_groups() {
+                        let pairs=implemented_support_cache.entry(mask).or_insert_with(|| {
+                            let intervals=support.intervals.iter().enumerate()
+                                .filter(|(p,_)|mask[p/64]>>(p%64)&1!=0)
+                                .flat_map(|(_,spans)|spans.iter().copied()).collect::<Vec<_>>();
+                            (0..support.padded_cells.ilog2()).map(|r|
+                                shared_support_pairs(&intervals,support.padded_cells>>(r+1))).collect()
+                        });
+                        for (round,value) in products.iter_mut().enumerate() {
+                            *value+=pairs[round]*(6+if round==0 {0} else {6*(counts[0]+counts[1])+2*counts[2]});
+                        }
+                    }
+                    baseline=vec![0;products.len()];
+                    for (p,program) in programs.iter().enumerate() {
+                        let gate_products=gates(program,depth).iter().map(|g|if g.op==Op::Copy{2u64}else{6}).sum::<u64>();
+                        for (r,total) in baseline.iter_mut().enumerate() {
+                            *total+=original_pairs[p][r]*(6+if r==0{0}else{gate_products});
+                        }
+                    }
+                }
+                let upper=baseline.iter().zip(&products).enumerate().map(|(r,(&a,&b))|if r==0 {a} else {a.min(b)}).collect::<Vec<_>>();
+                println!("C71_RMS_IMPLEMENTED_SHARED_GATE_SCREEN {}",serde_json::json!({
+                    "depth":depth,"credit":false,"selected":false,"forced_shared_products_by_round":products,
+                    "baseline_products_by_round":baseline,"adaptive_products_upper_by_round":upper,
+                    "capacity_bytes":plan.capacity_bytes(),"build_peak_bytes":plan.build_peak_bytes(),
+                    "weight_additions":plan.weight_additions(),
+                    "groups":plan.public_groups().count(),
+                    "weighted_gates":plan.public_groups().map(|(_,v)|v.iter().sum::<u64>()).sum::<u64>(),
+                    "scope":"actual plan; Boolean first round preserved; later adaptive upper sums per-round min of total baseline/shared costs; excludes selector additions, sorting, replay and time"}));
+                continue;
+            }
             let mut indexed: HashMap<(usize, u8, usize, usize), [u64; 3]> = HashMap::new();
             let mut raw = [0usize; 3];
             for (p, program) in programs.iter().enumerate() {
@@ -2062,10 +2169,15 @@ mod tests {
             "program_inner_capacity_bytes":program_inner_capacity_bytes(&programs),"credit":false}));
         let cache_bytes = std::env::var("C71_RMS_BENCH_CACHE_BYTES")
             .map(|value| value.parse::<usize>().unwrap()).unwrap_or(0);
+        let shared = match std::env::var("C71_RMS_BENCH_SHARED_GATES").as_deref() {
+            Err(std::env::VarError::NotPresent) | Ok("0") => false,
+            Ok("1") => true,
+            _ => panic!("invalid RMS shared-gate benchmark selector"),
+        };
         let started = std::time::Instant::now();
-        let (proof, point, original, work) = prove_impl_cached(&statement, &|i| {
+        let (proof, point, original, work) = prove_impl_planned(&statement, &|i| {
             assert!(assignments[i].is_some()); frames[i]
-        }, &mut fs, &mut rows, true, None, cache_bytes).unwrap();
+        }, &mut fs, &mut rows, true, None, cache_bytes, shared).unwrap();
         let prove_ns = started.elapsed().as_nanos();
         assert_eq!(rows.len(), 0);
         let mut verify_fs = start();
@@ -2082,7 +2194,7 @@ mod tests {
         println!("C71_RMS_BENCH_COMPLETE {}", serde_json::json!({"cells":cells,
             "compile_ns":compile_ns,"prove_ns":prove_ns,"verify_ns":verify_ns,
             "work":work,"wire_bytes":wire.len(),"wire_blake3":blake3::hash(&wire).to_hex().as_str(),
-            "folded_cache_limit_bytes":cache_bytes,"correlations":count,
+            "folded_cache_limit_bytes":cache_bytes,"shared_gates":shared,"correlations":count,
             "same_FS_original_MAC_endpoint":true,"all_original_layers_executed":true,
             "private_values":"nonzero synthetic rows evaluated with original integer RMS",
             "scope":"selected pinned recipes with reduced cells; excludes statistics caller, PCS, real model, AES setup and full response",
@@ -2167,6 +2279,29 @@ mod tests {
                 "cell_owned_heap_peak_bytes":cached_work.cell_phase_owned_heap_peak_bytes,
                 "exact_wire_FS_original_MAC":true}));
         }
+        let mut shared_variants = Vec::new();
+        for budget in [0,cell_cache::MAX_BYTES] {
+            let mut shared_fs=start();let mut shared_rows=rows.clone().into_iter();
+            let (shared,shared_point,shared_original,shared_work)=prove_impl_planned(
+                &statement,&read,&mut shared_fs,&mut shared_rows,true,None,budget,true).unwrap();
+            let mut shared_wire=Vec::new();
+            crate::c71_matrix::wire::Wire::write(&shared,&mut shared_wire);
+            assert_eq!(shared_wire,dense_wire);assert_eq!(shared_point,dense_point);
+            assert_eq!((shared_original.x,shared_original.m),(dense_original.x,dense_original.m));
+            assert_eq!(shared_fs.digest(),dense_fs.digest());assert_eq!(shared_rows.len(),0);
+            let products=shared_work.cell_rounds.iter().map(|r|r.coefficient_multiplications).sum::<u64>();
+            let baseline=work.cell_rounds.iter().map(|r|r.coefficient_multiplications).sum::<u64>();
+            assert!(products<baseline);
+            shared_variants.push(serde_json::json!({"cache_budget_bytes":budget,
+                "baseline_coefficient_products":baseline,"shared_coefficient_products":products,
+                "cell_owned_heap_peak_bytes":shared_work.cell_phase_owned_heap_peak_bytes,
+                "exact_wire_FS_original_MAC":true}));
+        }
+        for (sourcewise,pattern) in [(false,None),(true,Some(5))] {
+            let mut rejected_fs=start();let before=rejected_fs.digest();let mut unused=rows.clone().into_iter();
+            assert!(prove_impl_planned(&statement,&read,&mut rejected_fs,&mut unused,sourcewise,pattern,0,true).is_err());
+            assert_eq!(unused.len(),count);assert_eq!(rejected_fs.digest(),before);
+        }
         for (sourcewise, pattern, budget) in [(true,None,cell_cache::MAX_BYTES+1),(true,Some(5),4096),(false,None,4096)] {
             let mut rejected_fs=start(); let before=rejected_fs.digest();
             let mut unused_rows=rows.clone().into_iter();
@@ -2190,7 +2325,7 @@ mod tests {
         println!("C71_RMS_PACKED_GKR_WIRE {}",serde_json::json!({
             "cells":8,"programs":3,"correlations":count,"wire_bytes":packed_wire.len(),
             "packed_prove_ns":packed_ns,"dense_prove_ns":dense_ns,"work":work,
-            "folded_cache_candidates":cache_variants,
+            "folded_cache_candidates":cache_variants,"shared_gate_candidates":shared_variants,
             "exact_wire_FS_RNG_original_MAC":true,"PCS_composition_excluded":true,
             "credit":false,"GPU_execution":false
         }));

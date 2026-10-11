@@ -1,0 +1,7 @@
+
+running 1 test
+test c71_matrix::rms::gkr::tests::c71_b12_mixed_gpu_index_all_rounds_original_sparse_coefficients ... C71_RMS_INDEX_GPU {"canonical_certificates":0,"coefficient_checks":80,"credit":false,"original_sparse_coefficients":true,"stats":{"allocations":30,"arena_bytes":0,"cleanup_failed":0,"d2d_bytes":62496,"d2h_bytes":12960,"fences":100,"h2d_bytes":343728,"host_owner_bytes":42496,"launches":280,"live_capacity_bytes":0,"logical_bytes":0,"peak_capacity_bytes":56320,"peak_reserved_bytes":56320,"releases":30,"stopped":0,"weights_bytes":0,"weights_loaded_bytes":0,"weights_sealed":0,"zeroed_bytes":4320},"terminal_checks":10,"zero_one_challenges":true}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 633 filtered out; finished in 0.42s
+

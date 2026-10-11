@@ -8,9 +8,7 @@ sys.path.insert(0, str(SCRIPTS))
 from c71_rms_native_schedule import native_schedule
 
 
-def test_launch_count_matches_preserved_real_gpu_coefficient_oracle():
-    # The real GPU oracle uses these original dyadic tiles, three depths,
-    # and two challenge series. Its immutable counter is 7,830 launches.
+def dense_gpu_oracle_geometry():
     tiles = []
     for p, count in enumerate([8193, 4877, 3307]):
         col = 0
@@ -27,6 +25,12 @@ def test_launch_count_matches_preserved_real_gpu_coefficient_oracle():
               for i, w, c in [(1, 128, [[1, 1, 1], [1, 1, 1], [0, 0, 1]]),
                              (2, 4, [[0, 1, 1], [0, 1, 1], [0, 0, 1]]),
                              (3, 2, [[0, 1, 0], [0, 1, 0], [0, 0, 1]])]]
+    return intervals, levels
+
+
+def test_launch_count_matches_preserved_real_gpu_coefficient_oracle():
+    # The real GPU oracle has three depths/two challenge series/7,830 launches.
+    intervals, levels = dense_gpu_oracle_geometry()
     result = native_schedule(16384, intervals, levels)
     assert 2 * result['total_cell_launches'] == 7830
     assert result['total_tail_padded_source_positions'] == 3 * 10 * 16384

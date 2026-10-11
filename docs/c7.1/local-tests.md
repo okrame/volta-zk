@@ -85,9 +85,12 @@ a cap4096;25 riletture tail/profondità,1.328.755.507.200 posizioni padded.
 Screen analitico `credit:false`, senza tempo/capacità completa ammessi.
 Serve ridurre launch/replay; byte/statistica GPU, conto simultaneo e
 raffinamento restano aperti. Pod RUNNING e guard originale attivo.
-È [preparato il batching comune dei gate del prefisso](../c7.1-history/h100-rms-mixed-gate-batch-prepared-2026-10-11.md):
-chunk512 degli stessi gate e maschere, con staging pubblico posseduto;
-parità/capacità e timing da rieseguire sul pod. Il conto sopra resta92afea54.
+Il [batching del prefisso verificato](../c7.1-history/h100-rms-gate-batch-parity-2026-10-11.md)
+passa18 check su `f868468e`, inclusi23 rifiuti owner e stesso wire159/99:
+launch707.364, prover126,808 s; la singola misura non migliora il tempo
+rispetto a124,478 s precedente. Fisico campionato1.272.659.968 B, un
+incompleto, nessun credito al picco stabile. Il conto sopra resta92afea54;
+nuovo conto delle candidate batch preparato, da verificare sul pod.
 È [preparata anche la riduzione per programma del tail](../c7.1-history/h100-rms-tail-program-reduction-prepared-2026-10-11.md):
 due kernel per finestra, stessi coefficienti/selector; nuovo staging/range
 posseduto e23 rifiuti owner da verificare. Nessun esito o conto canonico dedotto.

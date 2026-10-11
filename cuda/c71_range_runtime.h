@@ -15,6 +15,7 @@
 #include "c71_pcs_residual.cuh"
 #include "c71_rms_prefix.cuh"
 #include "c71_rms_tail.cuh"
+#include "c71_rms_index.cuh"
 
 struct C71RangeContext;
 using C71RangeAccount = int (*)(int64_t);
@@ -85,6 +86,9 @@ int c71_rms_prefix_finish_tail(C71RangeContext*,uint64_t prefix,uint64_t source,
     const Fp3* original_point,uint32_t bits,Fp3* moments,uint32_t count);
 int c71_rms_tail_round(C71RangeContext*,uint64_t,const Fp3* prefix,uint32_t round,
     Fp3* coefficients,Fp3* terminal,uint32_t terminal_count);
+int c71_rms_index_begin(C71RangeContext*,uint32_t width,uint32_t programs,uint32_t gates,
+    const c71_rms_prefix::Gate*,const c71_rms_prefix::GateRange*,const Fp3* previous,const Fp3* selectors,uint64_t*);
+int c71_rms_index_step(C71RangeContext*,uint64_t,const Fp3* prefix,uint32_t round,Fp3* result);
 int c71_range_roots(C71RangeContext*,uint64_t input,uint32_t bottom,Fp3 alpha,uint64_t output,uint64_t first);
 int c71_range_runtime_canopy(C71RangeContext*,uint64_t input,uint64_t output);
 int c71_range_as_children(C71RangeContext*,uint64_t handle);

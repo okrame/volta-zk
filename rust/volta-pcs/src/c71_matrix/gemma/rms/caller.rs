@@ -510,20 +510,24 @@ impl Sources {
         // the numeric producer or expands padding into N frame rows.
         let frames =
             CompactFrames::build(self, |source, row, col, byte| Ok(read(source, row, col, byte)))?;
+        let spans = if native.is_some() {
+            self.tiles.iter().map(|tile| {
+                Ok((u32::try_from(tile.offset).map_err(|_|"RMS support start overflow")?,
+                    u32::try_from(tile.offset+tile.rows*tile.cols).map_err(|_|"RMS support end overflow")?,
+                    u16::try_from(profiles[tile.tensor]).map_err(|_|"RMS support program overflow")?))
+            }).collect::<Result<Vec<_>,String>>()?
+        } else { Vec::new() };
         let gs = gkr::Statement {
             root: s.auxiliary,
             profile: s.auxiliary_gamma,
             view: self.view,
             attempt: s.attempt,
             programs: &programs,
-            assignments: gkr::Assignments::new(self.cells.next_power_of_two(), &assignment),
+            assignments: if native.is_some() {
+                gkr::Assignments::compiled(self.cells.next_power_of_two(), &spans)
+            } else { gkr::Assignments::new(self.cells.next_power_of_two(), &assignment) },
         };
         let (joint, byte_point, byte) = if let Some((runtime,capacity))=native {
-            let spans=self.tiles.iter().map(|tile| {
-                Ok((u32::try_from(tile.offset).map_err(|_|"RMS support start overflow")?,
-                    u32::try_from(tile.offset+tile.rows*tile.cols).map_err(|_|"RMS support end overflow")?,
-                    u16::try_from(profiles[tile.tensor]).map_err(|_|"RMS support program overflow")?))
-            }).collect::<Result<Vec<_>,String>>()?;
             let packet=frames.native_packet(&profiles,programs.len())?;
             let source=runtime.rms_source_begin(frames.payload.clone(),&packet)?;
             let result=gkr::prove_native_mapped_sourcewise(&gs,|i|frames.frame(i).unwrap(),fs,&mut rows,

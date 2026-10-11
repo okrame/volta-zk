@@ -18,6 +18,7 @@ mod gamma_screen_fixture;
 #[derive(Clone, Copy)]
 pub(in super::super) enum Assignments<'a> {
     Dense(&'a [Option<usize>]),
+    Compiled { len: usize, spans: &'a [(u32, u32, u16)] },
     Lookup {
         len: usize,
         get: &'a dyn Fn(usize) -> Option<usize>,
@@ -26,6 +27,10 @@ pub(in super::super) enum Assignments<'a> {
 }
 
 impl<'a> Assignments<'a> {
+    pub(in super::super) fn compiled(len: usize, spans: &'a [(u32, u32, u16)]) -> Self {
+        Self::Compiled { len, spans }
+    }
+
     pub(in super::super) fn new(len: usize, get: &'a dyn Fn(usize) -> Option<usize>) -> Self {
         Self::Lookup { len, get, support: None }
     }
@@ -39,6 +44,9 @@ impl<'a> Assignments<'a> {
     }
 
     fn support(self) -> Vec<(u32, u32)> {
+        if let Self::Compiled { spans, .. } = self {
+            return spans.iter().map(|&(first, end, _)| (first, end)).collect();
+        }
         if let Self::Lookup { support: Some(spans), .. } = self {
             return spans.to_vec();
         }
@@ -66,6 +74,7 @@ impl<'a> Assignments<'a> {
         match self {
             Self::Dense(values) => values.len(),
             Self::Lookup { len, .. } => len,
+            Self::Compiled { len, .. } => len,
         }
     }
 
@@ -74,11 +83,55 @@ impl<'a> Assignments<'a> {
         match self {
             Self::Dense(values) => values[index],
             Self::Lookup { get, .. } => get(index),
+            Self::Compiled { spans, .. } => {
+                let i = spans.partition_point(|&(_, end, _)| end as usize <= index);
+                spans.get(i).filter(|&&(first, _, _)| first as usize <= index)
+                    .map(|&(_, _, program)| usize::from(program))
+            }
         }
     }
 
     fn iter(self) -> impl Iterator<Item = Option<usize>> + 'a {
-        (0..self.len()).map(move |index| self.get(index))
+        let mut cursor = 0;
+        (0..self.len()).map(move |index| {
+            if let Self::Compiled { spans, .. } = self {
+                while cursor < spans.len() && spans[cursor].1 as usize <= index { cursor += 1; }
+                spans.get(cursor).filter(|&&(first, _, _)| first as usize <= index)
+                    .map(|&(_, _, program)| usize::from(program))
+            } else { self.get(index) }
+        })
+    }
+
+    fn valid(self, programs: usize) -> bool {
+        if let Self::Compiled { len, spans } = self {
+            !spans.is_empty() && spans.len() <= 16384
+                && spans.iter().all(|&(first, end, p)| first < end && end as usize <= len
+                    && usize::from(p) < programs)
+                && spans.windows(2).all(|pair| pair[0].1 <= pair[1].0)
+        } else {
+            self.iter().flatten().all(|p| p < programs) && self.iter().any(|p| p.is_some())
+        }
+    }
+
+    fn live_count_and_zero_bits(self) -> (u64, u64) {
+        let bits = self.len().ilog2();
+        if let Self::Compiled { spans, .. } = self {
+            let ones_before = |n: u64| -> u64 {
+                (0..bits).map(|bit| {
+                    let half = 1u64 << bit;
+                    n / (2 * half) * half + (n % (2 * half)).saturating_sub(half)
+                }).sum()
+            };
+            spans.iter().fold((0, 0), |(live, zeros), &(first, end, _)| {
+                let (first, end) = (u64::from(first), u64::from(end));
+                let count = end - first;
+                (live + count, zeros + count * u64::from(bits) - (ones_before(end) - ones_before(first)))
+            })
+        } else {
+            self.iter().enumerate().filter(|(_, p)| p.is_some()).fold((0, 0), |(live, zeros), (i, _)| {
+                (live + 1, zeros + u64::from(bits - i.count_ones()))
+            })
+        }
     }
 }
 
@@ -213,8 +266,7 @@ impl Statement<'_> {
             || self.assignments.len() > 1 << 29
             || self.programs.is_empty()
             || self.programs.len() > 421
-            || self.assignments.iter().flatten().any(|p| p >= self.programs.len())
-            || self.assignments.iter().all(|p| p.is_none())
+            || !self.assignments.valid(self.programs.len())
             || self.root.num_roots() != 1
             || self.profile.is_empty()
             || self.view == [0; 32]
@@ -349,6 +401,12 @@ impl Statement<'_> {
     }
 
     fn live_sourcewise(&self, point: &[Fp3]) -> Fp3 {
+        if let Assignments::Compiled { spans, .. } = self.assignments {
+            return spans.iter().fold(Fp3::ZERO, |sum, &(first, end, _)| {
+                let mass = |n| if n == 0 { Fp3::ZERO } else { byte_function::live_mass(n, point) };
+                sum + mass(end as usize) - mass(first as usize)
+            });
+        }
         self.assignments
             .iter()
             .enumerate()
@@ -1254,18 +1312,21 @@ fn prove_impl_evaluated(
     shared_gates: bool,
     byte_contracted: bool,
 ) -> Result<(Proof, Vec<Fp3>, Auth, SourceProverWork), String> {
-    prove_impl_backend(s,get_frame,fs,correlations,sourcewise,pattern_prefix,cache_bytes,shared_gates,byte_contracted,None,None)
+    prove_impl_backend(s,get_frame,fs,correlations,sourcewise,pattern_prefix,cache_bytes,shared_gates,byte_contracted,None,None,None)
 }
 
 type NativePrefixBuilder<'a> = dyn FnMut(usize,&[Fp3],&[Fp3],&dyn Fn(usize)->[u8;12],&mut patterns::Work)
     -> Result<Option<patterns::Prefix>,String> + 'a;
 type NativeCellBuilder<'a> = dyn FnMut(&[Fp3],&[Fp3])->Result<Option<SourceCellRound>,String> + 'a;
+type NativeIndexBuilder<'a> = dyn FnMut(usize,&[Fp3],&[Fp3],&[Fp3],&[Fp3])
+    ->Result<([Fp3;3],Option<[Fp3;2]>),String> + 'a;
 
 fn prove_impl_backend(
     s:&Statement<'_>,get_frame:&impl Fn(usize)->[u8;12],fs:&mut Fs,
     correlations:&mut impl ExactSizeIterator<Item=Auth>,sourcewise:bool,pattern_prefix:Option<usize>,
     cache_bytes:usize,shared_gates:bool,byte_contracted:bool,mut native:Option<&mut NativePrefixBuilder<'_>>,
     mut native_cell:Option<&mut NativeCellBuilder<'_>>,
+    mut native_index:Option<&mut NativeIndexBuilder<'_>>,
 ) -> Result<(Proof,Vec<Fp3>,Auth,SourceProverWork),String> {
     use std::cell::{Cell, RefCell};
 
@@ -1337,13 +1398,7 @@ fn prove_impl_backend(
     // statistic and pattern consumers retain their existing memory schedule.
     let packed_replay = pattern_prefix.is_none() && s.programs.len() > 1;
     let replay_scratch = RefCell::new(ReplayLayerScratch::default());
-    let selector_zero_bits: u64 = s
-        .assignments
-        .iter()
-        .enumerate()
-        .filter(|(_, assignment)| assignment.is_some())
-        .map(|(cell, _)| cell_bits as u64 - u64::from(cell.count_ones()))
-        .sum();
+    let (assigned_cells, selector_zero_bits) = s.assignments.live_count_and_zero_bits();
     let mut source_work = SourceProverWork::default();
     let mut cell_protocol_capacity_peak_bytes = 0usize;
     let mut next_weights_transition_capacity_peak_bytes = 0usize;
@@ -1573,11 +1628,31 @@ fn prove_impl_backend(
         { source_work.phase_ns[0] += cell_started.elapsed().as_nanos(); }
         #[cfg(test)]
         let index_started = std::time::Instant::now();
-        let mut edges = edges(s, depth, &weights, &selectors);
+        let mut edges = if native_index.is_some() { Vec::new() } else { edges(s, depth, &weights, &selectors) };
         source_work.edge_capacity_elements_peak =
             source_work.edge_capacity_elements_peak.max(edges.capacity());
         let mut points = [Vec::new(), Vec::new()];
         let mut values = [Fp3::ZERO; 2];
+        let c = if let Some(builder) = native_index.as_mut() {
+            let index_bits = width.ilog2() as usize;
+            let mut prefix = Vec::with_capacity(2 * index_bits);
+            for side in 0..2 {
+                for _ in 0..index_bits {
+                    let (c, terminal) = builder(depth, &weights, &previous, &selectors, &prefix)?;
+                    if terminal.is_some() {return Err("native RMS index premature terminal".into());}
+                    fs.set_phase(0x1000 + 64 * depth as u16 + rounds.len() as u16);
+                    let (wire, r) = round_prove(&c, &mut target, fs, &mut rows, &round_auth_heap);
+                    points[side].push(r);prefix.push(r);rounds.push(wire);
+                }
+            }
+            let (c, terminal) = builder(depth, &weights, &previous, &selectors, &prefix)?;
+            values = terminal.ok_or("native RMS index terminal missing")?;
+            source_work.index_phase_owned_heap_peak_bytes = source_work.index_phase_owned_heap_peak_bytes.max(
+                (previous.capacity() + selectors.capacity() + prefix.capacity() + following.capacity()
+                    + point.capacity() + weights.capacity() + points[0].capacity() + points[1].capacity())
+                    * core::mem::size_of::<Fp3>());
+            c
+        } else {
         for side in 0..2 {
             let mut vector = previous.clone();
             source_work.index_vector_capacity_elements_peak =
@@ -1613,7 +1688,8 @@ fn prove_impl_backend(
                     );
             }
         }
-        let c = terminal_coefficients(&edges);
+        terminal_coefficients(&edges)
+        };
         let (wire, original) =
             range::authenticate([values[0], values[1], values[0] * values[1]], &mut rows);
         let tag = c.iter().zip(&original).fold(-target.m, |v, (&c, a)| v + c * a.m);
@@ -1730,11 +1806,24 @@ fn prove_impl_backend(
     source_work.original_frame_reads = frame_reads.get();
     source_work.byte_endpoint = byte_endpoint;
     if sourcewise {
-        let live = s.assignments.iter().filter(|assignment| assignment.is_some()).count() as u64;
         let evaluations = 2;
-        source_work.live_weight_multiplications = live * cell_bits as u64 * evaluations;
-        source_work.live_weight_subtractions = selector_zero_bits * evaluations;
-        source_work.live_weight_additions = live * evaluations;
+        if let Assignments::Compiled { spans, .. } = s.assignments {
+            for &(first, end, _) in spans {
+                for n in [first, end] {
+                    if n != 0 && n as usize != s.assignments.len() {
+                        source_work.live_weight_multiplications += (cell_bits as u64 + u64::from(n.count_ones())) * evaluations;
+                        source_work.live_weight_subtractions += cell_bits as u64 * evaluations;
+                        source_work.live_weight_additions += u64::from(n.count_ones()) * evaluations;
+                    }
+                }
+                source_work.live_weight_additions += evaluations;
+                source_work.live_weight_subtractions += evaluations;
+            }
+        } else {
+            source_work.live_weight_multiplications = assigned_cells * cell_bits as u64 * evaluations;
+            source_work.live_weight_subtractions = selector_zero_bits * evaluations;
+            source_work.live_weight_additions = assigned_cells * evaluations;
+        }
     }
     let proof = Proof { layers, products, functions };
     let proof_capacity_bytes = proof.heap_capacity_bytes();
@@ -1834,7 +1923,7 @@ pub(in super::super) fn prove_native_sourcewise(
 ) -> Result<(Proof,Vec<Fp3>,Auth,SourceProverWork),String> {
     let mut builder=|depth,point:&[Fp3],weights:&[Fp3],read:&dyn Fn(usize)->[u8;12],work:&mut patterns::Work|
         patterns::build_native(s,depth,point,weights,read,work,runtime,public_spans,capacity,None,None);
-    prove_impl_backend(s,&get_frame,fs,correlations,true,Some(1),0,false,false,Some(&mut builder),None)
+    prove_impl_backend(s,&get_frame,fs,correlations,true,Some(1),0,false,false,Some(&mut builder),None,None)
 }
 
 pub(in super::super) fn prove_native_mapped_sourcewise(
@@ -1857,7 +1946,30 @@ pub(in super::super) fn prove_native_mapped_sourcewise(
         if terminal.is_some() {*tail=None;}
         Ok(Some(SourceCellRound {coefficients,terminal:terminal.map(|[lo,hi,sel_lo,sel_hi]|(lo,hi,sel_lo,sel_hi))}))
     };
-    prove_impl_backend(s,&get_frame,fs,correlations,true,Some(1),0,false,false,Some(&mut builder),Some(&mut cell))
+    let index_token=std::cell::RefCell::new(None);
+    let mut index=|depth,weights:&[Fp3],previous:&[Fp3],selectors:&[Fp3],prefix:&[Fp3]| {
+        use crate::c71_matrix::range::windowed::native::{RmsIndexPacket,RmsGate,RmsRange};
+        let mut state=state.borrow_mut();let runtime=&mut state.0;
+        let mut token=index_token.borrow_mut();
+        if prefix.is_empty() {
+            if token.is_some() {return runtime.abort("native RMS previous index is still active");}
+            let mut packet=RmsIndexPacket {gates:Vec::new(),ranges:Vec::new(),
+                previous:previous.iter().copied().map(Into::into).collect(),selectors:selectors.iter().copied().map(Into::into).collect()};
+            for program in s.programs {
+                let selected=gates(program,depth);
+                if selected.len()>weights.len() {return runtime.abort("native RMS index gate weights differ");}
+                packet.ranges.push(RmsRange {first:packet.gates.len() as u32,count:selected.len() as u32});
+                packet.gates.extend(selected.iter().zip(weights).map(|(g,&weight)|RmsGate {
+                    op:match g.op {Op::And=>0,Op::Xor=>1,Op::Copy=>2},x:g.x as u32,y:g.y as u32,reserved:0,weight:weight.into()}));
+            }
+            *token=Some(runtime.rms_index_begin(&packet)?);
+        }
+        let Some(capability)=token.as_ref() else {return runtime.abort("native RMS index capability missing");};
+        let result=runtime.rms_index_step(capability,prefix)?;
+        if result.1.is_some() {*token=None;}
+        Ok(result)
+    };
+    prove_impl_backend(s,&get_frame,fs,correlations,true,Some(1),0,false,false,Some(&mut builder),Some(&mut cell),Some(&mut index))
 }
 
 pub(in super::super) fn prove_sourcewise(
@@ -2988,6 +3100,106 @@ mod tests {
                 vec![Gate { op: Op::Xor, x: 0, y: 1 }],
             ] },
         }).collect()
+    }
+
+    #[test]
+    #[ignore = "requires the explicitly selected original H100 library"]
+    fn c71_b12_mixed_gpu_index_all_rounds_original_sparse_coefficients() {
+        use crate::c71_matrix::range::windowed::native::{Runtime,Config,RmsIndexPacket,RmsGate,RmsRange};
+        let path=std::env::var_os("C71_NATIVE_PARITY_LIBRARY").expect("explicit real GPU library required");
+        let config=Config::new(path.into(),0,64<<20,256,256,32);
+        let mut runtime=Runtime::new(&config).unwrap();let model=Model::new(32,vec![0;1024]).unwrap();
+        let f=|i:usize|Fp3::new(Fp::new((i+3) as u64),Fp::new((i+7) as u64),Fp::new((i+11) as u64));
+        let mut coefficient_checks=0;let mut terminal_checks=0;
+        for width in [1usize,2,8,128,512] {
+            let programs=(0..3).map(|p|Circuit {ports:98,product_bits:32,valid:0,coefficients:[0;3],arithmetic_bits:1,raw_gates:259,
+                levels:vec![(0..257+p).map(|i| {
+                    let op=[Op::And,Op::Xor,Op::Copy][i%3];let x=(7*i+p)%width;
+                    Gate {op,x,y:if op==Op::Copy{x}else{(13*i+2*p+1)%width}}
+                }).collect()]}).collect::<Vec<_>>();
+            let assignments=[Some(0)];let s=Statement {root:&model.root,profile:b"original sparse index oracle",view:[51;32],
+                attempt:AttemptContext {session:[1;32],capacity:[2;32],slot:0,predecessor:[0;32],nonce:[3;32]},
+                programs:&programs,assignments:Assignments::dense(&assignments)};
+            let weights=(0..259).map(f).collect::<Vec<_>>();let previous=(0..width).map(|i|f(i+17)).collect::<Vec<_>>();
+            let selectors=[f(7),Fp3::ZERO,Fp3::ONE];
+            for case in 0..2 {
+                let mut packet=RmsIndexPacket {gates:Vec::new(),ranges:Vec::new(),previous:previous.iter().copied().map(Into::into).collect(),
+                    selectors:selectors.into_iter().map(Into::into).collect()};
+                for program in &programs {
+                    let selected=gates(program,1);packet.ranges.push(RmsRange {first:packet.gates.len() as u32,count:selected.len() as u32});
+                    packet.gates.extend(selected.iter().zip(&weights).map(|(g,&weight)|RmsGate {
+                        op:match g.op{Op::And=>0,Op::Xor=>1,Op::Copy=>2},x:g.x as u32,y:g.y as u32,reserved:0,weight:weight.into()}));
+                }
+                let token=runtime.rms_index_begin(&packet).unwrap();drop(packet);
+                let mut original=edges(&s,1,&weights,&selectors);let mut prefix=Vec::new();let mut values=[Fp3::ZERO;2];
+                for side in 0..2 {
+                    let mut vector=previous.clone();
+                    while vector.len()>1 {
+                        let want=index_coefficients(&original,&previous,&vector,(side==1).then_some(values[0]));
+                        let (got,terminal)=runtime.rms_index_step(&token,&prefix).unwrap();
+                        assert!(terminal.is_none());assert_eq!(got,want,"width {width}, side {side}, round {}",prefix.len());
+                        coefficient_checks+=1;
+                        let r=if case==0{f(prefix.len()+37)}else{if prefix.len()%2==0{Fp3::ZERO}else{Fp3::ONE}};
+                        fold_edges(&mut original,vector.len()/2,side==1,r);fold(&mut vector,r);prefix.push(r);
+                    }
+                    values[side]=vector[0];
+                }
+                let (got,terminal)=runtime.rms_index_step(&token,&prefix).unwrap();
+                assert_eq!(got,terminal_coefficients(&original));assert_eq!(terminal,Some(values));terminal_checks+=1;
+                let stats=runtime.stats().unwrap();assert_eq!(stats.arena_bytes,0);assert_eq!(stats.host_owner_bytes,42496);
+                assert_eq!(stats.allocations,stats.releases);assert_eq!(stats.stopped,0);assert_eq!(stats.cleanup_failed,0);
+            }
+        }
+        let stats=runtime.stats().unwrap();runtime.close().unwrap();
+        println!("C71_RMS_INDEX_GPU {}",serde_json::json!({"coefficient_checks":coefficient_checks,"terminal_checks":terminal_checks,
+            "original_sparse_coefficients":true,"zero_one_challenges":true,"stats":stats,"canonical_certificates":0,"credit":false}));
+    }
+
+    #[test]
+    fn c71_b12_compiled_assignments_keep_dense_binding_and_live_mass() {
+        let model = Model::new(32, vec![0; 1024]).unwrap();
+        let attempt = AttemptContext { session: [1; 32], capacity: [2; 32], slot: 0,
+            predecessor: [0; 32], nonce: [3; 32] };
+        for program_count in [3, 256, 421] {
+            let recipes = mixed_moment_programs();
+            let programs = (0..program_count).map(|i| {
+                let p = &recipes[i % 3];
+                Circuit { ports: p.ports, product_bits: p.product_bits, levels: p.levels.clone(),
+                    valid: p.valid, coefficients: p.coefficients, arithmetic_bits: p.arithmetic_bits,
+                    raw_gates: p.raw_gates }
+            }).collect::<Vec<_>>();
+            for bits in 0..=9 {
+                let len = 1usize << bits;
+                let dense = (0..len).map(|i| (i % 7 != 3).then_some((i / 5 + 251) % program_count)).collect::<Vec<_>>();
+                let mut spans = Vec::<(u32, u32, u16)>::new();
+                for (i, p) in dense.iter().enumerate() {
+                    if let Some(p) = p {
+                        if let Some(last) = spans.last_mut().filter(|last| last.1 == i as u32 && last.2 == *p as u16) {
+                            last.1 += 1;
+                        } else { spans.push((i as u32, i as u32 + 1, *p as u16)); }
+                    }
+                }
+                let reference = Statement { root: &model.root, profile: b"compiled assignment oracle",
+                    view: [41; 32], attempt, programs: &programs, assignments: Assignments::dense(&dense) };
+                let compiled = Statement { assignments: Assignments::compiled(len, &spans), ..reference };
+                assert_eq!(compiled.geometry().unwrap(), reference.geometry().unwrap());
+                assert_eq!(compiled.assignments.iter().collect::<Vec<_>>(), dense);
+                for (i, p) in dense.iter().enumerate() { assert_eq!(compiled.assignments.get(i), *p); }
+                assert_eq!(compiled.assignments.live_count_and_zero_bits(), reference.assignments.live_count_and_zero_bits());
+                let start = || Fs::new(b"compiled RMS assignment oracle", 1_000_000);
+                let (mut a, mut b) = (start(), start());
+                let (pa, wa) = reference.bind(&mut a);
+                let (pb, wb) = compiled.bind(&mut b);
+                assert_eq!(pa, pb); assert_eq!(wa, wb); assert_eq!(a.fp3(), b.fp3());
+                for point in [pa, vec![Fp3::ZERO; bits], vec![Fp3::ONE; bits]] {
+                    assert_eq!(compiled.live_sourcewise(&point), reference.live_sourcewise(&point));
+                }
+                for bad in [vec![], vec![(0, 0, 0)], vec![(0, len as u32 + 1, 0)],
+                    vec![(0, 1, program_count as u16)], vec![(0, 1, 0), (0, 1, 1)]] {
+                    assert!(Statement { assignments: Assignments::compiled(len, &bad), ..reference }.geometry().is_err());
+                }
+            }
+        }
     }
 
     #[test]

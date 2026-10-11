@@ -2697,3 +2697,4 @@ extern "C" int c71_pcs_residual_query_finish(C71RangeContext* c,uint64_t token,c
 #include "c71_rms_runtime.inc"
 #include "c71_rms_source.inc"
 #include "c71_rms_tail.inc"
+#include "c71_rms_index.inc"

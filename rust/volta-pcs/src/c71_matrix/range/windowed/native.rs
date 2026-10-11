@@ -187,6 +187,10 @@ pub(in crate::c71_matrix) struct RmsToken {
     id:u64,owner:Arc<()>,capacity:usize,programs:usize,masks:usize,width:usize,bits:usize,
 }
 pub(in crate::c71_matrix) struct RmsTailToken {id:u64,owner:Arc<()>,width:usize,programs:usize,bits:usize}
+pub(in crate::c71_matrix) struct RmsIndexToken {id:u64,owner:Arc<()>,bits:usize}
+pub(in crate::c71_matrix) struct RmsIndexPacket {
+    pub gates:Vec<RmsGate>,pub ranges:Vec<RmsRange>,pub previous:Vec<Field>,pub selectors:Vec<Field>,
+}
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub(in crate::c71_matrix) struct RmsSourceShape {
@@ -594,6 +598,8 @@ api! {
     rms_prefix_source_window:unsafe extern "C" fn(Raw,u64,u64,u32,u32,*const u16)->i32 => "c71_rms_prefix_window_from_source",
     rms_prefix_finish_tail:unsafe extern "C" fn(Raw,u64,u64,*const Field,u32,*mut Field,u32)->i32 => "c71_rms_prefix_finish_tail",
     rms_tail_round:unsafe extern "C" fn(Raw,u64,*const Field,u32,*mut Field,*mut Field,u32)->i32 => "c71_rms_tail_round",
+    rms_index_begin:unsafe extern "C" fn(Raw,u32,u32,u32,*const RmsGate,*const RmsRange,*const Field,*const Field,*mut u64)->i32 => "c71_rms_index_begin",
+    rms_index_step:unsafe extern "C" fn(Raw,u64,*const Field,u32,*mut Field)->i32 => "c71_rms_index_step",
     linear_source: unsafe extern "C" fn(Raw,u64,u64,PcsSourceTile)->i32 => "c71_linear_source_tile",
     linear_weights: unsafe extern "C" fn(Raw,u64,u64)->i32 => "c71_linear_weights",
     linear_finish: unsafe extern "C" fn(Raw,u64,*mut Field)->i32 => "c71_linear_finish",
@@ -938,6 +944,31 @@ impl Runtime {
                 raw[token.width..stride].to_vec(),raw[stride+token.width..].to_vec()])
         } else {None};
         Ok((result,terminal))
+    }
+    pub(in crate::c71_matrix) fn rms_index_begin(&mut self,packet:&RmsIndexPacket)->Result<RmsIndexToken,String> {
+        self.ready()?;
+        if !packet.previous.len().is_power_of_two() || packet.previous.len()>1<<14 ||
+            packet.selectors.len()!=packet.ranges.len() || packet.ranges.is_empty() || packet.ranges.len()>421 ||
+            packet.gates.is_empty() || packet.gates.len()>packet.ranges.len()*(1<<14) {
+            return self.abort("native RMS index packet lengths differ");
+        }
+        let mut id=0;
+        let status=unsafe {(self.api.rms_index_begin)(self.raw,packet.previous.len() as u32,packet.ranges.len() as u32,
+            packet.gates.len() as u32,packet.gates.as_ptr(),packet.ranges.as_ptr(),packet.previous.as_ptr(),packet.selectors.as_ptr(),&mut id)};
+        self.check(status)?;if id==0 {return self.abort("native RMS index null capability");}
+        Ok(RmsIndexToken {id,owner:self.owner.clone(),bits:packet.previous.len().ilog2() as usize})
+    }
+    pub(in crate::c71_matrix) fn rms_index_step(&mut self,token:&RmsIndexToken,prefix:&[Fp3])
+        ->Result<([Fp3;3],Option<[Fp3;2]>),String> {
+        self.ready()?;
+        if token.id==0 || !Arc::ptr_eq(&token.owner,&self.owner) || prefix.len()>2*token.bits {
+            return self.abort("native RMS index capability or prefix length differs");
+        }
+        let prefix=prefix.iter().copied().map(Field::from).collect::<Vec<_>>();let mut raw=[Field::default();6];
+        let status=unsafe {(self.api.rms_index_step)(self.raw,token.id,if prefix.is_empty(){ptr::null()}else{prefix.as_ptr()},prefix.len() as u32,raw.as_mut_ptr())};
+        self.check(status)?;let mut result=[Fp3::ZERO;6];
+        for (out,value) in result.iter_mut().zip(raw) {*out=value.decode().or_else(|error|self.abort(error))?;}
+        Ok(([result[0],result[1],result[2]],(prefix.len()==2*token.bits).then_some([result[3],result[4]])))
     }
     pub(in crate::c71_matrix) fn linear_begin(&mut self, packet: &LinearPacket) -> Result<LinearToken, String> {
         self.ready()?;
@@ -2878,10 +2909,33 @@ pub(in crate::c71_matrix) mod tests {
         }
     }
     #[test]
+    fn c71_b12_native_rms_index_lengths_history_and_owner_fail_closed() {
+        let fixture=fixture(512);
+        for fault in 0..4 {
+            let mut runtime=Runtime::new(&fixture.config).unwrap();
+            let mut packet=RmsIndexPacket {gates:vec![RmsGate {op:0,x:2,y:3,reserved:0,weight:Fp3::ONE.into()}],
+                ranges:vec![RmsRange {first:0,count:1}],previous:vec![Field::default();8],selectors:vec![Field::default();1]};
+            if fault==0 {packet.previous.pop();assert!(runtime.rms_index_begin(&packet).is_err());}
+            else {
+                let token=runtime.rms_index_begin(&packet).unwrap();
+                if fault==1 {assert!(runtime.rms_index_step(&token,&[Fp3::ZERO;7]).is_err());}
+                else if fault==2 {
+                    let mut other=Runtime::new(&fixture.config).unwrap();
+                    assert!(other.rms_index_step(&token,&[]).is_err());assert_eq!(other.stats().unwrap().stopped,1);
+                    other.close().unwrap();runtime.abort::<()>("test index owner mismatch completed").unwrap_err();
+                }else {
+                    runtime.rms_index_step(&token,&[]).unwrap();runtime.rms_index_step(&token,&[Fp3::ZERO]).unwrap();
+                    assert!(runtime.rms_index_step(&token,&[Fp3::ONE,Fp3::ZERO]).is_err());
+                }
+            }
+            assert_eq!(runtime.stats().unwrap().stopped,1);runtime.close().unwrap();
+        }
+    }
+    #[test]
     fn c71_b12_native_rms_symbols_are_required() {
         for symbol in ["c71_rms_prefix_begin","c71_rms_prefix_window","c71_rms_prefix_finish",
             "c71_rms_source_begin","c71_rms_source_retire","c71_rms_prefix_window_from_source",
-            "c71_rms_prefix_finish_tail","c71_rms_tail_round"] {
+            "c71_rms_prefix_finish_tail","c71_rms_tail_round","c71_rms_index_begin","c71_rms_index_step"] {
             let fixture=fixture_library(512,Some(symbol));assert!(Runtime::new(&fixture.config).is_err());
         }
     }

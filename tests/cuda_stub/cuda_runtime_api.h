@@ -9,6 +9,12 @@ enum cudaMemPoolAttr { cudaMemPoolAttrReleaseThreshold, cudaMemPoolAttrReservedM
 using cudaError_t=int;
 constexpr int cudaSuccess=0, cudaErrorInvalidValue=1;
 constexpr unsigned cudaStreamNonBlocking=1;
+constexpr unsigned cudaHostRegisterMapped=2,cudaHostRegisterReadOnly=8;
+enum cudaDeviceAttr { cudaDevAttrHostRegisterSupported,cudaDevAttrHostRegisterReadOnlySupported,cudaDevAttrCanMapHostMemory };
+cudaError_t cudaDeviceGetAttribute(int*,cudaDeviceAttr,int);
+cudaError_t cudaHostRegister(void*,size_t,unsigned);
+cudaError_t cudaHostGetDevicePointer(void**,void*,unsigned);
+cudaError_t cudaHostUnregister(void*);
 enum cudaMemcpyKind { cudaMemcpyHostToDevice, cudaMemcpyDeviceToHost, cudaMemcpyDeviceToDevice };
 enum cudaLimit { cudaLimitStackSize };
 cudaError_t cudaSetDevice(int);

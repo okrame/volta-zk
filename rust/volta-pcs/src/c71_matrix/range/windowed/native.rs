@@ -184,6 +184,27 @@ pub(in crate::c71_matrix) struct RmsPacket {
     pub point:Vec<Field>, pub ranges:Vec<RmsRange>, pub masks:Vec<u16>, pub sections:Vec<RmsSection>,
 }
 pub(in crate::c71_matrix) struct RmsToken {id:u64, owner:Arc<()>, capacity:usize, programs:usize, masks:usize}
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub(in crate::c71_matrix) struct RmsSourceShape {
+    pub bytes:u64,pub live:u32,pub padded:u32,pub norms:u32,pub tiles:u32,pub programs:u32,pub reserved:u32,
+}
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub(in crate::c71_matrix) struct RmsSourceNorm {
+    pub product:u64,pub statistic:u64,pub output:u64,pub cells:u64,
+    pub pbytes:u32,pub columns:u32,pub rows:u32,pub program:u32,
+}
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub(in crate::c71_matrix) struct RmsSourceTile {
+    pub first:u32,pub end:u32,pub norm:u32,pub row:u32,pub col:u32,pub cols:u32,pub program:u32,pub reserved:u32,
+}
+pub(in crate::c71_matrix) struct RmsSourcePacket {
+    pub shape:RmsSourceShape,pub norms:Vec<RmsSourceNorm>,pub tiles:Vec<RmsSourceTile>,
+}
+pub(in crate::c71_matrix) struct RmsSourceToken {id:u64,owner:Arc<()>}
+const _: () = assert!(size_of::<RmsSourceShape>()==32 && size_of::<RmsSourceNorm>()==48 && size_of::<RmsSourceTile>()==32);
 const _: () = assert!(size_of::<RmsPrefixShape>()==40 && size_of::<RmsProgram>()==28 && size_of::<RmsGate>()==40
     && size_of::<RmsRange>()==8 && size_of::<RmsSection>()==8);
 // PCS v^3=v+1 basis. MAC Field is deliberately a different Rust type.
@@ -565,6 +586,9 @@ api! {
         *const RmsGate,*const Field,*const RmsRange,*const u16,*const RmsSection,*mut u64)->i32 => "c71_rms_prefix_begin",
     rms_prefix_window: unsafe extern "C" fn(Raw,u64,u32,u32,*const u8,*const u16,*const u16)->i32 => "c71_rms_prefix_window",
     rms_prefix_finish: unsafe extern "C" fn(Raw,u64,*mut Field,u32)->i32 => "c71_rms_prefix_finish",
+    rms_source_begin:unsafe extern "C" fn(Raw,RmsSourceShape,*const u8,*const RmsSourceNorm,*const RmsSourceTile,*mut u64)->i32 => "c71_rms_source_begin",
+    rms_source_retire:unsafe extern "C" fn(Raw,u64)->i32 => "c71_rms_source_retire",
+    rms_prefix_source_window:unsafe extern "C" fn(Raw,u64,u64,u32,u32,*const u16)->i32 => "c71_rms_prefix_window_from_source",
     linear_source: unsafe extern "C" fn(Raw,u64,u64,PcsSourceTile)->i32 => "c71_linear_source_tile",
     linear_weights: unsafe extern "C" fn(Raw,u64,u64)->i32 => "c71_linear_weights",
     linear_finish: unsafe extern "C" fn(Raw,u64,*mut Field)->i32 => "c71_linear_finish",
@@ -594,6 +618,7 @@ pub(in crate::c71_matrix) struct Runtime {
     raw: Raw,
     stopped: bool,
     weights: Option<(Arc<Vec<i16>>, [u8; 32])>,
+    rms_source:Option<Arc<Vec<u8>>>,
     weight_install_bytes: u64,
     owner: Arc<()>,
     configuration: (PathBuf, i32, u64, u64),
@@ -602,6 +627,41 @@ pub(in crate::c71_matrix) struct Runtime {
 unsafe impl Send for Runtime {}
 
 impl Runtime {
+    pub(in crate::c71_matrix) fn rms_source_begin(&mut self,payload:Arc<Vec<u8>>,packet:&RmsSourcePacket)
+        ->Result<RmsSourceToken,String> {
+        self.ready()?;
+        if self.rms_source.is_some() || packet.shape.bytes!=payload.len() as u64 ||
+            packet.shape.norms as usize!=packet.norms.len() || packet.shape.tiles as usize!=packet.tiles.len() {
+            return self.abort("native RMS source owner or packet lengths differ");
+        }
+        let mut id=0;self.rms_source=Some(payload);
+        let status=unsafe {(self.api.rms_source_begin)(self.raw,packet.shape,
+            self.rms_source.as_ref().unwrap().as_ptr(),packet.norms.as_ptr(),packet.tiles.as_ptr(),&mut id)};
+        self.check(status)?;
+        if id==0 {return self.abort("native RMS source null capability");}
+        Ok(RmsSourceToken {id,owner:self.owner.clone()})
+    }
+    fn require_rms_source(&mut self,token:&RmsSourceToken)->Result<(),String> {
+        self.ready()?;
+        if token.id==0 || !Arc::ptr_eq(&self.owner,&token.owner) || self.rms_source.is_none() {
+            return self.abort("native RMS source capability owner differs");
+        }
+        Ok(())
+    }
+    pub(in crate::c71_matrix) fn rms_source_retire(&mut self,token:RmsSourceToken)->Result<(),String> {
+        self.require_rms_source(&token)?;
+        let status=unsafe {(self.api.rms_source_retire)(self.raw,token.id)};
+        self.check(status)?;self.rms_source=None;Ok(())
+    }
+    pub(in crate::c71_matrix) fn rms_prefix_window_from_source(&mut self,prefix:&RmsToken,
+        source:&RmsSourceToken,first:usize,n:usize,mask_ids:&[u16])->Result<(),String> {
+        self.require_rms(prefix)?;self.require_rms_source(source)?;
+        if first>u32::MAX as usize || n==0 || n>prefix.capacity || mask_ids.len()!=prefix.programs {
+            return self.abort("native RMS mapped window lengths differ");
+        }
+        let status=unsafe {(self.api.rms_prefix_source_window)(self.raw,prefix.id,source.id,
+            first as u32,n as u32,mask_ids.as_ptr())};self.check(status)
+    }
     pub(in crate::c71_matrix) fn residual_query_begin(&mut self,packet:&ResidualPacket,pads:&[PcsField],
         capacity:usize,column:usize)->Result<ResidualQuery,String> {
         self.require_residual_packet(packet)?;
@@ -971,6 +1031,7 @@ impl Runtime {
             raw: ptr::null_mut(),
             stopped: false,
             weights: None,
+            rms_source:None,
             weight_install_bytes: 0,
             owner: Arc::new(()),
             configuration: (
@@ -1895,11 +1956,15 @@ impl Runtime {
         let status = unsafe { (self.api.close)(raw, &mut stats) };
         self.weights = None;
         if status != 0 || stats.cleanup_failed != 0 || stats.weights_bytes != 0 {
+            // Uncertain unregister/fence ownership keeps the immutable pinned
+            // checkpoint and its global allocation charge until process exit.
+            if let Some(source)=self.rms_source.take() {std::mem::forget(source);}
             return Err(format!(
                 "native cleanup failed, arena bytes: {}, W bytes: {}",
                 stats.arena_bytes, stats.weights_bytes
             ));
         }
+        self.rms_source=None;
         before?; // Diagnostic failure never bypasses the actual native cleanup.
         if bytes != 0 {
             crate::c71_matrix::progress::resident_w("device", "retired", bytes, None)?;
@@ -2773,8 +2838,61 @@ pub(in crate::c71_matrix) mod tests {
     }
     #[test]
     fn c71_b12_native_rms_symbols_are_required() {
-        for symbol in ["c71_rms_prefix_begin","c71_rms_prefix_window","c71_rms_prefix_finish"] {
+        for symbol in ["c71_rms_prefix_begin","c71_rms_prefix_window","c71_rms_prefix_finish",
+            "c71_rms_source_begin","c71_rms_source_retire","c71_rms_prefix_window_from_source"] {
             let fixture=fixture_library(512,Some(symbol));assert!(Runtime::new(&fixture.config).is_err());
+        }
+    }
+    fn rms_source_fixture()->(Arc<Vec<u8>>,RmsSourcePacket) {
+        (Arc::new(vec![42;140]),RmsSourcePacket {
+            shape:RmsSourceShape {bytes:140,live:32,padded:32,norms:1,tiles:1,programs:1,reserved:0},
+            norms:vec![RmsSourceNorm {product:0,statistic:64,output:76,cells:32,pbytes:2,columns:16,rows:2,program:0}],
+            tiles:vec![RmsSourceTile {first:0,end:32,norm:0,row:0,col:0,cols:16,program:0,reserved:0}],
+        })
+    }
+    #[test]
+    fn c71_b12_native_rms_source_owner_and_immutable_lifetime() {
+        let fixture=fixture(512);let mut runtime=Runtime::new(&fixture.config).unwrap();
+        let (mut source,packet)=rms_source_fixture();
+        let token=runtime.rms_source_begin(source.clone(),&packet).unwrap();
+        assert!(Arc::get_mut(&mut source).is_none());assert_eq!(Arc::strong_count(&source),2);
+        runtime.rms_source_retire(token).unwrap();
+        assert_eq!(Arc::strong_count(&source),1);assert!(Arc::get_mut(&mut source).is_some());
+        assert_eq!(runtime.stats().unwrap().arena_bytes,0);runtime.close().unwrap();
+    }
+    #[test]
+    fn c71_b12_native_rms_source_failure_keeps_uncertain_checkpoint() {
+        for fault in [13,14,15,2] {
+            let fixture=fixture(512);let injection=Injection::new(&fixture.config);
+            let mut runtime=Runtime::new(&fixture.config).unwrap();let (source,packet)=rms_source_fixture();
+            let weak=Arc::downgrade(&source);
+            if fault==15 {
+                let token=runtime.rms_source_begin(source.clone(),&packet).unwrap();
+                injection.set(fault);assert!(runtime.rms_source_retire(token).is_err());
+                injection.set(0);
+            } else {injection.set(fault);assert!(runtime.rms_source_begin(source.clone(),&packet).is_err());}
+            if fault!=2 {injection.set(0);}
+            let closed=runtime.close();injection.set(0);
+            if fault==15 || fault==2 {
+                assert!(closed.is_err());assert_eq!(Arc::strong_count(&source),2);
+                drop(source);assert!(weak.upgrade().is_some());
+            } else {closed.unwrap();assert_eq!(Arc::strong_count(&source),1);drop(source);assert!(weak.upgrade().is_none());}
+        }
+    }
+    #[test]
+    fn c71_b12_native_rms_source_lengths_and_foreign_owner_fail_closed() {
+        for fault in 0..3 {
+            let fixture=fixture(512);let mut runtime=Runtime::new(&fixture.config).unwrap();
+            let (source,mut packet)=rms_source_fixture();
+            if fault==0 {packet.norms.clear();assert!(runtime.rms_source_begin(source,&packet).is_err());}
+            else if fault==1 {packet.shape.bytes-=1;assert!(runtime.rms_source_begin(source,&packet).is_err());}
+            else {
+                let token=runtime.rms_source_begin(source,&packet).unwrap();
+                let mut other=Runtime::new(&fixture.config).unwrap();
+                assert!(other.rms_source_retire(token).is_err());assert_eq!(other.stats().unwrap().stopped,1);
+                other.close().unwrap();runtime.abort::<()>("test owner mismatch completed").unwrap_err();
+            }
+            assert_eq!(runtime.stats().unwrap().stopped,1);runtime.close().unwrap();
         }
     }
     #[test]

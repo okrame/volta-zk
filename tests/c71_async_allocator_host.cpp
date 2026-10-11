@@ -16,7 +16,7 @@ int main(int argc,char** argv) {
     C71RangeContext* context=nullptr;
     assert(!c71_range_create(0,2ULL<<20,256,joint_account,&context) && context);
     const auto initial=stats(context);
-    assert(initial.host_owner_bytes==42352 && joint_live==initial.host_owner_bytes);
+    assert(initial.host_owner_bytes==42456 && joint_live==initial.host_owner_bytes);
     uint64_t legacy=0;
     assert(!c71_range_alloc(context,C71_I64,1,&legacy));
     assert(!c71_dense_pointwise(context,0,0,0,0,{0,0,0},legacy));

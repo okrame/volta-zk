@@ -6,6 +6,23 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_rms_mapped_source_lifetime_and_failures(tmp_path):
+    binary = tmp_path / "rms-source-owner"
+    subprocess.run(
+        ["g++", "-std=c++17", "-O2", "-Wall", "-Wextra", "-Werror",
+         "-fsanitize=undefined", "-fno-sanitize-recover=all",
+         "-I", str(ROOT / "tests/cuda_stub"), "-I", str(ROOT / "cuda"),
+         str(ROOT / "cuda/c71_range_runtime.cpp"), str(ROOT / "tests/c71_rms_source_host.cpp"),
+         "-o", str(binary)], check=True, timeout=30,
+    )
+    result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=10)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout.removeprefix("C71_RMS_SOURCE_OWNER ")) == {
+        "success": 1, "terminal_rejections": 26, "no_unregister_retry": True,
+        "no_frame_download": True, "gpu_execution": False, "credit": False,
+    }
+
+
 def test_rms_prefix_common_owner_and_failures(tmp_path):
     binary = tmp_path / "rms-owner"
     subprocess.run(
@@ -59,7 +76,7 @@ def test_native_range_owner_with_deferred_fake_driver(tmp_path):
                       "gpu_execution": False, "credit": False}
 
     reuse = reports.pop("C71_SYNC_ERROR_FLAG_REUSE")
-    assert reuse.pop("host_owner_bytes") == 42280
+    assert reuse.pop("host_owner_bytes") == 42384
     assert reuse == {
         "retained_device_capacity_bytes": 256, "flag_count": 1,
         "sync_flag_reuse": True, "numeric_operations": 32,

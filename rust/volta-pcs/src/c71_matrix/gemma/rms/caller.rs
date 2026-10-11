@@ -70,7 +70,7 @@ pub(in crate::c71_matrix) struct VRequest<T> {
 /// selected row rather than broadcast over that row's columns.
 struct CompactFrames<'a> {
     sources: &'a Sources,
-    payload: Vec<u8>,
+    payload: std::sync::Arc<Vec<u8>>,
     norms: Vec<CompactNorm>,
     source_byte_reads: u64,
 }
@@ -119,7 +119,7 @@ impl<'a> CompactFrames<'a> {
             .len()
             .checked_mul(core::mem::size_of::<CompactNorm>())
             .ok_or("RMS frame metadata overflow")?;
-        if payload_len.checked_add(metadata).filter(|&n| n <= 2usize << 30).is_none() {
+        if payload_len.checked_add(metadata).and_then(|n|n.checked_add(40)).filter(|&n| n <= 2usize << 30).is_none() {
             return Err("RMS compact frames exceed reused 2 GiB slot".into());
         }
         let mut payload = Vec::with_capacity(payload_len);
@@ -156,7 +156,7 @@ impl<'a> CompactFrames<'a> {
         if payload.len() != payload_len {
             return Err("RMS compact frame payload differs".into());
         }
-        Ok(Self { sources, source_byte_reads: payload_len as u64, payload, norms })
+        Ok(Self { sources, source_byte_reads: payload_len as u64, payload:std::sync::Arc::new(payload), norms })
     }
 
     /// Uses the canonical tile lookup in `Sources::cell`; padded cells remain
@@ -186,7 +186,7 @@ impl<'a> CompactFrames<'a> {
     fn workspace(&self) -> CompactFrameWorkspace {
         let metadata_len = self.norms.len() * core::mem::size_of::<CompactNorm>();
         let metadata_capacity = self.norms.capacity() * core::mem::size_of::<CompactNorm>();
-        let retained_capacity_bytes = self.payload.capacity() + metadata_capacity;
+        let retained_capacity_bytes = self.payload.capacity() + metadata_capacity + 40;
         CompactFrameWorkspace {
             payload_len: self.payload.len(),
             payload_capacity: self.payload.capacity(),
@@ -198,6 +198,24 @@ impl<'a> CompactFrames<'a> {
             build_peak_owned_bytes: retained_capacity_bytes,
             source_byte_reads: self.source_byte_reads,
         }
+    }
+
+    fn native_packet(&self,profiles:&[usize],programs:usize)->Result<range::windowed::native::RmsSourcePacket,String> {
+        use range::windowed::native::{RmsSourcePacket,RmsSourceShape,RmsSourceNorm,RmsSourceTile};
+        let u32_value=|v|u32::try_from(v).map_err(|_|"RMS source coordinate overflow".to_string());
+        if profiles.len()!=self.norms.len() {return Err("RMS source profiles differ".into());}
+        let norms=self.norms.iter().zip(&self.sources.norms).enumerate().map(|(i,(s,n))|
+            Ok(RmsSourceNorm {product:s.product as u64,statistic:s.statistic as u64,output:s.output as u64,
+                cells:s.cells as u64,pbytes:u32_value(s.pbytes)?,columns:u32_value(n.columns)?,
+                rows:u32_value(n.rows)?,program:u32_value(profiles[i])?})).collect::<Result<Vec<_>,String>>()?;
+        let tiles=self.sources.tiles.iter().map(|t|Ok(RmsSourceTile {
+            first:u32_value(t.offset)?,end:u32_value(t.offset+t.rows*t.cols)?,norm:u32_value(t.tensor)?,
+            row:u32_value(t.row)?,col:u32_value(t.col)?,cols:u32_value(t.cols)?,
+            program:u32_value(profiles[t.tensor])?,reserved:0})).collect::<Result<Vec<_>,String>>()?;
+        let shape=RmsSourceShape {bytes:self.payload.len() as u64,live:u32_value(self.sources.cells)?,
+            padded:u32_value(self.sources.cells.next_power_of_two())?,norms:u32_value(norms.len())?,
+            tiles:u32_value(tiles.len())?,programs:u32_value(programs)?,reserved:0};
+        Ok(RmsSourcePacket {shape,norms,tiles})
     }
 }
 
@@ -506,8 +524,12 @@ impl Sources {
                     u32::try_from(tile.offset+tile.rows*tile.cols).map_err(|_|"RMS support end overflow")?,
                     u16::try_from(profiles[tile.tensor]).map_err(|_|"RMS support program overflow")?))
             }).collect::<Result<Vec<_>,String>>()?;
-            let (proof,point,original,_)=gkr::prove_native_sourcewise(&gs,|i|frames.frame(i).unwrap(),fs,&mut rows,
-                runtime,&spans,capacity)?;
+            let packet=frames.native_packet(&profiles,programs.len())?;
+            let source=runtime.rms_source_begin(frames.payload.clone(),&packet)?;
+            let result=gkr::prove_native_mapped_sourcewise(&gs,|i|frames.frame(i).unwrap(),fs,&mut rows,
+                runtime,&spans,capacity,&source);
+            let (proof,point,original,_)=result?;
+            runtime.rms_source_retire(source)?;
             (proof,point,original)
         } else {gkr::prove(&gs, |i| frames.frame(i).unwrap(), fs, &mut rows)?};
         debug_assert!(rows.next().is_none());

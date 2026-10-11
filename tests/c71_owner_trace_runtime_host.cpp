@@ -93,7 +93,7 @@ int main(int argc,char** argv) {
     const int created=c71_range_create(0,scenario=="large"?(2ULL<<20):262144,256,joint_account,&context);
     assert(context && (created!=0)==init_failure);
     const auto initial=stats(context);
-    assert(initial.host_owner_bytes==42280+sizeof(c71_owner_trace::Trace) && joint_live==initial.host_owner_bytes);
+    assert(initial.host_owner_bytes==42384+sizeof(c71_owner_trace::Trace) && joint_live==initial.host_owner_bytes);
     if(init_failure) {
         assert(initial.stopped && !set_device_calls && !allocations && !frees && !launches);
     } else if(scenario=="physical" || scenario=="physicalquery" || scenario=="physicalwrite" || scenario=="physicalstack") {

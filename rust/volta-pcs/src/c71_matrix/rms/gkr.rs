@@ -1830,7 +1830,19 @@ pub(in super::super) fn prove_native_sourcewise(
     public_spans:&[(u32,u32,u16)],capacity:usize,
 ) -> Result<(Proof,Vec<Fp3>,Auth,SourceProverWork),String> {
     let mut builder=|depth,point:&[Fp3],weights:&[Fp3],read:&dyn Fn(usize)->[u8;12],work:&mut patterns::Work|
-        patterns::build_native(s,depth,point,weights,read,work,runtime,public_spans,capacity);
+        patterns::build_native(s,depth,point,weights,read,work,runtime,public_spans,capacity,None);
+    prove_impl_backend(s,&get_frame,fs,correlations,true,Some(1),0,false,false,Some(&mut builder))
+}
+
+pub(in super::super) fn prove_native_mapped_sourcewise(
+    s:&Statement<'_>,get_frame:impl Fn(usize)->[u8;12],fs:&mut Fs,
+    correlations:&mut impl ExactSizeIterator<Item=Auth>,
+    runtime:&mut crate::c71_matrix::range::windowed::native::Runtime,
+    public_spans:&[(u32,u32,u16)],capacity:usize,
+    source:&crate::c71_matrix::range::windowed::native::RmsSourceToken,
+) -> Result<(Proof,Vec<Fp3>,Auth,SourceProverWork),String> {
+    let mut builder=|depth,point:&[Fp3],weights:&[Fp3],read:&dyn Fn(usize)->[u8;12],work:&mut patterns::Work|
+        patterns::build_native(s,depth,point,weights,read,work,runtime,public_spans,capacity,Some(source));
     prove_impl_backend(s,&get_frame,fs,correlations,true,Some(1),0,false,false,Some(&mut builder))
 }
 

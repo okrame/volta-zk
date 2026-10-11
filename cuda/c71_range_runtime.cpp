@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstring>
 #include <new>
+#include <unistd.h>
 #ifdef C71_OWNER_TRACE
 #include "c71_owner_trace.h"
 #endif
@@ -161,6 +162,16 @@ struct RmsPrefixTransaction {
     uint64_t shadow_bytes=0;
 };
 static_assert(sizeof(RmsPrefixTransaction)==184);
+struct RmsMappedSource {
+    c71_rms_prefix::SourceShape shape{};
+    uint64_t meta=0,offsets[2]{};
+    const uint8_t* host=nullptr;
+    const uint8_t* device=nullptr;
+    uint8_t* shadow=nullptr;
+    uint64_t shadow_bytes=0,page_slack=0;
+    uint32_t registered=0,unregister_failed=0;
+};
+static_assert(sizeof(RmsMappedSource)==104);
 struct C71RangeContext {
 #ifdef C71_SOURCE_VMM_EXPERIMENT
     C71SourceTail source_tails[121];
@@ -204,8 +215,11 @@ struct C71RangeContext {
     ContractTransaction contract{};
     ResidualQueryTransaction residual_query{};
     RmsPrefixTransaction rms{};
+    RmsMappedSource rms_source{};
 };
 namespace {
+int rms_source_unpin(C71RangeContext*);
+void rms_source_shadow_release(C71RangeContext*);
 constexpr uint64_t sizes[]={1,2,48,96,24,96,8,1,8,8,32,32,32,40,8,8,8,1,1,8,1};
 constexpr uint64_t caps[]={uint64_t{1}<<31,uint64_t{1}<<27,uint64_t{1}<<24,
                           uint64_t{1}<<24,256*32*32,65536,uint64_t(c71_dense::max_m)*c71_dense::max_n,uint64_t{1}<<31,65535,
@@ -488,9 +502,11 @@ extern "C" int c71_range_close(C71RangeContext* c,C71RangeStats* out) {
     C71_TRACE_VALUE(-1,0,sizeof(*c),0);
     const bool diagnostic_error=C71_TRACE_EVENT(c,"before",0)!=0;
     bool error=checked(c,cudaSetDevice(c->device))!=0;
+    bool drained=false;
     if(!error) {
-        bool drained=true;
+        drained=true;
         if(c->stream && (fence)(c,__func__,__LINE__,&drained)) error=true;
+        if(c->rms_source.host && (drained ? rms_source_unpin(c)!=0 : c->rms_source.registered!=0)) error=true;
         if(c->weights) {
             C71_TRACE_VALUE(-1,C71_I16,c->stats.weights_bytes,c->stats.weights_bytes);
             const bool trace_failed=C71_TRACE_EVENT(c,"before",0)!=0;
@@ -540,6 +556,9 @@ extern "C" int c71_range_close(C71RangeContext* c,C71RangeStats* out) {
         c->stats.host_owner_bytes-=c->rms.shadow_bytes;
         if(c->account) c->account(-int64_t(c->rms.shadow_bytes));
     }
+    // A failed fence may leave the immutable metadata upload in flight.
+    // Its charge and allocation survive the failed owner until process exit.
+    if(drained) rms_source_shadow_release(c);
     c->stats.cleanup_failed=error;
     *out=c->stats;
     if(c->account) c->account(-int64_t(sizeof(*c)));
@@ -2652,3 +2671,4 @@ extern "C" int c71_pcs_residual_query_finish(C71RangeContext* c,uint64_t token,c
 }
 
 #include "c71_rms_runtime.inc"
+#include "c71_rms_source.inc"

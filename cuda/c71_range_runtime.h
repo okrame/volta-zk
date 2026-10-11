@@ -72,6 +72,13 @@ int c71_rms_prefix_begin(C71RangeContext*,c71_rms_prefix::Shape,
 int c71_rms_prefix_window(C71RangeContext*,uint64_t,uint32_t source_first,uint32_t n,
     const uint8_t* frames,const uint16_t* assignments,const uint16_t* mask_ids);
 int c71_rms_prefix_finish(C71RangeContext*,uint64_t,Fp3* moments,uint32_t count);
+// The caller retains immutable payload storage through retirement or clean close.
+// No source pointer or private arena buffer is exported to a numeric producer.
+int c71_rms_source_begin(C71RangeContext*,c71_rms_prefix::SourceShape,const uint8_t*,
+    const c71_rms_prefix::SourceNorm*,const c71_rms_prefix::SourceTile*,uint64_t*);
+int c71_rms_source_retire(C71RangeContext*,uint64_t);
+int c71_rms_prefix_window_from_source(C71RangeContext*,uint64_t prefix,uint64_t source,
+    uint32_t first,uint32_t n,const uint16_t* mask_ids);
 int c71_range_roots(C71RangeContext*,uint64_t input,uint32_t bottom,Fp3 alpha,uint64_t output,uint64_t first);
 int c71_range_runtime_canopy(C71RangeContext*,uint64_t input,uint64_t output);
 int c71_range_as_children(C71RangeContext*,uint64_t handle);

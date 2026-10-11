@@ -3,6 +3,29 @@
 
 namespace c71_rms_prefix {
 namespace {
+__global__ void gather_original_frames(const uint8_t* payload,const SourceNorm* norms,
+    const SourceTile* tiles,unsigned tile_count,unsigned suffix,unsigned first,
+    unsigned capacity,unsigned n,uint8_t* frames,uint16_t* assignments) {
+    const unsigned i=blockIdx.x*blockDim.x+threadIdx.x;
+    if(i>=16*capacity)return;
+    const unsigned row=i/capacity,k=i%capacity,cell=row*suffix+first+k;
+    uint16_t program=0xffff; uint8_t frame[12]{};
+    if(k<n) {
+        unsigned lo=0,hi=tile_count;
+        while(lo<hi) {const unsigned mid=(lo+hi)/2;if(tiles[mid].end<=cell)lo=mid+1;else hi=mid;}
+        if(lo<tile_count && tiles[lo].first<=cell) {
+            const SourceTile t=tiles[lo]; const SourceNorm s=norms[t.norm];
+            const unsigned local=cell-t.first,r=t.row+local/t.cols,c=t.col+local%t.cols;
+            const uint64_t index=uint64_t(r)*s.columns+c;
+            for(unsigned b=0;b<s.pbytes;++b)frame[b]=payload[s.product+index*s.pbytes+b];
+            for(unsigned b=0;b<6;++b)frame[s.pbytes+b]=payload[s.statistic+uint64_t(r)*6+b];
+            for(unsigned b=0;b<2;++b)frame[s.pbytes+6+b]=payload[s.output+index*2+b];
+            program=uint16_t(t.program);
+        }
+    }
+    assignments[i]=program;
+    for(unsigned b=0;b<12;++b)frames[uint64_t(i)*12+b]=frame[b];
+}
 __device__ unsigned eq_at(unsigned tile,unsigned word,unsigned bit) {
     return (tile*8+word)*192+bit;
 }
@@ -164,6 +187,14 @@ __global__ void late_weight(const Gate* gates,unsigned gate_count,const Fp3* chu
     }
     aggregate[slot]=sum;
 }
+}
+cudaError_t source_frames(cudaStream_t stream,const uint8_t* payload,const SourceNorm* norms,
+    const SourceTile* tiles,unsigned tile_count,unsigned suffix,unsigned first,unsigned capacity,
+    unsigned n,uint8_t* frames,uint16_t* assignments,unsigned* launches) {
+    if(launches)*launches=1;
+    gather_original_frames<<<(16*capacity+255)/256,256,0,stream>>>(payload,norms,tiles,tile_count,
+        suffix,first,capacity,n,frames,assignments);
+    return cudaGetLastError();
 }
 cudaError_t replay(cudaStream_t stream,const uint8_t* frames,const uint16_t* assignments,
     const Program* programs,const Node* nodes,const uint32_t* boundaries,const uint32_t* outputs,

@@ -9,7 +9,7 @@ fn assignment(spans:&[(u32,u32,u16)],cell:usize)->Option<usize> {
 
 pub(in super::super) fn build(s:&Statement<'_>,depth:usize,point:&[Fp3],weights:&[Fp3],
     read:&dyn Fn(usize)->[u8;12],work:&mut Work,runtime:&mut Runtime,
-    public_spans:&[(u32,u32,u16)],capacity:usize)->Result<Option<Prefix>,String> {
+    public_spans:&[(u32,u32,u16)],capacity:usize,source:Option<&native::RmsSourceToken>)->Result<Option<Prefix>,String> {
     if point.len()<=4 {return Ok(None);}
     if point.len()>29 || !(256..=4096).contains(&capacity) || !capacity.is_power_of_two() ||
         s.programs.is_empty() || s.programs.len()>421 || depth==0 {
@@ -81,7 +81,8 @@ pub(in super::super) fn build(s:&Statement<'_>,depth:usize,point:&[Fp3],weights:
         gates:packet.gates.len() as u32,masks:packet.masks.len() as u32,sections:packet.sections.len() as u32,
     };
     let token=runtime.rms_prefix_begin(&packet)?;
-    let mut frames=vec![0u8;16*capacity*12];let mut ids=vec![u16::MAX;16*capacity];
+    let host_capacity=if source.is_none() {16*capacity} else {0};
+    let mut frames=vec![0u8;host_capacity*12];let mut ids=vec![u16::MAX;host_capacity];
     let mut mask_ids=vec![u16::MAX;s.programs.len()];let mut local_masks=vec![0u16;s.programs.len()];
     for section in &packet.sections {
         let mut first=section.first as usize;
@@ -91,6 +92,10 @@ pub(in super::super) fn build(s:&Statement<'_>,depth:usize,point:&[Fp3],weights:
             for row in 0..16 {
                 let p=assignment(spans,row*suffix+first);
                 if let Some(p)=p {local_masks[p]|=1<<row;}
+                if source.is_some() {
+                    if p.is_some() {work.original_frames+=n as u64;}
+                    continue;
+                }
                 for k in 0..n {
                     let cell=row*suffix+first+k;
                     if s.assignments.get(cell)!=p {return runtime.abort("native RMS support disagrees with original assignment");}
@@ -103,7 +108,10 @@ pub(in super::super) fn build(s:&Statement<'_>,depth:usize,point:&[Fp3],weights:
             for (p,&mask) in local_masks.iter().enumerate() {if mask!=0 {
                 mask_ids[p]=packet.masks.binary_search(&mask).map_err(|_|"native RMS mask missing")? as u16;
             }}
-            runtime.rms_prefix_window(&token,first,n,&frames,&ids,&mask_ids)?;first+=n;
+            if let Some(source)=source {
+                runtime.rms_prefix_window_from_source(&token,source,first,n,&mask_ids)?;
+            } else {runtime.rms_prefix_window(&token,first,n,&frames,&ids,&mask_ids)?;}
+            first+=n;
         }
     }
     let values=runtime.rms_prefix_finish(token)?;

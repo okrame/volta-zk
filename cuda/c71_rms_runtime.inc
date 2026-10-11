@@ -148,14 +148,55 @@ extern "C" int c71_rms_prefix_begin(C71RangeContext* c,rms::Shape shape,
     buffer(c,s.aggregate)->initialized=buffer(c,s.aggregate)->count;
     *token=s.meta; return 0;
 }
+namespace {
+bool rms_window_coverage(C71RangeContext* c,uint32_t first,uint32_t n,const uint16_t* mask_ids,unsigned& section) {
+    const auto& s=c->rms;const auto shape=s.shape;const auto* sections=rms_sections(s);
+    unsigned lower=0,upper=shape.sections;
+    while(lower<upper) {const auto mid=(lower+upper)/2;if(sections[mid].end<=first)lower=mid+1;else upper=mid;}
+    uintptr_t end=0;
+    if(lower==shape.sections || first!=s.cursor || first<sections[lower].first || !n || n>shape.capacity ||
+       n>sections[lower].end-first || !mask_ids || reinterpret_cast<uintptr_t>(mask_ids)%2 ||
+       !c71_dense::span(mask_ids,uint64_t(shape.programs)*2,end)) {
+        fail(c,"RMS prefix window coverage or mask span");return false;
+    }
+    section=lower;return true;
+}
+int rms_consume_window(C71RangeContext* c,uint32_t first,uint32_t n,const uint16_t* mask_ids,
+    unsigned section,bool error) {
+    auto& s=c->rms;const auto shape=s.shape;
+    unsigned attempted=0; uint64_t zeroed=0;
+    if(!error) {
+        const auto status=rms::replay(c->stream,ptr<uint8_t>(c,buffer(c,s.frames)),ptr<uint16_t>(c,buffer(c,s.assignments)),
+            rms_meta<rms::Program>(c,0),rms_meta<rms::Node>(c,1),rms_meta<uint32_t>(c,2),rms_meta<uint32_t>(c,3),
+            shape.programs,shape.width,shape.capacity,n,s.slots,ptr<uint64_t>(c,buffer(c,s.stage)),&attempted,&zeroed);
+        c->stats.launches+=attempted; c->stats.zeroed_bytes+=zeroed; error=checked(c,status)!=0;
+    }
+    if(!error) {
+        const auto status=rms::suffix_eq(c->stream,rms_meta<Fp3>(c,5),shape.suffix_bits,first,shape.capacity,n,
+            ptr<uint32_t>(c,buffer(c,s.eq)),&attempted);
+        c->stats.launches+=attempted; error=checked(c,status)!=0;
+    }
+    for(unsigned p=0;!error && p<shape.programs;++p) if(mask_ids[p]!=0xffff) {
+        const auto range=rms_ranges(s)[p];
+        for(unsigned k=0;!error && k<range.count;k+=rms::gate_chunk) {
+            const auto status=rms::consume(c->stream,ptr<uint32_t>(c,buffer(c,s.stage)),ptr<uint32_t>(c,buffer(c,s.eq)),
+                rms_meta<rms::Gate>(c,4)+range.first+k,std::min(rms::gate_chunk,range.count-k),shape.capacity,
+                ptr<Fp3>(c,buffer(c,s.chunk)),ptr<Fp3>(c,buffer(c,s.aggregate))+uint64_t(mask_ids[p])*rms::moments,&attempted);
+            c->stats.launches+=attempted; error=checked(c,status)!=0;
+        }
+    }
+    const int synced=fence(c); // Host windows may be refilled even after submit errors.
+    if(error || synced) return -1;
+    s.cursor=first+n;
+    if(s.cursor==rms_sections(s)[section].end) s.cursor=section+1<shape.sections?rms_sections(s)[section+1].first:(1u<<shape.suffix_bits);
+    ++s.windows; return 0;
+}
+}
 extern "C" int c71_rms_prefix_window(C71RangeContext* c,uint64_t token,uint32_t first,uint32_t n,
     const uint8_t* frames,const uint16_t* assignments,const uint16_t* mask_ids) {
-    if(!ready(c) || !rms_session(c,token)) return -1;
-    auto& s=c->rms; const auto shape=s.shape; const auto* sections=rms_sections(s);
-    unsigned lower=0,upper=shape.sections;
-    while(lower<upper) { const auto mid=(lower+upper)/2; if(sections[mid].end<=first) lower=mid+1; else upper=mid; }
-    if(lower==shape.sections || first!=s.cursor || first<sections[lower].first || !n || n>shape.capacity ||
-       n>sections[lower].end-first) return fail(c,"RMS prefix window coverage");
+    if(!ready(c) || !rms_session(c,token))return -1;
+    auto& s=c->rms;const auto shape=s.shape;unsigned section=0;
+    if(!rms_window_coverage(c,first,n,mask_ids,section))return -1;
     const void* inputs[]={frames,assignments,mask_ids};
     const uint64_t lengths[]={uint64_t(16)*shape.capacity*12,uint64_t(16)*shape.capacity*2,uint64_t(shape.programs)*2};
     for(unsigned i=0;i<3;++i) {
@@ -184,32 +225,7 @@ extern "C" int c71_rms_prefix_window(C71RangeContext* c,uint64_t token,uint32_t 
         if(checked(c,cudaMemcpyAsync(ptr<void>(c,buffer(c,id)),inputs[i],lengths[i],cudaMemcpyHostToDevice,c->stream))) { error=true; break; }
         c->stats.h2d_bytes+=lengths[i];
     }
-    unsigned attempted=0; uint64_t zeroed=0;
-    if(!error) {
-        const auto status=rms::replay(c->stream,ptr<uint8_t>(c,buffer(c,s.frames)),ptr<uint16_t>(c,buffer(c,s.assignments)),
-            rms_meta<rms::Program>(c,0),rms_meta<rms::Node>(c,1),rms_meta<uint32_t>(c,2),rms_meta<uint32_t>(c,3),
-            shape.programs,shape.width,shape.capacity,n,s.slots,ptr<uint64_t>(c,buffer(c,s.stage)),&attempted,&zeroed);
-        c->stats.launches+=attempted; c->stats.zeroed_bytes+=zeroed; error=checked(c,status)!=0;
-    }
-    if(!error) {
-        const auto status=rms::suffix_eq(c->stream,rms_meta<Fp3>(c,5),shape.suffix_bits,first,shape.capacity,n,
-            ptr<uint32_t>(c,buffer(c,s.eq)),&attempted);
-        c->stats.launches+=attempted; error=checked(c,status)!=0;
-    }
-    for(unsigned p=0;!error && p<shape.programs;++p) if(mask_ids[p]!=0xffff) {
-        const auto range=rms_ranges(s)[p];
-        for(unsigned k=0;!error && k<range.count;k+=rms::gate_chunk) {
-            const auto status=rms::consume(c->stream,ptr<uint32_t>(c,buffer(c,s.stage)),ptr<uint32_t>(c,buffer(c,s.eq)),
-                rms_meta<rms::Gate>(c,4)+range.first+k,std::min(rms::gate_chunk,range.count-k),shape.capacity,
-                ptr<Fp3>(c,buffer(c,s.chunk)),ptr<Fp3>(c,buffer(c,s.aggregate))+uint64_t(mask_ids[p])*rms::moments,&attempted);
-            c->stats.launches+=attempted; error=checked(c,status)!=0;
-        }
-    }
-    const int synced=fence(c); // Host windows may be refilled even after submit errors.
-    if(error || synced) return -1;
-    s.cursor=first+n;
-    if(s.cursor==sections[lower].end) s.cursor=lower+1<shape.sections?sections[lower+1].first:(1u<<shape.suffix_bits);
-    ++s.windows; return 0;
+    return rms_consume_window(c,first,n,mask_ids,section,error);
 }
 extern "C" int c71_rms_prefix_finish(C71RangeContext* c,uint64_t token,Fp3* output,uint32_t count) {
     if(!ready(c) || !rms_session(c,token)) return -1;

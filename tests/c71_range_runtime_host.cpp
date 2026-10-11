@@ -21,8 +21,48 @@ static uint64_t fake_pool_reserved_extra=0;
 static bool model_pool_physical=false;
 static uint64_t fake_pool_granularity=1ULL<<21;
 static bool fail_launch=false, fail_fence=false, fail_free=false, corrupt=false;
+static unsigned rms_map_fault=0,rms_map_support_fault=0,rms_registers=0,rms_unregisters=0;
+static void* rms_registered=nullptr;
+cudaError_t cudaDeviceGetAttribute(int* value,cudaDeviceAttr attribute,int device) {
+    assert(!device);*value=unsigned(attribute)+1!=rms_map_support_fault;return cudaSuccess;
+}
+cudaError_t cudaHostRegister(void* p,size_t n,unsigned flags) {
+    assert(p && n && flags==(cudaHostRegisterMapped|cudaHostRegisterReadOnly));
+    ++rms_registers;if(rms_map_fault==1)return cudaErrorInvalidValue;
+    assert(!rms_registered);rms_registered=p;return cudaSuccess;
+}
+cudaError_t cudaHostGetDevicePointer(void** d,void* p,unsigned flags) {
+    assert(p==rms_registered && !flags);if(rms_map_fault==2)return cudaErrorInvalidValue;
+    *d=rms_map_fault==4?nullptr:p;return cudaSuccess;
+}
+cudaError_t cudaHostUnregister(void* p) {
+    assert(p==rms_registered);++rms_unregisters;
+    if(rms_map_fault==3)return cudaErrorInvalidValue;
+    rms_registered=nullptr;return cudaSuccess;
+}
 namespace c71_rms_prefix {
 // Ownership model only. These stubs deliberately supply no GPU moment math.
+cudaError_t source_frames(cudaStream_t stream,const uint8_t* payload,const SourceNorm* norms,
+    const SourceTile* tiles,unsigned count,unsigned suffix,unsigned first,unsigned capacity,
+    unsigned n,uint8_t* frames,uint16_t* ids,unsigned* attempted) {
+    *attempted=1;if(fail_launch)return cudaErrorInvalidValue;
+    stream->pending.push_back([=] {
+        for(unsigned row=0;row<16;++row)for(unsigned k=0;k<capacity;++k) {
+            const unsigned cell=row*suffix+first+k,index=row*capacity+k;
+            ids[index]=0xffff;std::memset(frames+index*12,0,12);
+            if(k>=n)continue;
+            for(unsigned i=0;i<count;++i)if(tiles[i].first<=cell && cell<tiles[i].end) {
+                const auto t=tiles[i];const auto s=norms[t.norm];const auto local=cell-t.first;
+                const auto r=t.row+local/t.cols,c=t.col+local%t.cols;
+                const auto source=uint64_t(r)*s.columns+c;
+                std::memcpy(frames+index*12,payload+s.product+source*s.pbytes,s.pbytes);
+                std::memcpy(frames+index*12+s.pbytes,payload+s.statistic+r*6,6);
+                std::memcpy(frames+index*12+s.pbytes+6,payload+s.output+source*2,2);
+                ids[index]=uint16_t(t.program);break;
+            }
+        }
+    });return cudaSuccess;
+}
 cudaError_t replay(cudaStream_t stream,const uint8_t*,const uint16_t*,const Program*,const Node*,
     const uint32_t*,const uint32_t*,unsigned,unsigned width,unsigned capacity,unsigned,unsigned,
     uint64_t* stage,unsigned* attempted,uint64_t* zeroed) {
@@ -1129,6 +1169,8 @@ extern "C" void c71_range_test_failure(unsigned kind) {
     upload_fail_after=kind==10?0:kind==11?1:-1;
     fail_dense=kind==9;
     corrupt_query_data=kind==12;
+    rms_map_fault=kind>=13 && kind<=16?kind-12:0;
+    rms_map_support_fault=kind>=17 && kind<=19?kind-16:0;
 }
 #else
 

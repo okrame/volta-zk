@@ -4,22 +4,33 @@
 [Test locali](local-tests.md) · [Archivio](../c7.1-history/README.md)
 
 La [prima fase della campagna certificati](../c7.1-history/h100-certificates-close-2026-10-11.md)
-si è conclusa con **zero certificati canonici generati e verificati**:
-O=0 non è completato. Il provider ha confermato EXITED alle 12:59:46 UTC;
-commitment A 512/512 sotto il cap campionato e due fixture RMS complete
-restano risultati di componente. Γ originale è ammesso e invariato.
+e il [seguito RMS](../c7.1-history/h100-certificates-rms-shared-cache-2026-10-11.md)
+sono conclusi con **zero certificati canonici generati e verificati**.
+O=0 resta incompleto; O=150/300 non sono iniziati. Il provider conferma
+`EXITED` con runtime assente alle **14:27:28 UTC** dell'11 ottobre;
+GPU idle prima dello stop e guard ritirato dopo la conferma.
+Γ originale rimane ammesso, con nove input conservati riverificati.
 
-Il [seguito RMS](../c7.1-history/local-rms-shared-gates-2026-10-11.md) ha
-verificato localmente cache folded e fattorizzazione esatta dei gate.
-Un trial aggiuntivo sullo stesso pod `z6wx2kkn69eoc0` è stato riavviato
-alle **13:56:11 UTC**, entro l'autorizzazione originale: avvio di riferimento
-07:31:18, termine di calcolo 15:01:18 e hard stop 15:31:18 UTC, senza reset.
-Guard indipendente vivo con stop anticipato alle **14:39:15 UTC**.
-Chiave SSH verificata tramite proxy e stessa H100 idle confermata.
-Il filesystem effimero è nuovo: checkout anonimo e ambiente RMS vengono
-ripristinati; nessun nuovo setup AES o runner canonico.
-Il benchmark deve distinguere vantaggio misurato, sottoconti analitici e
-prova completa. Il costo RMS e le premesse residue restano aperti.
+Il seguito sullo stesso pod/H100 non ha cambiato la finestra originale:
+avvio 07:31:18, termine calcolo 15:01:18, hard stop 15:31:18 UTC.
+Riavvio alle 13:56:11, stop prima del guard aggiuntivo delle 14:39:15.
+Nessun nuovo setup AES o runner canonico. Binario ed evidenze sono
+conservati; il commitment A 512/512 della prima fase resta un componente.
+
+Il [confronto pulito `bb7113ae`](../../benchmarks/results/c71-certificates-rms-shared-cache-2026-10-11-bb7113ae.json)
+usa tutte le 159 ricette e 99 profondità su 511 celle sintetiche vive.
+Cache folded 16 MiB e gate condivisi danno prover **192,665→158,589 s**,
+−17,69% osservato in una sola coppia, verifier 6,568/6,604 s.
+Wire 320.320 B con BLAKE3 uguale, FS/MAC originali e 9.919 correlazioni
+ideali consumate. RSS/fisico stabile campionato 826.650.624/723.210.240 B;
+GPU zero durante le prove, un campione incompleto nella candidata.
+Sono esclusi modello, statistiche del caller, PCS, AES e risposta completa.
+
+Le candidate restano disabilitate nel runner canonico. Il lavoro RMS
+completo e il conto simultaneo restano aperti: nella fixture l'endpoint
+byte conserva 30.985.128 letture dei frame, non ridotte dai nuovi callback
+di cella. Le premesse di raffinamento e Seed6 non sono scaricate da questa
+misura; nessuna extrapolazione canonica o attribuzione del target 65 s.
 
 La [candidata locale folded-cache RMS](../c7.1-history/local-rms-fold-cache-2026-10-11.md)
 aggiunge al benchmark ignorato il limite `C71_RMS_BENCH_CACHE_BYTES`
@@ -456,10 +467,11 @@ esito locale attribuisce compilazione CUDA o parità sulla H100.
 
 Regole permanenti approvate dal proprietario l'8 ottobre 2026;
 [motivazione e decisioni](../c7.1-history/operating-rules-2026-10-08.md).
-La campagna dell’11 ottobre sul solo pod `z6wx2kkn69eoc0` ha un trial RMS
-aggiuntivo entro la stessa finestra, come sopra. L’autorizzazione è di otto ore dall’avvio
-provider, inclusi trenta minuti di chiusura; la deadline originale era
-15:31:18 UTC. Lo stop anticipato non azzera l’avvio o estende quella finestra.
+La campagna dell’11 ottobre sul solo pod `z6wx2kkn69eoc0`, compreso il
+trial RMS aggiuntivo, è conclusa con provider EXITED/runtime assente
+alle 14:27:28 UTC. L’autorizzazione era di otto ore dall’avvio provider,
+inclusi trenta minuti di chiusura; la deadline originale era 15:31:18 UTC.
+Lo stop anticipato non azzera l’avvio o estende quella finestra.
 Altra durata o hardware richiedono una nuova decisione.
 
 L'agent registra deadline e responsabile dello spegnimento dall'avvio

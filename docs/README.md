@@ -1,6 +1,6 @@
 # Documentazione
 
-[Chiusura della campagna certificati dell’11 ottobre](c7.1-history/h100-certificates-close-2026-10-11.md).
+[Chiusura del seguito RMS della campagna certificati dell’11 ottobre](c7.1-history/h100-certificates-rms-shared-cache-2026-10-11.md).
 
 ## Documentazione operativa
 

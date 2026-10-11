@@ -4,22 +4,33 @@
 [Test su RunPod](runpod-tests.md) · [Archivio](../c7.1-history/README.md)
 
 La [prima fase della campagna certificati](../c7.1-history/h100-certificates-close-2026-10-11.md)
-si è conclusa con **zero certificati canonici generati e verificati**:
-O=0 non è completato. Il provider ha confermato EXITED alle 12:59:46 UTC;
-commitment A 512/512 sotto il cap campionato e due fixture RMS complete
-restano risultati di componente. Γ originale è ammesso e invariato.
+e il [seguito RMS](../c7.1-history/h100-certificates-rms-shared-cache-2026-10-11.md)
+sono conclusi con **zero certificati canonici generati e verificati**.
+O=0 resta incompleto; O=150/300 non sono iniziati. Il provider conferma
+`EXITED` con runtime assente alle **14:27:28 UTC** dell'11 ottobre;
+GPU idle prima dello stop e guard ritirato dopo la conferma.
+Γ originale rimane ammesso, con nove input conservati riverificati.
 
-Il [seguito RMS](../c7.1-history/local-rms-shared-gates-2026-10-11.md) ha
-verificato localmente cache folded e fattorizzazione esatta dei gate.
-Un trial aggiuntivo sullo stesso pod `z6wx2kkn69eoc0` è stato riavviato
-alle **13:56:11 UTC**, entro l'autorizzazione originale: avvio di riferimento
-07:31:18, termine di calcolo 15:01:18 e hard stop 15:31:18 UTC, senza reset.
-Guard indipendente vivo con stop anticipato alle **14:39:15 UTC**.
-Chiave SSH verificata tramite proxy e stessa H100 idle confermata.
-Il filesystem effimero è nuovo: checkout anonimo e ambiente RMS vengono
-ripristinati; nessun nuovo setup AES o runner canonico.
-Il benchmark deve distinguere vantaggio misurato, sottoconti analitici e
-prova completa. Il costo RMS e le premesse residue restano aperti.
+Il seguito sullo stesso pod/H100 non ha cambiato la finestra originale:
+avvio 07:31:18, termine calcolo 15:01:18, hard stop 15:31:18 UTC.
+Riavvio alle 13:56:11, stop prima del guard aggiuntivo delle 14:39:15.
+Nessun nuovo setup AES o runner canonico. Binario ed evidenze sono
+conservati; il commitment A 512/512 della prima fase resta un componente.
+
+Il [confronto pulito `bb7113ae`](../../benchmarks/results/c71-certificates-rms-shared-cache-2026-10-11-bb7113ae.json)
+usa tutte le 159 ricette e 99 profondità su 511 celle sintetiche vive.
+Cache folded 16 MiB e gate condivisi danno prover **192,665→158,589 s**,
+−17,69% osservato in una sola coppia, verifier 6,568/6,604 s.
+Wire 320.320 B con BLAKE3 uguale, FS/MAC originali e 9.919 correlazioni
+ideali consumate. RSS/fisico stabile campionato 826.650.624/723.210.240 B;
+GPU zero durante le prove, un campione incompleto nella candidata.
+Sono esclusi modello, statistiche del caller, PCS, AES e risposta completa.
+
+Le candidate restano disabilitate nel runner canonico. Il lavoro RMS
+completo e il conto simultaneo restano aperti: nella fixture l'endpoint
+byte conserva 30.985.128 letture dei frame, non ridotte dai nuovi callback
+di cella. Le premesse di raffinamento e Seed6 non sono scaricate da questa
+misura; nessuna extrapolazione canonica o attribuzione del target 65 s.
 
 Una [cache RMS locale candidata](../c7.1-history/local-rms-fold-cache-2026-10-11.md)
 conserva al più 16 MiB di righe e selettori già folded, per una sola
@@ -28,8 +39,8 @@ riduce i callback di cella da 998.927.195.904 a 718.142.017.536 (−28,11%),
 ma lascia **751.359.028.655.932 prodotti Fp3 del core**. Il percorso
 canonico mantiene cache disabilitata. Distributività del campo, ordine
 MSB del fold, determinismo della sorgente e lifetime Rust sono premesse
-implementative: nessun nuovo lemma Lean le scarica. Mancano misura sul
-mix completo e conto simultaneo ammesso; il costo canonico resta aperto.
+implementative: nessun nuovo lemma Lean le scarica. La misura con
+il piano condiviso è sopra; conto simultaneo e costo canonico restano aperti.
 
 Una seconda [candidata RMS fattorizza i gate comuni](../c7.1-history/local-rms-shared-gates-2026-10-11.md)
 fra programmi mantenendo i polinomi originali. Il primo round Booleano è
@@ -38,7 +49,8 @@ predice meno prodotti Fp3. Piano/builder entro 32 MiB, per profondità,
 separato dalla cache folded da 16 MiB. È disabilitata nel runner canonico.
 Distributività, commutatività e corrispondenza fra indici, maschere e pesi
 sono premesse implementative esplicite; non c'è un nuovo lemma Lean di
-raffinamento. Restano necessari misura rappresentativa e conto completo.
+raffinamento. La misura ridotta è sopra; restano necessari conto completo e
+valutazione del lavoro residuo nel dominio canonico.
 
 Il [preflight dell’11 ottobre](../c7.1-history/h100-certificates-preflight-2026-10-11.md)
 conferma packed ed esponenti originali e conserva il replay di 512 cicli di

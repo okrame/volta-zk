@@ -152,9 +152,11 @@ ciascuno, nessun isolamento/picco completo o guadagno canonico dedotti.
 Statistica e dispatcher canonico CPU; consumer statistica in preparazione,
 nessun nuovo default prima delle verifiche.
 Il [consumer statistica GPU è preparato](../c7.1-history/rms-native-statistic-prepared-2026-10-12.md),
-ancora non compilato/eseguito: stesso P0 e fonte X originale, stato8 MiB,
-RMS owner riusato senza crescita C++, callback fallibili prima dei MAC.
-25 rifiuti/API/coefs/checkpoint/wire/verificatore/caller pendenti;
+CUDA compilato e25 rifiuti owner passati: stesso P0 e fonte X originale,
+stato8 MiB, RMS owner riusato senza crescita C++, callback fallibili
+prima dei MAC. Il [primo build Rust fallito](../../benchmarks/results/c71-certificates-rms-native-statistic-build-negative-2026-10-12-9d37e8ae.json)
+è conservato: fixture usa un costruttore Merkle inesistente, corretto
+nel nuovo trial. API/coefs/checkpoint/wire/verificatore/caller pendenti;
 Eq/fold/codec/lifetime CUDA restano premesse esplicite, nessun credito.
 
 La [prima fase della campagna certificati](../c7.1-history/h100-certificates-close-2026-10-11.md)

@@ -196,7 +196,7 @@ mod tests {
     fn c71_rms_statistic_gpu_coefficients_checkpoint_wire_and_original_verifier() {
         use crate::c71_matrix::range::windowed::native::{self as native_runtime,Runtime};
         use crate::c71_matrix::wire::Wire;
-        let root=C61Commitment::from_roots(vec![vec![41;32]]).unwrap();
+        let root=C61Commitment::new(vec![[41;32]]);
         let attempt=AttemptContext {session:[17;32],capacity:[18;32],slot:0,predecessor:[0;32],nonce:[19;32]};
         let config=native_runtime::tests::hardware_config(512,64<<20);
         let mut coefficient_checks=0;let mut terminal_checks=0;let mut checkpoint_max=0;

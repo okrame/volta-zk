@@ -116,8 +116,10 @@ impl Auxiliary {
         }
         let mut inputs = vec![Fp3::ZERO; inner.next_power_of_two()];
         let mut weights = inputs.clone();
-        for column in 0..inner {
-            for row in 0..cohort.rows {
+        // Row-major capture keeps the immutable reader's single row cache live;
+        // each column still sums its terms in the original ascending row order.
+        for row in 0..cohort.rows {
+            for column in 0..inner {
                 let index = row * inner + column;
                 inputs[column] += row_weights[row]
                     * signed(value(
@@ -126,13 +128,18 @@ impl Auxiliary {
                         index % route.columns,
                     ));
             }
-            weights[column] = if norm {
-                signed(weight(cohort.tensor, 0, column))
-            } else {
-                (0..cohort.columns).fold(Fp3::ZERO, |total, row| {
-                    total + column_weights[row] * signed(weight(cohort.tensor, row, column))
-                })
-            };
+        }
+        if norm {
+            for column in 0..inner {
+                weights[column] = signed(weight(cohort.tensor, 0, column));
+            }
+        } else {
+            for row in 0..cohort.columns {
+                for column in 0..inner {
+                    weights[column] +=
+                        column_weights[row] * signed(weight(cohort.tensor, row, column));
+                }
+            }
         }
         Ok(Compact { output, x: inputs, w: weights })
     }
@@ -762,16 +769,28 @@ mod tests {
         };
         let auxiliary = plan.auxiliary_layout().unwrap();
         let point = vec![signed(2); bits(3) + bits(5)];
+        let value_row = std::cell::Cell::new(None);
+        let value_row_loads = std::cell::Cell::new(0);
+        let weight_row = std::cell::Cell::new(None);
+        let weight_row_loads = std::cell::Cell::new(0);
         let weight = |id: usize, row: usize, column: usize| {
             assert!(id == 1 && row < 5 && column < 3);
+            if weight_row.replace(Some((id, row))) != Some((id, row)) {
+                weight_row_loads.set(weight_row_loads.get() + 1);
+            }
             (row * 3 + column) as i64 - 7
         };
         let value = |id: usize, row: usize, column: usize| {
             let source = &auxiliary.layout.sources[id];
             assert!(row < source.rows && column < source.cols);
+            if value_row.replace(Some((id, row))) != Some((id, row)) {
+                value_row_loads.set(value_row_loads.get() + 1);
+            }
             (id * 3 + row * 5 + column) as i64 - 11
         };
         let result = auxiliary.compact(&plan, 1, &point, weight, value).unwrap();
+        assert_eq!(value_row_loads.get(), 6); // three output and three input rows
+        assert_eq!(weight_row_loads.get(), 5);
         assert_eq!((result.x.len(), result.w.len()), (4, 4));
         assert_eq!((result.x[3], result.w[3]), (Fp3::ZERO, Fp3::ZERO));
         let (row_point, column_point) = point.split_at(bits(3));

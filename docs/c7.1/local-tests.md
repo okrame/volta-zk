@@ -173,6 +173,11 @@ nella sessione reale,3536,558 s; **zero certificati**. Watcher pronto:
 BLAKE3 body/ack, fase prover dopo fsync e stesso receipt nei due journal.
 O=150/300 seguono solo l’accettazione precedente. Termine calcolo13:19:04
 UTC e sei ore originali invariati; conservare subito risposta/acceptance.
+Il [getter P0 per righe è preparato](../c7.1-history/p0-row-major-prepared-2026-10-12.md):
+il vecchio loop per colonna cambia continuamente riga del reader con cache
+singola. Nuovi loop mantengono l’ordine dei termini per colonna e le stesse
+capacità/wire, ma compilazione/parità pendono. Non applicato al run16d60d38;
+nessun restart/import di stato o nuova autorizzazione temporale implicita.
 
 La [prima fase della campagna certificati](../c7.1-history/h100-certificates-close-2026-10-11.md)
 e il [seguito RMS](../c7.1-history/h100-certificates-rms-shared-cache-2026-10-11.md)

@@ -129,8 +129,9 @@ Resta fixture di gate, senza predicato RMS/certificato o picco completo.
 Backend RMS completo, conto simultaneo e premessa di raffinamento aperti.
 È [scritto il consumer byte GPU candidato](../c7.1-history/rms-native-byte-implementation-prepared-2026-10-12.md),
 con [owner host positivo](../c7.1-history/rms-native-byte-owner-trace-2026-10-12.md):
-otto layer/30 rifiuti, indici e owner generico passano. Due aspettative trace
-aggiornate per il puntatore aggiuntivo; nuova verifica trace pendente.
+otto layer/30 rifiuti, indici e owner generico passano.
+[Quattro trace passano](../c7.1-history/rms-native-byte-trace-pool-2026-10-12.md);
+aspettative pool aggiornate per gli8 B, nuova verifica pool pendente.
 Kernel CUDA ancora non compilati/eseguiti. Sorgente mapped,8 layer/16 lane, stato
 limitato8 MiB, recupero dei figli originali e callback fallibile senza
 fallback. Registrazione API e30 rifiuti owner, coefficienti/terminali densi,

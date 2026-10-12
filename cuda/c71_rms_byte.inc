@@ -159,7 +159,9 @@ extern "C" int c71_rms_byte_layer(C71RangeContext* c,uint64_t token,uint32_t lay
         return fail(c,"RMS byte checkpoint aliases public inputs");
     unsigned cursor=0;
     for(unsigned lane=0;lane<16;++lane) {const auto r=ranges[lane];
-        if(r.first!=cursor || r.count>width || r.count>feature_count-cursor)return fail(c,"RMS byte feature coverage");cursor+=r.count;}
+        if(r.first!=cursor || r.count>width || r.count>feature_count-cursor)return fail(c,"RMS byte feature coverage");
+        cursor+=r.count;
+    }
     if(cursor!=feature_count)return fail(c,"RMS byte incomplete features");
     for(unsigned i=0;i<count;++i)if(!canonical(point[i]))return fail(c,"RMS byte query point");
     for(uint64_t i=0;i<uint64_t(feature_count)*257;++i)if(!canonical(features[i]))return fail(c,"RMS byte feature value");
@@ -229,7 +231,8 @@ extern "C" int c71_rms_byte_coefficients(C71RangeContext* c,uint64_t token,const
         if(!byte_zero(c,result,96) || launched(c,byte_rms::child_coefficients(c->stream,t.shape,meta,ptr<Fp3>(c,buffer(c,t.children)),partials)) ||
            launched(c,byte_rms::sum_partials(c->stream,partials,(t.shape.rows/2+127)/128,result)))return -1;
     }
-    if(!byte_publish(c,output))return -1;++t.shape.round;return 0;
+    if(!byte_publish(c,output))return -1;
+    ++t.shape.round;return 0;
 }
 extern "C" int c71_rms_byte_terminal(C71RangeContext* c,uint64_t token,const Fp3* point,uint32_t count,Fp3* output) {
     if(!ready(c) || !byte_session(c,token))return -1;
@@ -245,7 +248,8 @@ extern "C" int c71_rms_byte_terminal(C71RangeContext* c,uint64_t token,const Fp3
     if(layer==7) {
         for(auto* id:{&t.meta,&t.prefix_eq,&t.suffix_eq,&t.partials,&t.result})if(byte_retire(c,*id))return -1;
         const auto values=t.publication;Fp3 saved[4];std::memcpy(saved,values,96);
-        if(rms_byte_close(c,true))return -1;std::memcpy(output,saved,96);
+        if(rms_byte_close(c,true))return -1;
+        std::memcpy(output,saved,96);
     } else {std::memcpy(output,t.publication,96);t.has_layer=0;t.next_layer=layer+1;}
     return 0;
 }

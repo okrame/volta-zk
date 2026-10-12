@@ -1,0 +1,32 @@
+{
+  "schema": "volta-c71-rms-native-byte-bootstrap-negative-v1",
+  "source_git_sha": "8a249df1a3e3761a13af48a218c496320b769e8d",
+  "git_dirty": false,
+  "credit": false,
+  "canonical_selected": false,
+  "canonical_certificates": 0,
+  "source": {
+    "source_git_sha": "8a249df1a3e3761a13af48a218c496320b769e8d",
+    "git_dirty": false,
+    "epoch": 1791791791.0004969,
+    "cpu_as_bytes": 68719476736,
+    "original_start_epoch": 1791791344.4498413,
+    "compute_end_epoch": 1791811144.4498413,
+    "hard_end_epoch": 1791812944.4498413,
+    "credit": false
+  },
+  "failure": {
+    "epoch": 1791791791.0694318,
+    "error_type": "AssertionError",
+    "message": "('byte-owner', 2)",
+    "credit": false
+  },
+  "exit_code": 2,
+  "summary_status": "empty; monitor startup failed before test child creation",
+  "status": "Missing /usr/bin/time in fresh container. Byte consumer not compiled or executed.",
+  "private_bundle": "artifact/c7.1-pod/certificates-rms-native-byte01-negative-20261012",
+  "archive_bytes": 6629,
+  "archive_sha256": "c1ed8768841cba16597101e43c9eece423de86e1a9d3a3acea17fb16f128d558",
+  "manifest_sha256": "2a1d96ca4b03462e2cc30f30376782f7f4de93747d0c0383e6986103060dee4e",
+  "raw_members": 21
+}

@@ -128,7 +128,9 @@ Resta fixture di gate, senza predicato RMS/certificato o picco completo.
 **Zero certificati canonici**: O=0 incompleto, O=150/300 non iniziati.
 Backend RMS completo, conto simultaneo e premessa di raffinamento aperti.
 È [scritto il consumer byte GPU candidato](../c7.1-history/rms-native-byte-implementation-prepared-2026-10-12.md),
-ancora **non compilato/eseguito**: sorgente mapped,8 layer/16 lane, stato
+con [primo negativo host](../c7.1-history/rms-native-byte-bootstrap-negatives-2026-10-12.md):
+cinque errori di indentazione Werror corretti, nuova verifica pendente.
+Kernel CUDA ancora non compilati/eseguiti. Sorgente mapped,8 layer/16 lane, stato
 limitato8 MiB, recupero dei figli originali e callback fallibile senza
 fallback. Registrazione API e30 rifiuti owner, coefficienti/terminali densi,
 streaming/checkpoint, wire e caller RMS/PCS sono preparati ma da verificare.

@@ -54,11 +54,13 @@ int main() {
                         for(auto& x:out)x={17,19,23};
                         if(fault==23) {
                             assert(!c71_rms_byte_coefficients(c,token,prefix,1,out));
-                            for(auto& x:out)x={17,19,23};prefix[0]={1,0,0};
+                            for(auto& x:out)x={17,19,23};
+                            prefix[0]={1,0,0};
                             status=c71_rms_byte_coefficients(c,token,prefix,2,out);assert(status);
                         } else {
                             for(unsigned round=1;round<10;++round)assert(!c71_rms_byte_coefficients(c,token,prefix,round,out));
-                            for(auto& x:out)x={17,19,23};if(fault==29)fail_free=true;
+                            for(auto& x:out)x={17,19,23};
+                            if(fault==29)fail_free=true;
                             status=c71_rms_byte_terminal(c,token,prefix,10,out);fail_free=false;
                             if(fault==29)assert(status);
                             else {

@@ -1,0 +1,116 @@
+{
+  "schema": "volta-c71-canonical-inference-control-checkpoint-v1",
+  "source_git_sha": "16d60d38d50b94f0367fe30ff9a7f7224b557c62",
+  "git_dirty": false,
+  "credit": false,
+  "canonical_certificates_verified": 0,
+  "status": "Both real/AES Seed6 roles complete setup; original O0 numerical preparation/inference completed. Actual A commitment ongoing at snapshot64/512. Control watcher prepared to preserve complete response and genuine accepted record with independent streamed BLAKE3, prover post-fsync phase and matching both journal prefixes.",
+  "inference": {
+    "epoch": 1791802985.4780538,
+    "source_git_sha": "16d60d38d50b94f0367fe30ff9a7f7224b557c62",
+    "credit": false,
+    "canonical_certificates_verified": 0,
+    "completed_phases": [
+      {
+        "sequence": 13,
+        "phase": "load_packed_w",
+        "role": "prover",
+        "slot": null,
+        "complete": true,
+        "wall_ns": 588068830158,
+        "start_ns": 16200172227,
+        "end_ns": 604269002385
+      },
+      {
+        "sequence": 233,
+        "phase": "seed6_setup",
+        "role": "verifier",
+        "slot": null,
+        "complete": true,
+        "wall_ns": 1499819402655,
+        "start_ns": 852193435723,
+        "end_ns": 2352012838378
+      },
+      {
+        "sequence": 234,
+        "phase": "seed6_setup",
+        "role": "prover",
+        "slot": null,
+        "complete": true,
+        "wall_ns": 1499817632634,
+        "start_ns": 852195513728,
+        "end_ns": 2352013146362
+      },
+      {
+        "sequence": 245,
+        "phase": "preparation_including_inference",
+        "role": "prover",
+        "slot": 0,
+        "complete": true,
+        "wall_ns": 78653784107,
+        "start_ns": 2352756714161,
+        "end_ns": 2431410498268
+      }
+    ],
+    "latest_A": [
+      {
+        "sequence": 787,
+        "groups": 64,
+        "boundary": null,
+        "elapsed_ns": 2883180731327
+      },
+      {
+        "sequence": 788,
+        "groups": 64,
+        "boundary": null,
+        "elapsed_ns": 2884183144337
+      }
+    ],
+    "live_pid": 59788,
+    "live_start_ticks": "1482559465"
+  },
+  "original_model": {
+    "epoch": 1791799490.0873725,
+    "packed": "/workspace/c71-rms-native-byte-20261012/model01/weights/gemma-4-31b-5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89.packed.i16",
+    "packed_sha256": "1a88da14c15d24133d0df40ff2a3acdbc54e7b91634a8304e787a5701ac8dac8",
+    "packed_bytes": 61394690560,
+    "matches_original_admitted_ingest": true
+  },
+  "docs_checks": {
+    "epoch": 1791800934.0157752,
+    "source_git_sha": "927a181f9bf072c105d9757fa46778046cf738de",
+    "git_dirty": false,
+    "exit_code": 0,
+    "primary_canonical_source_unchanged": "16d60d38d50b94f0367fe30ff9a7f7224b557c62",
+    "AS_bytes": 2147483648,
+    "scope": "Nine document checks on isolated pod worktree; no build/GPU work"
+  },
+  "hash_control_tool": {
+    "epoch": 1791801972.548297,
+    "source_sha256": "ec1562ba86b2cff286336b5b5fa0c2bf82aae30bd51b6fae2c62e877218028dd",
+    "binary_sha256": "fc599da2cff12767e6fb3d520f39ffac0815c3d38f32d7ba1d30fdb2c482b799",
+    "linked_blake3_rlib": "libblake3-97fd79b85dc1be1d.rlib",
+    "control_check": true,
+    "protocol_certificates": 0,
+    "CPU_AS_bytes": 2147483648,
+    "cpu_affinity": [
+      0
+    ],
+    "linker_threads": 1,
+    "scope": "Read-only stream hash/framing utility for artifact preservation; prior linker thread-resource failure retained, no protocol work or new dependency"
+  },
+  "watcher": {
+    "pid": 112243,
+    "start_ticks": "338834541",
+    "state": "S",
+    "script": "/tmp/c71-final-certificate-watch02-20261012.py",
+    "script_sha256": "3b43f3a398a05fe945082f8d9f6581f1e80074e58faf0509ee144907696d119c",
+    "scope": "Read-only certificate export watcher; no GPU process/provider restart or new protocol session",
+    "requires": "C71ACC01 accepted1, actual streamed certificate BLAKE3, complete prover response_total after both durable acceptance/promote, same receipt in both journal prefixes",
+    "hard_end_epoch": 1791812944.4498413
+  },
+  "private_bundle": "artifact/c7.1-pod/certificates-inference-control-checkpoint-20261012",
+  "private_manifest_sha256": "288294b958a1c575a4d350b7212ae1286607479891d938f0d2f9c47235cc31e8",
+  "raw_members": 43,
+  "note": "Numerical preparation completion is not proof acceptance. Small hash-control fixture is not a certificate. First tool linker failed under2GiB thread pressure; fixed with one CPU/linker thread, original canonical process unaffected. No model tensors, KV or correlation pools exported."
+}

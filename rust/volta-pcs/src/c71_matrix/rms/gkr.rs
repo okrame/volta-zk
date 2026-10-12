@@ -1312,7 +1312,7 @@ fn prove_impl_evaluated(
     shared_gates: bool,
     byte_contracted: bool,
 ) -> Result<(Proof, Vec<Fp3>, Auth, SourceProverWork), String> {
-    prove_impl_backend(s,get_frame,fs,correlations,sourcewise,pattern_prefix,cache_bytes,shared_gates,byte_contracted,None,None,None)
+    prove_impl_backend(s,get_frame,fs,correlations,sourcewise,pattern_prefix,cache_bytes,shared_gates,byte_contracted,None,None,None,None)
 }
 
 type NativePrefixBuilder<'a> = dyn FnMut(usize,&[Fp3],&[Fp3],&dyn Fn(usize)->[u8;12],&mut patterns::Work)
@@ -1320,6 +1320,9 @@ type NativePrefixBuilder<'a> = dyn FnMut(usize,&[Fp3],&[Fp3],&dyn Fn(usize)->[u8
 type NativeCellBuilder<'a> = dyn FnMut(&[Fp3],&[Fp3])->Result<Option<SourceCellRound>,String> + 'a;
 type NativeIndexBuilder<'a> = dyn FnMut(usize,&[Fp3],&[Fp3],&[Fp3],&[Fp3])
     ->Result<([Fp3;3],Option<[Fp3;2]>),String> + 'a;
+type NativeByteBuilder<'a> = dyn FnMut(&byte_function::Statement<'_>,Auth,&dyn Fn(usize)->u8,
+    &[(u32,u32)],usize,&mut Fs,&mut dyn ExactSizeIterator<Item=Auth>)
+    ->Result<(byte_function::Proof,Vec<Fp3>,Auth,byte_function::SourceWork),String> + 'a;
 
 fn prove_impl_backend(
     s:&Statement<'_>,get_frame:&impl Fn(usize)->[u8;12],fs:&mut Fs,
@@ -1327,6 +1330,7 @@ fn prove_impl_backend(
     cache_bytes:usize,shared_gates:bool,byte_contracted:bool,mut native:Option<&mut NativePrefixBuilder<'_>>,
     mut native_cell:Option<&mut NativeCellBuilder<'_>>,
     mut native_index:Option<&mut NativeIndexBuilder<'_>>,
+    mut native_byte:Option<&mut NativeByteBuilder<'_>>,
 ) -> Result<(Proof,Vec<Fp3>,Auth,SourceProverWork),String> {
     use std::cell::{Cell, RefCell};
 
@@ -1756,9 +1760,12 @@ fn prove_impl_backend(
     let (functions, point, original, byte_endpoint) =
         if byte_contracted {
             let support=s.assignments.support();
-            let mut result=byte_function::prove_streamed_contracted(
-                &bs,byte_function::Original::Sum(target),get_byte,&support,
-                s.programs.iter().map(|p|(p.ports-2)/8).max().unwrap(),fs,&mut rows)?;
+            let live_lanes=s.programs.iter().map(|p|(p.ports-2)/8).max().unwrap();
+            let mut result=match &mut native_byte {
+                Some(builder)=>builder(&bs,target,&get_byte,&support,live_lanes,fs,&mut rows)?,
+                None=>byte_function::prove_streamed_contracted(
+                    &bs,byte_function::Original::Sum(target),get_byte,&support,live_lanes,fs,&mut rows)?,
+            };
             result.3.tree_phase_owned_heap_peak_bytes+=support.capacity()*core::mem::size_of::<(u32,u32)>();
             result
         } else if pattern_prefix.is_some() && bs.cell_point.len() <= 7 {
@@ -1927,7 +1934,7 @@ pub(in super::super) fn prove_native_sourcewise(
 ) -> Result<(Proof,Vec<Fp3>,Auth,SourceProverWork),String> {
     let mut builder=|depth,point:&[Fp3],weights:&[Fp3],read:&dyn Fn(usize)->[u8;12],work:&mut patterns::Work|
         patterns::build_native(s,depth,point,weights,read,work,runtime,public_spans,capacity,None,None);
-    prove_impl_backend(s,&get_frame,fs,correlations,true,Some(1),0,false,false,Some(&mut builder),None,None)
+    prove_impl_backend(s,&get_frame,fs,correlations,true,Some(1),0,false,false,Some(&mut builder),None,None,None)
 }
 
 pub(in super::super) fn prove_native_mapped_sourcewise(
@@ -1938,6 +1945,18 @@ pub(in super::super) fn prove_native_mapped_sourcewise(
     source:&crate::c71_matrix::range::windowed::native::RmsSourceToken,
     byte_contracted:bool,
 ) -> Result<(Proof,Vec<Fp3>,Auth,SourceProverWork),String> {
+    prove_native_mapped_sourcewise_with_byte(s,get_frame,fs,correlations,runtime,public_spans,capacity,source,byte_contracted,false)
+}
+
+pub(in super::super) fn prove_native_mapped_sourcewise_with_byte(
+    s:&Statement<'_>,get_frame:impl Fn(usize)->[u8;12],fs:&mut Fs,
+    correlations:&mut impl ExactSizeIterator<Item=Auth>,
+    runtime:&mut crate::c71_matrix::range::windowed::native::Runtime,
+    public_spans:&[(u32,u32,u16)],capacity:usize,
+    source:&crate::c71_matrix::range::windowed::native::RmsSourceToken,
+    byte_contracted:bool,native_byte:bool,
+) -> Result<(Proof,Vec<Fp3>,Auth,SourceProverWork),String> {
+    if native_byte && !byte_contracted {return runtime.abort("native RMS byte requires original contraction");}
     let state=std::cell::RefCell::new((runtime,None));
     let mut builder=|depth,point:&[Fp3],weights:&[Fp3],read:&dyn Fn(usize)->[u8;12],work:&mut patterns::Work| {
         let mut state=state.borrow_mut();let (runtime,tail)=&mut *state;
@@ -1974,7 +1993,14 @@ pub(in super::super) fn prove_native_mapped_sourcewise(
         if result.1.is_some() {*token=None;}
         Ok(result)
     };
-    prove_impl_backend(s,&get_frame,fs,correlations,true,Some(1),0,false,byte_contracted,Some(&mut builder),Some(&mut cell),Some(&mut index))
+    let mut byte=|bs:&byte_function::Statement<'_>,original:Auth,get:&dyn Fn(usize)->u8,
+        support:&[(u32,u32)],live_lanes:usize,fs:&mut Fs,rows:&mut dyn ExactSizeIterator<Item=Auth>| {
+        let mut state=state.borrow_mut();let mut rows=rows;
+        byte_function::prove_native_streamed_contracted(bs,byte_function::Original::Sum(original),get,
+            support,live_lanes,fs,&mut rows,&mut *state.0,source)
+    };
+    prove_impl_backend(s,&get_frame,fs,correlations,true,Some(1),0,false,byte_contracted,Some(&mut builder),Some(&mut cell),Some(&mut index),
+        if native_byte {Some(&mut byte)} else {None})
 }
 
 pub(in super::super) fn prove_sourcewise(
@@ -2412,6 +2438,11 @@ mod tests {
             Err(std::env::VarError::NotPresent)|Ok("0")=>false,Ok("1")=>true,
             _=>panic!("invalid RMS native benchmark selector"),
         };
+        let native_byte=match std::env::var("C71_RMS_BENCH_NATIVE_BYTE").as_deref() {
+            Err(std::env::VarError::NotPresent)|Ok("0")=>false,Ok("1")=>true,
+            _=>panic!("invalid RMS native byte selector"),
+        };
+        assert!(!native_byte || native_gpu);
         let mut native_stats=None;
         let started = std::time::Instant::now();
         let (proof, point, original, work) = if native_gpu {
@@ -2433,10 +2464,10 @@ mod tests {
                 norms:norms.len() as u32,tiles:tiles.len() as u32,programs:programs.len() as u32,reserved:0},norms,tiles};
             let source=runtime.rms_source_begin(std::sync::Arc::new(payload),&packet).unwrap();
             let compiled=Statement {assignments:Assignments::compiled(cells,&spans),..statement};
-            let result=prove_native_mapped_sourcewise(&compiled,|i| {assert!(assignments[i].is_some());frames[i]},
-                &mut fs,&mut rows,&mut runtime,&spans,256,&source,true).unwrap();
+            let result=prove_native_mapped_sourcewise_with_byte(&compiled,|i| {assert!(assignments[i].is_some());frames[i]},
+                &mut fs,&mut rows,&mut runtime,&spans,256,&source,true,native_byte).unwrap();
             runtime.rms_source_retire(source).unwrap();let stats=runtime.stats().unwrap();
-            assert_eq!(stats.arena_bytes,0);assert_eq!(stats.allocations,stats.releases);assert_eq!(stats.host_owner_bytes,42496);
+            assert_eq!(stats.arena_bytes,0);assert_eq!(stats.allocations,stats.releases);assert_eq!(stats.host_owner_bytes,42504);
             native_stats=Some(stats);runtime.close().unwrap();result
         } else {prove_impl_evaluated(&statement, &|i| {
             assert!(assignments[i].is_some()); frames[i]
@@ -2464,6 +2495,7 @@ mod tests {
             "work":work,"wire_bytes":wire.len(),"wire_blake3":blake3::hash(&wire).to_hex().as_str(),
             "folded_cache_limit_bytes":cache_bytes,"shared_gates":shared,"correlations":count,
             "byte_contracted":byte_contracted,
+            "native_byte":work.byte_endpoint.native_gpu,
             "native_stats":native_stats,
             "same_FS_original_MAC_endpoint":true,"all_original_layers_executed":true,
             "private_values":"nonzero synthetic rows evaluated with original integer RMS",
@@ -3181,7 +3213,7 @@ mod tests {
                 }
                 let (got,terminal)=runtime.rms_index_step(&token,&prefix).unwrap();
                 assert_eq!(got,terminal_coefficients(&original));assert_eq!(terminal,Some(values));terminal_checks+=1;
-                let stats=runtime.stats().unwrap();assert_eq!(stats.arena_bytes,0);assert_eq!(stats.host_owner_bytes,42496);
+                let stats=runtime.stats().unwrap();assert_eq!(stats.arena_bytes,0);assert_eq!(stats.host_owner_bytes,42504);
                 assert_eq!(stats.allocations,stats.releases);assert_eq!(stats.stopped,0);assert_eq!(stats.cleanup_failed,0);
             }
         }

@@ -210,7 +210,36 @@ pub(in crate::c71_matrix) struct RmsSourceTile {
 pub(in crate::c71_matrix) struct RmsSourcePacket {
     pub shape:RmsSourceShape,pub norms:Vec<RmsSourceNorm>,pub tiles:Vec<RmsSourceTile>,
 }
-pub(in crate::c71_matrix) struct RmsSourceToken {id:u64,owner:Arc<()>}
+pub(in crate::c71_matrix) struct RmsSourceToken {
+    id:u64,owner:Arc<()>,live:usize,padded:usize,
+}
+impl RmsSourceToken {
+    pub(in crate::c71_matrix) fn live(&self)->usize {self.live}
+    pub(in crate::c71_matrix) fn padded(&self)->usize {self.padded}
+}
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub(in crate::c71_matrix) struct RmsByteFeatureRange {pub first:u32,pub count:u32}
+pub(in crate::c71_matrix) struct RmsByteToken {
+    id:u64,owner:Arc<()>,bits:usize,layer:usize,round:usize,active_layer:bool,
+}
+struct RmsByteApi {
+    begin:unsafe extern "C" fn(Raw,u64,u32,u32,*const Field,*mut u64)->i32,
+    layer:unsafe extern "C" fn(Raw,u64,u32,*const Field,u32,Field,*const RmsByteFeatureRange,*const Field,u32,*mut u32)->i32,
+    coefficients:unsafe extern "C" fn(Raw,u64,*const Field,u32,*mut Field)->i32,
+    terminal:unsafe extern "C" fn(Raw,u64,*const Field,u32,*mut Field)->i32,
+}
+impl RmsByteApi {
+    fn load(library:&Library)->Result<Self,String> {
+        // Optional only until explicitly selected. Missing byte execution
+        // fails closed; the established RMS cell/index ABI stays usable.
+        unsafe {Ok(Self {begin:library.symbol(b"c71_rms_byte_begin\0")?,
+            layer:library.symbol(b"c71_rms_byte_layer\0")?,
+            coefficients:library.symbol(b"c71_rms_byte_coefficients\0")?,
+            terminal:library.symbol(b"c71_rms_byte_terminal\0")?})}
+    }
+}
+const _: () = assert!(size_of::<RmsByteFeatureRange>()==8);
 const _: () = assert!(size_of::<RmsSourceShape>()==32 && size_of::<RmsSourceNorm>()==48 && size_of::<RmsSourceTile>()==32);
 const _: () = assert!(size_of::<RmsPrefixShape>()==40 && size_of::<RmsProgram>()==28 && size_of::<RmsGate>()==40
     && size_of::<RmsRange>()==8 && size_of::<RmsSection>()==8);
@@ -630,6 +659,7 @@ pub(in crate::c71_matrix) struct Runtime {
     stopped: bool,
     weights: Option<(Arc<Vec<i16>>, [u8; 32])>,
     rms_source:Option<Arc<Vec<u8>>>,
+    rms_byte_api:Option<RmsByteApi>,
     weight_install_bytes: u64,
     owner: Arc<()>,
     configuration: (PathBuf, i32, u64, u64),
@@ -638,6 +668,80 @@ pub(in crate::c71_matrix) struct Runtime {
 unsafe impl Send for Runtime {}
 
 impl Runtime {
+    pub(in crate::c71_matrix) fn rms_byte_begin(&mut self,source:&RmsSourceToken,bits:usize,
+        live_lanes:usize,coefficients:&[[Fp3;256]])->Result<RmsByteToken,String> {
+        self.require_rms_source(source)?;
+        if !(1..=29).contains(&bits) || !(1..=16).contains(&live_lanes) || coefficients.len()!=16
+            || source.padded!=1usize<<bits {
+            return self.abort("native RMS byte original geometry differs");
+        }
+        if self.rms_byte_api.is_none() {
+            match RmsByteApi::load(&self.api._library) {
+                Ok(api)=>self.rms_byte_api=Some(api),
+                Err(error)=>return self.abort(&format!("native RMS byte execution unavailable: {error}")),
+            }
+        }
+        let tables=coefficients.iter().flatten().copied().map(Field::from).collect::<Vec<_>>();
+        let mut id=0;
+        let status=unsafe {(self.rms_byte_api.as_ref().unwrap().begin)(self.raw,source.id,bits as u32,
+            live_lanes as u32,tables.as_ptr(),&mut id)};
+        self.check(status)?;
+        if id==0 {return self.abort("native RMS byte null capability");}
+        Ok(RmsByteToken {id,owner:self.owner.clone(),bits,layer:0,round:0,active_layer:false})
+    }
+    fn require_rms_byte(&mut self,token:&RmsByteToken)->Result<(),String> {
+        self.ready()?;
+        if token.id==0 || !Arc::ptr_eq(&self.owner,&token.owner) || self.rms_byte_api.is_none() {
+            return self.abort("native RMS byte capability owner differs");
+        }
+        Ok(())
+    }
+    pub(in crate::c71_matrix) fn rms_byte_layer(&mut self,token:&mut RmsByteToken,layer:usize,
+        point:&[Fp3],lambda:Fp3,features:&[Vec<(Fp3,[Fp3;256])>])->Result<usize,String> {
+        self.require_rms_byte(token)?;
+        if token.active_layer || layer!=token.layer || layer>=8 || point.len()!=token.bits+4+layer || features.len()!=16 {
+            return self.abort("native RMS byte layer sequence differs");
+        }
+        let width=(4usize<<layer).min((1usize<<(7-layer))+1);
+        if features.iter().any(|v|v.len()>width) {return self.abort("native RMS byte feature rank differs");}
+        let point=point.iter().copied().map(Field::from).collect::<Vec<_>>();
+        let mut packed=Vec::with_capacity(features.iter().map(|v|v.len()*257).sum());
+        let mut ranges=Vec::with_capacity(16);let mut count=0usize;
+        for lane in features {
+            ranges.push(RmsByteFeatureRange {first:count as u32,count:lane.len() as u32});count+=lane.len();
+            for (weight,table) in lane {packed.push(Field::from(*weight));packed.extend(table.iter().copied().map(Field::from));}
+        }
+        let mut checkpoint=0;
+        let status=unsafe {(self.rms_byte_api.as_ref().unwrap().layer)(self.raw,token.id,layer as u32,
+            point.as_ptr(),point.len() as u32,lambda.into(),ranges.as_ptr(),packed.as_ptr(),count as u32,&mut checkpoint)};
+        self.check(status)?;
+        if checkpoint as usize>=token.bits {return self.abort("native RMS byte checkpoint differs");}
+        token.active_layer=true;token.round=0;Ok(checkpoint as usize)
+    }
+    pub(in crate::c71_matrix) fn rms_byte_coefficients(&mut self,token:&mut RmsByteToken,prefix:&[Fp3])
+        ->Result<[Fp3;4],String> {
+        self.require_rms_byte(token)?;
+        if !token.active_layer || prefix.len()!=token.round || token.round>=token.bits+4+token.layer {
+            return self.abort("native RMS byte coefficient coverage differs");
+        }
+        let prefix=prefix.iter().copied().map(Field::from).collect::<Vec<_>>();let mut output=[Field::default();4];
+        let status=unsafe {(self.rms_byte_api.as_ref().unwrap().coefficients)(self.raw,token.id,
+            prefix.as_ptr(),prefix.len() as u32,output.as_mut_ptr())};self.check(status)?;
+        let mut values=[Fp3::ZERO;4];for (v,x) in values.iter_mut().zip(output) {*v=x.decode().or_else(|error|self.abort(error))?;}
+        token.round+=1;Ok(values)
+    }
+    pub(in crate::c71_matrix) fn rms_byte_terminal(&mut self,token:&mut RmsByteToken,point:&[Fp3])
+        ->Result<[Fp3;4],String> {
+        self.require_rms_byte(token)?;
+        if !token.active_layer || point.len()!=token.bits+4+token.layer || token.round!=point.len() {
+            return self.abort("native RMS byte terminal coverage differs");
+        }
+        let point=point.iter().copied().map(Field::from).collect::<Vec<_>>();let mut output=[Field::default();4];
+        let status=unsafe {(self.rms_byte_api.as_ref().unwrap().terminal)(self.raw,token.id,
+            point.as_ptr(),point.len() as u32,output.as_mut_ptr())};self.check(status)?;
+        let mut values=[Fp3::ZERO;4];for (v,x) in values.iter_mut().zip(output) {*v=x.decode().or_else(|error|self.abort(error))?;}
+        token.active_layer=false;token.layer+=1;if token.layer==8 {token.id=0;}Ok(values)
+    }
     pub(in crate::c71_matrix) fn rms_source_begin(&mut self,payload:Arc<Vec<u8>>,packet:&RmsSourcePacket)
         ->Result<RmsSourceToken,String> {
         self.ready()?;
@@ -650,7 +754,7 @@ impl Runtime {
             self.rms_source.as_ref().unwrap().as_ptr(),packet.norms.as_ptr(),packet.tiles.as_ptr(),&mut id)};
         self.check(status)?;
         if id==0 {return self.abort("native RMS source null capability");}
-        Ok(RmsSourceToken {id,owner:self.owner.clone()})
+        Ok(RmsSourceToken {id,owner:self.owner.clone(),live:packet.shape.live as usize,padded:packet.shape.padded as usize})
     }
     fn require_rms_source(&mut self,token:&RmsSourceToken)->Result<(),String> {
         self.ready()?;
@@ -1104,6 +1208,7 @@ impl Runtime {
             stopped: false,
             weights: None,
             rms_source:None,
+            rms_byte_api:None,
             weight_install_bytes: 0,
             owner: Arc::new(()),
             configuration: (
@@ -2938,6 +3043,25 @@ pub(in crate::c71_matrix) mod tests {
             "c71_rms_prefix_finish_tail","c71_rms_tail_round","c71_rms_index_begin","c71_rms_index_step"] {
             let fixture=fixture_library(512,Some(symbol));assert!(Runtime::new(&fixture.config).is_err());
         }
+    }
+    #[test]
+    fn c71_b12_native_rms_byte_selected_missing_api_fails_closed() {
+        for symbol in ["c71_rms_byte_begin","c71_rms_byte_layer","c71_rms_byte_coefficients","c71_rms_byte_terminal"] {
+            let fixture=fixture_library(512,Some(symbol));let mut runtime=Runtime::new(&fixture.config).unwrap();
+            let (payload,packet)=rms_source_fixture();let source=runtime.rms_source_begin(payload,&packet).unwrap();
+            assert!(runtime.rms_byte_begin(&source,5,10,&[[Fp3::ZERO;256];16]).is_err());
+            assert_eq!(runtime.stats().unwrap().stopped,1);runtime.close().unwrap();
+        }
+    }
+    #[test]
+    fn c71_b12_native_rms_byte_foreign_owner_fails_closed() {
+        let mut fixture=fixture(512);fixture.config.arena_bytes=64<<20;
+        let mut runtime=Runtime::new(&fixture.config).unwrap();let (payload,packet)=rms_source_fixture();
+        let source=runtime.rms_source_begin(payload,&packet).unwrap();
+        let mut token=runtime.rms_byte_begin(&source,5,10,&[[Fp3::ZERO;256];16]).unwrap();
+        let mut other=Runtime::new(&fixture.config).unwrap();
+        assert!(other.rms_byte_coefficients(&mut token,&[]).is_err());
+        assert_eq!(other.stats().unwrap().stopped,1);other.close().unwrap();runtime.close().unwrap();
     }
     fn rms_source_fixture()->(Arc<Vec<u8>>,RmsSourcePacket) {
         (Arc::new(vec![42;140]),RmsSourcePacket {

@@ -56,7 +56,7 @@ int main() {
                 else {
                     assert(!status);for(auto x:terminal)assert(!x.c0 && !x.c1 && !x.c2);
                     assert(!c71_rms_source_retire(c,source));assert(!stats(c).arena_bytes);
-                    assert(stats(c).host_owner_bytes==42496);
+                    assert(stats(c).host_owner_bytes==42504);
                 }
             }
         }

@@ -29,7 +29,7 @@ int main() {
         upload_fail_after=-1;
         if((fault>=1 && fault<=9) || fault==21)assert(status && !token);
         else {
-            assert(!status && token && stats(c).allocations==7 && stats(c).host_owner_bytes==44304);
+            assert(!status && token && stats(c).allocations==7 && stats(c).host_owner_bytes==44312);
             for(unsigned row=0;row<16;++row)for(unsigned k=0;k<3;++k)assigned[row*256+k]=0;
             if(fault==10)assigned[255]=0;
             if(fault==11)mask_id=0xffff;
@@ -58,7 +58,7 @@ int main() {
                 if(fault>=17)assert(status);
                 else {
                     assert(!status && !stats(c).arena_bytes && stats(c).releases==7);
-                    assert(stats(c).host_owner_bytes==42496 && stats(c).h2d_bytes==115032);
+                    assert(stats(c).host_owner_bytes==42504 && stats(c).h2d_bytes==115032);
                     assert(stats(c).zeroed_bytes==14720 && stats(c).d2h_bytes==6528 && stats(c).launches==12);
                     for(auto value:moments)assert(value.c0==0 && value.c1==0 && value.c2==0);
                 }

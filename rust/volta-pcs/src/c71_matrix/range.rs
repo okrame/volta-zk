@@ -578,7 +578,7 @@ pub(super) fn prove_tree_sourcewise_custom(
 }
 
 // A failed reader must stop before the next authentication or FS challenge.
-fn try_prove_tree_sourcewise_custom(
+pub(super) fn try_prove_tree_sourcewise_custom(
     bits: usize,
     mut point: Vec<Fp3>,
     mut claims: [Auth; 2],

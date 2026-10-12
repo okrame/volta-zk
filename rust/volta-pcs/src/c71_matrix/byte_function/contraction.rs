@@ -2,6 +2,7 @@
 //! Uses the original public ByteTrees LUT. No new transcript or MAC input.
 use super::*;
 use std::cell::Cell;
+pub(super) mod native;
 
 // Two states <=16 MiB, public feature tables <8 MiB, transform/Eq/support/tails <8 MiB.
 const STATE_BYTES: usize = 8 << 20;
@@ -85,6 +86,124 @@ fn c71_byte_streamed_contraction_budget_support_and_original_coefficients() {
     let checkpoint=wide.choose_checkpoint();assert!(checkpoint>7 && checkpoint<29);
     assert!(wide.state_bytes(1usize<<(29-checkpoint))<=STATE_BYTES);
     assert!(wide.state_bytes(1usize<<(30-checkpoint))>STATE_BYTES);
+}
+
+#[test]
+#[ignore="explicit real CUDA library and authorized hardware required"]
+fn c71_byte_native_mapped_all_eight_layers_original_dense_coefficients_and_children() {
+    use crate::c71_matrix::range::windowed::native::{Runtime,RmsSourceShape,RmsSourceNorm,RmsSourceTile,RmsSourcePacket};
+    use crate::c71_matrix::range::windowed::native as native_runtime;
+    let cells=128usize;let live=125usize;
+    let mut frames=vec![[0u8;12];cells];
+    for (i,f) in frames.iter_mut().take(live).enumerate() {
+        f[..4].copy_from_slice(&(i as u32*65537+257).to_le_bytes());
+        f[4..10].copy_from_slice(&[1,3,5,7,9,11]);f[10]=(i*11+7) as u8;f[11]=(i*i) as u8;
+    }
+    let mut payload=Vec::new();for f in &frames[..live] {payload.extend_from_slice(&f[..4]);}
+    payload.extend_from_slice(&frames[0][4..10]);for f in &frames[..live] {payload.extend_from_slice(&f[10..]);}
+    let mut tiles=Vec::new();let mut first=0;
+    while first<live {let n=1usize<<(live-first).ilog2();
+        tiles.push(RmsSourceTile {first:first as u32,end:(first+n) as u32,norm:0,row:0,col:first as u32,
+            cols:n as u32,program:0,reserved:0});first+=n;}
+    let packet=RmsSourcePacket {shape:RmsSourceShape {bytes:payload.len() as u64,live:live as u32,padded:cells as u32,
+        norms:1,tiles:tiles.len() as u32,programs:1,reserved:0},
+        norms:vec![RmsSourceNorm {product:0,statistic:(live*4) as u64,output:(live*4+6) as u64,
+            cells:live as u64,pbytes:4,columns:live as u32,rows:1,program:0}],tiles};
+    let value=|i:usize|Fp3::new(Fp::new((i+3) as u64),Fp::new((i+7) as u64),Fp::new((i+11) as u64));
+    let tables=(0..16).map(|lane|std::array::from_fn(|b|value(b+lane*13))).collect::<Vec<_>>();
+    let coefficients=coefficients(&tables);let trees=ByteTrees::new(&coefficients);
+    let get=|i:usize|if i/16<live && i%16<12 {frames[i/16][i%16]}else{0};
+    let mut checked=0;let mut terminals=0;
+    for case in 0..3 {
+        let weights_owner=std::sync::Arc::new(Vec::new());let _budget=crate::c71_matrix::census::Budget::new(&weights_owner).unwrap();
+        let config=native_runtime::tests::hardware_config(512,64<<20);let mut runtime=Runtime::new(&config).unwrap();
+        let base_owner=runtime.stats().unwrap().host_owner_bytes;
+        let source=runtime.rms_source_begin(std::sync::Arc::new(payload.clone()),&packet).unwrap();
+        let mut gpu=native::Prover::new(&mut runtime,&source,&trees,7,12,&coefficients).unwrap();
+        for layer in 0..8 {
+            let n=7+4+layer;
+            let point=(0..n).map(|i|if case==1 {if i%2==0 {Fp3::ZERO}else{Fp3::ONE}}else{value(i+41)}).collect::<Vec<_>>();
+            let challenges=(0..n).map(|i|if case==1 {point[i]}else if case==2 {match i%3 {0=>Fp3::ZERO,1=>Fp3::ONE,_=>value(i+73)}}else{value(i+73)}).collect::<Vec<_>>();
+            let lambda=if case==1 {Fp3::ZERO}else{value(layer+17)};
+            let mut rows=(0..1usize<<n).map(|i|trees.children(layer,i,cells,&get).to_vec()).collect::<Vec<_>>();
+            for round in 0..n {
+                let half=rows.len()/2;let mut expected=[Fp3::ZERO;4];
+                for i in 0..half {
+                    let a=&rows[i];let d:[Fp3;4]=std::array::from_fn(|j|rows[i+half][j]-a[j]);
+                    let mut q=[Fp3::ZERO;3];
+                    for (x,y,w) in [(0,3,lambda),(2,1,lambda),(1,3,Fp3::ONE)] {
+                        q[0]+=w*a[x]*a[y];q[1]+=w*(d[x]*a[y]+a[x]*d[y]);q[2]+=w*d[x]*d[y];
+                    }
+                    let e=equality(&point,&challenges[..round],i);
+                    let de=equality(&point,&challenges[..round],i+half)-e;
+                    for j in 0..3 {expected[j]+=e*q[j];expected[j+1]+=de*q[j];}
+                }
+                assert_eq!(gpu.coefficients(layer,&point,lambda,&challenges[..round]).unwrap(),expected,
+                    "native byte case{case}/layer{layer}/round{round}");checked+=1;
+                rows=fold(rows,&challenges[round..round+1]);
+            }
+            assert_eq!(gpu.terminal(layer,&challenges).unwrap().as_slice(),rows[0]);terminals+=1;
+        }
+        drop(gpu);runtime.rms_source_retire(source).unwrap();let stats=runtime.stats().unwrap();
+        assert_eq!(stats.arena_bytes,0);assert_eq!(stats.allocations,stats.releases);
+        assert_eq!(stats.host_owner_bytes,base_owner);
+        runtime.close().unwrap();
+    }
+    println!("C71_RMS_BYTE_NATIVE_GPU {}",serde_json::json!({"cases":3,"layers":8,"cells":cells,"live":live,
+        "coefficient_checks":checked,"terminal_checks":terminals,"original_dense_children":true,
+        "zero_one_query_and_challenges":true,"mapped_source_only":true,"gpu_execution":true,
+        "canonical_certificates":0,"credit":false}));
+}
+
+#[test]
+#[ignore="explicit real CUDA library and authorized hardware required"]
+fn c71_byte_native_mapped_streaming_checkpoint_matches_original_cpu_contraction() {
+    use crate::c71_matrix::range::windowed::native::{Runtime,RmsSourceShape,RmsSourceNorm,RmsSourceTile,RmsSourcePacket};
+    use crate::c71_matrix::range::windowed::native as native_runtime;
+    let cells=16384usize;let live=16377usize;
+    let mut frames=vec![[0u8;12];cells];
+    for (i,f) in frames.iter_mut().take(live).enumerate() {
+        f[..4].copy_from_slice(&(i as u32*65537+257).to_le_bytes());
+        f[4..10].copy_from_slice(&[1,3,5,7,9,11]);f[10]=(i*11+7) as u8;f[11]=(i*i) as u8;
+    }
+    let mut payload=Vec::new();for f in &frames[..live] {payload.extend_from_slice(&f[..4]);}
+    payload.extend_from_slice(&frames[0][4..10]);for f in &frames[..live] {payload.extend_from_slice(&f[10..]);}
+    let mut tiles=Vec::new();let mut first=0;
+    while first<live {let n=1usize<<(live-first).ilog2();tiles.push(RmsSourceTile {first:first as u32,end:(first+n) as u32,
+        norm:0,row:0,col:first as u32,cols:n as u32,program:0,reserved:0});first+=n;}
+    let packet=RmsSourcePacket {shape:RmsSourceShape {bytes:payload.len() as u64,live:live as u32,padded:cells as u32,
+        norms:1,tiles:tiles.len() as u32,programs:1,reserved:0},norms:vec![RmsSourceNorm {product:0,
+            statistic:(live*4) as u64,output:(live*4+6) as u64,cells:live as u64,pbytes:4,columns:live as u32,rows:1,program:0}],tiles};
+    let f=|i:usize|Fp3::new(Fp::new((i+3) as u64),Fp::new((i+7) as u64),Fp::new((i+11) as u64));
+    let coefficients=(0..16).map(|lane|std::array::from_fn(|b|f(b+lane*13))).collect::<Vec<_>>();
+    let trees=ByteTrees::new(&coefficients);let support=[(0,live as u32)];
+    let get=|i:usize|if i/16<live && i%16<12 {frames[i/16][i%16]}else{0};
+    let mut cpu=Prover::new(&trees,14,&get,&support,12);
+    let weights=std::sync::Arc::new(Vec::new());let _budget=crate::c71_matrix::census::Budget::new(&weights).unwrap();
+    let mut runtime=Runtime::new(&native_runtime::tests::hardware_config(512,64<<20)).unwrap();
+    let base_owner=runtime.stats().unwrap().host_owner_bytes;
+    let source=runtime.rms_source_begin(std::sync::Arc::new(payload),&packet).unwrap();
+    let mut gpu=native::Prover::new(&mut runtime,&source,&trees,14,12,&coefficients).unwrap();
+    let mut checked=0;
+    for layer in 0..8 {
+        let point=(0..14+4+layer).map(|i|f(i+41)).collect::<Vec<_>>();let lambda=f(layer+17);
+        let challenges=(0..point.len()).map(|i|match i%3 {0=>Fp3::ZERO,1=>Fp3::ONE,_=>f(i+73)}).collect::<Vec<_>>();
+        for round in 0..point.len() {
+            let expected=cpu.coefficients(layer,&point,lambda,&challenges[..round]);
+            assert_eq!(gpu.coefficients(layer,&point,lambda,&challenges[..round]).unwrap(),expected,
+                "streamed native byte layer{layer}/round{round}");checked+=1;
+        }
+        assert_eq!(gpu.terminal(layer,&challenges).unwrap(),cpu.terminal(layer,&challenges));
+    }
+    // Verify the transition reported by the actual native transaction.
+    assert!(cpu.work().checkpoint_max>0);
+    let gpu_checkpoint=gpu.checkpoint_max();assert!(gpu_checkpoint>0);
+    drop(gpu);runtime.rms_source_retire(source).unwrap();let stats=runtime.stats().unwrap();
+    assert_eq!(stats.arena_bytes,0);assert_eq!(stats.allocations,stats.releases);assert_eq!(stats.host_owner_bytes,base_owner);
+    runtime.close().unwrap();
+    println!("C71_RMS_BYTE_NATIVE_STREAMED {}",serde_json::json!({"cells":cells,"live":live,"layers":8,
+        "coefficient_checks":checked,"terminal_checks":8,"original_cpu_contraction":true,"cpu_work":cpu.work(),
+        "gpu_checkpoint_max":gpu_checkpoint,"native_stats":stats,"gpu_execution":true,"canonical_certificates":0,"credit":false}));
 }
 
 fn children(trees: &ByteTrees, lane: usize, layer: usize, byte: usize) -> Vec<Fp3> {

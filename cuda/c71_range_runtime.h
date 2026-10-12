@@ -16,6 +16,7 @@
 #include "c71_rms_prefix.cuh"
 #include "c71_rms_tail.cuh"
 #include "c71_rms_index.cuh"
+#include "c71_rms_byte.cuh"
 
 struct C71RangeContext;
 using C71RangeAccount = int (*)(int64_t);
@@ -79,6 +80,14 @@ int c71_rms_prefix_finish(C71RangeContext*,uint64_t,Fp3* moments,uint32_t count)
 int c71_rms_source_begin(C71RangeContext*,c71_rms_prefix::SourceShape,const uint8_t*,
     const c71_rms_prefix::SourceNorm*,const c71_rms_prefix::SourceTile*,uint64_t*);
 int c71_rms_source_retire(C71RangeContext*,uint64_t);
+// Whole eight-level original byte consumer, bound to the mapped checkpoint.
+// Public coefficients are [16][256]; each feature has weight then256 values.
+int c71_rms_byte_begin(C71RangeContext*,uint64_t source,uint32_t bits,uint32_t live_lanes,
+    const Fp3* original_coefficients,uint64_t*);
+int c71_rms_byte_layer(C71RangeContext*,uint64_t,uint32_t layer,const Fp3* point,uint32_t point_count,
+    Fp3 lambda,const c71_rms_byte::FeatureRange*,const Fp3* features,uint32_t feature_count,uint32_t* checkpoint);
+int c71_rms_byte_coefficients(C71RangeContext*,uint64_t,const Fp3* prefix,uint32_t round,Fp3*);
+int c71_rms_byte_terminal(C71RangeContext*,uint64_t,const Fp3* point,uint32_t point_count,Fp3*);
 int c71_rms_prefix_window_from_source(C71RangeContext*,uint64_t prefix,uint64_t source,
     uint32_t first,uint32_t n,const uint16_t* mask_ids);
 // Finish the same prefix while retaining its original plan for cell rounds.

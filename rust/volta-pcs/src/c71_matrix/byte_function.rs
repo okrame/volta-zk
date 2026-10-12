@@ -193,6 +193,7 @@ pub(super) struct SourceWork {
     pub lut_capacity_bytes: usize,
     pub lut_build_multiplications: u64,
     pub lut_build_additions: u64,
+    pub native_gpu:bool,
 }
 
 impl ByteTrees {
@@ -337,6 +338,34 @@ fn prove_sourcewise_impl(
     public_support: &[(u32, u32)],
     live_lanes: usize,
 ) -> Result<(Proof, Vec<Fp3>, Auth, SourceWork), String> {
+    prove_sourcewise_impl_backend(s,original,get_byte,fs,correlations,contracted,public_support,live_lanes,None)
+}
+
+pub(super) fn prove_native_streamed_contracted(
+    s:&Statement<'_>,original:Original<'_,Auth>,get_byte:impl Fn(usize)->u8,
+    public_support:&[(u32,u32)],live_lanes:usize,fs:&mut Fs,
+    correlations:&mut impl ExactSizeIterator<Item=Auth>,
+    runtime:&mut range::windowed::native::Runtime,source:&range::windowed::native::RmsSourceToken,
+) -> Result<(Proof,Vec<Fp3>,Auth,SourceWork),String> {
+    contraction::validate(s.cell_point.len(),s.tables.len(),public_support,live_lanes)?;
+    let mut end=0;
+    for &(a,b) in public_support {
+        if a!=end || b<=a {return Err("native byte support is not the mapped live prefix".into());}
+        end=b;
+    }
+    if s.tables.len()!=16 || s.live_cells!=source.padded() || s.live_cells!=1usize<<s.cell_point.len()
+        || end as usize!=source.live() {
+        return Err("native byte support differs from the original mapped RMS checkpoint".into());
+    }
+    prove_sourcewise_impl_backend(s,original,get_byte,fs,correlations,true,public_support,live_lanes,Some((runtime,source)))
+}
+
+fn prove_sourcewise_impl_backend(
+    s:&Statement<'_>,original:Original<'_,Auth>,get_byte:impl Fn(usize)->u8,fs:&mut Fs,
+    correlations:&mut impl ExactSizeIterator<Item=Auth>,contracted:bool,
+    public_support:&[(u32,u32)],live_lanes:usize,
+    native:Option<(&mut range::windowed::native::Runtime,&range::windowed::native::RmsSourceToken)>,
+) -> Result<(Proof,Vec<Fp3>,Auth,SourceWork),String> {
     let (len, sum) = match &original {
         Original::Lanes(v) => (v.len(), false),
         Original::Sum(_) => (1, true),
@@ -361,7 +390,13 @@ fn prove_sourcewise_impl(
     let c = coefficients(s.tables);
     let trees = ByteTrees::new(&c);
     let mut triples = Vec::new();
-    let evaluator = contracted.then(|| {
+    let native_selected=native.is_some();
+    let native_evaluator=match native {
+        Some((runtime,source))=>Some(std::cell::RefCell::new(contraction::native::Prover::new(
+            runtime,source,&trees,s.cell_point.len(),live_lanes,&c)?)),
+        None=>None,
+    };
+    let evaluator = (contracted && !native_selected).then(|| {
         std::cell::RefCell::new(contraction::Prover::new(
             &trees,
             s.cell_point.len(),
@@ -370,7 +405,7 @@ fn prove_sourcewise_impl(
             live_lanes,
         ))
     });
-    let (layers, mut point, claims, tree_work) = range::prove_tree_sourcewise_custom(
+    let (layers, mut point, claims, tree_work) = range::try_prove_tree_sourcewise_custom(
         8,
         point,
         [root, Auth::ZERO],
@@ -379,11 +414,19 @@ fn prove_sourcewise_impl(
         &mut rows,
         &mut triples,
         |layer, point, lambda, prefix| {
-            evaluator.as_ref().map(|e| e.borrow_mut().coefficients(layer, point, lambda, prefix))
+            match &native_evaluator {
+                Some(e)=>e.borrow_mut().coefficients(layer,point,lambda,prefix).map(Some),
+                None=>Ok(evaluator.as_ref().map(|e| e.borrow_mut().coefficients(layer, point, lambda, prefix))),
+            }
         },
-        |layer, point| evaluator.as_ref().map(|e| e.borrow_mut().terminal(layer, point)),
-    );
+        |layer, point|match &native_evaluator {
+            Some(e)=>e.borrow_mut().terminal(layer,point).map(Some),
+            None=>Ok(evaluator.as_ref().map(|e|e.borrow_mut().terminal(layer,point))),
+        },
+    )?;
     let contraction_work=evaluator.as_ref().map(|e|e.borrow().work());
+    let native_heap=native_evaluator.as_ref().map_or(0,|e|e.borrow().heap_capacity());
+    drop(native_evaluator);
     drop(evaluator); // Last recovered-child consumer precedes leaf/product work.
     let (_, index, leaf_eq_capacity_peak_bytes) = leaf(s, &c, &point);
     let leaf_point_capacity_bytes = point.capacity() * core::mem::size_of::<Fp3>();
@@ -413,6 +456,7 @@ fn prove_sourcewise_impl(
             + coefficient_capacity_bytes
             + lut_capacity_bytes
             + contraction_work.map_or(0, |w| w.heap_capacity_upper_bytes)
+            + if native_selected { (32usize<<20).max(2*native_heap+16*256*24) } else {0}
             + tree_work
                 .owned_regeneration_heap_peak_bytes
                 .max(leaf_point_capacity_bytes + leaf_eq_capacity_peak_bytes),
@@ -438,6 +482,7 @@ fn prove_sourcewise_impl(
         lut_capacity_bytes,
         lut_build_multiplications: 3 * internal_nodes,
         lut_build_additions: internal_nodes,
+        native_gpu:native_selected,
     };
     Ok((
         Proof { layers, leaf_tag, products },
@@ -572,6 +617,66 @@ mod tests {
     use super::*;
     use linear::Cube;
     use rand_010::RngExt;
+
+    #[test]
+    #[ignore="explicit real CUDA library and authorized hardware required"]
+    fn c71_byte_native_mapped_wire_original_verifier_and_tampered_leaf() {
+        use crate::c71_matrix::range::windowed::native::{self,Runtime,RmsSourceShape,RmsSourceNorm,RmsSourceTile,RmsSourcePacket};
+        let cells=32usize;let live=31usize;let extension=Fp3::new(Fp::new(3),Fp::new(5),Fp::new(7));
+        let root=C61Commitment::new(vec![[71;32]]);
+        let point=(0..5).map(|i|[extension,Fp3::ZERO,Fp3::ONE][i%3]).collect::<Vec<_>>();
+        let tables=(0..16).map(|lane|std::array::from_fn(|b|extension*signed((b*b+3*b+lane+1) as i64))).collect::<Vec<_>>();
+        let statement=Statement {root:&root,profile:b"original native mapped byte wire",view:[72;32],
+            attempt:AttemptContext {session:[73;32],capacity:[74;32],slot:0,predecessor:[0;32],nonce:[75;32]},
+            cell_point:&point,live_cells:cells,tables:&tables};
+        let mut frames=vec![[0u8;12];cells];
+        for (i,f) in frames.iter_mut().take(live).enumerate() {
+            f[..4].copy_from_slice(&(i as u32*65537+257).to_le_bytes());f[4..10].copy_from_slice(&[1,3,5,7,9,11]);
+            f[10]=(i*11+7) as u8;f[11]=(i*i) as u8;
+        }
+        let get=|i:usize|if i/16<live && i%16<12 {frames[i/16][i%16]}else{0};
+        let value=eq(&point).iter().enumerate().fold(Fp3::ZERO,|total,(i,&w)|
+            total+w*(0..16).fold(Fp3::ZERO,|v,lane|v+tables[lane][get(i*16+lane) as usize]));
+        let original=Auth::new(value,extension+signed(19));let delta=extension+signed(23);
+        let original_key=Key::new(original.m+delta*original.x);let mut rng=MatrixRng::from_seed([76;32]);
+        let rows=(0..required(9)).map(|_|Auth::new(from_p3(rng.random::<E>()),from_p3(rng.random::<E>()))).collect::<Vec<_>>();
+        let keys=rows.iter().map(|a|Key::new(a.m+delta*a.x)).collect::<Vec<_>>();
+        let start=||Fs::new(b"original native byte wire",100_000);
+        let mut dense_fs=start();let mut dense_rows=rows.clone().into_iter();
+        let (dense,dense_point,dense_endpoint)=prove_dense(&statement,Original::Sum(original),get,&mut dense_fs,&mut dense_rows).unwrap();
+        let mut payload=Vec::new();for f in &frames[..live] {payload.extend_from_slice(&f[..4]);}
+        payload.extend_from_slice(&frames[0][4..10]);for f in &frames[..live] {payload.extend_from_slice(&f[10..]);}
+        let mut tiles=Vec::new();let mut first=0;
+        while first<live {let n=1usize<<(live-first).ilog2();tiles.push(RmsSourceTile {first:first as u32,end:(first+n) as u32,
+            norm:0,row:0,col:first as u32,cols:n as u32,program:0,reserved:0});first+=n;}
+        let packet=RmsSourcePacket {shape:RmsSourceShape {bytes:payload.len() as u64,live:live as u32,padded:cells as u32,
+            norms:1,tiles:tiles.len() as u32,programs:1,reserved:0},norms:vec![RmsSourceNorm {product:0,
+            statistic:(live*4) as u64,output:(live*4+6) as u64,cells:live as u64,pbytes:4,columns:live as u32,rows:1,program:0}],tiles};
+        let weights=std::sync::Arc::new(Vec::new());let _budget=crate::c71_matrix::census::Budget::new(&weights).unwrap();
+        let mut runtime=Runtime::new(&native::tests::hardware_config(512,64<<20)).unwrap();
+        let baseline=runtime.stats().unwrap().host_owner_bytes;
+        let source=runtime.rms_source_begin(std::sync::Arc::new(payload),&packet).unwrap();
+        let mut fs=start();let mut prows=rows.clone().into_iter();
+        let (mut proof,point,endpoint,work)=prove_native_streamed_contracted(&statement,Original::Sum(original),
+            |_|panic!("selected native byte called the CPU source getter"),&[(0,live as u32)],12,
+            &mut fs,&mut prows,&mut runtime,&source).unwrap();
+        runtime.rms_source_retire(source).unwrap();let stats=runtime.stats().unwrap();
+        assert_eq!(stats.arena_bytes,0);assert_eq!(stats.allocations,stats.releases);assert_eq!(stats.host_owner_bytes,baseline);
+        runtime.close().unwrap();let mut wire=Vec::new();let mut dense_wire=Vec::new();
+        crate::c71_matrix::wire::Wire::write(&proof,&mut wire);crate::c71_matrix::wire::Wire::write(&dense,&mut dense_wire);
+        assert_eq!(wire,dense_wire);assert_eq!(point,dense_point);assert_eq!((endpoint.x,endpoint.m),(dense_endpoint.x,dense_endpoint.m));
+        assert_eq!(fs.digest(),dense_fs.digest());assert_eq!(prows.len(),0);assert_eq!(dense_rows.len(),0);
+        let mut vfs=start();let mut vrows=keys.clone().into_iter();
+        let (verified_point,verified)=verify(&statement,Original::Sum(original_key),&proof,delta,&mut vfs,&mut vrows).unwrap();
+        assert_eq!(verified_point,point);assert_eq!(verified.k,endpoint.m+delta*endpoint.x);
+        assert_eq!(vfs.digest(),fs.digest());assert_eq!(vrows.len(),0);assert!(work.native_gpu);
+        proof.leaf_tag+=Fp3::ONE;
+        assert!(verify(&statement,Original::Sum(original_key),&proof,delta,&mut start(),&mut keys.into_iter()).is_err());
+        println!("C71_RMS_BYTE_NATIVE_WIRE {}",serde_json::json!({"cells":cells,"layers":8,"wire_bytes":wire.len(),
+            "wire_blake3":blake3::hash(&wire).to_hex().as_str(),"exact_wire_FS_original_MAC":true,
+            "cpu_source_callbacks":0,"tampered_leaf_rejected":true,"correlations":rows.len(),"native_stats":stats,
+            "gpu_execution":true,"canonical_certificates":0,"credit":false}));
+    }
 
     #[test]
     fn c71_byte_streamed_contraction_full_wire_above_reduced_limit() {

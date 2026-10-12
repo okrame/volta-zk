@@ -467,13 +467,22 @@ impl Sources {
         fs:&mut Fs,correlations:&mut impl ExactSizeIterator<Item=Auth>,
         runtime:&mut range::windowed::native::Runtime,capacity:usize,
     )->Result<(Proof,Pending<Auth>),String> {
-        self.prove_rms_impl(s,parameters,read,fs,correlations,Some((runtime,capacity)))
+        self.prove_rms_impl(s,parameters,read,fs,correlations,Some((runtime,capacity,false)))
+    }
+
+    #[cfg(test)]
+    pub(in crate::c71_matrix) fn prove_rms_native_byte(
+        &self,s:&P0Statement<'_>,parameters:&[[i32;3]],read:impl Fn(usize,usize,usize,usize)->u8,
+        fs:&mut Fs,correlations:&mut impl ExactSizeIterator<Item=Auth>,
+        runtime:&mut range::windowed::native::Runtime,capacity:usize,
+    )->Result<(Proof,Pending<Auth>),String> {
+        self.prove_rms_impl(s,parameters,read,fs,correlations,Some((runtime,capacity,true)))
     }
 
     fn prove_rms_impl(
         &self,s:&P0Statement<'_>,parameters:&[[i32;3]],read:impl Fn(usize,usize,usize,usize)->u8,
         fs:&mut Fs,correlations:&mut impl ExactSizeIterator<Item=Auth>,
-        native:Option<(&mut range::windowed::native::Runtime,usize)>,
+        native:Option<(&mut range::windowed::native::Runtime,usize,bool)>,
     )->Result<(Proof,Pending<Auth>),String> {
         let (programs, profiles, count) = self.prepare(s, parameters)?;
         if correlations.len() < count {
@@ -527,11 +536,11 @@ impl Sources {
                 gkr::Assignments::compiled(self.cells.next_power_of_two(), &spans)
             } else { gkr::Assignments::new(self.cells.next_power_of_two(), &assignment) },
         };
-        let (joint, byte_point, byte) = if let Some((runtime,capacity))=native {
+        let (joint, byte_point, byte) = if let Some((runtime,capacity,native_byte))=native {
             let packet=frames.native_packet(&profiles,programs.len())?;
             let source=runtime.rms_source_begin(frames.payload.clone(),&packet)?;
-            let result=gkr::prove_native_mapped_sourcewise(&gs,|i|frames.frame(i).unwrap(),fs,&mut rows,
-                runtime,&spans,capacity,&source,true);
+            let result=gkr::prove_native_mapped_sourcewise_with_byte(&gs,|i|frames.frame(i).unwrap(),fs,&mut rows,
+                runtime,&spans,capacity,&source,true,native_byte);
             let (proof,point,original,_)=result?;
             runtime.rms_source_retire(source)?;
             (proof,point,original)
@@ -1046,7 +1055,16 @@ mod tests {
         check_dispatch(true);
     }
 
+    #[test]
+    #[ignore="explicit real CUDA library and authorized hardware required"]
+    fn c71_b12_gemma_rms_common_gpu_byte_dispatch_joins_both_original_roots() {
+        check_dispatch_backend(true,true);
+    }
+
     fn check_dispatch(gpu:bool) {
+        check_dispatch_backend(gpu,false);
+    }
+    fn check_dispatch_backend(gpu:bool,native_byte:bool) {
         let plan = super::super::tests::toy_plan(2, 1);
         let sources = plan.rms_sources().unwrap();
         assert_eq!((sources.cells, sources.bytes.live), (28, 462));
@@ -1167,8 +1185,10 @@ mod tests {
                 let weights=std::sync::Arc::new(Vec::new());
                 let _budget=crate::c71_matrix::census::Budget::new(&weights).unwrap();
                 let mut runtime=native::Runtime::new(&config).unwrap();
-                let (candidate,pending)=sources.prove_rms_native(&statement,&parameters,read,&mut native_fs,
-                    &mut native_rows,&mut runtime,256).unwrap();
+                let (candidate,pending)=if native_byte {
+                    sources.prove_rms_native_byte(&statement,&parameters,read,&mut native_fs,&mut native_rows,&mut runtime,256)
+                } else {sources.prove_rms_native(&statement,&parameters,read,&mut native_fs,
+                    &mut native_rows,&mut runtime,256)}.unwrap();
                 let mut bytes=Vec::new();let mut reference=Vec::new();
                 crate::c71_matrix::wire::Wire::write(&candidate,&mut bytes);
                 crate::c71_matrix::wire::Wire::write(&rms_proof,&mut reference);
@@ -1179,7 +1199,7 @@ mod tests {
                 let stats=runtime.stats().unwrap();
                 assert!(stats.launches>0);assert_eq!(stats.arena_bytes,0);assert_eq!(stats.allocations,stats.releases);
                 println!("C71_RMS_COMMON_CALLER_GPU {}",serde_json::json!({"fault":fault,"stats":stats,
-                    "original_wire_fs_mac":true,"gpu_execution":true,"canonical_certificates":0,"credit":false}));
+                    "native_byte":native_byte,"original_wire_fs_mac":true,"gpu_execution":true,"canonical_certificates":0,"credit":false}));
                 runtime.close().unwrap();rms_proof=candidate;rms=pending;fs=native_fs;
             }
             let mut rne_proofs = Vec::new();

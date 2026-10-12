@@ -76,7 +76,7 @@ def test_native_range_owner_with_deferred_fake_driver(tmp_path):
                       "gpu_execution": False, "credit": False}
 
     reuse = reports.pop("C71_SYNC_ERROR_FLAG_REUSE")
-    assert reuse.pop("host_owner_bytes") == 42496
+    assert reuse.pop("host_owner_bytes") == 42504
     assert reuse == {
         "retained_device_capacity_bytes": 256, "flag_count": 1,
         "sync_flag_reuse": True, "numeric_operations": 32,

@@ -57,7 +57,7 @@ int main() {
                     }
                 }
                 if(fault)assert(status);
-                else {assert(!status && !stats(c).arena_bytes && stats(c).host_owner_bytes==42496);
+                else {assert(!status && !stats(c).arena_bytes && stats(c).host_owner_bytes==42504);
                     for(auto x:output)assert(!x.c0 && !x.c1 && !x.c2);}
             }
         }

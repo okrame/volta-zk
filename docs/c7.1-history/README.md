@@ -1,5 +1,7 @@
 # C7.1 — archivio e provenienza
 
+[Consumer byte GPU scritto, compilazione/parità ancora pendenti](rms-native-byte-implementation-prepared-2026-10-12.md).
+
 [Chiusura della finestra RMS mapped/GKR e conferma provider](h100-rms-moments-close-2026-10-11.md).
 
 [Gate ragged:63 coefficienti/36 terminali densi originali verificati](h100-rms-tail-ragged-parity-2026-10-11.md).

@@ -125,11 +125,15 @@ Resta fixture di gate, senza predicato RMS/certificato o picco completo.
 
 **Zero certificati canonici**: O=0 incompleto, O=150/300 non iniziati.
 Backend RMS completo, conto simultaneo e premessa di raffinamento aperti.
-Il [prossimo consumer byte](../c7.1-history/rms-native-byte-next-step-2026-10-11.md)
-riuserà il sorgente mapped ancora vivo nella fase byte, conservando tutti
-gli8 livelli/16 lane e i terminali originali. Capability/ownership, parità,
-conto simultaneo e fail-closed GPU vanno implementati prima della selezione;
-questa preparazione non estende la finestra o avvia un trial canonico.
+È [scritto il consumer byte GPU candidato](../c7.1-history/rms-native-byte-implementation-prepared-2026-10-12.md),
+ancora **non compilato/eseguito**: sorgente mapped,8 layer/16 lane, stato
+limitato8 MiB, recupero dei figli originali e callback fallibile senza
+fallback. Registrazione API e29 rifiuti owner, coefficienti/terminali densi,
+streaming/checkpoint, wire e caller RMS/PCS sono preparati ma da verificare.
+Nuovo owner ordinario atteso42.504 B; vecchie misure42.496 B immutate.
+Byte GPU default disabilitato; opt-in nel benchmark/caller sperimentale.
+Matematica, lifetime e conto simultaneo/driver rimangono premesse aperte;
+nessun risultato GPU, selezione canonica o estensione pagata dedotti.
 
 La [prima fase della campagna certificati](../c7.1-history/h100-certificates-close-2026-10-11.md)
 e il [seguito RMS](../c7.1-history/h100-certificates-rms-shared-cache-2026-10-11.md)

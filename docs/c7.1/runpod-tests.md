@@ -128,13 +128,14 @@ Resta fixture di gate, senza predicato RMS/certificato o picco completo.
 **Zero certificati canonici**: O=0 incompleto, O=150/300 non iniziati.
 Backend RMS completo, conto simultaneo e premessa di raffinamento aperti.
 È [scritto il consumer byte GPU candidato](../c7.1-history/rms-native-byte-implementation-prepared-2026-10-12.md),
-con [primo negativo host](../c7.1-history/rms-native-byte-bootstrap-negatives-2026-10-12.md):
-cinque errori di indentazione Werror corretti, nuova verifica pendente.
+con [owner host positivo](../c7.1-history/rms-native-byte-owner-trace-2026-10-12.md):
+otto layer/30 rifiuti, indici e owner generico passano. Due aspettative trace
+aggiornate per il puntatore aggiuntivo; nuova verifica trace pendente.
 Kernel CUDA ancora non compilati/eseguiti. Sorgente mapped,8 layer/16 lane, stato
 limitato8 MiB, recupero dei figli originali e callback fallibile senza
 fallback. Registrazione API e30 rifiuti owner, coefficienti/terminali densi,
 streaming/checkpoint, wire e caller RMS/PCS sono preparati ma da verificare.
-Nuovo owner ordinario atteso42.504 B; vecchie misure42.496 B immutate.
+Owner ordinario host42.504 B confermato; vecchie misure42.496 B immutate.
 Byte GPU default disabilitato; opt-in nel benchmark/caller sperimentale.
 Matematica, lifetime e conto simultaneo/driver rimangono premesse aperte;
 nessun risultato GPU o selezione canonica dedotti; durata autorizzata sopra.

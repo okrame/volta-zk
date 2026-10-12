@@ -1,5 +1,7 @@
 # Documentazione
 
+[Nuovo pod chiuso entro tre ore: timeout nel corpo prova, zero certificati](c7.1-history/h100-newpod-canonical-close-2026-10-12.md).
+
 [Nuovo pod per tre ore: P0 validato e sessione canonica avviata](c7.1-history/h100-newpod-canonical-start-2026-10-12.md).
 
 [Canonico interrotto per credito esaurito: checkpoint conservati, prova finale assente](c7.1-history/h100-canonical-credit-exhausted-2026-10-12.md).

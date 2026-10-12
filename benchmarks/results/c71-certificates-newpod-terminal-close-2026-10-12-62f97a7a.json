@@ -1,0 +1,95 @@
+{
+  "schema": "volta-c71-newpod-canonical-timeout-and-provider-close-v1",
+  "source_git_sha": "62f97a7a58b9a845c3678c3103262073776f8c1f",
+  "git_dirty": false,
+  "credit": false,
+  "pod_id": "wgteo4z5mndiof",
+  "status": "Original canonical O0 attempt timed out during proof_body after complete real/AES setup, original O0 preparation/inference and A512/512. No response certificate or original verifier acceptance generated/exported. O150/O300 not started.",
+  "canonical_certificates_generated_complete": 0,
+  "canonical_certificates_verified": 0,
+  "completed_A_groups": 512,
+  "monitor_exit_code": -9,
+  "workflow_wrapper_exit_code": 247,
+  "resource_failure": "TimeoutError: phase or authorized compute deadline reached",
+  "monitor_wall_seconds": 7362.005041651428,
+  "proof_body_elapsed_lower_bound_seconds": 2023.6780441354276,
+  "resource_observation": {
+    "observed_payload_peak_bytes": 5514137127,
+    "payload_limit_bytes": 5905580032,
+    "sampled_stable_temporary_peak_bytes": 5994638848,
+    "physical_temporary_limit_bytes": 6174015488,
+    "sampled_host_rss_peak_bytes": 61957279744,
+    "sampled_whole_gpu_peak_bytes": 67011346432,
+    "samples": 36744,
+    "incomplete_samples": 0,
+    "smaps_read_failures": 0,
+    "physical_complete_peak": false
+  },
+  "journal_evidence": [
+    {
+      "role": "prover",
+      "bytes": 218,
+      "record_kinds": [
+        5,
+        2
+      ],
+      "sha256": "1fc195832f25c80d106b7ea61e28deceaff397112e39518dfbb88738216c8c1f",
+      "durable_acceptance_record": false
+    },
+    {
+      "role": "verifier",
+      "bytes": 161,
+      "record_kinds": [
+        5
+      ],
+      "sha256": "27add2b76a7ddd7feb05d98aad020ce4d0089542afaf23fa6b3df22f4ef36bd1",
+      "durable_acceptance_record": false
+    }
+  ],
+  "stderr_bytes": 0,
+  "GPU_after": {
+    "epoch": 1791821570.2257798,
+    "apps": "",
+    "gpu_used_mib": 0,
+    "gpu_uuid": "GPU-fb0e2f6f-ffd0-356f-d12b-cb2bff004319"
+  },
+  "provider_final": {
+    "action": "get",
+    "observed_epoch": 1791821746.215904,
+    "pod": {
+      "id": "wgteo4z5mndiof",
+      "desiredStatus": "EXITED",
+      "imageName": "runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404",
+      "gpuCount": 1,
+      "memoryInGb": 251,
+      "vcpuCount": 28,
+      "volumeInGb": 0,
+      "containerDiskInGb": 230,
+      "runtime": null
+    }
+  },
+  "guard_retired_after_provider_confirmation": true,
+  "authorization": {
+    "pod_id": "wgteo4z5mndiof",
+    "authorized_duration_seconds": 10800,
+    "start_epoch": 1791812588.832,
+    "deadline_epoch": 1791823388.832,
+    "campaign_end_epoch": 1791821588.832,
+    "guard_stop_epoch": 1791822788.832,
+    "close_reserve_seconds": 1800,
+    "authorization": "ho torato su un nuovo pod ssh wgteo4z5mndiof-64412174@ssh.runpod.io -i ~/.ssh/id_ed25519. entro 3 ore massimo finisci il goal!",
+    "basis": "Original provider start, not first SSH; new pod and at most three hours authorized by owner.",
+    "start_utc": "2026-10-12T13:43:08.832000+00:00",
+    "deadline_utc": "2026-10-12T16:43:08.832000+00:00",
+    "campaign_end_utc": "2026-10-12T16:13:08.832000+00:00",
+    "guard_stop_utc": "2026-10-12T16:33:08.832000+00:00"
+  },
+  "terminal_bundle": "artifact/c7.1-pod/certificates-wgteo4z5mndiof-canonical03-terminal-20261012",
+  "terminal_transfer_receipt_sha256": "14d1294e60369e59b59f1bf1c09b6a8efbc2dc20feef3dd8ba04bb5990ce4d66",
+  "terminal_files_verified": 26,
+  "terminal_bytes": 16166578,
+  "close_bundle": "artifact/c7.1-pod/certificates-newpod-close-20261012",
+  "close_manifest_sha256": "923007e9459504a04ec488774a843890c0f95581f70a9310f19f44e9c2ddc44c",
+  "scientific_limits": "Timeout is not a verifier rejection or measured complete proof. Sampled physical account does not prove instantaneous peak or runtime allowance sufficiency; source/refinement assumptions remain open. No inference-only, component or P0 speedup claim from this terminal record.",
+  "remaining": "Full canonical original responses and durable designated-verifier acceptance for O0/150/300 remain missing. Any new paid compute requires new hardware/time authorization; do not import terminal KV, journals or spent correlations. VM remains limited to light code/document/control work."
+}

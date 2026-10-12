@@ -3,8 +3,18 @@
 [Design](design.md) · [Sicurezza](security.md) · [Test locali](local-tests.md) ·
 [Test su RunPod](runpod-tests.md) · [Archivio](../c7.1-history/README.md)
 
+La [campagna sul nuovo pod è conclusa per timeout nel corpo prova](../c7.1-history/h100-newpod-canonical-close-2026-10-12.md):
+**zero certificati completi e zero accettazioni canoniche**, O=150/300 non
+iniziati. Setup reale/AES, inferenza O=0 e A512/512 restano checkpoint
+completi; body incompleto dopo almeno2023,678s, monitor exit−9 alle16:12:48 UTC.
+Log/progress/trace/journal terminali salvati e hash verificati. GPU idle
+prima dello stop; provider **EXITED/runtime assente16:15:46 UTC** del12 ottobre,
+entro le tre ore; guard ritirato dopo conferma. Il goal completo resta
+non raggiunto. Nuovo calcolo a pagamento richiede disponibilità e decisione
+di durata/hardware; nessun import di stato o rinnovo implicito. VM leggera.
+
 Il [nuovo pod e canonico con P0 per righe](../c7.1-history/h100-newpod-canonical-start-2026-10-12.md)
-sono autorizzati per massimo **tre ore**, dal provider start13:43:08.832 UTC:
+erano autorizzati per massimo **tre ore**, dal provider start13:43:08.832 UTC:
 compute end16:13:08, guard16:33:08, hard stop16:43:08 UTC del12 ottobre.
 H10080GB wgteo4z5mndiof, guard indipendente vivo nel contesto host.
 Passano18 controlli sulla SHA pulita62f97a7a, inclusi getter P0 ragged,
@@ -12,8 +22,8 @@ MAC/radici originali e caller RMS CPU/GPU wire/FS/MAC. Modello e Γ verificati;
 **sessione canonica fresca avviata alle14:10:05 UTC**, W installato;
 [setup AES e inferenza O=0 completi](../c7.1-history/h100-newpod-inference-checkpoint-2026-10-12.md);
 [A512/512 completo e corpo prova avviato](../c7.1-history/h100-newpod-A-complete-2026-10-12.md)
-nella stessa sessione,3467,322s. Watcher del PID effettivo pronto;
-**zero certificati**: risposta completa e acceptance originale pendono.
+nella stessa sessione,3467,322s. Il watcher non ha ricevuto risposte complete
+prima del timeout; **zero certificati**, nessuna acceptance originale.
 Nessun riuso KV/journal/correlazioni o speedup canonico dedotto.
 
 Il [precedente tentativo canonico è interrotto per credito esaurito](../c7.1-history/h100-canonical-credit-exhausted-2026-10-12.md),

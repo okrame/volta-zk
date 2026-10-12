@@ -159,12 +159,17 @@ rilasci, arena18.196.736 B, owner42.504 B e arena finale0. Produzione e9
 documentali passano. CUDA/25 rifiuti owner riusati dal codice identico9d;
 [primo build fallito](../../benchmarks/results/c71-certificates-rms-native-statistic-build-negative-2026-10-12-9d37e8ae.json)
 preservato. Eq/fold/codec/lifetime CUDA restano premesse, zero certificati.
-Il [collegamento canonico RMS è preparato](../c7.1-history/rms-canonical-integration-prepared-2026-10-12.md):
-il ramo CUDA usa l’owner della sorgente originale A, senza lock durante
-la cattura X/S/CompactFrames; coefficienti/GKR dopo acquisizione dello
-stesso owner. CPU reference invariato. Nuovo codice non ancora verificato:
-trial owner condiviso/oracoli GPU e conto simultaneo prima del lancio
-canonico O=0, con AES fresco e journal nuovi nella stessa finestra.
+Il [collegamento canonico RMS verificato](../c7.1-history/h100-canonical-rms-start-2026-10-12.md)
+passa11 check sulla SHA pulita16d60d38: getter senza lock durante cattura,
+poi statistica/GKR sullo stesso owner. Wire/FS/MAC/caller originale e due
+alterazioni passano; VMM/pool, quattro componenti GPU e runner compilati.
+Owner diagnostico51.288 B. Supplemento nominato O=0 RMS massimo
+5.164.691.265 B, senza credito al conto fisico completo o al tempo.
+**Tentativo canonico completo avviato alle10:15:01 UTC** sullo stesso pod:
+Γ restaurato, pack61.394.690.560 B/hash uguale all’ingest originale,
+AES/KV/journal nuovi. Inizializzazione in corso, **zero certificati**;
+O=150/300 seguono solo l’accettazione precedente. Termine calcolo13:19:04
+UTC e sei ore originali invariati; conservare subito risposta/acceptance.
 
 La [prima fase della campagna certificati](../c7.1-history/h100-certificates-close-2026-10-11.md)
 e il [seguito RMS](../c7.1-history/h100-certificates-rms-shared-cache-2026-10-11.md)

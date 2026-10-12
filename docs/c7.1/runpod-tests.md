@@ -10,8 +10,10 @@ H10080GB wgteo4z5mndiof, guard indipendente vivo nel contesto host.
 Passano18 controlli sulla SHA pulita62f97a7a, inclusi getter P0 ragged,
 MAC/radici originali e caller RMS CPU/GPU wire/FS/MAC. Modello e Γ verificati;
 **sessione canonica fresca avviata alle14:10:05 UTC**, W installato;
-[setup AES e inferenza O=0 completi, A47/512](../c7.1-history/h100-newpod-inference-checkpoint-2026-10-12.md)
-al checkpoint. Watcher del PID effettivo pronto; **zero certificati**.
+[setup AES e inferenza O=0 completi](../c7.1-history/h100-newpod-inference-checkpoint-2026-10-12.md);
+[A512/512 completo e corpo prova avviato](../c7.1-history/h100-newpod-A-complete-2026-10-12.md)
+nella stessa sessione,3467,322s. Watcher del PID effettivo pronto;
+**zero certificati**: risposta completa e acceptance originale pendono.
 Nessun riuso KV/journal/correlazioni o speedup canonico dedotto.
 
 Il [precedente tentativo canonico è interrotto per credito esaurito](../c7.1-history/h100-canonical-credit-exhausted-2026-10-12.md),

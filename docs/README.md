@@ -1,5 +1,7 @@
 # Documentazione
 
+[Canonico interrotto per credito esaurito: checkpoint conservati, prova finale assente](c7.1-history/h100-canonical-credit-exhausted-2026-10-12.md).
+
 [Chiusura del seguito RMS della campagna certificati dell’11 ottobre](c7.1-history/h100-certificates-rms-shared-cache-2026-10-11.md).
 
 ## Documentazione operativa

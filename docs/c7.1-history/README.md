@@ -1,5 +1,7 @@
 # C7.1 — archivio e provenienza
 
+[Canonico interrotto per credito esaurito: checkpoint conservati, prova finale assente](h100-canonical-credit-exhausted-2026-10-12.md).
+
 [Revisione byte GPU: output checkpoint non può aliasare gli input](rms-native-byte-checkpoint-alias-review-2026-10-12.md).
 
 [Consumer byte GPU scritto, compilazione/parità ancora pendenti](rms-native-byte-implementation-prepared-2026-10-12.md).

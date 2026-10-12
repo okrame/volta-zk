@@ -3,13 +3,23 @@
 [Specifiche](specs.md) · [Sicurezza](security.md) · [Test locali](local-tests.md) ·
 [Test su RunPod](runpod-tests.md) · [Archivio](../c7.1-history/README.md)
 
+Il [tentativo canonico è interrotto per credito esaurito](../c7.1-history/h100-canonical-credit-exhausted-2026-10-12.md),
+come chiarito dal proprietario. SSH rifiutato dal13:17:55 UTC; alle13:36:52
+REST404 e GraphQL pod assente. **Zero certificati completi registrati e zero
+accettazioni canoniche verificate**: setup AES, inferenza O=0 e A512/512
+sono checkpoint conservati; risposta, ack, journal e summary finali non
+recuperati. Exit code e stato finale della generazione sconosciuti.
+La candidata P0 ead7bb43 rimane non compilata/non verificata, non applicata
+al run16d60d38. Validazione e nuova sessione completa richiedono hardware
+disponibile e spesa/durata autorizzate; nessun nuovo pod o tempo implicito.
+
 Il [seguito RMS misto sul pod è concluso](../c7.1-history/h100-rms-moments-close-2026-10-11.md):
 riavvio autorizzato dello stesso `z6wx2kkn69eoc0` alle17:05:42 UTC,
 termine calcolo originale23:43:00; provider **EXITED/runtime assente
 alle23:44:37 UTC** dell'11 ottobre, prima del hard stop12 ottobre00:13:00.
 GPU idle e processi terminali prima dello stop; guard ritirato dopo conferma.
 Il [riavvio byte GPU del12 ottobre](../c7.1-history/h100-rms-native-byte-start-2026-10-12.md)
-è autorizzato per **sei ore**, incluse30min di chiusura: provider RUNNING
+era autorizzato per **sei ore**, incluse30min di chiusura: provider RUNNING
 dalle07:49:05 UTC; compute end13:19:04, guard13:39:04, hard stop13:49:04 UTC.
 Guard indipendente attivo prima del resume. Nuovo container e UUID H100
 verificati; cap e ambito invariati. La richiesta storica di8 ore è superata
@@ -165,14 +175,15 @@ poi statistica/GKR sullo stesso owner. Wire/FS/MAC/caller originale e due
 alterazioni passano; VMM/pool, quattro componenti GPU e runner compilati.
 Owner diagnostico51.288 B. Supplemento nominato O=0 RMS massimo
 5.164.691.265 B, senza credito al conto fisico completo o al tempo.
-**Tentativo canonico completo avviato alle10:15:01 UTC** sullo stesso pod:
+Il tentativo canonico sullo stesso pod è iniziato alle10:15:01 UTC:
 Γ restaurato, pack61.394.690.560 B/hash uguale all’ingest originale,
 AES/KV/journal nuovi. [Setup AES e inferenza O=0 completati](../c7.1-history/h100-canonical-inference-checkpoint-2026-10-12.md);
 [Commitment A completo512/512 e corpo prova avviato](../c7.1-history/h100-canonical-A-complete-2026-10-12.md)
-nella sessione reale,3536,558 s; **zero certificati**. Watcher pronto:
-BLAKE3 body/ack, fase prover dopo fsync e stesso receipt nei due journal.
-O=150/300 seguono solo l’accettazione precedente. Termine calcolo13:19:04
-UTC e sei ore originali invariati; conservare subito risposta/acceptance.
+nella sessione reale,3536,558 s. Il watcher richiedeva BLAKE3 body/ack,
+fase prover dopo fsync e stesso receipt nei due journal; nessun certificato
+completo è stato salvato prima della perdita di accesso per credito esaurito.
+Il risultato terminale non è disponibile. Termine calcolo13:19:04 UTC e
+sei ore originali invariati; nessuna accettazione O=0/150/300 registrata.
 Il [getter P0 per righe è preparato](../c7.1-history/p0-row-major-prepared-2026-10-12.md):
 il vecchio loop per colonna cambia continuamente riga del reader con cache
 singola. Nuovi loop mantengono l’ordine dei termini per colonna e le stesse

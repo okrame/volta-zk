@@ -1,0 +1,73 @@
+{
+  "schema": "volta-c71-canonical-provider-unavailable-v1",
+  "recorded_epoch": 1791812378.5550437,
+  "source_git_sha": "16d60d38d50b94f0367fe30ff9a7f7224b557c62",
+  "git_dirty": false,
+  "controller_source_git_sha": "ead7bb432bdea39c6e36f4650d5724c2be3b1201",
+  "credit": false,
+  "pod_id": "z6wx2kkn69eoc0",
+  "authorized_duration_seconds": 21600,
+  "start_epoch": 1791791344.4498413,
+  "compute_end_epoch": 1791811144.4498413,
+  "hard_end_epoch": 1791812944.4498413,
+  "status": "Canonical session became unreachable before final response evidence was preserved. Owner reports exhausted provider credit. REST404 and GraphQL pod:null; original final verifier acceptance is unavailable.",
+  "canonical_certificates_generated_complete_recorded": 0,
+  "canonical_certificates_verified": 0,
+  "canonical_terminal_exit_code": null,
+  "canonical_generation_final_status": "unknown; no response or acceptance bundle preserved",
+  "completed_observed": {
+    "real_AES_setup": true,
+    "original_O0_inference_preparation": true,
+    "A_groups": 512,
+    "proof_body_started": true
+  },
+  "unfinished_contexts": [
+    0,
+    150,
+    300
+  ],
+  "cause": {
+    "owner_report": "credit exhausted",
+    "provider_observation": "REST404 pod not found; GraphQL200 data.pod null",
+    "internal_removal_mechanism": "not independently observed"
+  },
+  "first_watcher_connection_refused_epoch": 1791811075.6868055,
+  "missing_final_evidence": [
+    "terminal canonical logs/summary",
+    "full progress and owner trace",
+    "complete C71RSP01 response",
+    "original C71ACC01 acceptance",
+    "durable prover/verifier journal prefixes",
+    "GPU idle/physical teardown observation"
+  ],
+  "provider_EXITED_runtime_absent_observed": false,
+  "provider_pod_absent_observed": true,
+  "private_bundle": "artifact/c7.1-pod/certificates-canonical-unavailable-20261012",
+  "manifest_sha256": "b8e82f33d2bc02220364f8ea37fb82e66287dd94a7fe47cd421bee19bd42c86d",
+  "retention": "Existing manifests and records remain immutable; surviving control sources and negative observations saved in a new bundle. No remote tensor/KV/correlation export.",
+  "previous_records": [
+    {
+      "path": "benchmarks/results/c71-certificates-canonical-preflight-2026-10-12-16d60d38.json",
+      "sha256": "66de7bfbebce83f6aeb0af7445f6d45765bff5a7a02cec85e50e10a1d632e48c"
+    },
+    {
+      "path": "benchmarks/results/c71-certificates-canonical-start-2026-10-12-16d60d38.json",
+      "sha256": "c291a7883a4ad60e30a25855f6c95ad49d7a6bd5a4ca3a6bac74f7c6eb0f6ea9"
+    },
+    {
+      "path": "benchmarks/results/c71-certificates-inference-control-checkpoint-2026-10-12-16d60d38.json",
+      "sha256": "45db142fbfe4d931ca5bcd6336a718f8ac44c01a670fb4b0cd0a92ba153c4484"
+    },
+    {
+      "path": "benchmarks/results/c71-certificates-canonical-A-complete-2026-10-12-16d60d38.json",
+      "sha256": "ebd613e6b59d58ac1343ad6c8e04e32e01796c6666a13a49244690aa670fb98b"
+    }
+  ],
+  "candidate_P0": {
+    "source_git_sha": "ead7bb432bdea39c6e36f4650d5724c2be3b1201",
+    "applied_to_current_session": false,
+    "compiled_or_executed_on_this_candidate": false,
+    "remaining_checks": "Original getter ragged parity, full original caller wire/FS/MAC and production checks on available authorized hardware."
+  },
+  "remaining": "Validate row-major P0 candidate on available authorized hardware, then a fresh full canonical session with empty KV, fresh real/AES correlations and new journals. Existing state cannot be resumed/imported. New hardware/time/spending is not covered by the ended six-hour window."
+}

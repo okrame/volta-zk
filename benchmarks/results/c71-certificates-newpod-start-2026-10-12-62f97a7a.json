@@ -1,0 +1,50 @@
+{
+  "schema": "volta-c71-newpod-start-with-preparation-negatives-v1",
+  "source_git_sha": "62f97a7a58b9a845c3678c3103262073776f8c1f",
+  "git_dirty": false,
+  "credit": false,
+  "canonical_certificates_verified": 0,
+  "pod_id": "wgteo4z5mndiof",
+  "container_id": "176a9733c854",
+  "gpu_uuid": "GPU-fb0e2f6f-ffd0-356f-d12b-cb2bff004319",
+  "hardware": "H10080GB/251GiB/28vCPU/230GB container; cgroup memory.max250999996416B",
+  "deadline": {
+    "pod_id": "wgteo4z5mndiof",
+    "authorized_duration_seconds": 10800,
+    "start_epoch": 1791812588.832,
+    "deadline_epoch": 1791823388.832,
+    "campaign_end_epoch": 1791821588.832,
+    "guard_stop_epoch": 1791822788.832,
+    "close_reserve_seconds": 1800,
+    "authorization": "ho torato su un nuovo pod ssh wgteo4z5mndiof-64412174@ssh.runpod.io -i ~/.ssh/id_ed25519. entro 3 ore massimo finisci il goal!",
+    "basis": "Original provider start, not first SSH; new pod and at most three hours authorized by owner.",
+    "start_utc": "2026-10-12T13:43:08.832000+00:00",
+    "deadline_utc": "2026-10-12T16:43:08.832000+00:00",
+    "campaign_end_utc": "2026-10-12T16:13:08.832000+00:00",
+    "guard_stop_utc": "2026-10-12T16:33:08.832000+00:00"
+  },
+  "status": "Original public Gamma transferred and hashes verified; model03 download/ingest and preflight02 running. canonical03 waits for both; no new certificate yet.",
+  "preparation_negatives": [
+    {
+      "attempt": "model01/preflight01/canonical01",
+      "cause": "Missing /usr/bin/time; no download or cryptographic session started.",
+      "resolved": "GNU time installed on pod, new directories."
+    },
+    {
+      "attempt": "model02/canonical02",
+      "cause": "Launcher pre-created weights directory required absent by original downloader.",
+      "resolved": "Launcher now asserts absence and leaves directory creation to downloader; model03/canonical03 new directories, preflight02 continues."
+    }
+  ],
+  "P0_candidate": "Row-major capture fromead7bb43, included in clean source62f97a7a; functional/caller/native checks pending at this start snapshot. No measured canonical speedup.",
+  "resource_scope": "CPU AS64GiB, CUDA ASunlimited with original physical/arena/deadline stops. Full simultaneous accounting and runtime refinement assumptions remain open.",
+  "fresh_session": "Real/AES correlations, empty KV and new journals; no import of old state. Original FS/MAC/PCS/designated verifier unchanged.",
+  "private_bundle": "artifact/c7.1-pod/certificates-newpod-start-20261012",
+  "manifest_sha256": "fe5a497ca5cb0cea9224300cfcde952f3fbcb20323dade50e7fb9cf451b2241e",
+  "guard_visibility_correction": {
+    "bundle": "artifact/c7.1-pod/certificates-oldguard-visibility-correction-20261012",
+    "manifest_sha256": "10a04a7cdde7723e0c5f68722a29eff7251f502c0ae8bb7f106b79e8fae98503",
+    "reason": "Old guard94185 was alive in host proc view; earlier sandbox absence is withdrawn. Exact old guard retired only after new provider pod:null observation; new guard123071 live."
+  },
+  "publication_scope": "Small evidence and code on dedicated new-pod GitHTTPS branch only; no merge, force-push or additional hardware/time."
+}

@@ -1,0 +1,148 @@
+{
+  "schema": "volta-c71-row-major-P0-newpod-preflight-and-canonical-start-v1",
+  "source_git_sha": "62f97a7a58b9a845c3678c3103262073776f8c1f",
+  "git_dirty": false,
+  "credit": false,
+  "canonical_certificates_verified": 0,
+  "pod_id": "wgteo4z5mndiof",
+  "gpu_uuid": "GPU-fb0e2f6f-ffd0-356f-d12b-cb2bff004319",
+  "checks": [
+    {
+      "label": "caller-roots",
+      "wall_seconds": 1.8047963418066502,
+      "exit_code": 0
+    },
+    {
+      "label": "canonical-gpu-0",
+      "wall_seconds": 0.8059819303452969,
+      "exit_code": 0
+    },
+    {
+      "label": "canonical-gpu-1",
+      "wall_seconds": 0.8045399188995361,
+      "exit_code": 0
+    },
+    {
+      "label": "canonical-gpu-2",
+      "wall_seconds": 1.8050372041761875,
+      "exit_code": 0
+    },
+    {
+      "label": "canonical-gpu-3",
+      "wall_seconds": 2.4057936929166317,
+      "exit_code": 0
+    },
+    {
+      "label": "canonical-runner-build",
+      "wall_seconds": 66.18941256776452,
+      "exit_code": 0
+    },
+    {
+      "label": "compact-getters",
+      "wall_seconds": 0.2037717141211033,
+      "exit_code": 0
+    },
+    {
+      "label": "cpu-rms-original",
+      "wall_seconds": 15.411439135670662,
+      "exit_code": 0
+    },
+    {
+      "label": "cuda-canonical-build",
+      "wall_seconds": 33.8272170573473,
+      "exit_code": 0
+    },
+    {
+      "label": "cuda-ordinary-build",
+      "wall_seconds": 31.22430745139718,
+      "exit_code": 0
+    },
+    {
+      "label": "dependencies",
+      "wall_seconds": 7.206540822982788,
+      "exit_code": 0
+    },
+    {
+      "label": "gpu-statistic-byte-caller",
+      "wall_seconds": 24.215203646570444,
+      "exit_code": 0
+    },
+    {
+      "label": "gpu-statistic-coefficients-wire",
+      "wall_seconds": 1.6052134707570076,
+      "exit_code": 0
+    },
+    {
+      "label": "p0-original",
+      "wall_seconds": 2.805591158568859,
+      "exit_code": 0
+    },
+    {
+      "label": "rust-build",
+      "wall_seconds": 212.67875919118524,
+      "exit_code": 0
+    },
+    {
+      "label": "source-tail-owner",
+      "wall_seconds": 33.22002637386322,
+      "exit_code": 0
+    },
+    {
+      "label": "toolchain-default",
+      "wall_seconds": 0.20252004265785217,
+      "exit_code": 0
+    },
+    {
+      "label": "toolchain",
+      "wall_seconds": 9.006494019180536,
+      "exit_code": 0
+    }
+  ],
+  "P0": {
+    "original_getter_ragged_parity": true,
+    "value_row_loads_expected": 6,
+    "weight_row_loads_expected": 5,
+    "original_P0_MAC_roots": true,
+    "original_CPU_RMS_caller": true,
+    "original_GPU_RMS_caller_wire_FS_MAC": true,
+    "observed_canonical_speedup": null
+  },
+  "canonical_start": {
+    "epoch": 1791814205.9883313,
+    "actual_process": {
+      "epoch": 1791814286.146166,
+      "source_git_sha": "62f97a7a58b9a845c3678c3103262073776f8c1f",
+      "process": {
+        "pid": 18200,
+        "start_ticks": "1777845271",
+        "state": "R",
+        "CPU_ticks": [
+          "6169",
+          "1838"
+        ]
+      },
+      "binary": "/workspace/c71-canonical-20261012b/canonical-preflight02/c71_canonical_reference"
+    },
+    "timeout_seconds": 7362,
+    "fresh_real_AES": true,
+    "KV_initial_empty": true,
+    "imported_prior_journals": false,
+    "mode": "experiment-cuda",
+    "binary_sha256": "d0513f73c601abc9b480a230155a02035d56aa1f365d5a6896c6185092cdb42d",
+    "library_sha256": "16ed99eba1839b25f68e9ed2c9996f1320f9533ae20df848844c7166205c7bdc",
+    "payload_cap_bytes": 5905580032,
+    "physical_cap_bytes": 6174015488,
+    "compute_end_epoch": 1791821588.832,
+    "hard_end_epoch": 1791823388.832
+  },
+  "model": {
+    "epoch": 1791814204.669321,
+    "packed": "/workspace/c71-canonical-20261012b/model03/weights/gemma-4-31b-5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89.packed.i16",
+    "packed_sha256": "1a88da14c15d24133d0df40ff2a3acdbc54e7b91634a8304e787a5701ac8dac8",
+    "packed_bytes": 61394690560,
+    "matches_original_admitted_ingest": true
+  },
+  "private_bundle": "artifact/c7.1-pod/certificates-newpod-preflight-start-20261012",
+  "manifest_sha256": "97eb167f7098200f9b14481c72f4b6aa7d909a41a5688f207984ee43abaf32b5",
+  "remaining": "Complete original real/AES canonical responses and designated verifier acceptance with both durable journal prefixes for O0/150/300 before the original three-hour limit. No full physical peak, protocol security or measured canonical speedup credit from component checks."
+}

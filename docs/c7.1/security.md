@@ -3,15 +3,25 @@
 [Design](design.md) · [Specifiche](specs.md) · [Test locali](local-tests.md) ·
 [Test su RunPod](runpod-tests.md) · [Archivio](../c7.1-history/README.md)
 
-Il [tentativo canonico è interrotto per credito esaurito](../c7.1-history/h100-canonical-credit-exhausted-2026-10-12.md),
+Il [nuovo pod e canonico con P0 per righe](../c7.1-history/h100-newpod-canonical-start-2026-10-12.md)
+sono autorizzati per massimo **tre ore**, dal provider start13:43:08.832 UTC:
+compute end16:13:08, guard16:33:08, hard stop16:43:08 UTC del12 ottobre.
+H10080GB wgteo4z5mndiof, guard indipendente vivo nel contesto host.
+Passano18 controlli sulla SHA pulita62f97a7a, inclusi getter P0 ragged,
+MAC/radici originali e caller RMS CPU/GPU wire/FS/MAC. Modello e Γ verificati;
+**sessione canonica fresca avviata alle14:10:05 UTC**, W installato e AES
+in corso. Watcher del PID effettivo pronto; **zero certificati a questo
+checkpoint**. Nessun riuso KV/journal/correlazioni o speedup canonico dedotto.
+
+Il [precedente tentativo canonico è interrotto per credito esaurito](../c7.1-history/h100-canonical-credit-exhausted-2026-10-12.md),
 come chiarito dal proprietario. SSH rifiutato dal13:17:55 UTC; alle13:36:52
 REST404 e GraphQL pod assente. **Zero certificati completi registrati e zero
 accettazioni canoniche verificate**: setup AES, inferenza O=0 e A512/512
 sono checkpoint conservati; risposta, ack, journal e summary finali non
 recuperati. Exit code e stato finale della generazione sconosciuti.
-La candidata P0 ead7bb43 rimane non compilata/non verificata, non applicata
-al run16d60d38. Validazione e nuova sessione completa richiedono hardware
-disponibile e spesa/durata autorizzate; nessun nuovo pod o tempo implicito.
+La candidata P0 ead7bb43 non era applicata al run16d60d38. La nuova
+campagna sopra ne valida i getter e i caller originali sulla SHA62f97a7a;
+le evidenze terminali del precedente tentativo restano indisponibili.
 
 Il [seguito RMS misto sul pod è concluso](../c7.1-history/h100-rms-moments-close-2026-10-11.md):
 riavvio autorizzato dello stesso `z6wx2kkn69eoc0` alle17:05:42 UTC,
@@ -187,8 +197,9 @@ sei ore originali invariati; nessuna accettazione O=0/150/300 registrata.
 Il [getter P0 per righe è preparato](../c7.1-history/p0-row-major-prepared-2026-10-12.md):
 il vecchio loop per colonna cambia continuamente riga del reader con cache
 singola. Nuovi loop mantengono l’ordine dei termini per colonna e le stesse
-capacità/wire, ma compilazione/parità pendono. Non applicato al run16d60d38;
-nessun restart/import di stato o nuova autorizzazione temporale implicita.
+capacità/wire. Compilazione e parità getter/caller sono passate sul nuovo
+pod come riportato sopra; non applicato al precedente run16d60d38 e nessuno
+stato di quella sessione è importato. Tempo canonico completo ancora aperto.
 
 La [prima fase della campagna certificati](../c7.1-history/h100-certificates-close-2026-10-11.md)
 e il [seguito RMS](../c7.1-history/h100-certificates-rms-shared-cache-2026-10-11.md)

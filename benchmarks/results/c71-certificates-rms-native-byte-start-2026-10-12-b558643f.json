@@ -1,0 +1,108 @@
+{
+  "schema": "volta-c71-rms-native-byte-start-v1",
+  "source_git_sha": "b558643f7b9b990966d00343461fb970b1e3e70b",
+  "git_dirty": false,
+  "credit": false,
+  "canonical_selected": false,
+  "canonical_certificates": 0,
+  "campaign": {
+    "pod_id": "z6wx2kkn69eoc0",
+    "campaign_id": "rms-native-byte05-20261012",
+    "start_epoch": 1791791344.4498413,
+    "deadline_epoch": 1791812944.4498413,
+    "campaign_end_epoch": 1791811144.4498413,
+    "guard_stop_epoch": 1791812344.4498413,
+    "authorized_duration_seconds": 21600,
+    "close_reserve_seconds": 1800,
+    "authorization": "autorizzo il riavvio per 6 ore",
+    "start_basis": "conservative time immediately before new owner-authorized resume; precise provider timestamp to be preserved independently",
+    "previous_closed_start_epoch": 1791735180.494,
+    "previous_closed_deadline_epoch": 1791763980.494,
+    "compute_location": "pod only; VM editing/control/streaming verification",
+    "start_utc": "2026-10-12T07:49:04.449841+00:00",
+    "deadline_utc": "2026-10-12T13:49:04.449841+00:00",
+    "campaign_end_utc": "2026-10-12T13:19:04.449841+00:00",
+    "guard_stop_utc": "2026-10-12T13:39:04.449841+00:00"
+  },
+  "provider_resume": {
+    "before": {
+      "action": "get",
+      "observed_epoch": 1791791344.449817,
+      "pod": {
+        "id": "z6wx2kkn69eoc0",
+        "desiredStatus": "EXITED",
+        "imageName": "runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404",
+        "gpuCount": 1,
+        "memoryInGb": 251,
+        "vcpuCount": 28,
+        "volumeInGb": 0,
+        "containerDiskInGb": 230,
+        "runtime": null
+      }
+    },
+    "resume": {
+      "action": "resume",
+      "observed_epoch": 1791791346.0853739,
+      "pod": {
+        "id": "z6wx2kkn69eoc0",
+        "desiredStatus": "RUNNING"
+      }
+    },
+    "new_authorization": "autorizzo il riavvio per 6 ore"
+  },
+  "provider_metadata": {
+    "observed_epoch": 1791791383.6246426,
+    "keys": [
+      "consumerUserId",
+      "containerDiskInGb",
+      "costPerHr",
+      "createdAt",
+      "desiredStatus",
+      "env",
+      "gpuCount",
+      "id",
+      "imageName",
+      "lastStartedAt",
+      "lastStatusChange",
+      "machine",
+      "machineId",
+      "memoryInGb",
+      "name",
+      "portMappings",
+      "ports",
+      "publicIp",
+      "templateId",
+      "vcpuCount",
+      "volumeInGb",
+      "volumeMountPath"
+    ],
+    "metadata": {
+      "id": "z6wx2kkn69eoc0",
+      "desiredStatus": "RUNNING",
+      "lastStartedAt": "2026-10-12 07:49:05.901 +0000 UTC",
+      "lastStatusChange": "Resumed by user: Mon Oct 12 2026 07:49:05 GMT+0000 (Coordinated Universal Time)",
+      "createdAt": "2026-10-09 19:09:34.662 +0000 UTC",
+      "machineId": "130ww2wudblf",
+      "gpuCount": 1,
+      "memoryInGb": 251,
+      "vcpuCount": 28
+    }
+  },
+  "hardware": {
+    "epoch": 1791791570.1952283,
+    "endpoint": "103.207.149.92:14340",
+    "authenticated_proxy": "z6wx2kkn69eoc0-64412195@ssh.runpod.io",
+    "host_pubkey": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPB693arwcG6Xwd53l/shkmanpipAPR1/jkvGlhF6GS9",
+    "container": "49aa97765bcc",
+    "new_container_verified": true,
+    "gpu_uuid": "GPU-51da64b4-3d0a-e58b-57dc-3845f745084e",
+    "gpu_name": "NVIDIA H100 80GB HBM3",
+    "gpu_memory_total_mib": 81559,
+    "driver": "580.126.09",
+    "gpu_memory_used_mib": 0
+  },
+  "private_bundle": "artifact/c7.1-pod/certificates-rms-native-byte05-start-20261012",
+  "private_manifest_sha256": "b9e5c05ee2399913f0b8eb1747ef46bbe14ec9b679ce2c78ca44d40e3a976188",
+  "scope": "Owner-approved six-hour restart of same pod for native byte consumer validation; original protocol, hardware class and caps; VM control/editing only; new container and GPU UUID verified via authenticated provider SSH proxy",
+  "status": "RUNNING; independent guard ready before provider resume; candidate uncompiled and unexecuted at startup"
+}

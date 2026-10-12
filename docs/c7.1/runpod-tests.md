@@ -8,11 +8,13 @@ riavvio autorizzato dello stesso `z6wx2kkn69eoc0` alle17:05:42 UTC,
 termine calcolo originale23:43:00; provider **EXITED/runtime assente
 alle23:44:37 UTC** dell'11 ottobre, prima del hard stop12 ottobre00:13:00.
 GPU idle e processi terminali prima dello stop; guard ritirato dopo conferma.
-La [richiesta di altre8 ore](../c7.1-history/rms-duration-request-2026-10-11.md)
-per il consumer byte resta in attesa di risposta: nessuna estensione
-concessa. Editing/review resta autorizzato; altre build/esecuzioni pagate
-richiedono nuova durata. La VM ha poche risorse ed è solo editing/controllo;
-test, screen numerici e compilazioni restano sul pod autorizzato.
+Il [riavvio byte GPU del12 ottobre](../c7.1-history/h100-rms-native-byte-start-2026-10-12.md)
+è autorizzato per **sei ore**, incluse30min di chiusura: provider RUNNING
+dalle07:49:05 UTC; compute end13:19:04, guard13:39:04, hard stop13:49:04 UTC.
+Guard indipendente attivo prima del resume. Nuovo container e UUID H100
+verificati; cap e ambito invariati. La richiesta storica di8 ore è superata
+da questa decisione. VM solo editing/controllo e hash streaming;
+compilazioni, test e screen numerici restano sul pod autorizzato.
 Tre test F97 del prefisso misto e nove documentali passano sul checkout
 pulito `f25452bf`; primo negativo documentale per fonti assenti conservato.
 Il [censimento pubblico RMS](../c7.1-history/h100-rms-moments-census-2026-10-11.md)
@@ -87,7 +89,7 @@ In dominio canonico conta182.626.739.937 launch a cap256,11.418.407.370
 a cap4096;25 riletture tail/profondità,1.328.755.507.200 posizioni padded.
 Screen analitico `credit:false`, senza tempo/capacità completa ammessi.
 Serve ridurre launch/replay; byte/statistica GPU, conto simultaneo e
-raffinamento restano aperti. Pod concluso; altra durata non autorizzata.
+raffinamento restano aperti. Campagna storica conclusa; nuova finestra byte sopra.
 Il [batching del prefisso verificato](../c7.1-history/h100-rms-gate-batch-parity-2026-10-11.md)
 passa18 check su `f868468e`, inclusi23 rifiuti owner e stesso wire159/99:
 launch707.364, prover126,808 s; la singola misura non migliora il tempo
@@ -133,7 +135,7 @@ streaming/checkpoint, wire e caller RMS/PCS sono preparati ma da verificare.
 Nuovo owner ordinario atteso42.504 B; vecchie misure42.496 B immutate.
 Byte GPU default disabilitato; opt-in nel benchmark/caller sperimentale.
 Matematica, lifetime e conto simultaneo/driver rimangono premesse aperte;
-nessun risultato GPU, selezione canonica o estensione pagata dedotti.
+nessun risultato GPU o selezione canonica dedotti; durata autorizzata sopra.
 La [revisione degli alias](../c7.1-history/rms-native-byte-checkpoint-alias-review-2026-10-12.md)
 aggiunge il rifiuto dell'output checkpoint sovrapposto a point/range/feature
 pubbliche, prima dell'allocazione o H2D; verifica sul pod ancora pendente.
@@ -694,8 +696,11 @@ alle17:05:42 UTC e la preparazione/test del backend sul pod. Il nuovo guard
 conserva la finestra originale; la VM resta solo editing/controllo.
 Quel seguito è concluso: compute end23:43:00, provider EXITED/runtime
 assente23:44:37 UTC dell'11 ottobre e guard ritirato dopo conferma.
-La richiesta di ulteriori8 ore non ha ancora risposta/autorizzazione;
-nessun nuovo processo pagato fino a una decisione del proprietario.
+La risposta `autorizzo il riavvio per 6 ore` copre il nuovo resume del12 ottobre
+07:49:05.901 UTC, con deadline conservativa13:49:04.449 UTC. Fine calcolo
+13:19:04, guard13:39:04; trenta minuti di chiusura inclusi nelle sei ore.
+La finestra precedente rimane chiusa; questa non si sposta con restart o SSH.
+Nuovo container e UUID H100 verificati; gli stessi cap restano vincolanti.
 
 L'agent registra deadline e responsabile dello spegnimento dall'avvio
 provider, verifica l'accesso all'arresto API e predispone un guard indipendente.

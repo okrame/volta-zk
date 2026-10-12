@@ -151,13 +151,14 @@ A1 ha occupazione GPU aggiuntiva non attribuita; B1/A2 un incompleto
 ciascuno, nessun isolamento/picco completo o guadagno canonico dedotti.
 Statistica e dispatcher canonico CPU; consumer statistica in preparazione,
 nessun nuovo default prima delle verifiche.
-Il [consumer statistica GPU è preparato](../c7.1-history/rms-native-statistic-prepared-2026-10-12.md),
-CUDA compilato e25 rifiuti owner passati: stesso P0 e fonte X originale,
-stato8 MiB, RMS owner riusato senza crescita C++, callback fallibili
-prima dei MAC. Il [primo build Rust fallito](../../benchmarks/results/c71-certificates-rms-native-statistic-build-negative-2026-10-12-9d37e8ae.json)
-è conservato: fixture usa un costruttore Merkle inesistente, corretto
-nel nuovo trial. API/coefs/checkpoint/wire/verificatore/caller pendenti;
-Eq/fold/codec/lifetime CUDA restano premesse esplicite, nessun credito.
+Il [consumer statistica GPU verificato](../c7.1-history/h100-rms-native-statistic-parity-2026-10-12.md)
+passa14 check su539de600:24 coefficienti/3 terminali originali, tre
+geometrie e checkpoint1, wire/FS/MAC, verificatore e S alterata respinta.
+Caller originale statistica+byte onesto/due alterazioni:1.271 allocazioni/
+rilasci, arena18.196.736 B, owner42.504 B e arena finale0. Produzione e9
+documentali passano. CUDA/25 rifiuti owner riusati dal codice identico9d;
+[primo build fallito](../../benchmarks/results/c71-certificates-rms-native-statistic-build-negative-2026-10-12-9d37e8ae.json)
+preservato. Eq/fold/codec/lifetime CUDA restano premesse, zero certificati.
 Il [collegamento canonico RMS è preparato](../c7.1-history/rms-canonical-integration-prepared-2026-10-12.md):
 il ramo CUDA usa l’owner della sorgente originale A, senza lock durante
 la cattura X/S/CompactFrames; coefficienti/GKR dopo acquisizione dello

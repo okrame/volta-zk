@@ -1,0 +1,156 @@
+{
+  "schema": "volta-c71-newpod-real-AES-inference-checkpoint-v1",
+  "source_git_sha": "62f97a7a58b9a845c3678c3103262073776f8c1f",
+  "git_dirty": false,
+  "credit": false,
+  "canonical_certificates_verified": 0,
+  "pod_id": "wgteo4z5mndiof",
+  "completed_phases": [
+    {
+      "phase": "read_and_compile_public",
+      "role": "prover",
+      "slot": null,
+      "wall_ns": 7640095473,
+      "complete": true
+    },
+    {
+      "phase": "public_distribution",
+      "role": "coordinator",
+      "slot": null,
+      "wall_ns": 19708291,
+      "complete": true
+    },
+    {
+      "phase": "compile_received_public",
+      "role": "verifier",
+      "slot": null,
+      "wall_ns": 7590256978,
+      "complete": true
+    },
+    {
+      "phase": "load_packed_w",
+      "role": "prover",
+      "slot": null,
+      "wall_ns": 55587279018,
+      "complete": true
+    },
+    {
+      "phase": "global_initialization",
+      "role": "coordinator",
+      "slot": null,
+      "wall_ns": 71732776440,
+      "complete": true
+    },
+    {
+      "phase": "native_global_residency",
+      "role": "prover",
+      "slot": null,
+      "wall_ns": 18354941000,
+      "complete": true
+    },
+    {
+      "phase": "installation_w_commitment",
+      "role": "prover",
+      "slot": null,
+      "wall_ns": 211582453323,
+      "complete": true
+    },
+    {
+      "phase": "installation_distribution_and_journals",
+      "role": "coordinator",
+      "slot": null,
+      "wall_ns": 688995,
+      "complete": true
+    },
+    {
+      "phase": "seed6_setup",
+      "role": "verifier",
+      "slot": null,
+      "wall_ns": 1489593009546,
+      "complete": true
+    },
+    {
+      "phase": "seed6_setup",
+      "role": "prover",
+      "slot": null,
+      "wall_ns": 1489593514509,
+      "complete": true
+    },
+    {
+      "phase": "registry_initialization",
+      "role": "verifier",
+      "slot": null,
+      "wall_ns": 3603,
+      "complete": true
+    },
+    {
+      "phase": "registry_initialization",
+      "role": "prover",
+      "slot": null,
+      "wall_ns": 588232768,
+      "complete": true
+    },
+    {
+      "phase": "request_receive",
+      "role": "prover",
+      "slot": 0,
+      "wall_ns": 91586,
+      "complete": true
+    },
+    {
+      "phase": "preparation_including_inference",
+      "role": "prover",
+      "slot": 0,
+      "wall_ns": 79114723220,
+      "complete": true
+    }
+  ],
+  "actual_process_observation": {
+    "pid": 18200,
+    "start_ticks": "1777845271",
+    "state": "S",
+    "cpu_ticks": [
+      "211980",
+      "8846"
+    ]
+  },
+  "A_work_snapshot": {
+    "sequence": 624,
+    "elapsed_ns": 2194754992608,
+    "kind": "progress",
+    "work": {
+      "active_first_coset": 188,
+      "completed_groups": 47,
+      "native": {
+        "allocations": 3956173,
+        "arena_bytes": 4136488704,
+        "cleanup_failed": 0,
+        "d2d_bytes": 312576000,
+        "d2h_bytes": 112274716,
+        "fences": 7764229,
+        "h2d_bytes": 72919598960,
+        "host_owner_bytes": 51288,
+        "launches": 8335495,
+        "live_capacity_bytes": 4136488704,
+        "logical_bytes": 5263410904,
+        "peak_capacity_bytes": 5189054976,
+        "peak_reserved_bytes": 66583745536,
+        "releases": 3955831,
+        "stopped": 0,
+        "weights_bytes": 61394690560,
+        "weights_loaded_bytes": 61394690560,
+        "weights_sealed": 1,
+        "zeroed_bytes": 494683773864
+      },
+      "original_bytes_in_group": 2529017476,
+      "source_visits": 620798626762
+    }
+  },
+  "status": "Real/AES setup and original O0 preparation/inference completed in the same live canonical session. A commitment ongoing; original final verifier acceptance still missing.",
+  "private_bundle": "artifact/c7.1-pod/certificates-newpod-inference-checkpoint-20261012",
+  "manifest_sha256": "1363b6cd1ec17023d27ba430c0a40285ec710d33999d2ca6311741a11cf6ae99",
+  "observation_sha256": "3db489c92fe42d12ae4106099d1d3e68a4764366b562cb48c27d1bb9d6b61bef",
+  "compute_end_epoch": 1791821588.832,
+  "hard_end_epoch": 1791823388.832,
+  "remaining": "Complete current A and full original proof, obtain original designated verifier acceptance and both durable journal receipts, then same-session O150/O300 within original three-hour limit."
+}

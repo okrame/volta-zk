@@ -9,9 +9,10 @@ compute end16:13:08, guard16:33:08, hard stop16:43:08 UTC del12 ottobre.
 H10080GB wgteo4z5mndiof, guard indipendente vivo nel contesto host.
 Passano18 controlli sulla SHA pulita62f97a7a, inclusi getter P0 ragged,
 MAC/radici originali e caller RMS CPU/GPU wire/FS/MAC. Modello e Γ verificati;
-**sessione canonica fresca avviata alle14:10:05 UTC**, W installato e AES
-in corso. Watcher del PID effettivo pronto; **zero certificati a questo
-checkpoint**. Nessun riuso KV/journal/correlazioni o speedup canonico dedotto.
+**sessione canonica fresca avviata alle14:10:05 UTC**, W installato;
+[setup AES e inferenza O=0 completi, A47/512](../c7.1-history/h100-newpod-inference-checkpoint-2026-10-12.md)
+al checkpoint. Watcher del PID effettivo pronto; **zero certificati**.
+Nessun riuso KV/journal/correlazioni o speedup canonico dedotto.
 
 Il [precedente tentativo canonico è interrotto per credito esaurito](../c7.1-history/h100-canonical-credit-exhausted-2026-10-12.md),
 come chiarito dal proprietario. SSH rifiutato dal13:17:55 UTC; alle13:36:52

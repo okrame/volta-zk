@@ -168,7 +168,8 @@ Owner diagnostico51.288 B. Supplemento nominato O=0 RMS massimo
 **Tentativo canonico completo avviato alle10:15:01 UTC** sullo stesso pod:
 Γ restaurato, pack61.394.690.560 B/hash uguale all’ingest originale,
 AES/KV/journal nuovi. [Setup AES e inferenza O=0 completati](../c7.1-history/h100-canonical-inference-checkpoint-2026-10-12.md);
-commitment A in corso, **zero certificati**. Watcher di sola lettura pronto:
+[Commitment A completo512/512 e corpo prova avviato](../c7.1-history/h100-canonical-A-complete-2026-10-12.md)
+nella sessione reale,3536,558 s; **zero certificati**. Watcher pronto:
 BLAKE3 body/ack, fase prover dopo fsync e stesso receipt nei due journal.
 O=150/300 seguono solo l’accettazione precedente. Termine calcolo13:19:04
 UTC e sei ore originali invariati; conservare subito risposta/acceptance.

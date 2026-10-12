@@ -361,6 +361,16 @@ impl SourceModel<'_> {
             Self::Replay(m) => (m.domain(), m.root()),
         }
     }
+    pub(super) fn native_runtime(&self) -> Option<&Arc<std::sync::Mutex<kernel::range::windowed::native::Runtime>>> {
+        match self {
+            Self::Replay(m) => match m.native_original() {
+                Some(kernel::b12::replay::NativeOriginal::Source(source)) => Some(&source.runtime),
+                _ => None,
+            },
+            Self::Dense(_) => None,
+        }
+    }
+
     pub(super) fn byte(&self, index: usize) -> u8 {
         match self {
             Self::Dense(m) => m.weights.get(index).copied().unwrap_or(0) as u8,

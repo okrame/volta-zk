@@ -3,6 +3,26 @@
 
 use super::super::*;
 
+pub(in super::super) enum NativeRuntime<'a> {
+    Borrowed(&'a mut range::windowed::native::Runtime),
+    Shared(&'a std::sync::Mutex<range::windowed::native::Runtime>),
+}
+
+impl NativeRuntime<'_> {
+    pub(in super::super) fn with<T>(
+        &mut self,
+        f: impl FnOnce(&mut range::windowed::native::Runtime) -> Result<T, String>,
+    ) -> Result<T, String> {
+        match self {
+            Self::Borrowed(runtime) => f(runtime),
+            Self::Shared(owner) => {
+                let mut runtime = owner.lock().map_err(|_| "RMS native owner poisoned")?;
+                f(&mut runtime)
+            }
+        }
+    }
+}
+
 component_wire!(Proof { statistic, reduction });
 
 pub(in super::super) struct Statement<'a> {
@@ -84,13 +104,21 @@ pub(in super::super) fn prove_native(
     fs:&mut Fs,correlations:&mut impl ExactSizeIterator<Item=Auth>,
     runtime:&mut range::windowed::native::Runtime,
 )->Result<(Proof,Pending<Auth>),String> {
+    prove_backend(s,get_x,get_s,fs,correlations,Some(&mut NativeRuntime::Borrowed(runtime)))
+}
+
+pub(in super::super) fn prove_native_access(
+    s:&Statement<'_>,get_x:impl Fn(usize,usize)->i16,get_s:impl Fn(usize)->[u8;6],
+    fs:&mut Fs,correlations:&mut impl ExactSizeIterator<Item=Auth>,
+    runtime:&mut NativeRuntime<'_>,
+)->Result<(Proof,Pending<Auth>),String> {
     prove_backend(s,get_x,get_s,fs,correlations,Some(runtime))
 }
 
 fn prove_backend(
     s:&Statement<'_>,get_x:impl Fn(usize,usize)->i16,get_s:impl Fn(usize)->[u8;6],
     fs:&mut Fs,correlations:&mut impl ExactSizeIterator<Item=Auth>,
-    native:Option<&mut range::windowed::native::Runtime>,
+    native:Option<&mut NativeRuntime<'_>>,
 )->Result<(Proof,Pending<Auth>),String> {
     let [r, c] = s.dimensions()?;
     let count = s.required()?;
@@ -119,7 +147,7 @@ fn prove_backend(
         Some(std::sync::Arc::new(bytes))
     } else {None};
     let target = original[0].scale(signed(1 << c).inv());
-    let (reduction,input_point,inputs)=if let Some(runtime)=native {
+    let (reduction,input_point,inputs)=if let Some(owner)=native {owner.with(|runtime| {
         let (token,_)=runtime.rms_statistic_begin(s.shape,reduction_input.unwrap(),&point)?;
         let state=std::cell::RefCell::new((runtime,token));
         p0::try_prove_custom(r+c,target,&point,|prefix| {
@@ -130,7 +158,8 @@ fn prove_backend(
             let x=runtime.rms_statistic_terminal(token,endpoint)?;
             let e=point.iter().zip(endpoint).fold(Fp3::ONE,|v,(&p,&r)|v*((Fp3::ONE-p)*(Fp3::ONE-r)+p*r));
             Ok([x,x,e])
-        },fs,&mut rows)?
+        },fs,&mut rows)
+      })?
     } else {
       let x: Vec<_> = (0..1usize << (r + c))
         .map(|i| {

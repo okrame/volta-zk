@@ -1,5 +1,5 @@
 //! Canonical security §3 prover body, using the verifier's original endpoints.
-//! CPU reference only: component workspaces are not the admitted H100 schedule.
+//! CUDA RMS consumers use the original numerical session owner after source capture.
 //! The owner must supply immutable prepared values; this body neither prepares
 //! witnesses nor imports/promotes acceptance. All errors terminate its caller.
 use super::super::protocol::{Batch, SourceModel, Writer};
@@ -93,7 +93,13 @@ impl Canonical {
                 .collect(),
             shift,
         )?;
-        let (proof, norms) = rms.prove_rms(s, &self.recipes.rms, &read, fs, rows)?;
+        // Capture original source bytes before borrowing the same numerical
+        // owner: its reader also locks that owner during bounded replay.
+        let (proof, norms) = if let Some(owner) = current.native_runtime() {
+            rms.prove_rms_native_shared(s, &self.recipes.rms, &read, fs, rows, owner, 4096)?
+        } else {
+            rms.prove_rms(s, &self.recipes.rms, &read, fs, rows)?
+        };
         wire.put(2, &proof, fs)?;
         drop(proof);
         let (f, bias, t) = rms.rms_forms(&norms)?;

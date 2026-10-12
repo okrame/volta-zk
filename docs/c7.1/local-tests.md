@@ -158,6 +158,12 @@ prima dei MAC. Il [primo build Rust fallito](../../benchmarks/results/c71-certif
 è conservato: fixture usa un costruttore Merkle inesistente, corretto
 nel nuovo trial. API/coefs/checkpoint/wire/verificatore/caller pendenti;
 Eq/fold/codec/lifetime CUDA restano premesse esplicite, nessun credito.
+Il [collegamento canonico RMS è preparato](../c7.1-history/rms-canonical-integration-prepared-2026-10-12.md):
+il ramo CUDA usa l’owner della sorgente originale A, senza lock durante
+la cattura X/S/CompactFrames; coefficienti/GKR dopo acquisizione dello
+stesso owner. CPU reference invariato. Nuovo codice non ancora verificato:
+trial owner condiviso/oracoli GPU e conto simultaneo prima del lancio
+canonico O=0, con AES fresco e journal nuovi nella stessa finestra.
 
 La [prima fase della campagna certificati](../c7.1-history/h100-certificates-close-2026-10-11.md)
 e il [seguito RMS](../c7.1-history/h100-certificates-rms-shared-cache-2026-10-11.md)

@@ -4,7 +4,7 @@
 
 int main() {
     using namespace c71_rms_prefix;
-    for(unsigned fault=0;fault<=29;++fault) {
+    for(unsigned fault=0;fault<=30;++fault) {
         joint_limit=64ULL<<20;assert(!joint_live && !rms_registered);
         C71RangeContext* c=nullptr;assert(!c71_range_create(0,64ULL<<20,256,joint_account,&c));
         std::vector<uint8_t> payload(280,42);SourceShape source_shape{280,64,64,1,1,1,0};
@@ -35,9 +35,10 @@ int main() {
                 if(fault==20)upload_fail_after=0;
                 if(fault==21)fail_fence=true;
                 status=c71_rms_byte_layer(c,token,fault==13?1:0,point,fault==14?9:10,
-                    fault==18?Fp3{P,0,0}:Fp3{},ranges,features.data(),16,&checkpoint);
+                    fault==18?Fp3{P,0,0}:Fp3{},ranges,features.data(),16,
+                    fault==30?reinterpret_cast<uint32_t*>(point):&checkpoint);
                 upload_fail_after=-1;if(fault!=21)fail_fence=false;
-                if(fault>=13 && fault<=21)assert(status);
+                if((fault>=13 && fault<=21) || fault==30)assert(status);
                 else {
                     assert(!status);
                     if(fault==24)fail_launch=true;
@@ -85,5 +86,5 @@ int main() {
         } else assert(!closed && !joint_live && !rms_registered && !final.arena_bytes);
         fail_fence=false;
     }
-    std::puts("C71_RMS_BYTE_OWNER {\"success\":1,\"terminal_rejections\":29,\"all_eight_layers\":true,\"source_retire_blocked\":true,\"failed_fence_staging_retained\":true,\"gpu_execution\":false,\"credit\":false}");
+    std::puts("C71_RMS_BYTE_OWNER {\"success\":1,\"terminal_rejections\":30,\"all_eight_layers\":true,\"source_retire_blocked\":true,\"failed_fence_staging_retained\":true,\"gpu_execution\":false,\"credit\":false}");
 }

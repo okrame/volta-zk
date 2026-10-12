@@ -17,7 +17,7 @@ def test_byte_owner_order_private_source_and_failed_publication(tmp_path):
     result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=20)
     assert result.returncode == 0, result.stdout + result.stderr
     assert json.loads(result.stdout.removeprefix('C71_RMS_BYTE_OWNER ')) == {
-        'success': 1, 'terminal_rejections': 29, 'all_eight_layers': True,
+        'success': 1, 'terminal_rejections': 30, 'all_eight_layers': True,
         'source_retire_blocked': True, 'failed_fence_staging_retained': True,
         'gpu_execution': False, 'credit': False,
     }

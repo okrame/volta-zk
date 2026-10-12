@@ -128,12 +128,15 @@ Backend RMS completo, conto simultaneo e premessa di raffinamento aperti.
 È [scritto il consumer byte GPU candidato](../c7.1-history/rms-native-byte-implementation-prepared-2026-10-12.md),
 ancora **non compilato/eseguito**: sorgente mapped,8 layer/16 lane, stato
 limitato8 MiB, recupero dei figli originali e callback fallibile senza
-fallback. Registrazione API e29 rifiuti owner, coefficienti/terminali densi,
+fallback. Registrazione API e30 rifiuti owner, coefficienti/terminali densi,
 streaming/checkpoint, wire e caller RMS/PCS sono preparati ma da verificare.
 Nuovo owner ordinario atteso42.504 B; vecchie misure42.496 B immutate.
 Byte GPU default disabilitato; opt-in nel benchmark/caller sperimentale.
 Matematica, lifetime e conto simultaneo/driver rimangono premesse aperte;
 nessun risultato GPU, selezione canonica o estensione pagata dedotti.
+La [revisione degli alias](../c7.1-history/rms-native-byte-checkpoint-alias-review-2026-10-12.md)
+aggiunge il rifiuto dell'output checkpoint sovrapposto a point/range/feature
+pubbliche, prima dell'allocazione o H2D; verifica sul pod ancora pendente.
 
 La [prima fase della campagna certificati](../c7.1-history/h100-certificates-close-2026-10-11.md)
 e il [seguito RMS](../c7.1-history/h100-certificates-rms-shared-cache-2026-10-11.md)

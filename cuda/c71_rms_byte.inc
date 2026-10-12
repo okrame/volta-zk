@@ -148,6 +148,15 @@ extern "C" int c71_rms_byte_layer(C71RangeContext* c,uint64_t token,uint32_t lay
        feature_count>byte_rms::max_features || !byte_span(checkpoint,4,4) ||
        (feature_count && !byte_span(features,uint64_t(feature_count)*257*24)))
         return fail(c,"RMS byte original layer geometry or spans");
+    uintptr_t checkpoint_end=0,point_end=0,ranges_end=0,features_end=0;
+    if(!c71_dense::span(checkpoint,4,checkpoint_end) ||
+       !c71_dense::span(point,uint64_t(count)*24,point_end) ||
+       !c71_dense::span(ranges,16*8,ranges_end) ||
+       c71_dense::overlaps(checkpoint,checkpoint_end,point,point_end) ||
+       c71_dense::overlaps(checkpoint,checkpoint_end,ranges,ranges_end) ||
+       (feature_count && (!c71_dense::span(features,uint64_t(feature_count)*257*24,features_end) ||
+        c71_dense::overlaps(checkpoint,checkpoint_end,features,features_end))))
+        return fail(c,"RMS byte checkpoint aliases public inputs");
     unsigned cursor=0;
     for(unsigned lane=0;lane<16;++lane) {const auto r=ranges[lane];
         if(r.first!=cursor || r.count>width || r.count>feature_count-cursor)return fail(c,"RMS byte feature coverage");cursor+=r.count;}

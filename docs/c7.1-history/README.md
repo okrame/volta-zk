@@ -1,5 +1,7 @@
 # C7.1 — archivio e provenienza
 
+[Revisione byte GPU: output checkpoint non può aliasare gli input](rms-native-byte-checkpoint-alias-review-2026-10-12.md).
+
 [Consumer byte GPU scritto, compilazione/parità ancora pendenti](rms-native-byte-implementation-prepared-2026-10-12.md).
 
 [Chiusura della finestra RMS mapped/GKR e conferma provider](h100-rms-moments-close-2026-10-11.md).

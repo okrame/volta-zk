@@ -467,7 +467,7 @@ impl Sources {
         fs:&mut Fs,correlations:&mut impl ExactSizeIterator<Item=Auth>,
         runtime:&mut range::windowed::native::Runtime,capacity:usize,
     )->Result<(Proof,Pending<Auth>),String> {
-        self.prove_rms_impl(s,parameters,read,fs,correlations,Some((runtime,capacity,false)))
+        self.prove_rms_impl(s,parameters,read,fs,correlations,Some((runtime,capacity,false,false)))
     }
 
     #[cfg(test)]
@@ -476,13 +476,22 @@ impl Sources {
         fs:&mut Fs,correlations:&mut impl ExactSizeIterator<Item=Auth>,
         runtime:&mut range::windowed::native::Runtime,capacity:usize,
     )->Result<(Proof,Pending<Auth>),String> {
-        self.prove_rms_impl(s,parameters,read,fs,correlations,Some((runtime,capacity,true)))
+        self.prove_rms_impl(s,parameters,read,fs,correlations,Some((runtime,capacity,true,false)))
+    }
+
+    #[cfg(test)]
+    pub(in crate::c71_matrix) fn prove_rms_native_statistic_byte(
+        &self,s:&P0Statement<'_>,parameters:&[[i32;3]],read:impl Fn(usize,usize,usize,usize)->u8,
+        fs:&mut Fs,correlations:&mut impl ExactSizeIterator<Item=Auth>,
+        runtime:&mut range::windowed::native::Runtime,capacity:usize,
+    )->Result<(Proof,Pending<Auth>),String> {
+        self.prove_rms_impl(s,parameters,read,fs,correlations,Some((runtime,capacity,true,true)))
     }
 
     fn prove_rms_impl(
         &self,s:&P0Statement<'_>,parameters:&[[i32;3]],read:impl Fn(usize,usize,usize,usize)->u8,
         fs:&mut Fs,correlations:&mut impl ExactSizeIterator<Item=Auth>,
-        native:Option<(&mut range::windowed::native::Runtime,usize,bool)>,
+        mut native:Option<(&mut range::windowed::native::Runtime,usize,bool,bool)>,
     )->Result<(Proof,Pending<Auth>),String> {
         let (programs, profiles, count) = self.prepare(s, parameters)?;
         if correlations.len() < count {
@@ -497,18 +506,17 @@ impl Sources {
         self.bind(s, parameters, fs);
         let (mut statistics, mut pending, mut triples) = (Vec::new(), Vec::new(), Vec::new());
         for (ordinal, n) in self.norms.iter().enumerate() {
-            let (proof, original) = statistic::prove(
-                &self.statistic_statement(s, ordinal),
-                |row, col| {
+            let get_x=|row,col| {
                     let (r, c) = self.position(n.input, n, row, col);
                     let biased =
                         u16::from_le_bytes([read(n.input, r, c, 0), read(n.input, r, c, 1)]);
                     (i32::from(biased) - 32768) as i16
-                },
-                |row| std::array::from_fn(|b| read(n.statistic, row, 0, b)),
-                fs,
-                &mut rows,
-            )?;
+                };
+            let get_s=|row|std::array::from_fn(|b|read(n.statistic,row,0,b));
+            let statement=self.statistic_statement(s,ordinal);
+            let (proof,original)=if let Some((runtime,_,_,true))=native.as_mut() {
+                statistic::prove_native(&statement,get_x,get_s,fs,&mut rows,runtime)?
+            } else {statistic::prove(&statement,get_x,get_s,fs,&mut rows)?};
             triples.push(original.inputs);
             pending.push(original);
             statistics.push(proof);
@@ -536,7 +544,7 @@ impl Sources {
                 gkr::Assignments::compiled(self.cells.next_power_of_two(), &spans)
             } else { gkr::Assignments::new(self.cells.next_power_of_two(), &assignment) },
         };
-        let (joint, byte_point, byte) = if let Some((runtime,capacity,native_byte))=native {
+        let (joint, byte_point, byte) = if let Some((runtime,capacity,native_byte,_))=native {
             let packet=frames.native_packet(&profiles,programs.len())?;
             let source=runtime.rms_source_begin(frames.payload.clone(),&packet)?;
             let result=gkr::prove_native_mapped_sourcewise_with_byte(&gs,|i|frames.frame(i).unwrap(),fs,&mut rows,
@@ -1061,10 +1069,19 @@ mod tests {
         check_dispatch_backend(true,true);
     }
 
+    #[test]
+    #[ignore="explicit CUDA owner and authorized hardware required"]
+    fn c71_b12_gemma_rms_common_gpu_statistic_byte_dispatch_joins_both_original_roots() {
+        check_dispatch_components(true,true,true);
+    }
+
     fn check_dispatch(gpu:bool) {
         check_dispatch_backend(gpu,false);
     }
     fn check_dispatch_backend(gpu:bool,native_byte:bool) {
+        check_dispatch_components(gpu,native_byte,false);
+    }
+    fn check_dispatch_components(gpu:bool,native_byte:bool,native_statistic:bool) {
         let plan = super::super::tests::toy_plan(2, 1);
         let sources = plan.rms_sources().unwrap();
         assert_eq!((sources.cells, sources.bytes.live), (28, 462));
@@ -1185,7 +1202,9 @@ mod tests {
                 let weights=std::sync::Arc::new(Vec::new());
                 let _budget=crate::c71_matrix::census::Budget::new(&weights).unwrap();
                 let mut runtime=native::Runtime::new(&config).unwrap();
-                let (candidate,pending)=if native_byte {
+                let (candidate,pending)=if native_statistic {
+                    sources.prove_rms_native_statistic_byte(&statement,&parameters,read,&mut native_fs,&mut native_rows,&mut runtime,256)
+                } else if native_byte {
                     sources.prove_rms_native_byte(&statement,&parameters,read,&mut native_fs,&mut native_rows,&mut runtime,256)
                 } else {sources.prove_rms_native(&statement,&parameters,read,&mut native_fs,
                     &mut native_rows,&mut runtime,256)}.unwrap();
@@ -1199,7 +1218,7 @@ mod tests {
                 let stats=runtime.stats().unwrap();
                 assert!(stats.launches>0);assert_eq!(stats.arena_bytes,0);assert_eq!(stats.allocations,stats.releases);
                 println!("C71_RMS_COMMON_CALLER_GPU {}",serde_json::json!({"fault":fault,"stats":stats,
-                    "native_byte":native_byte,"original_wire_fs_mac":true,"gpu_execution":true,"canonical_certificates":0,"credit":false}));
+                    "native_byte":native_byte,"native_statistic":native_statistic,"original_wire_fs_mac":true,"gpu_execution":true,"canonical_certificates":0,"credit":false}));
                 runtime.close().unwrap();rms_proof=candidate;rms=pending;fs=native_fs;
             }
             let mut rne_proofs = Vec::new();

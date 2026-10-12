@@ -82,39 +82,70 @@ pub(super) fn prove_public(
 }
 
 fn prove_inner(
-    mut x: Vec<Fp3>,
-    mut w: Vec<Fp3>,
-    mut target: Auth,
-    mut equality: Option<Vec<Fp3>>,
+    x: Vec<Fp3>,
+    w: Vec<Fp3>,
+    target: Auth,
+    equality: Option<Vec<Fp3>>,
     fs: &mut Fs,
     correlations: &mut impl ExactSizeIterator<Item = Auth>,
 ) -> Result<(Proof, Vec<Fp3>, [Auth; 3]), String> {
     let bits = x.len().ilog2() as usize;
-    let count = required(bits, equality.is_some());
+    let weighted=equality.is_some();
+    let state=std::cell::RefCell::new((x,w,equality));
+    let fold_last=|prefix:&[Fp3]| {
+        if let Some(&r)=prefix.last() {
+            let mut state=state.borrow_mut();
+            fold(&mut state.0,r);fold(&mut state.1,r);
+            if let Some(e)=&mut state.2 {fold(e,r);}
+        }
+    };
+    prove_callbacks(bits,target,weighted,|prefix| {
+        fold_last(prefix);
+        let state=state.borrow();let (x,w,equality)=&*state;
+        let half=x.len()/2;
+        let mut c=vec![Fp3::ZERO;if weighted {4}else{3}];
+        for i in 0..half {
+            let dx=x[i+half]-x[i];let dw=w[i+half]-w[i];
+            let v=[x[i]*w[i],dx*w[i]+x[i]*dw,dx*dw];
+            if let Some(e)=equality {
+                let de=e[i+half]-e[i];
+                for j in 0..3 {c[j]+=e[i]*v[j];c[j+1]+=de*v[j];}
+            } else {for j in 0..3 {c[j]+=v[j];}}
+        }
+        Ok(c)
+    },|prefix| {
+        fold_last(prefix);let state=state.borrow();
+        Ok([state.0[0],state.1[0],state.2.as_ref().map_or(Fp3::ONE,|e|e[0])])
+    },fs,correlations)
+}
+
+// Consumer callbacks must succeed before the next original MAC/FS emission.
+// They evaluate the same cubic and terminal, without a substitute source.
+pub(super) fn try_prove_custom(
+    bits:usize,target:Auth,column_point:&[Fp3],
+    coefficients:impl FnMut(&[Fp3])->Result<Vec<Fp3>,String>,
+    terminal:impl FnMut(&[Fp3])->Result<[Fp3;3],String>,
+    fs:&mut Fs,correlations:&mut impl ExactSizeIterator<Item=Auth>,
+)->Result<(Proof,Vec<Fp3>,[Auth;3]),String> {
+    bind(bits,Some(column_point),fs)?;
+    prove_callbacks(bits,target,true,coefficients,terminal,fs,correlations)
+}
+
+fn prove_callbacks(
+    bits:usize,mut target:Auth,weighted:bool,
+    mut coefficients:impl FnMut(&[Fp3])->Result<Vec<Fp3>,String>,
+    mut terminal_values:impl FnMut(&[Fp3])->Result<[Fp3;3],String>,
+    fs:&mut Fs,correlations:&mut impl ExactSizeIterator<Item=Auth>,
+)->Result<(Proof,Vec<Fp3>,[Auth;3]),String> {
+    let count = required(bits, weighted);
     if correlations.len() < count {
         return Err("B12 P0 prover capacity exhausted".into());
     }
     let mut rows = correlations.by_ref().take(count);
     let (mut point, mut rounds) = (Vec::new(), Vec::new());
     for round in 0..bits {
-        let half = x.len() / 2;
-        let mut c = vec![Fp3::ZERO; if equality.is_some() { 4 } else { 3 }];
-        for i in 0..half {
-            let dx = x[i + half] - x[i];
-            let dw = w[i + half] - w[i];
-            let v = [x[i] * w[i], dx * w[i] + x[i] * dw, dx * dw];
-            if let Some(e) = &equality {
-                let de = e[i + half] - e[i];
-                for j in 0..3 {
-                    c[j] += e[i] * v[j];
-                    c[j + 1] += de * v[j];
-                }
-            } else {
-                for j in 0..3 {
-                    c[j] += v[j];
-                }
-            }
-        }
+        let c=coefficients(&point)?;
+        if c.len()!=(if weighted {4}else{3}) {return Err("B12 P0 callback degree differs".into());}
         let (mut wire, a): (Vec<_>, Vec<_>) = c
             .into_iter()
             .map(|v| {
@@ -127,16 +158,11 @@ fn prove_inner(
         record_values(fs, 0x51, &wire);
         let r = fs.fp3();
         target = a.iter().rev().fold(Auth::ZERO, |s, &a| s.scale(r).add(a));
-        fold(&mut x, r);
-        fold(&mut w, r);
-        if let Some(e) = &mut equality {
-            fold(e, r);
-        }
         point.push(r);
         rounds.push(wire);
     }
-    let (wire, original) = authenticate([x[0], w[0], x[0] * w[0]], &mut rows);
-    let e = equality.as_ref().map_or(Fp3::ONE, |v| v[0]);
+    let [x,w,e]=terminal_values(&point)?;
+    let (wire, original) = authenticate([x,w,x*w], &mut rows);
     let terminal = [wire[0], wire[1], wire[2], e * original[2].m - target.m];
     fs.set_phase(0x720);
     record_values(fs, 0x52, &terminal);
@@ -236,6 +262,19 @@ mod tests {
     use super::*;
     use linear::Cube;
     use rand_010::RngExt;
+
+    #[test]
+    fn c71_p0_fallible_coefficients_and_terminal_stop_before_original_authentication() {
+        for fault in 0..3 {
+            let mut fs=Fs::new(b"original P0 fallible callback",1000);
+            let mut rows=vec![Auth::ZERO;required(1,true)].into_iter();
+            let result=try_prove_custom(1,Auth::ZERO,&[Fp3::ZERO],|_| {
+                match fault {0=>Err("coefficient failure".into()),1=>Ok(vec![Fp3::ZERO;3]),_=>Ok(vec![Fp3::ZERO;4])}
+            },|_|Err("terminal failure".into()),&mut fs,&mut rows);
+            assert!(result.is_err());
+            assert_eq!(rows.len(),if fault==2 {3}else{required(1,true)});
+        }
+    }
 
     fn evaluate(values: &[i16], point: &[Fp3]) -> Fp3 {
         values.iter().zip(eq(point)).fold(Fp3::ZERO, |s, (&v, r)| s + signed(i64::from(v)) * r)

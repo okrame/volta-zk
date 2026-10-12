@@ -229,6 +229,21 @@ struct RmsByteApi {
     coefficients:unsafe extern "C" fn(Raw,u64,*const Field,u32,*mut Field)->i32,
     terminal:unsafe extern "C" fn(Raw,u64,*const Field,u32,*mut Field)->i32,
 }
+pub(in crate::c71_matrix) struct RmsStatisticToken {
+    id:u64,owner:Arc<()>,bits:usize,round:usize,
+}
+struct RmsStatisticApi {
+    begin:unsafe extern "C" fn(Raw,u32,u32,*const u8,u64,*const Field,u32,*mut u64,*mut u32)->i32,
+    coefficients:unsafe extern "C" fn(Raw,u64,*const Field,u32,*mut Field)->i32,
+    terminal:unsafe extern "C" fn(Raw,u64,*const Field,u32,*mut Field)->i32,
+}
+impl RmsStatisticApi {
+    fn load(library:&Library)->Result<Self,String> {
+        unsafe {Ok(Self {begin:library.symbol(b"c71_rms_statistic_begin\0")?,
+            coefficients:library.symbol(b"c71_rms_statistic_coefficients\0")?,
+            terminal:library.symbol(b"c71_rms_statistic_terminal\0")?})}
+    }
+}
 impl RmsByteApi {
     fn load(library:&Library)->Result<Self,String> {
         // Optional only until explicitly selected. Missing byte execution
@@ -660,6 +675,8 @@ pub(in crate::c71_matrix) struct Runtime {
     weights: Option<(Arc<Vec<i16>>, [u8; 32])>,
     rms_source:Option<Arc<Vec<u8>>>,
     rms_byte_api:Option<RmsByteApi>,
+    rms_statistic_api:Option<RmsStatisticApi>,
+    rms_statistic_source:Option<Arc<Vec<u8>>>,
     weight_install_bytes: u64,
     owner: Arc<()>,
     configuration: (PathBuf, i32, u64, u64),
@@ -668,6 +685,55 @@ pub(in crate::c71_matrix) struct Runtime {
 unsafe impl Send for Runtime {}
 
 impl Runtime {
+    pub(in crate::c71_matrix) fn rms_statistic_begin(&mut self,shape:[usize;2],source:Arc<Vec<u8>>,point:&[Fp3])
+        ->Result<(RmsStatisticToken,usize),String> {
+        self.ready()?;
+        if self.rms_statistic_source.is_some() || shape[0]==0 || shape[0]>8192 || shape[1]==0 || shape[1]>5376 ||
+            source.len()!=shape[0]*shape[1]*2 || point.len()!=shape.iter().map(|n|n.next_power_of_two().ilog2() as usize).sum::<usize>() || point.len()>26 {
+            return self.abort("native RMS statistic source/point geometry differs");
+        }
+        if self.rms_statistic_api.is_none() {
+            match RmsStatisticApi::load(&self.api._library) {
+                Ok(api)=>self.rms_statistic_api=Some(api),
+                Err(error)=>return self.abort(&format!("native RMS statistic execution unavailable: {error}")),
+            }
+        }
+        let fields=point.iter().copied().map(Field::from).collect::<Vec<_>>();let (mut id,mut checkpoint)=(0,0);
+        self.rms_statistic_source=Some(source);
+        let source=self.rms_statistic_source.as_ref().unwrap();
+        let status=unsafe {(self.rms_statistic_api.as_ref().unwrap().begin)(self.raw,shape[0] as u32,shape[1] as u32,
+            source.as_ptr(),source.len() as u64,fields.as_ptr(),fields.len() as u32,&mut id,&mut checkpoint)};
+        self.check(status)?;
+        if id==0 || checkpoint as usize>point.len() {return self.abort("native RMS statistic capability/checkpoint differs");}
+        Ok((RmsStatisticToken {id,owner:self.owner.clone(),bits:point.len(),round:0},checkpoint as usize))
+    }
+    fn require_rms_statistic(&mut self,token:&RmsStatisticToken)->Result<(),String> {
+        self.ready()?;
+        if token.id==0 || !Arc::ptr_eq(&token.owner,&self.owner) || self.rms_statistic_api.is_none() {
+            return self.abort("native RMS statistic owner differs");
+        }
+        Ok(())
+    }
+    pub(in crate::c71_matrix) fn rms_statistic_coefficients(&mut self,token:&mut RmsStatisticToken,prefix:&[Fp3])
+        ->Result<[Fp3;4],String> {
+        self.require_rms_statistic(token)?;
+        if prefix.len()!=token.round || token.round>=token.bits {return self.abort("native RMS statistic round differs");}
+        let fields=prefix.iter().copied().map(Field::from).collect::<Vec<_>>();let mut out=[Field::default();4];
+        let status=unsafe {(self.rms_statistic_api.as_ref().unwrap().coefficients)(self.raw,token.id,
+            fields.as_ptr(),fields.len() as u32,out.as_mut_ptr())};self.check(status)?;
+        let mut values=[Fp3::ZERO;4];for (v,x) in values.iter_mut().zip(out) {*v=x.decode().or_else(|e|self.abort(e))?;}
+        token.round+=1;Ok(values)
+    }
+    pub(in crate::c71_matrix) fn rms_statistic_terminal(&mut self,token:&mut RmsStatisticToken,point:&[Fp3])
+        ->Result<Fp3,String> {
+        self.require_rms_statistic(token)?;
+        if point.len()!=token.bits || token.round!=token.bits {return self.abort("native RMS statistic terminal differs");}
+        let fields=point.iter().copied().map(Field::from).collect::<Vec<_>>();let mut value=Field::default();
+        let status=unsafe {(self.rms_statistic_api.as_ref().unwrap().terminal)(self.raw,token.id,
+            fields.as_ptr(),fields.len() as u32,&mut value)};self.check(status)?;
+        let value=value.decode().or_else(|e|self.abort(e))?;
+        token.id=0;self.rms_statistic_source=None;Ok(value)
+    }
     pub(in crate::c71_matrix) fn rms_byte_begin(&mut self,source:&RmsSourceToken,bits:usize,
         live_lanes:usize,coefficients:&[[Fp3;256]])->Result<RmsByteToken,String> {
         self.require_rms_source(source)?;
@@ -1209,6 +1275,8 @@ impl Runtime {
             weights: None,
             rms_source:None,
             rms_byte_api:None,
+            rms_statistic_api:None,
+            rms_statistic_source:None,
             weight_install_bytes: 0,
             owner: Arc::new(()),
             configuration: (
@@ -2136,12 +2204,14 @@ impl Runtime {
             // Uncertain unregister/fence ownership keeps the immutable pinned
             // checkpoint and its global allocation charge until process exit.
             if let Some(source)=self.rms_source.take() {std::mem::forget(source);}
+            if let Some(source)=self.rms_statistic_source.take() {std::mem::forget(source);}
             return Err(format!(
                 "native cleanup failed, arena bytes: {}, W bytes: {}",
                 stats.arena_bytes, stats.weights_bytes
             ));
         }
         self.rms_source=None;
+        self.rms_statistic_source=None;
         before?; // Diagnostic failure never bypasses the actual native cleanup.
         if bytes != 0 {
             crate::c71_matrix::progress::resident_w("device", "retired", bytes, None)?;
@@ -3061,6 +3131,23 @@ pub(in crate::c71_matrix) mod tests {
         let mut token=runtime.rms_byte_begin(&source,5,10,&[[Fp3::ZERO;256];16]).unwrap();
         let mut other=Runtime::new(&fixture.config).unwrap();
         assert!(other.rms_byte_coefficients(&mut token,&[]).is_err());
+        assert_eq!(other.stats().unwrap().stopped,1);other.close().unwrap();runtime.close().unwrap();
+    }
+    #[test]
+    fn c71_b12_native_rms_statistic_selected_missing_api_fails_closed() {
+        for symbol in ["c71_rms_statistic_begin","c71_rms_statistic_coefficients","c71_rms_statistic_terminal"] {
+            let fixture=fixture_library(512,Some(symbol));let mut runtime=Runtime::new(&fixture.config).unwrap();
+            assert!(runtime.rms_statistic_begin([2,3],Arc::new(vec![0;12]),&[Fp3::ZERO;3]).is_err());
+            assert_eq!(runtime.stats().unwrap().stopped,1);runtime.close().unwrap();
+        }
+    }
+    #[test]
+    fn c71_b12_native_rms_statistic_foreign_owner_fails_closed() {
+        let mut fixture=fixture(512);fixture.config.arena_bytes=64<<20;
+        let mut runtime=Runtime::new(&fixture.config).unwrap();
+        let (mut token,_)=runtime.rms_statistic_begin([2,3],Arc::new(vec![0;12]),&[Fp3::ZERO;3]).unwrap();
+        let mut other=Runtime::new(&fixture.config).unwrap();
+        assert!(other.rms_statistic_coefficients(&mut token,&[]).is_err());
         assert_eq!(other.stats().unwrap().stopped,1);other.close().unwrap();runtime.close().unwrap();
     }
     fn rms_source_fixture()->(Arc<Vec<u8>>,RmsSourcePacket) {

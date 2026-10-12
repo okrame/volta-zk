@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstring>
 #include <new>
+#include <type_traits>
 #include <unistd.h>
 #ifdef C71_OWNER_TRACE
 #include "c71_owner_trace.h"
@@ -239,6 +240,7 @@ void rms_source_shadow_release(C71RangeContext*);
 void rms_tail_shadow_release(C71RangeContext*);
 int rms_tail_start(C71RangeContext*,uint64_t,const Fp3*,uint32_t);
 int rms_byte_close(C71RangeContext*,bool);
+int rms_statistic_close(C71RangeContext*,bool);
 constexpr uint64_t sizes[]={1,2,48,96,24,96,8,1,8,8,32,32,32,40,8,8,8,1,1,8,1};
 constexpr uint64_t caps[]={uint64_t{1}<<31,uint64_t{1}<<27,uint64_t{1}<<24,
                           uint64_t{1}<<24,256*32*32,65536,uint64_t(c71_dense::max_m)*c71_dense::max_n,uint64_t{1}<<31,65535,
@@ -526,6 +528,7 @@ extern "C" int c71_range_close(C71RangeContext* c,C71RangeStats* out) {
         drained=true;
         if(c->stream && (fence)(c,__func__,__LINE__,&drained)) error=true;
         if(c->rms_byte && rms_byte_close(c,drained))error=true;
+        if(c->rms.active==4 && rms_statistic_close(c,drained))error=true;
         if(c->rms_source.host && (drained ? rms_source_unpin(c)!=0 : c->rms_source.registered!=0)) error=true;
         if(c->weights) {
             C71_TRACE_VALUE(-1,C71_I16,c->stats.weights_bytes,c->stats.weights_bytes);
@@ -2703,3 +2706,4 @@ extern "C" int c71_pcs_residual_query_finish(C71RangeContext* c,uint64_t token,c
 #include "c71_rms_tail.inc"
 #include "c71_rms_index.inc"
 #include "c71_rms_byte.inc"
+#include "c71_rms_statistic.inc"

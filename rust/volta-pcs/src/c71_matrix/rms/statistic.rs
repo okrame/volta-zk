@@ -76,6 +76,22 @@ pub(in super::super) fn prove(
     fs: &mut Fs,
     correlations: &mut impl ExactSizeIterator<Item = Auth>,
 ) -> Result<(Proof, Pending<Auth>), String> {
+    prove_backend(s,get_x,get_s,fs,correlations,None)
+}
+
+pub(in super::super) fn prove_native(
+    s:&Statement<'_>,get_x:impl Fn(usize,usize)->i16,get_s:impl Fn(usize)->[u8;6],
+    fs:&mut Fs,correlations:&mut impl ExactSizeIterator<Item=Auth>,
+    runtime:&mut range::windowed::native::Runtime,
+)->Result<(Proof,Pending<Auth>),String> {
+    prove_backend(s,get_x,get_s,fs,correlations,Some(runtime))
+}
+
+fn prove_backend(
+    s:&Statement<'_>,get_x:impl Fn(usize,usize)->i16,get_s:impl Fn(usize)->[u8;6],
+    fs:&mut Fs,correlations:&mut impl ExactSizeIterator<Item=Auth>,
+    native:Option<&mut range::windowed::native::Runtime>,
+)->Result<(Proof,Pending<Auth>),String> {
     let [r, c] = s.dimensions()?;
     let count = s.required()?;
     if correlations.len() < count {
@@ -95,7 +111,28 @@ pub(in super::super) fn prove(
     record_values(fs, 0x91, &wire);
     let mut point = statistic_point.clone();
     point.extend(vec![signed(2).inv(); c]);
-    let x: Vec<_> = (0..1usize << (r + c))
+    // Original getter collects signed-i16 once; no Fp3(N), private equality
+    // table or squared/folded substitute is passed to the numeric producer.
+    let reduction_input = if native.is_some() {
+        let mut bytes=Vec::with_capacity(s.shape[0]*s.shape[1]*2);
+        for row in 0..s.shape[0] {for col in 0..s.shape[1] {bytes.extend(get_x(row,col).to_le_bytes());}}
+        Some(std::sync::Arc::new(bytes))
+    } else {None};
+    let target = original[0].scale(signed(1 << c).inv());
+    let (reduction,input_point,inputs)=if let Some(runtime)=native {
+        let (token,_)=runtime.rms_statistic_begin(s.shape,reduction_input.unwrap(),&point)?;
+        let state=std::cell::RefCell::new((runtime,token));
+        p0::try_prove_custom(r+c,target,&point,|prefix| {
+            let mut state=state.borrow_mut();let (runtime,token)=&mut *state;
+            runtime.rms_statistic_coefficients(token,prefix).map(Vec::from)
+        },|endpoint| {
+            let mut state=state.borrow_mut();let (runtime,token)=&mut *state;
+            let x=runtime.rms_statistic_terminal(token,endpoint)?;
+            let e=point.iter().zip(endpoint).fold(Fp3::ONE,|v,(&p,&r)|v*((Fp3::ONE-p)*(Fp3::ONE-r)+p*r));
+            Ok([x,x,e])
+        },fs,&mut rows)?
+    } else {
+      let x: Vec<_> = (0..1usize << (r + c))
         .map(|i| {
             let (row, col) = (i >> c, i % (1 << c));
             if row < s.shape[0] && col < s.shape[1] {
@@ -107,9 +144,8 @@ pub(in super::super) fn prove(
         .collect();
     // Sum EQ(half,col) X² is S/2^c. The only inverse is this PUBLIC power
     // of two; do not take a square or RMS of an already folded input.
-    let target = original[0].scale(signed(1 << c).inv());
-    let (reduction, input_point, inputs) =
-        p0::prove(x.clone(), x, target, Some(&point), fs, &mut rows)?;
+      p0::prove(x.clone(), x, target, Some(&point), fs, &mut rows)?
+    };
     debug_assert!(rows.next().is_none());
     Ok((
         Proof { statistic: wire[0], reduction },
@@ -154,6 +190,65 @@ mod tests {
     use super::*;
     use linear::Cube;
     use rand_010::RngExt;
+
+    #[test]
+    #[ignore = "requires real CUDA common owner; original signed-X and P0 parity"]
+    fn c71_rms_statistic_gpu_coefficients_checkpoint_wire_and_original_verifier() {
+        use crate::c71_matrix::range::windowed::native::{self as native_runtime,Runtime};
+        use crate::c71_matrix::wire::Wire;
+        let root=C61Commitment::from_roots(vec![vec![41;32]]).unwrap();
+        let attempt=AttemptContext {session:[17;32],capacity:[18;32],slot:0,predecessor:[0;32],nonce:[19;32]};
+        let config=native_runtime::tests::hardware_config(512,64<<20);
+        let mut coefficient_checks=0;let mut terminal_checks=0;let mut checkpoint_max=0;
+        for (case,shape) in [[1,1],[3,5],[129,1537]].into_iter().enumerate() {
+            let bits=shape.map(|n:usize|n.next_power_of_two().ilog2() as usize);let total=bits[0]+bits[1];
+            let get=|r:usize,c:usize|match (r*shape[1]+c)%5 {0=>i16::MIN,1=>i16::MAX,_=>((r*17+c*31)%601) as i16-300};
+            let raw=std::sync::Arc::new((0..shape[0]).flat_map(|r|(0..shape[1]).flat_map(move |c|get(r,c).to_le_bytes())).collect::<Vec<_>>());
+            let query=(0..total).map(|i|if case==1 {if i%2==0 {Fp3::ZERO}else{Fp3::ONE}}else{signed(i as i64+3)}).collect::<Vec<_>>();
+            let mut x=(0..1usize<<total).map(|i| {
+                let (r,c)=(i>>bits[1],i% (1usize<<bits[1]));
+                if r<shape[0] && c<shape[1] {signed(i64::from(get(r,c)))}else{Fp3::ZERO}
+            }).collect::<Vec<_>>();
+            let mut e=eq(&query);let mut prefix=Vec::new();let mut runtime=Runtime::new(&config).unwrap();
+            let (mut token,checkpoint)=runtime.rms_statistic_begin(shape,raw,&query).unwrap();checkpoint_max=checkpoint_max.max(checkpoint);
+            for round in 0..total {
+                let half=x.len()/2;let mut expected=[Fp3::ZERO;4];
+                for i in 0..half {
+                    let dx=x[i+half]-x[i];let de=e[i+half]-e[i];
+                    let values=[x[i]*x[i],signed(2)*x[i]*dx,dx*dx];
+                    for j in 0..3 {expected[j]+=e[i]*values[j];expected[j+1]+=de*values[j];}
+                }
+                assert_eq!(runtime.rms_statistic_coefficients(&mut token,&prefix).unwrap(),expected,"case{case} round{round}");
+                coefficient_checks+=1;
+                let coin=if round%3==0 {Fp3::ZERO}else if round%3==1 {Fp3::ONE}else{signed(round as i64+29)};
+                fold(&mut x,coin);fold(&mut e,coin);prefix.push(coin);
+            }
+            assert_eq!(runtime.rms_statistic_terminal(&mut token,&prefix).unwrap(),x[0]);terminal_checks+=1;
+            let stats=runtime.stats().unwrap();assert_eq!(stats.arena_bytes,0);assert_eq!(stats.allocations,stats.releases);assert_eq!(stats.host_owner_bytes,42504);
+            runtime.close().unwrap();
+            let statement=Statement {root:&root,profile:b"original X S",view:[42;32],attempt,shape};
+            let count=statement.required().unwrap();let delta=signed(37);
+            let rows=(0..count).map(|i|Auth::new(signed(i as i64+7),signed(i as i64+53))).collect::<Vec<_>>();
+            let keys=rows.iter().map(|a|Key::new(a.m+delta*a.x)).collect::<Vec<_>>();
+            let sum=|r:usize|{let s=(0..shape[1]).map(|c|{let x=i64::from(get(r,c));x*x}).sum::<i64>();biased(s,6).try_into().unwrap()};
+            let mut cpu_fs=Fs::new(b"original RMS statistic parity",1000);let mut cpu_rows=rows.clone().into_iter();
+            let (cpu,cpu_pending)=prove(&statement,get,sum,&mut cpu_fs,&mut cpu_rows).unwrap();
+            let mut gpu_fs=Fs::new(b"original RMS statistic parity",1000);let mut gpu_rows=rows.into_iter();let mut runtime=Runtime::new(&config).unwrap();
+            let (gpu,gpu_pending)=prove_native(&statement,get,sum,&mut gpu_fs,&mut gpu_rows,&mut runtime).unwrap();
+            let (mut a,mut b)=(Vec::new(),Vec::new());cpu.write(&mut a);gpu.write(&mut b);assert_eq!(a,b);assert_eq!(cpu_fs.digest(),gpu_fs.digest());
+            assert_eq!(cpu_pending.input_point,gpu_pending.input_point);assert_eq!(cpu_pending.statistic.x,gpu_pending.statistic.x);
+            for (x,y) in cpu_pending.inputs.iter().zip(&gpu_pending.inputs) {assert_eq!((x.x,x.m),(y.x,y.m));}
+            assert_eq!(cpu_rows.len(),0);assert_eq!(gpu_rows.len(),0);
+            let mut vfs=Fs::new(b"original RMS statistic parity",1000);let mut vrows=keys.clone().into_iter();
+            let checked=verify(&statement,&gpu,delta,&mut vfs,&mut vrows).unwrap();assert_eq!(checked.input_point,gpu_pending.input_point);assert_eq!(vrows.len(),0);assert_eq!(vfs.digest(),gpu_fs.digest());
+            let mut wrong_fs=Fs::new(b"original RMS statistic parity",1000);let mut wrong_rows=keys.into_iter();
+            let mut altered=Vec::new();gpu.write(&mut altered);let mut input=&altered[..];let mut altered=Proof::read(&mut input).unwrap();altered.statistic+=Fp3::ONE;
+            assert!(verify(&statement,&altered,delta,&mut wrong_fs,&mut wrong_rows).is_err());
+            let stats=runtime.stats().unwrap();assert_eq!(stats.arena_bytes,0);assert_eq!(stats.allocations,stats.releases);assert_eq!(stats.host_owner_bytes,42504);runtime.close().unwrap();
+        }
+        assert!(checkpoint_max>0);
+        println!("C71_RMS_STATISTIC_GPU {}",serde_json::json!({"cases":3,"coefficient_checks":coefficient_checks,"terminal_checks":terminal_checks,"checkpoint_max":checkpoint_max,"original_wire_FS_MAC":true,"original_verifier":true,"tampered_statistic_rejected":true,"gpu_execution":true,"canonical_certificates":0,"credit":false}));
+    }
 
     fn biased(value: i64, bytes: usize) -> Vec<u8> {
         let word = (value + (1 << (8 * bytes - 1))) as u64;

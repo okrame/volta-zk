@@ -151,6 +151,11 @@ A1 ha occupazione GPU aggiuntiva non attribuita; B1/A2 un incompleto
 ciascuno, nessun isolamento/picco completo o guadagno canonico dedotti.
 Statistica e dispatcher canonico CPU; consumer statistica in preparazione,
 nessun nuovo default prima delle verifiche.
+Il [consumer statistica GPU è preparato](../c7.1-history/rms-native-statistic-prepared-2026-10-12.md),
+ancora non compilato/eseguito: stesso P0 e fonte X originale, stato8 MiB,
+RMS owner riusato senza crescita C++, callback fallibili prima dei MAC.
+25 rifiuti/API/coefs/checkpoint/wire/verificatore/caller pendenti;
+Eq/fold/codec/lifetime CUDA restano premesse esplicite, nessun credito.
 
 La [prima fase della campagna certificati](../c7.1-history/h100-certificates-close-2026-10-11.md)
 e il [seguito RMS](../c7.1-history/h100-certificates-rms-shared-cache-2026-10-11.md)

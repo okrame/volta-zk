@@ -135,6 +135,16 @@ cudaError_t recover(cudaStream_t stream,Shape s,const Fp3*,const Fp3*,Fp3* out) 
 cudaError_t fold_children(cudaStream_t,unsigned,Fp3,Fp3*) {return fail_launch?cudaErrorInvalidValue:cudaSuccess;}
 cudaError_t child_coefficients(cudaStream_t,Shape,const Fp3*,const Fp3*,Fp3*) {return fail_launch?cudaErrorInvalidValue:cudaSuccess;}
 }
+namespace c71_rms_statistic {
+cudaError_t factors(cudaStream_t,const Fp3*,unsigned,Fp3*) {return fail_launch?cudaErrorInvalidValue:cudaSuccess;}
+cudaError_t regenerate(cudaStream_t stream,Shape,const uint8_t*,const Fp3*,unsigned first,unsigned n,Fp3* out) {
+    return fail_launch?cudaErrorInvalidValue:cudaMemsetAsync(out+first,0,uint64_t(n)*24,stream);
+}
+cudaError_t fold_state(cudaStream_t,unsigned,Fp3,Fp3*) {return fail_launch?cudaErrorInvalidValue:cudaSuccess;}
+cudaError_t coefficients(cudaStream_t,Shape,const uint8_t*,const Fp3*,const Fp3*,const Fp3*,const Fp3*,unsigned,unsigned,Fp3*) {return fail_launch?cudaErrorInvalidValue:cudaSuccess;}
+cudaError_t reduce(cudaStream_t,const Fp3*,unsigned,Fp3*) {return fail_launch?cudaErrorInvalidValue:cudaSuccess;}
+}
+
 static bool fail_dense=false;
 static bool fail_memset=false;
 static int memset_fail_after=-1;

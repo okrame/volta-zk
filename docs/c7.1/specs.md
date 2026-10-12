@@ -131,8 +131,9 @@ Backend RMS completo, conto simultaneo e premessa di raffinamento aperti.
 con [owner host positivo](../c7.1-history/rms-native-byte-owner-trace-2026-10-12.md):
 otto layer/30 rifiuti, indici e owner generico passano.
 [Quattro trace passano](../c7.1-history/rms-native-byte-trace-pool-2026-10-12.md);
-aspettative pool aggiornate per gli8 B, nuova verifica pool pendente.
-Kernel CUDA ancora non compilati/eseguiti. Sorgente mapped,8 layer/16 lane, stato
+[pool/tail e compilazione CUDA passano](../c7.1-history/rms-native-byte-build-checkpoint-2026-10-12.md).
+Pool42.576 B confermato; occupazione GPU556.793.856 B nel test CPU non
+attribuita, nessun isolamento dedotto. Rust e matematica byte GPU pendenti. Sorgente mapped,8 layer/16 lane, stato
 limitato8 MiB, recupero dei figli originali e callback fallibile senza
 fallback. Registrazione API e30 rifiuti owner, coefficienti/terminali densi,
 streaming/checkpoint, wire e caller RMS/PCS sono preparati ma da verificare.

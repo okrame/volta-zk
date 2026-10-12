@@ -144,6 +144,13 @@ Byte GPU resta opt-in sperimentale; default canonico disabilitato.
 Statistica, backend/sorgente completi, conto simultaneo/driver e
 raffinamento restano aperti. Nessun modello/setup AES/certificato nuovo;
 VM solo editing/controllo/hash. Stessa finestra autorizzata di sei ore.
+Il [confronto byte AB/BA](../c7.1-history/h100-rms-native-byte-paired-2026-10-12.md)
+con binari identici e stesso UUID misura prover116,077→115,447 s
+(−0,5433%, entro la variazione), byte0,882→0,723 s (−18,0226% osservato).
+A1 ha occupazione GPU aggiuntiva non attribuita; B1/A2 un incompleto
+ciascuno, nessun isolamento/picco completo o guadagno canonico dedotti.
+Statistica e dispatcher canonico CPU; consumer statistica in preparazione,
+nessun nuovo default prima delle verifiche.
 
 La [prima fase della campagna certificati](../c7.1-history/h100-certificates-close-2026-10-11.md)
 e il [seguito RMS](../c7.1-history/h100-certificates-rms-shared-cache-2026-10-11.md)

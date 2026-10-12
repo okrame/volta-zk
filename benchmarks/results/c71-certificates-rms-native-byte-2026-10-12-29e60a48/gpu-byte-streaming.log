@@ -1,0 +1,7 @@
+
+running 1 test
+test c71_matrix::byte_function::contraction::c71_byte_native_mapped_streaming_checkpoint_matches_original_cpu_contraction ... C71_RMS_BYTE_NATIVE_STREAMED {"canonical_certificates":0,"cells":16384,"coefficient_checks":172,"cpu_work":{"checkpoint_max":5,"checkpoint_min":2,"heap_capacity_upper_bytes":33554432,"original_byte_reads":8647056,"regenerated_rows":2961408,"retained_rows_peak":4096,"retained_state_capacity_peak_bytes":8290592},"credit":false,"gpu_checkpoint_max":4,"gpu_execution":true,"layers":8,"live":16377,"native_stats":{"allocations":38,"arena_bytes":0,"cleanup_failed":0,"d2d_bytes":0,"d2h_bytes":17280,"fences":199,"h2d_bytes":16177408,"host_owner_bytes":42504,"launches":890,"live_capacity_bytes":0,"logical_bytes":0,"peak_capacity_bytes":18196992,"peak_reserved_bytes":18196992,"releases":38,"stopped":0,"weights_bytes":0,"weights_loaded_bytes":0,"weights_sealed":0,"zeroed_bytes":792192},"original_cpu_contraction":true,"terminal_checks":8}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 640 filtered out; finished in 8.02s
+

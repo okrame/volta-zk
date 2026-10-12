@@ -127,23 +127,23 @@ Resta fixture di gate, senza predicato RMS/certificato o picco completo.
 
 **Zero certificati canonici**: O=0 incompleto, O=150/300 non iniziati.
 Backend RMS completo, conto simultaneo e premessa di raffinamento aperti.
-È [scritto il consumer byte GPU candidato](../c7.1-history/rms-native-byte-implementation-prepared-2026-10-12.md),
-con [owner host positivo](../c7.1-history/rms-native-byte-owner-trace-2026-10-12.md):
-otto layer/30 rifiuti, indici e owner generico passano.
-[Quattro trace passano](../c7.1-history/rms-native-byte-trace-pool-2026-10-12.md);
-[pool/tail e compilazione CUDA passano](../c7.1-history/rms-native-byte-build-checkpoint-2026-10-12.md).
-Pool42.576 B confermato; occupazione GPU556.793.856 B nel test CPU non
-attribuita, nessun isolamento dedotto. Rust e matematica byte GPU pendenti. Sorgente mapped,8 layer/16 lane, stato
-limitato8 MiB, recupero dei figli originali e callback fallibile senza
-fallback. Registrazione API e30 rifiuti owner, coefficienti/terminali densi,
-streaming/checkpoint, wire e caller RMS/PCS sono preparati ma da verificare.
-Owner ordinario host42.504 B confermato; vecchie misure42.496 B immutate.
-Byte GPU default disabilitato; opt-in nel benchmark/caller sperimentale.
-Matematica, lifetime e conto simultaneo/driver rimangono premesse aperte;
-nessun risultato GPU o selezione canonica dedotti; durata autorizzata sopra.
-La [revisione degli alias](../c7.1-history/rms-native-byte-checkpoint-alias-review-2026-10-12.md)
-aggiunge il rifiuto dell'output checkpoint sovrapposto a point/range/feature
-pubbliche, prima dell'allocazione o H2D; verifica sul pod ancora pendente.
+Il [consumer byte GPU passa sulla H100](../c7.1-history/h100-rms-native-byte-parity-2026-10-12.md)
+sulla SHA pulita `29e60a48`:22 check, CUDA/Rust/produzione e documenti.
+348 coefficienti/24 terminali densi originali su8 layer e query/challenge
+zero/uno; streaming16.384 con172/8 e checkpoint GPU massimo4 osservato.
+Wire/FS/MAC identici, getter CPU0 e leaf alterata respinta; caller originale
+RMS/PCS/P0/RNE/W/A onesto e due alterazioni passano.1.247 allocazioni/rilasci
+per caso, arena18.196.736 B, owner42.504 B e arena finale0.
+Tutte159 ricette/99 profondità con `native_byte:true` conservano wire
+320.320 B/hash e9.919 correlazioni dei quattro CPU congelati. Prover
+116,118 s, byte0,730 s: una misura non accoppiata, senza guadagno stabile
+o extrapolazione canonica.280.951 launch,1.325 allocazioni/rilasci,
+arena110.714.112 B; fisico campionato1.272.827.904 B con un incompleto,
+nessun credito al picco completo. GPU idle finale; negativi preservati.
+Byte GPU resta opt-in sperimentale; default canonico disabilitato.
+Statistica, backend/sorgente completi, conto simultaneo/driver e
+raffinamento restano aperti. Nessun modello/setup AES/certificato nuovo;
+VM solo editing/controllo/hash. Stessa finestra autorizzata di sei ore.
 
 La [prima fase della campagna certificati](../c7.1-history/h100-certificates-close-2026-10-11.md)
 e il [seguito RMS](../c7.1-history/h100-certificates-rms-shared-cache-2026-10-11.md)

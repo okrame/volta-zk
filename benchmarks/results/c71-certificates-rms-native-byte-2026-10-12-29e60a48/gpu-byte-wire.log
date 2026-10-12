@@ -1,0 +1,7 @@
+
+running 1 test
+test c71_matrix::byte_function::tests::c71_byte_native_mapped_wire_original_verifier_and_tampered_leaf ... C71_RMS_BYTE_NATIVE_WIRE {"canonical_certificates":0,"cells":32,"correlations":457,"cpu_source_callbacks":0,"credit":false,"exact_wire_FS_original_MAC":true,"gpu_execution":true,"layers":8,"native_stats":{"allocations":38,"arena_bytes":0,"cleanup_failed":0,"d2d_bytes":0,"d2h_bytes":10368,"fences":127,"h2d_bytes":16108064,"host_owner_bytes":42504,"launches":460,"live_capacity_bytes":0,"logical_bytes":0,"peak_capacity_bytes":18196736,"peak_reserved_bytes":18196736,"releases":38,"stopped":0,"weights_bytes":0,"weights_loaded_bytes":0,"weights_sealed":0,"zeroed_bytes":792192},"tampered_leaf_rejected":true,"wire_blake3":"5639b87af9506540328f423e38f63f81b9acceecf72369497e09d78ab55f099c","wire_bytes":13644}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 640 filtered out; finished in 1.29s
+

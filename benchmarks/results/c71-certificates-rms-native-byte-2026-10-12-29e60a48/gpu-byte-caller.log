@@ -1,0 +1,9 @@
+
+running 1 test
+test c71_matrix::gemma::rms::caller::tests::c71_b12_gemma_rms_common_gpu_byte_dispatch_joins_both_original_roots ... C71_RMS_COMMON_CALLER_GPU {"canonical_certificates":0,"credit":false,"fault":0,"gpu_execution":true,"native_byte":true,"original_wire_fs_mac":true,"stats":{"allocations":1247,"arena_bytes":0,"cleanup_failed":0,"d2d_bytes":5499936,"d2h_bytes":7611552,"fences":2381,"h2d_bytes":141705224,"host_owner_bytes":42504,"launches":8929,"live_capacity_bytes":0,"logical_bytes":0,"peak_capacity_bytes":18196736,"peak_reserved_bytes":18196736,"releases":1247,"stopped":0,"weights_bytes":0,"weights_loaded_bytes":0,"weights_sealed":0,"zeroed_bytes":184215360}}
+C71_RMS_COMMON_CALLER_GPU {"canonical_certificates":0,"credit":false,"fault":1,"gpu_execution":true,"native_byte":true,"original_wire_fs_mac":true,"stats":{"allocations":1247,"arena_bytes":0,"cleanup_failed":0,"d2d_bytes":5499936,"d2h_bytes":7611552,"fences":2381,"h2d_bytes":141705224,"host_owner_bytes":42504,"launches":8929,"live_capacity_bytes":0,"logical_bytes":0,"peak_capacity_bytes":18196736,"peak_reserved_bytes":18196736,"releases":1247,"stopped":0,"weights_bytes":0,"weights_loaded_bytes":0,"weights_sealed":0,"zeroed_bytes":184215360}}
+C71_RMS_COMMON_CALLER_GPU {"canonical_certificates":0,"credit":false,"fault":2,"gpu_execution":true,"native_byte":true,"original_wire_fs_mac":true,"stats":{"allocations":1247,"arena_bytes":0,"cleanup_failed":0,"d2d_bytes":5499936,"d2h_bytes":7611552,"fences":2381,"h2d_bytes":141705224,"host_owner_bytes":42504,"launches":8929,"live_capacity_bytes":0,"logical_bytes":0,"peak_capacity_bytes":18196736,"peak_reserved_bytes":18196736,"releases":1247,"stopped":0,"weights_bytes":0,"weights_loaded_bytes":0,"weights_sealed":0,"zeroed_bytes":184215360}}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 640 filtered out; finished in 23.89s
+
